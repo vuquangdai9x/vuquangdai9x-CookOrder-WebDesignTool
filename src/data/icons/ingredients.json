@@ -1,0 +1,15 @@
+{
+  "_comment": "Ingredient thumbnails. fileId links to the icon in Google Drive, taken from the ConfigTables tab's IMAGE() formulas (column Q). Empty fileId falls back to the emoji.",
+  "mapId": 1,
+  "icons": [
+    { "id": 0, "name": "Bun", "code": "burger_bun_raw", "emoji": "🍞", "fileId": "1MLtLe69Gn6D-EQ4DAXmEr0R1h3gY7s2M" },
+    { "id": 1, "name": "Patty", "code": "beef_patty_raw", "emoji": "🥩", "fileId": "1ANuBhLfhZOvzKsASxUZJt98aGED20NRZ" },
+    { "id": 2, "name": "Tomato", "code": "tomato", "emoji": "🍅", "fileId": "1NK6RYawOXQo7CPVj9oQcuEa65L09DSM6" },
+    { "id": 3, "name": "Lettuce", "code": "lettuce_raw", "emoji": "🥬", "fileId": "1DVvrnHUJjEFpcnbgj9ku1ue02tdTn8t2" },
+    { "id": 4, "name": "Onion", "code": "onion", "emoji": "🧅", "fileId": "1jGiMJnIAyw3JyOjPvg8RKuqrmZI0JjDa" },
+    { "id": 5, "name": "Cheese", "code": "cheese", "emoji": "🧀", "fileId": "1RjP8ZeVgFfF6-kFF1kbzJFE-xThmw3oo" },
+    { "id": 6, "name": "Egg", "code": "egg", "emoji": "🥚", "fileId": "1JnHUAXkpkmLaTr2SxuOsxkpj7dt3OYiu" },
+    { "id": 7, "name": "Soda", "code": "cup", "emoji": "🥤", "fileId": "1LyYrqYSDVXHxH5fzw-LdlCTpo3O0_g89" },
+    { "id": 8, "name": "Ice", "code": "ice", "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-" }
+  ]
+}
