@@ -1,0 +1,52 @@
+{
+  "_source": "ConfigTables!H19:K24 (icons from the IMAGE() formulas in column J)",
+  "_note": "Type 3 follows docs/ToolDesign.md: an ingredient-slot keyed to one ingredient, not the sheet's older any-ingredient counter.",
+  "statuses": [
+    {
+      "id": 0,
+      "name": "Normal",
+      "emoji": "",
+      "fileId": "",
+      "description": "",
+      "paramDefs": []
+    },
+    {
+      "id": 1,
+      "name": "Blocked",
+      "emoji": "⛔",
+      "fileId": "1Ixj50ZnhdiedTUbRUQdN3gUlucekAT2X",
+      "description": "Fully locked; unusable for the whole level.",
+      "paramDefs": []
+    },
+    {
+      "id": 2,
+      "name": "OrderLock",
+      "emoji": "🔒",
+      "fileId": "1A5tB2wfnJBtN4ow0DwIISvHP-H5t3I2Z",
+      "description": "Locked until X orders are completed.",
+      "paramDefs": [{ "name": "orderCount", "dataType": "int" }]
+    },
+    {
+      "id": 3,
+      "name": "IngredientSlot",
+      "emoji": "🍽",
+      "fileId": "1GoXmjpUKMsiBI2hOBdFDd5vsZK-9Jz3o",
+      "description": "Keyed to one ingredient: opens once X of that specific ingredient have been used.",
+      "paramDefs": [
+        { "name": "ingredientId", "dataType": "int" },
+        { "name": "amount", "dataType": "int" }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "ColorLock",
+      "emoji": "🎨",
+      "fileId": "1EAjTKQ8LVlbdblvTgkYsNA2svGvoe1iM",
+      "description": "Colour-locked; serve X key-holding ingredients of the matching colour to open.",
+      "paramDefs": [
+        { "name": "colorId", "dataType": "int" },
+        { "name": "keyCount", "dataType": "int" }
+      ]
+    }
+  ]
+}

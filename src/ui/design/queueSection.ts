@@ -16,7 +16,7 @@ import type {
   MapDef,
   QueueItem,
 } from "../../core/types.ts";
-import { KEY_COLORS } from "../../data/initialData.ts";
+import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { numberField, pickerGrid, showContextMenu, swatchRow } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
@@ -577,21 +577,33 @@ function quickAddDrawer(
 
 // ---------- generation / shuffle ----------
 
-/** Builds the raw-ingredient demand implied by the customer orders. */
+/**
+ * Raw-ingredient demand implied by the customer orders. A tool recipe can yield
+ * several pieces per raw unit (1 tomato → 2 slices), so demand is divided by
+ * the yield and rounded up.
+ */
 function demandByRaw(deps: QueueSectionDeps): Map<number, number> {
-  const cookedToRaw = new Map<number, number>();
-  for (const m of deps.map.cookMappings) {
-    for (const cooked of m.cookedIds) cookedToRaw.set(cooked, m.rawId);
+  const cookedToRaw = new Map<number, { rawId: number; amount: number }>();
+  for (const tool of deps.map.tools) {
+    for (const recipe of tool.recipes) {
+      cookedToRaw.set(recipe.out, { rawId: recipe.in, amount: recipe.amount });
+    }
   }
-  const demand = new Map<number, number>();
+  const pieces = new Map<number, number>();
   for (const customer of deps.currentCustomers()) {
     for (const dish of customer.dishes) {
       for (const cookedId of dish.cookedIds) {
-        const rawId = cookedToRaw.get(cookedId);
-        if (rawId === undefined) continue;
-        demand.set(rawId, (demand.get(rawId) ?? 0) + 1);
+        pieces.set(cookedId, (pieces.get(cookedId) ?? 0) + 1);
       }
     }
+  }
+  const demand = new Map<number, number>();
+  for (const [cookedId, count] of pieces) {
+    const via = cookedToRaw.get(cookedId);
+    // No tool: the ingredient passes through as itself, one for one.
+    const rawId = via?.rawId ?? cookedId;
+    const need = Math.ceil(count / (via?.amount ?? 1));
+    demand.set(rawId, (demand.get(rawId) ?? 0) + need);
   }
   return demand;
 }

@@ -157,19 +157,31 @@ tool.
 - **Top — Customer status**: active (serveable) customers first, then a preview of the next
   pending ones, each showing its dish chips (filled vs. remaining cooked ingredients) and a live
   countdown where wait-time applies.
-- **Middle — Grid + Preparing/Cooking (one panel, split left/right)**: the grid occupies the left
+- **Middle — Grid + Cooking tools (one panel, split left/right)**: the grid occupies the left
   half exactly as in Design mode (same cell rendering, now showing live contents — cooked items,
-  dirty stacks, lock progress — instead of edit state); the right half lists items currently in
-  the prepare→cook pipeline with a progress bar per item. Being one panel rather than two stacked
-  ones keeps the cause (an item finishing cooking, right) and its effect (landing in the first
-  free cell, left) visible together.
+  parked raws, dirty stacks, lock progress — instead of edit state); the right half draws **only
+  the tools this map defines**, each as a row of slots with a progress bar that fills while an
+  ingredient cooks in it. Being one panel rather than two stacked ones keeps the cause (a slot
+  finishing, right) and its effect (landing in the first free cell, left) visible together.
+- **When a tool is full**, a dropdown in the toolbar picks the behaviour: *Block the pick* (the
+  queue tile is disabled with a reason tooltip) or *Park raw on the grid* (the raw ingredient
+  waits on the grid, dimmed, and is pulled into the tool ahead of new picks the moment a slot
+  frees).
+- **Movement**: every hand-off animates as a floating item flying between the two places —
+  queue→tool slot, queue→grid, tool→grid, grid→tool (reclaiming a parked raw), grid→customer.
+  The animation is the gate: cooking starts when the ingredient *arrives* in the slot, matching
+  runs when an item *arrives* on the grid, and a dish fills when the piece *arrives* at the
+  customer.
+- **Completion feedback**: when a customer's whole order is filled, their card tints light and a
+  burst of particles fires from it (Web Animations API). Customers currently in a serve slot are
+  highlighted; those still queued are dimmed.
 - **Bottom — Ingredient queues**: same lane layout as the Design-mode queue window, but each
   lane's top tile is now a clickable "pick" button (disabled + reason tooltip when blocked by an
   effect like Freeze); items the currently-active customers need are highlighted.
-- **Speed controls** (×1 / ×2 / ×3 / Skip) and **Restart** sit above the three sections, alongside
-  a HUD strip (elapsed time, served count, picks made, weather, keys collected). Skip fast-forwards
-  whatever is already cooking and hands control back the moment another pick is needed, rather
-  than running the clock to its bound.
+- **Speed** is a single option group — ×1 / ×2 / ×3 / **Skip** — where picking one deselects the
+  others. Skip runs with **no animation at all**: flights land the instant they are created and
+  cooking is fast-forwarded. Pause and Restart sit alongside, with a HUD strip (elapsed time,
+  served count, picks made, weather, keys collected).
 - A win/lose overlay appears over the whole layout when the level resolves, with the reason and a
   Restart button; the three sections stay rendered underneath so the final board state is still
   visible for review.

@@ -1,0 +1,10 @@
+{
+  "_source": "ConfigTables!H3:M7",
+  "_note": "thresholdPct is the remaining-wait-time percentage at or above which the customer is in this mood; priceRemainPct is how much of the dish price they still pay.",
+  "emotions": [
+    { "id": 0, "name": "Leave", "emoji": "❌", "thresholdPct": 0, "priceRemainPct": 0, "coinSpawn": 0 },
+    { "id": 1, "name": "Angry", "emoji": "😡", "thresholdPct": 1, "priceRemainPct": 50, "coinSpawn": 0 },
+    { "id": 2, "name": "Normal", "emoji": "😑", "thresholdPct": 25, "priceRemainPct": 50, "coinSpawn": 2 },
+    { "id": 3, "name": "Happy", "emoji": "😍", "thresholdPct": 50, "priceRemainPct": 100, "coinSpawn": 5 }
+  ]
+}

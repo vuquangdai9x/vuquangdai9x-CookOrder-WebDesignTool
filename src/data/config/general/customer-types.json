@@ -1,0 +1,21 @@
+{
+  "_note": "Not a ConfigTables block — the customer string has no type field, so a customer with an empty dish list is a staff member. Kept here so designers can extend the roster.",
+  "types": [
+    {
+      "id": 0,
+      "name": "Normal",
+      "emoji": "🙂",
+      "fileId": "",
+      "description": "Orders dishes.",
+      "paramDefs": []
+    },
+    {
+      "id": 1,
+      "name": "Staff",
+      "emoji": "🧑‍🍳",
+      "fileId": "",
+      "description": "Clears X oldest dirty stacks, needs no dishes, leaves immediately.",
+      "paramDefs": [{ "name": "stackCount", "dataType": "int" }]
+    }
+  ]
+}

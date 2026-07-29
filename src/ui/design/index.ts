@@ -243,8 +243,7 @@ export class DesignView {
           { key: "name", label: "Name", get: (r) => r.name, set: (r, v) => (r.name = v) },
           { key: "code", label: "Code", get: (r) => r.code, set: (r, v) => (r.code = v) },
           { key: "price", label: "Price", type: "number", width: "5rem", get: (r) => String(r.price), set: (r, v) => (r.price = Number(v)) },
-          { key: "prepareTime", label: "Prep s", type: "number", width: "5rem", get: (r) => String(r.prepareTime), set: (r, v) => (r.prepareTime = Number(v)) },
-          { key: "cookTime", label: "Cook s", type: "number", width: "5rem", get: (r) => String(r.cookTime), set: (r, v) => (r.cookTime = Number(v)) },
+          { key: "numSlices", label: "Slices", type: "number", width: "5rem", get: (r) => String(r.numSlices), set: (r, v) => (r.numSlices = Number(v)) },
         ],
         makeRow: (rows) => ({
           id: Math.max(-1, ...rows.map((r) => r.id)) + 1,
@@ -252,8 +251,7 @@ export class DesignView {
           icon: "",
           code: "",
           price: 0,
-          prepareTime: 0,
-          cookTime: 0,
+          numSlices: 1,
         }),
         onChange: touch,
         subEditor: (row) => el("div", { class: "def-sub" }, [ingredientIconEl(row.id, 64)]),
@@ -274,18 +272,41 @@ export class DesignView {
         onChange: touch,
       }),
       tableEditor({
-        title: "Cook mapping (raw → cooked)",
-        rows: this.map.cookMappings,
+        title: `Cooking tools — ${this.map.name}`,
+        rows: this.map.tools,
         columns: [
-          { key: "rawId", label: "Raw ID", type: "number", width: "6rem", get: (r) => String(r.rawId), set: (r, v) => (r.rawId = Number(v)) },
+          { key: "id", label: "ID", type: "number", width: "4rem", get: (r) => String(r.id), set: (r, v) => (r.id = Number(v)) },
+          { key: "name", label: "Name", get: (r) => r.name, set: (r, v) => (r.name = v) },
+          { key: "icon", label: "Emoji", width: "5rem", get: (r) => r.icon ?? "", set: (r, v) => (r.icon = v) },
+          { key: "numSlots", label: "Slots", type: "number", width: "5rem", get: (r) => String(r.numSlots), set: (r, v) => (r.numSlots = Math.max(1, Number(v) || 1)) },
+          { key: "cookingTime", label: "Time s", type: "number", width: "5rem", get: (r) => String(r.cookingTime), set: (r, v) => (r.cookingTime = Number(v)) },
           {
-            key: "cookedIds",
-            label: "Cooked IDs (dot-separated)",
-            get: (r) => r.cookedIds.join("."),
-            set: (r, v) => (r.cookedIds = v.split(".").filter(Boolean).map(Number)),
+            key: "recipes",
+            label: "Recipes (in>out xN, ; separated)",
+            get: (r) => r.recipes.map((x) => `${x.in}>${x.out}x${x.amount}`).join("; "),
+            set: (r, v) => {
+              r.recipes = v
+                .split(";")
+                .map((part) => part.trim())
+                .filter(Boolean)
+                .map((part) => {
+                  const m = /^(\d+)\s*>\s*(\d+)\s*x\s*(\d+)$/.exec(part);
+                  return m
+                    ? { in: Number(m[1]), out: Number(m[2]), amount: Number(m[3]) }
+                    : null;
+                })
+                .filter((x): x is { in: number; out: number; amount: number } => x !== null);
+            },
           },
         ],
-        makeRow: () => ({ rawId: 0, cookedIds: [0] }),
+        makeRow: (rows) => ({
+          id: Math.max(-1, ...rows.map((r) => r.id)) + 1,
+          name: "New tool",
+          icon: "🍳",
+          numSlots: 1,
+          cookingTime: 1,
+          recipes: [],
+        }),
         onChange: touch,
       }),
     );

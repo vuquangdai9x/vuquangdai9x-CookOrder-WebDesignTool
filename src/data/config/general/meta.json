@@ -1,0 +1,46 @@
+{
+  "_note": "The loose key/value blocks down ConfigTables column A. These drive the meta-game (hearts, save-me, rewards, feature flags); the design tool only reads serveTray and features today, but they are mapped so nothing is lost.",
+  "hearts": {
+    "_source": "ConfigTables!A8:B11",
+    "max": 5,
+    "cooldown": 1800,
+    "refillCost": 800
+  },
+  "serveTray": {
+    "_source": "ConfigTables!A14:B16 and A52:B55",
+    "numSlots": 5,
+    "waitTimeScale": 3,
+    "max": 5,
+    "min": 4,
+    "delayTriggerSaveMe": 5
+  },
+  "saveMe": {
+    "_source": "ConfigTables!A24:B30",
+    "enableFromLv": 3,
+    "initAmount": 5,
+    "lostReasonFlags": 7,
+    "saveMeCost": 500,
+    "saveMeAdd": 3,
+    "maxAds": 99
+  },
+  "rewards": {
+    "_source": "ConfigTables!A19:B21 and A33:B37",
+    "winByDifficulty": { "Normal": 50, "Hard": 80 },
+    "rwWinByDifficulty": [50, 80],
+    "lvShowBonusAds": 3,
+    "bonusMuls": [120, 150, 200],
+    "bonus": 200
+  },
+  "features": {
+    "_source": "ConfigTables!A40:B44",
+    "mergeTop": 1,
+    "upgradeTool": 1,
+    "dirtyPlate": 0,
+    "autoStack": 1
+  },
+  "home": {
+    "_source": "ConfigTables!A58:B60",
+    "firstLvOutHome": 5,
+    "intervalOutHome": 5
+  }
+}

@@ -16,7 +16,8 @@ export function playStructureKey(sim: Simulation): string {
           .map((d) => `${d.filled.join(".")}/${d.remaining.join(".")}`)
           .join(",")}`,
     ),
-    ...sim.pending.slice(0, 4).map((c) => `p${c.index}`),
+    // Only the next customer is shown, and only as a masked "?" card.
+    ...sim.pending.slice(0, 1).map((c) => `p${c.index}`),
   ].join("|");
 
   const grid = sim.grid
@@ -24,13 +25,19 @@ export function playStructureKey(sim: Simulation): string {
       const lock = sim.cellLockLabel(i);
       if (lock) return `L${lock}`;
       if (cell.kind === "cooked") return `c${cell.cookedId}`;
+      if (cell.kind === "raw") return `r${cell.rawId}`;
       if (cell.kind === "dirty") return `d${cell.count}`;
       return "-";
     })
     .join(",");
 
-  // Stage, not elapsed: a bar filling up is a live value, not a new element.
-  const pipeline = sim.pipeline.map((p) => `${p.uid}${p.stage}`).join(",");
+  // Which slots are occupied and by what — not how far along they are.
+  const tools = sim.tools
+    .map(
+      (t) =>
+        `${t.def.id}[${t.slots.map((s) => (s.item ? s.item.rawId : "-")).join("")}]`,
+    )
+    .join(",");
 
   const queues = sim.queues
     .map((q, i) => `${q.length}:${q[0]?.id ?? "x"}:${sim.canPick(i).ok ? 1 : 0}`)
@@ -38,5 +45,5 @@ export function playStructureKey(sim: Simulation): string {
 
   const needed = [...sim.neededCookedIds()].sort((a, b) => a - b).join(".");
 
-  return `${sim.status}|${customers}|${grid}|${pipeline}|${queues}|${needed}`;
+  return `${sim.status}|${customers}|${grid}|${tools}|${queues}|${needed}`;
 }

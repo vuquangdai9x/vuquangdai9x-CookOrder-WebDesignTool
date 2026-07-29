@@ -1,0 +1,41 @@
+{
+  "_note": "Cooking stations. A tool holds numSlots ingredients at once; each takes cookingTime seconds. recipes maps a raw ingredient id to what comes out and how many. An ingredient with no tool recipe (Ice) needs no processing and goes straight to the grid.",
+  "tools": [
+    {
+      "id": 0,
+      "name": "Soda Machine",
+      "emoji": "🥤",
+      "fileId": "",
+      "numSlots": 1,
+      "cookingTime": 2,
+      "recipes": [{ "in": 7, "out": 7, "amount": 1 }]
+    },
+    {
+      "id": 1,
+      "name": "Chopping Board",
+      "emoji": "🔪",
+      "fileId": "",
+      "numSlots": 1,
+      "cookingTime": 1,
+      "recipes": [
+        { "in": 0, "out": 0, "amount": 1 },
+        { "in": 2, "out": 2, "amount": 2 },
+        { "in": 3, "out": 3, "amount": 2 },
+        { "in": 4, "out": 4, "amount": 2 },
+        { "in": 5, "out": 5, "amount": 2 }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Pan",
+      "emoji": "🍳",
+      "fileId": "",
+      "numSlots": 2,
+      "cookingTime": 3,
+      "recipes": [
+        { "in": 1, "out": 1, "amount": 1 },
+        { "in": 6, "out": 6, "amount": 1 }
+      ]
+    }
+  ]
+}

@@ -1019,27 +1019,85 @@ td input {
   align-items: start;
 }
 
-.middle-right .pipeline {
+/* ---------- cooking tools ---------- */
+
+.tools {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.5rem;
 }
 
-.pipe-item {
-  display: grid;
-  grid-template-columns: 1.4rem 6rem 3.6rem 1fr;
+.tool {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.4rem 0.5rem;
+}
+
+.tool-head {
+  display: flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  margin-bottom: 0.35rem;
 }
 
-.pipe-item .icon {
+.tool-head .icon {
   width: 1.3rem;
   height: 1.3rem;
 }
 
-.pipe-stage {
+.tool-name {
+  font-weight: 600;
+}
+
+.tool-head small {
+  margin-left: auto;
   color: var(--muted);
+}
+
+.tool-slots {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.tool-slot {
+  position: relative;
+  width: 3.4rem;
+  height: 3.4rem;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  background: #24262c;
+}
+
+.tool-slot.busy {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.slot-item {
+  width: 68%;
+  height: 68%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slot-item .icon {
+  width: 100%;
+  height: 100%;
+}
+
+.tool-slot .bar-track {
+  width: 80%;
+  height: 0.28rem;
 }
 
 .bar-track {
@@ -1077,6 +1135,128 @@ td input {
 
 .cell-main.dirty {
   font-size: 1.2rem;
+}
+
+/* A raw ingredient parked on the grid, still waiting for a tool slot. */
+.cell-main.parked {
+  opacity: 0.55;
+  filter: grayscale(0.5);
+}
+
+/* ---------- serveable / celebrating customers ---------- */
+
+.customer-card.servable {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 0 14px -4px var(--accent);
+}
+
+.customer-card.waiting {
+  opacity: 0.5;
+}
+
+/* The next customer in line — present, but their order stays hidden. */
+.customer-card.mystery {
+  opacity: 0.75;
+  border-style: dashed;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 5rem;
+}
+
+.mystery-mark {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1;
+  padding: 0.4rem 0 0.2rem;
+}
+
+/*
+ * Order complete. The ghost is a copy of just that customer's card, lifted into
+ * the effects layer at its exact position, so only that frame brightens.
+ */
+.fx-card-ghost {
+  position: absolute;
+  margin: 0;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.celebrating {
+  animation: tint-light 0.7s ease-out;
+  border-color: #ffd98e !important;
+  box-shadow: 0 0 18px -2px #ffd98e;
+}
+
+@keyframes tint-light {
+  0% {
+    background: var(--panel-2);
+    filter: brightness(1);
+  }
+  25% {
+    background: #fff6e2;
+    filter: brightness(1.7);
+  }
+  100% {
+    background: #fff6e2;
+    filter: brightness(1.2);
+  }
+}
+
+/* ---------- flight + particle layer ---------- */
+
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 25;
+}
+
+.fx-flier {
+  position: absolute;
+  will-change: transform, opacity;
+}
+
+.fx-item {
+  width: 2.4rem;
+  height: 2.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+}
+
+.fx-item .icon {
+  width: 100%;
+  height: 100%;
+  font-size: 1.5rem;
+}
+
+.fx-item.dirty .icon {
+  font-size: 1.7rem;
+  filter: grayscale(0.6) brightness(0.85);
+}
+
+.fx-particle {
+  position: absolute;
+  border-radius: 999px;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-particle,
+  .fx-flier {
+    display: none;
+  }
+  .celebrating {
+    animation: none;
+  }
+}
+
+.policy-picker {
+  max-width: 11rem;
 }
 
 .overlay {

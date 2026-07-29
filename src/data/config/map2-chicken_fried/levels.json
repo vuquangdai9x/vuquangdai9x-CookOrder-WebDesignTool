@@ -1,0 +1,4 @@
+{
+  "_note": "Empty on purpose. Map 2's scenario recipes use composite ids (20012, 30201, 703) whose digit layout is unconfirmed; importing them by guesswork would silently produce wrong customer orders. See docs/SHEET_STRUCTURE.md.",
+  "levels": []
+}

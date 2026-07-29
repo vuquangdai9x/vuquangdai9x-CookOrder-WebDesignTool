@@ -1,0 +1,4 @@
+{
+  "_note": "Placeholder derived from the sheet's Tool_config rows for map 2 (Fryer, Flour bowl, Chili bowl, Knife, Soda machine). Slot counts and times are not yet specified by the designer, and the raw→cooked ids depend on map 2's composite recipe encoding, so recipes are empty until that is confirmed.",
+  "tools": []
+}

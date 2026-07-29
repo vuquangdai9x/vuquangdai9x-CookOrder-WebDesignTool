@@ -1,0 +1,9 @@
+{
+  "_source": "ConfigTables!E3:F7",
+  "weather": [
+    { "id": "Normal", "status": "None" },
+    { "id": "Rainy", "status": "Wet" },
+    { "id": "Sunny", "status": "Hot" },
+    { "id": "Freeze", "status": "Cold" }
+  ]
+}

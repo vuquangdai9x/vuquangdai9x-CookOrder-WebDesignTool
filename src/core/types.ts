@@ -20,7 +20,10 @@ export interface ParamDef {
 export interface ElementDef {
   id: Id;
   name: string;
+  /** Emoji fallback, used when the Drive image is missing or fails to load. */
   icon: string;
+  /** Google Drive file id of the artwork. */
+  fileId?: string;
   description: string;
   paramDefs: ParamDef[];
 }
@@ -31,23 +34,41 @@ export interface RawIngredientDef {
   id: Id;
   name: string;
   icon: string;
+  fileId?: string;
   /** String code used by the Unity game / sheet (e.g. "burger_bun_raw"). */
   code: string;
   price: number;
-  prepareTime: number; // seconds at x1 speed
-  cookTime: number;
+  /** How many pieces one raw unit yields when processed (sheet: NumSlices). */
+  numSlices: number;
 }
 
 export interface CookedIngredientDef {
   id: Id;
   name: string;
   icon: string;
+  fileId?: string;
 }
 
-/** One raw ingredient produces N cooked ingredients. */
-export interface CookMapping {
-  rawId: Id;
-  cookedIds: Id[];
+/** What a tool turns one raw ingredient into, and how many come out. */
+export interface ToolRecipe {
+  in: Id;
+  out: Id;
+  amount: number;
+}
+
+/**
+ * A cooking station. Holds `numSlots` ingredients at once; each occupied slot
+ * finishes after `cookingTime` seconds. An ingredient with no recipe in any
+ * tool needs no processing and goes straight to the grid.
+ */
+export interface CookingToolDef {
+  id: Id;
+  name: string;
+  icon?: string;
+  fileId?: string;
+  numSlots: number;
+  cookingTime: number;
+  recipes: ToolRecipe[];
 }
 
 export interface MapDef {
@@ -56,8 +77,20 @@ export interface MapDef {
   dirtyDishName: string; // per-map skin: "plate" | "cup" | "box" | ...
   rawIngredients: RawIngredientDef[];
   cookedIngredients: CookedIngredientDef[];
-  cookMappings: CookMapping[];
+  tools: CookingToolDef[];
   levels: LevelConfig[];
+}
+
+/** Finds the tool (and its recipe) that processes a raw ingredient, if any. */
+export function findToolRecipe(
+  tools: CookingToolDef[],
+  rawId: Id,
+): { tool: CookingToolDef; recipe: ToolRecipe } | null {
+  for (const tool of tools) {
+    const recipe = tool.recipes.find((r) => r.in === rawId);
+    if (recipe) return { tool, recipe };
+  }
+  return null;
 }
 
 // ---------- Level config ----------
@@ -89,6 +122,9 @@ export interface CustomerConfig {
   dishes: Dish[];
 }
 
+/** What happens when every tool slot for a picked ingredient is busy. */
+export type OutOfSlotPolicy = "block-pick" | "park-on-grid";
+
 export interface LevelConfig {
   id: Id;
   name: string;
@@ -106,6 +142,8 @@ export interface LevelConfig {
   queues: QueueItem[][];
   grid: GridCellConfig[]; // length = gridWidth * gridHeight, scan order
   customers: CustomerConfig[];
+  /** Overrides the default behaviour when a picked ingredient's tool is full. */
+  outOfSlotPolicy?: OutOfSlotPolicy;
 }
 
 // ---------- Global (cross-map) definitions ----------

@@ -14,7 +14,7 @@ import {
 } from "./legacyConvert.ts";
 import type { LevelData, MapData } from "./mapLoader.ts";
 import { toMapDef } from "./mapLoader.ts";
-import { GLOBAL_DEFS, MAP1_DATA } from "./initialData.ts";
+import { GLOBAL_DEFS, MAP1_DATA } from "./configLoader.ts";
 
 export const SHEET_ID = "1wayrsZlHCTtuMGD1Qft2Fmaeb19b-ULfO2F6abTlAEA";
 
@@ -153,14 +153,26 @@ export function levelsCsv(map: MapData): string {
 
 export function definitionsCsv(map: MapData): string {
   const rows: (string | number)[][] = [["-- Raw Ingredients --"]];
-  rows.push(["ID", "Name", "Code", "Price", "PrepareTime", "CookTime"]);
+  rows.push(["ID", "Name", "Code", "Price", "NumSlices"]);
   for (const r of map.rawIngredients) {
-    rows.push([r.id, r.name, r.code, r.price, r.prepareTime, r.cookTime]);
+    rows.push([r.id, r.name, r.code, r.price, r.numSlices]);
   }
   rows.push([], ["-- Cooked Ingredients --"], ["ID", "Name"]);
   for (const c of map.cookedIngredients) rows.push([c.id, c.name]);
-  rows.push([], ["-- Cook Mappings --"], ["RawID", "CookedIDs"]);
-  for (const m of map.cookMappings) rows.push([m.rawId, m.cookedIds.join(".")]);
+  rows.push(
+    [],
+    ["-- Cooking Tools --"],
+    ["ID", "Name", "NumSlots", "CookingTime", "Recipes (in>out x amount)"],
+  );
+  for (const t of map.tools) {
+    rows.push([
+      t.id,
+      t.name,
+      t.numSlots,
+      t.cookingTime,
+      t.recipes.map((r) => `${r.in}>${r.out}x${r.amount}`).join("; "),
+    ]);
+  }
   return toCsv(rows);
 }
 

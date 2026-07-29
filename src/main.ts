@@ -7,7 +7,7 @@ import {
 } from "./core/parser.ts";
 import { toMapDef } from "./data/mapLoader.ts";
 import type { MapData } from "./data/mapLoader.ts";
-import { GLOBAL_DEFS, MAP1_DATA } from "./data/initialData.ts";
+import { GLOBAL_DEFS, MAP1_DATA } from "./data/configLoader.ts";
 import { exportProjectCsv, GoogleSheetCsvSource, SHEET_ID } from "./data/sheetSource.ts";
 import { DesignView } from "./ui/design/index.ts";
 import { PlayView } from "./ui/play/index.ts";
@@ -17,27 +17,69 @@ type Mode = "design" | "play";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const DRAFT_KEY = "cookorder-draft-map";
+/**
+ * Bump whenever the stored shape changes. Drafts outlive schema changes, so a
+ * stale one must be migrated rather than loaded blindly — restoring a draft
+ * that predates the cooking-tool model left the page blank.
+ */
+const DRAFT_VERSION = 2;
+
+interface Draft {
+  version: number;
+  map: MapData;
+}
+
+const restored = loadDraft();
 
 /** Working copy the editors mutate; CSV export writes exactly this. */
-let map: MapData = loadDraft() ?? structuredClone(MAP1_DATA);
+let map: MapData = restored?.map ?? structuredClone(MAP1_DATA);
 let mode: Mode = "design";
-let dataOrigin = loadDraft() ? "local draft" : "bundled Map 1 snapshot";
+let dataOrigin = restored
+  ? restored.migrated
+    ? "local draft (levels kept, definitions refreshed)"
+    : "local draft"
+  : "bundled Map 1 snapshot";
 let playLevelId = map.levels[0]?.id ?? 1;
 let playView: PlayView | null = null;
 let designView: DesignView | null = null;
 
-function loadDraft(): MapData | null {
+function loadDraft(): { map: MapData; migrated: boolean } | null {
+  let stored: unknown;
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    return raw ? (JSON.parse(raw) as MapData) : null;
-  } catch {
+    if (!raw) return null;
+    stored = JSON.parse(raw);
+  } catch (err) {
+    console.warn("Draft could not be parsed — starting from the bundled snapshot", err);
     return null;
   }
+
+  const draft = stored as Partial<Draft> & Partial<MapData>;
+  // v1 drafts were the bare map; v2+ wrap it so the version travels with it.
+  const candidate = (draft.map ?? draft) as Partial<MapData>;
+  if (!candidate || !Array.isArray(candidate.levels) || candidate.levels.length === 0) {
+    console.warn("Draft has no levels — starting from the bundled snapshot");
+    return null;
+  }
+
+  const current =
+    draft.version === DRAFT_VERSION &&
+    Array.isArray(candidate.tools) &&
+    candidate.rawIngredients?.every((r) => typeof r.numSlices === "number");
+  if (current) return { map: candidate as MapData, migrated: false };
+
+  // Only the level edits are the designer's own work; everything else now comes
+  // from src/data/config, so take the fresh definitions and keep the levels.
+  console.info("Migrating an older draft: keeping level edits, refreshing definitions");
+  return {
+    map: { ...structuredClone(MAP1_DATA), levels: candidate.levels as MapData["levels"] },
+    migrated: true,
+  };
 }
 
 function saveDraft(): void {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(map));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ version: DRAFT_VERSION, map } satisfies Draft));
   } catch (err) {
     console.warn("Could not persist draft", err);
   }
@@ -79,25 +121,37 @@ function render(): void {
   const main = el("main", {});
   app.replaceChildren(header, main);
 
-  if (mode === "design") {
-    designView = new DesignView(main, map, GLOBAL_DEFS, saveDraft);
-  } else {
-    const parsed = toMapDef(map);
-    const level = parsed.levels.find((l) => l.id === playLevelId) ?? parsed.levels[0];
-    if (!level) {
-      main.append(el("p", {}, ["No levels to play."]));
-      return;
-    }
-    try {
+  // A view that throws must not leave an empty page with no way out.
+  try {
+    if (mode === "design") {
+      designView = new DesignView(main, map, GLOBAL_DEFS, saveDraft);
+    } else {
+      const parsed = toMapDef(map);
+      const level = parsed.levels.find((l) => l.id === playLevelId) ?? parsed.levels[0];
+      if (!level) {
+        main.append(el("p", {}, ["No levels to play."]));
+        return;
+      }
       playView = new PlayView(main, parsed, level, (id) => {
         playLevelId = id;
         render();
       });
-    } catch (err) {
-      main.append(
-        el("div", { class: "warnings" }, [`Cannot start level: ${(err as Error).message}`]),
-      );
     }
+  } catch (err) {
+    console.error(err);
+    main.replaceChildren(
+      el("div", { class: "warnings" }, [
+        el("strong", {}, [`${mode === "design" ? "Design" : "Play"} mode failed to load`]),
+        el("p", {}, [(err as Error).message]),
+        el("p", {}, [
+          "This usually means the saved draft no longer matches the current data schema.",
+        ]),
+        button("♻ Reset draft and reload", () => {
+          localStorage.removeItem(DRAFT_KEY);
+          location.reload();
+        }),
+      ]),
+    );
   }
 }
 

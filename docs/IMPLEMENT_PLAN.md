@@ -2,7 +2,7 @@
 
 Companion to [GDD.md](GDD.md) and [SHEET_STRUCTURE.md](SHEET_STRUCTURE.md). Stack: **Vite + TypeScript + vanilla DOM** (no framework, no canvas — the game is discrete UI elements; DOM gives free hit-testing, easy table UIs, and inspectability for designers). Tests: **Vitest**. Static build; runs fully in browser, no server.
 
-**Status: Phases 1–5 complete, plus the ToolDesign layout rework (Phase 7).** 42 tests green. Remaining work is data polish (Phase 6), which is blocked on one question about Map 2's recipe encoding.
+**Status: Phases 1–5 complete, plus the ToolDesign layout rework (Phase 7) and the cooking-tool/animation model (Phase 8).** 59 tests green. Remaining work is Map 2's level import, blocked on its recipe encoding.
 
 ## Architecture principles
 
@@ -16,22 +16,27 @@ Companion to [GDD.md](GDD.md) and [SHEET_STRUCTURE.md](SHEET_STRUCTURE.md). Stac
 ```
 src/
   core/
-    types.ts            model: ids, definitions, map/level schemas
+    types.ts            model: ids, definitions, tools, map/level schemas
     parser.ts           queue/grid/customer parse + serialize
     registry.ts         effect / cell-type / customer-type registries
     effects.ts          built-in behaviors (registers into the registries)
-    sim.ts              deterministic state machine
+    sim.ts              deterministic state machine (tools + flights)
   data/
+    config/general/     cross-map tables (statuses, colours, weather, meta)
+    config/map1-burger/ map, ingredients, cooked, cooking-tools, dishes, levels
+    config/map2-.../    same shape; levels empty pending the encoding question
+    configLoader.ts     turns the config tree into the runtime model
     sheetSource.ts      Google Sheet CSV read + CSV export save
     legacyConvert.ts    legacy sheet formats -> canonical
     mapLoader.ts        JSON string form <-> parsed MapDef
-    initialData.ts      global defs + bundled Map 1
-    map1_burger.json    Map 1 snapshot (15 levels from the sheet)
     validate.ts         level warnings surfaced in Design mode
   ui/
     dom.ts              el() / button() helpers
-    design/             tableEditor, levelEditor, index (mode shell)
-    play/               board renderer, speed controls, HUD, overlay
+    icon.ts             Drive images with emoji fallback
+    history.ts          per-section undo/redo + dirty state
+    contextMenu.ts      right-click menus with inline sub-editors
+    design/             section shell + customer/grid/queue sections
+    play/               board renderer, effectsLayer (flights + particles)
   main.ts               shell: mode tabs, sheet load, CSV export
 ```
 
@@ -82,6 +87,16 @@ Replaced the tabbed Design view and 2-column Play board with the layout specifie
 - Drafts persist to `localStorage`; switching level/mode or reloading the sheet with unsaved sections prompts first.
 
 Verified in-browser: all 29 Drive icons load (no fallbacks); Freeze applies an icy tile with a `🧊3` badge; ColorLock and IngredientSlot paint with swatch/thumbnail and params; undo/redo/save cycle the dirty badge; the grid/cooking split sits side-by-side above 900px and stacks below; level 1_1 wins 7/7; level 1_11 shows both ColorLock cells with red/blue swatches and `0/1 keys`.
+
+## Phase 8 — Cooking tools, config tree & animation ✅
+
+- **Config restructure**: every ConfigTables block became JSON under `src/data/config/`, split into `general/` and one `map<index>-<id>/` folder per map (see [SHEET_STRUCTURE.md](SHEET_STRUCTURE.md) for the block → file table). Icons are now a `fileId` on each definition row rather than a separate icon table, so `src/data/icons/` and `initialData.ts` are gone.
+- **Cooking tools replace the pipeline**: `CookingToolDef` (id, name, numSlots, cookingTime, recipes `in → out × amount`) is the single source for what an ingredient becomes and how long it takes; per-ingredient `prepareTime`/`cookTime` and the `cookMappings` table were removed. An ingredient with no recipe passes straight to the grid.
+- **Out-of-slot policy** (toolbar dropdown, per level): `block-pick` disables the tile with a reason, or `park-on-grid` parks the raw on the grid and reclaims it — checked ahead of new picks — as soon as a slot frees.
+- **Flight gating**: transfers are `Flight` records the host animates; `completeFlight()` applies the effect and runs the next logic step, so cooking starts on arrival at a slot and matching runs on arrival at the grid. `instantFlights` (default true) keeps the sim usable headlessly; the play view passes false and Skip resolves everything instantly.
+- **Play visuals**: `ui/play/effectsLayer.ts` flies items point-to-point with WAAPI arcs and fires a particle burst plus a light tint when an order completes; serveable customers are highlighted; ×1/×2/×3/Skip is one radio group.
+
+Verified in-browser against real Map 1 data: the three tools render with their real slot counts and times, a greedy bot wins level 1_1 (7/7 in 9s), `block-pick` reports "Chopping Board is full" while `park-on-grid` puts the raw on the grid, and the Definitions overlay lists the cooking-tools table (CSV export includes it).
 
 ## Phase 6 — Data polish (remaining)
 

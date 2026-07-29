@@ -1,36 +1,17 @@
-// Icon rendering. Icons live in Google Drive; the JSON tables under
-// src/data/icons/ map each element id to its Drive fileId (harvested from the
-// sheet's ConfigTables IMAGE() formulas). Every tile/chip/cell renders through
-// here so a missing or blocked image degrades to the emoji fallback in one place.
+// Icon rendering. Every definition row carries its own `fileId` (Google Drive)
+// plus an emoji fallback, so icons come straight from the config tree under
+// src/data/config/. All tiles/chips/cells render through here, which means a
+// missing or blocked image degrades to the emoji in exactly one place.
 
-import cellStatusesJson from "../data/icons/cellStatuses.json";
-import ingredientStatusesJson from "../data/icons/ingredientStatuses.json";
-import ingredientsJson from "../data/icons/ingredients.json";
+import type { CookingToolDef, ElementDef, MapDef } from "../core/types.ts";
+import { GLOBAL_DEFS, MAP1_DATA } from "../data/configLoader.ts";
 import { el } from "./dom.ts";
 
-export interface IconEntry {
-  id: number;
+export interface IconSpec {
   name: string;
   emoji: string;
-  fileId: string;
-  code?: string;
+  fileId?: string;
 }
-
-interface IconTable {
-  icons: IconEntry[];
-}
-
-export const INGREDIENT_ICONS = (ingredientsJson as IconTable).icons;
-export const INGREDIENT_STATUS_ICONS = (ingredientStatusesJson as IconTable).icons;
-export const CELL_STATUS_ICONS = (cellStatusesJson as IconTable).icons;
-
-function find(table: IconEntry[], id: number): IconEntry | undefined {
-  return table.find((i) => i.id === id);
-}
-
-export const ingredientIcon = (id: number) => find(INGREDIENT_ICONS, id);
-export const ingredientStatusIcon = (id: number) => find(INGREDIENT_STATUS_ICONS, id);
-export const cellStatusIcon = (id: number) => find(CELL_STATUS_ICONS, id);
 
 /** Drive's thumbnail endpoint serves images cross-origin; `uc?export=view` does not. */
 export function driveThumbUrl(fileId: string, size = 128): string {
@@ -38,25 +19,24 @@ export function driveThumbUrl(fileId: string, size = 128): string {
 }
 
 /**
- * Renders an icon as a Drive <img>, swapping in the emoji fallback if the image
- * fails to load (Drive permissions, offline, or no fileId recorded).
+ * Renders an icon as a Drive <img>, keeping the emoji fallback in place until
+ * the image actually loads (and restoring it if the load fails).
  */
 export function iconEl(
-  entry: IconEntry | undefined,
+  spec: IconSpec | undefined,
   opts: { size?: number; className?: string } = {},
 ): HTMLElement {
-  const fallback = entry?.emoji ?? "❔";
+  const fallback = spec?.emoji || "❔";
   const wrap = el("span", { class: `icon ${opts.className ?? ""}` }, [fallback]);
-  wrap.title = entry?.name ?? "";
-  if (!entry?.fileId) return wrap;
+  wrap.title = spec?.name ?? "";
+  if (!spec?.fileId) return wrap;
 
   const img = el("img", {
-    src: driveThumbUrl(entry.fileId, opts.size ?? 128),
-    alt: entry.name,
+    src: driveThumbUrl(spec.fileId, opts.size ?? 128),
+    alt: spec.name,
     loading: "lazy",
   }) as HTMLImageElement;
   img.addEventListener("error", () => {
-    // Keep the emoji that is already in the wrapper.
     img.remove();
     wrap.classList.add("icon-fallback");
   });
@@ -67,12 +47,43 @@ export function iconEl(
   return wrap;
 }
 
-/** Convenience wrappers used by the sections. */
+// ---------- lookups ----------
+//
+// The active map is set once by the app shell so the section renderers can ask
+// for an icon by id without threading the map through every call.
+
+let activeMap: MapDef | { rawIngredients: MapDef["rawIngredients"]; cookedIngredients: MapDef["cookedIngredients"]; tools: CookingToolDef[] } =
+  MAP1_DATA as unknown as MapDef;
+
+export function setIconMap(map: MapDef): void {
+  activeMap = map;
+}
+
+const specOf = (def: { name: string; icon: string; fileId?: string } | undefined): IconSpec | undefined =>
+  def ? { name: def.name, emoji: def.icon, fileId: def.fileId } : undefined;
+
+const defSpec = (defs: ElementDef[], id: number) => specOf(defs.find((d) => d.id === id));
+
 export const ingredientIconEl = (id: number, size?: number) =>
-  iconEl(ingredientIcon(id), { size, className: "icon-ingredient" });
+  iconEl(specOf(activeMap.rawIngredients.find((r) => r.id === id)), {
+    size,
+    className: "icon-ingredient",
+  });
+
+export const cookedIconEl = (id: number, size?: number) =>
+  iconEl(specOf(activeMap.cookedIngredients.find((c) => c.id === id)), {
+    size,
+    className: "icon-ingredient",
+  });
 
 export const statusIconEl = (id: number, size?: number) =>
-  iconEl(ingredientStatusIcon(id), { size, className: "icon-status" });
+  iconEl(defSpec(GLOBAL_DEFS.effects, id), { size, className: "icon-status" });
 
 export const cellIconEl = (id: number, size?: number) =>
-  iconEl(cellStatusIcon(id), { size, className: "icon-cell" });
+  iconEl(defSpec(GLOBAL_DEFS.cellTypes, id), { size, className: "icon-cell" });
+
+export const toolIconEl = (tool: CookingToolDef, size?: number) =>
+  iconEl({ name: tool.name, emoji: tool.icon ?? "🍳", fileId: tool.fileId }, {
+    size,
+    className: "icon-tool",
+  });

@@ -1,0 +1,15 @@
+{
+  "_source": "ConfigTables!O3:T12 (ids/prices/codes) and O15:R24 (thumbnails, numSlices)",
+  "_note": "Cook times and raw→cooked mapping live in cooking-tools.json — a tool defines what it turns each ingredient into and how long it takes.",
+  "ingredients": [
+    { "id": 0, "name": "Bun", "code": "burger_bun_raw", "price": 4, "numSlices": 1, "emoji": "🍞", "fileId": "1MLtLe69Gn6D-EQ4DAXmEr0R1h3gY7s2M" },
+    { "id": 1, "name": "Patty", "code": "beef_patty_raw", "price": 10, "numSlices": 1, "emoji": "🥩", "fileId": "1ANuBhLfhZOvzKsASxUZJt98aGED20NRZ" },
+    { "id": 2, "name": "Tomato", "code": "tomato", "price": 5, "numSlices": 2, "emoji": "🍅", "fileId": "1NK6RYawOXQo7CPVj9oQcuEa65L09DSM6" },
+    { "id": 3, "name": "Lettuce", "code": "lettuce_raw", "price": 5, "numSlices": 2, "emoji": "🥬", "fileId": "1DVvrnHUJjEFpcnbgj9ku1ue02tdTn8t2" },
+    { "id": 4, "name": "Onion", "code": "onion", "price": 5, "numSlices": 2, "emoji": "🧅", "fileId": "1jGiMJnIAyw3JyOjPvg8RKuqrmZI0JjDa" },
+    { "id": 5, "name": "Cheese", "code": "cheese", "price": 6, "numSlices": 2, "emoji": "🧀", "fileId": "1RjP8ZeVgFfF6-kFF1kbzJFE-xThmw3oo" },
+    { "id": 6, "name": "Egg", "code": "egg", "price": 7, "numSlices": 1, "emoji": "🥚", "fileId": "1JnHUAXkpkmLaTr2SxuOsxkpj7dt3OYiu" },
+    { "id": 7, "name": "Soda", "code": "cup", "price": 8, "numSlices": 1, "emoji": "🥤", "fileId": "1LyYrqYSDVXHxH5fzw-LdlCTpo3O0_g89" },
+    { "id": 8, "name": "Ice", "code": "ice", "price": 2, "numSlices": 1, "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-" }
+  ]
+}

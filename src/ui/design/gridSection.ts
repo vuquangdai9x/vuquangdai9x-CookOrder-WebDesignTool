@@ -7,7 +7,7 @@ import {
 } from "../../core/effects.ts";
 import { serializeGrid } from "../../core/parser.ts";
 import type { GlobalDefs, GridCellConfig, MapDef } from "../../core/types.ts";
-import { KEY_COLORS } from "../../data/initialData.ts";
+import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { numberField, pickerGrid, showContextMenu, swatchRow } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";

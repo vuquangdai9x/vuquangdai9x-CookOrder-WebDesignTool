@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { parseCustomers, parseGrid, parseQueues } from "../../core/parser.ts";
 import { Simulation } from "../../core/sim.ts";
 import type { LevelConfig, MapDef } from "../../core/types.ts";
-import { MAP1_DATA } from "../../data/initialData.ts";
+import { MAP1_DATA } from "../../data/configLoader.ts";
 import { toMapDef } from "../../data/mapLoader.ts";
 import { playStructureKey } from "./structureKey.ts";
 
@@ -22,11 +22,21 @@ const testMap: MapDef = {
     icon: "",
     code: `raw${id}`,
     price: 1,
-    prepareTime: 2,
-    cookTime: 4,
+    numSlices: 1,
   })),
   cookedIngredients: [0, 1].map((id) => ({ id, name: `cooked${id}`, icon: "" })),
-  cookMappings: [0, 1].map((id) => ({ rawId: id, cookedIds: [id] })),
+  tools: [
+    {
+      id: 0,
+      name: "Test Tool",
+      numSlots: 4,
+      cookingTime: 6,
+      recipes: [
+        { in: 0, out: 0, amount: 1 },
+        { in: 1, out: 1, amount: 1 },
+      ],
+    },
+  ],
   levels: [],
 };
 
@@ -72,10 +82,11 @@ describe("play view structure key", () => {
       level({ queueString: "0,1%1,0", gridString: EMPTY_GRID, customerString: "0;0;0.1" }),
     );
     sim.pick(0);
+    sim.completeAllFlights(); // the ingredient reaches the slot and starts cooking
     const cooking = playStructureKey(sim);
-    sim.tick(0.5); // bar advances, still preparing
+    sim.tick(0.5); // bar advances, still in the same slot
     expect(playStructureKey(sim)).toBe(cooking);
-    expect(sim.pipeline[0].elapsed).toBeGreaterThan(0);
+    expect(sim.tools[0].slots[0].item?.elapsed).toBeGreaterThan(0);
   });
 
   it("stays stable while a patience timer counts down", () => {
@@ -105,21 +116,27 @@ describe("play view structure key", () => {
       level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;1" }),
     );
     sim.pick(0);
+    sim.completeAllFlights();
     const cooking = playStructureKey(sim);
-    sim.tick(10); // prepare + cook complete
+    sim.tick(10);
+    sim.completeAllFlights(); // the output lands on the grid
     expect(playStructureKey(sim)).not.toBe(cooking);
   });
 
-  it("changes when a stage transition swaps the pipeline label", () => {
+  it("changes when an ingredient arrives in a tool slot", () => {
+    // instantFlights off so the in-flight state is observable, exactly as the
+    // play view runs it.
     const sim = new Simulation(
       testMap,
       level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;1" }),
+      { instantFlights: false },
     );
     sim.pick(0);
-    const preparing = playStructureKey(sim);
-    sim.tick(2.5); // prepareTime is 2s, so this crosses into "cook"
-    expect(sim.pipeline[0].stage).toBe("cook");
-    expect(playStructureKey(sim)).not.toBe(preparing);
+    const inFlight = playStructureKey(sim);
+    expect(sim.tools[0].slots[0].item).toBeNull(); // still travelling
+    sim.completeAllFlights(); // it lands in the slot, which occupies it
+    expect(sim.tools[0].slots[0].item).not.toBeNull();
+    expect(playStructureKey(sim)).not.toBe(inFlight);
   });
 
   it("is stable on a real Map 1 level across a long idle stretch", () => {

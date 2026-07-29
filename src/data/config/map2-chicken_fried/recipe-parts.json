@@ -1,0 +1,77 @@
+{
+  "_note": "Map 2 composes an order id from a piece, optional modifiers and a size, rather than listing ingredients like map 1. The exact digit layout of the encoded ids in Level_Scenario_Map2 (e.g. 20012, 30201, 703) is still unconfirmed — see docs/SHEET_STRUCTURE.md — so levels.json is intentionally empty until the designer confirms the decoding rule.",
+  "pieces": {
+    "_source": "ConfigTables!Y3:AA11",
+    "rows": [
+      { "id": "Thigh", "encode": 0, "price": 24 },
+      { "id": "Wing", "encode": 1, "price": 20 },
+      { "id": "Breast", "encode": 2, "price": 22 },
+      { "id": "Nugget", "encode": 3, "price": 28 },
+      { "id": "Potato", "encode": 4, "price": 14 },
+      { "id": "Onion", "encode": 5, "price": 16 },
+      { "id": "Coke", "encode": 6, "price": 12 },
+      { "id": "Sprite", "encode": 7, "price": 12 }
+    ]
+  },
+  "sizes": {
+    "_source": "ConfigTables!AC3:AE5",
+    "rows": [
+      { "id": "Medium", "encode": 0, "priceMul": 1 },
+      { "id": "Large", "encode": 1, "priceMul": 2 }
+    ]
+  },
+  "modifiers": {
+    "_source": "ConfigTables!AG3:AI7",
+    "rows": [
+      { "id": "Chilly", "encode": 0, "price": 0 },
+      { "id": "Chives", "encode": 1, "price": 8 },
+      { "id": "CheeseSauce", "encode": 2, "price": 8 },
+      { "id": "Ice", "encode": 3, "price": 2 }
+    ]
+  },
+  "recipes": {
+    "_source": "ConfigTables!AK3:AM43",
+    "rows": [
+      { "id": "Fried breast", "piece": "Breast", "modifiers": [] },
+      { "id": "Spicy breast", "piece": "Breast", "modifiers": ["Chilly"] },
+      { "id": "Chives breast", "piece": "Breast", "modifiers": ["Chives"] },
+      { "id": "Spicy chives breast", "piece": "Breast", "modifiers": ["Chilly", "Chives"] },
+      { "id": "Cheese breast", "piece": "Breast", "modifiers": ["CheeseSauce"] },
+      { "id": "Spicy cheese breast", "piece": "Breast", "modifiers": ["Chilly", "CheeseSauce"] },
+      { "id": "Chive cheese breast", "piece": "Breast", "modifiers": ["Chives", "CheeseSauce"] },
+      { "id": "Full flavor breast", "piece": "Breast", "modifiers": ["Chilly", "Chives", "CheeseSauce"] },
+      { "id": "Nugget", "piece": "Nugget", "modifiers": [] },
+      { "id": "Spicy nugget", "piece": "Nugget", "modifiers": ["Chilly"] },
+      { "id": "Chives nugget", "piece": "Nugget", "modifiers": ["Chives"] },
+      { "id": "Spicy chives nugget", "piece": "Nugget", "modifiers": ["Chilly", "Chives"] },
+      { "id": "Cheese nugget", "piece": "Nugget", "modifiers": ["CheeseSauce"] },
+      { "id": "Spicy cheese nugget", "piece": "Nugget", "modifiers": ["Chilly", "CheeseSauce"] },
+      { "id": "Chive cheese nugget", "piece": "Nugget", "modifiers": ["Chives", "CheeseSauce"] },
+      { "id": "Full flavor nugget", "piece": "Nugget", "modifiers": ["Chilly", "Chives", "CheeseSauce"] },
+      { "id": "Fried wing", "piece": "Wing", "modifiers": [] },
+      { "id": "Spicy wing", "piece": "Wing", "modifiers": ["Chilly"] },
+      { "id": "Chives wing", "piece": "Wing", "modifiers": ["Chives"] },
+      { "id": "Spicy chives wing", "piece": "Wing", "modifiers": ["Chilly", "Chives"] },
+      { "id": "Cheese wing", "piece": "Wing", "modifiers": ["CheeseSauce"] },
+      { "id": "Spicy cheese wing", "piece": "Wing", "modifiers": ["Chilly", "CheeseSauce"] },
+      { "id": "Chive cheese wing", "piece": "Wing", "modifiers": ["Chives", "CheeseSauce"] },
+      { "id": "Full flavor wing", "piece": "Wing", "modifiers": ["Chilly", "Chives", "CheeseSauce"] },
+      { "id": "Fried thigh", "piece": "Thigh", "modifiers": [] },
+      { "id": "Spicy thigh", "piece": "Thigh", "modifiers": ["Chilly"] },
+      { "id": "Chives thigh", "piece": "Thigh", "modifiers": ["Chives"] },
+      { "id": "Spicy chives thigh", "piece": "Thigh", "modifiers": ["Chilly", "Chives"] },
+      { "id": "Cheese thigh", "piece": "Thigh", "modifiers": ["CheeseSauce"] },
+      { "id": "Spicy cheese thigh", "piece": "Thigh", "modifiers": ["Chilly", "CheeseSauce"] },
+      { "id": "Chive cheese thigh", "piece": "Thigh", "modifiers": ["Chives", "CheeseSauce"] },
+      { "id": "Full flavor thigh", "piece": "Thigh", "modifiers": ["Chilly", "Chives", "CheeseSauce"] },
+      { "id": "Coke", "piece": "Coke", "modifiers": [] },
+      { "id": "Ice coke", "piece": "Coke", "modifiers": ["Ice"] },
+      { "id": "Sprite", "piece": "Sprite", "modifiers": [] },
+      { "id": "Ice sprite", "piece": "Sprite", "modifiers": ["Ice"] },
+      { "id": "Fries", "piece": "Potato", "modifiers": [] },
+      { "id": "Cheese fries", "piece": "Potato", "modifiers": ["CheeseSauce"] },
+      { "id": "Onion ring", "piece": "Onion", "modifiers": [] },
+      { "id": "Cheese ring", "piece": "Onion", "modifiers": ["CheeseSauce"] }
+    ]
+  }
+}

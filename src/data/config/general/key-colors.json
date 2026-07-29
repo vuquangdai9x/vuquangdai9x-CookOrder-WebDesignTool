@@ -1,0 +1,11 @@
+{
+  "_source": "ConfigTables!H28:J34",
+  "colors": [
+    { "id": 0, "name": "None", "hex": "#00000000" },
+    { "id": 1, "name": "Red", "hex": "#FF0000FF" },
+    { "id": 2, "name": "Yellow", "hex": "#FFFF00FF" },
+    { "id": 3, "name": "Green", "hex": "#008000FF" },
+    { "id": 4, "name": "Blue", "hex": "#0000FFFF" },
+    { "id": 5, "name": "Purple", "hex": "#800080FF" }
+  ]
+}

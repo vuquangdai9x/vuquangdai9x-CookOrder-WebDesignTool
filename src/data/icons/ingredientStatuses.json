@@ -1,9 +1,0 @@
-{
-  "_comment": "Ingredient status (queue effect) icons. fileId from the ConfigTables tab's IMAGE() formulas (column J, ingredient-status block). Empty fileId falls back to the emoji.",
-  "icons": [
-    { "id": 0, "name": "None", "emoji": "", "fileId": "" },
-    { "id": 1, "name": "Freeze", "emoji": "🧊", "fileId": "1OpvkKdRvW2duUqfQ8Fy1sEE2x1LkPbGM" },
-    { "id": 2, "name": "Link", "emoji": "🔗", "fileId": "161DWQYesZYrDWv6iyPobiXLgjR4PVeRS" },
-    { "id": 3, "name": "HoldingKey", "emoji": "🗝️", "fileId": "1BEOd_aJfcQp0Y7BqTlMjuT7wuYv0lEnQ" }
-  ]
-}

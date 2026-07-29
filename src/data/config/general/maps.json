@@ -1,0 +1,7 @@
+{
+  "_source": "ConfigTables!A3:C5",
+  "maps": [
+    { "index": 1, "id": "burger", "name": "Burger", "numLevels": 15, "folder": "map1-burger" },
+    { "index": 2, "id": "chicken_fried", "name": "Fried Chicken", "numLevels": 25, "folder": "map2-chicken_fried" }
+  ]
+}

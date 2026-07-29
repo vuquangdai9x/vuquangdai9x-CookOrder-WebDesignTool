@@ -19,6 +19,8 @@ export interface LevelData {
   queueString: string;
   gridString: string;
   customerString: string;
+  /** Optional per-level override of what happens when a tool is full. */
+  outOfSlotPolicy?: "block-pick" | "park-on-grid";
 }
 
 export type MapData = Omit<MapDef, "levels"> & { levels: LevelData[] };
@@ -38,6 +40,7 @@ export function toLevelConfig(d: LevelData): LevelConfig {
     queues: parseQueues(d.queueString),
     grid: parseGrid(d.gridString),
     customers: parseCustomers(d.customerString),
+    outOfSlotPolicy: d.outOfSlotPolicy,
   };
 }
 

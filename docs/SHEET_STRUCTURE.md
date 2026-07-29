@@ -33,7 +33,27 @@ Linked sheet: `1wayrsZlHCTtuMGD1Qft2Fmaeb19b-ULfO2F6abTlAEA` (read-only for this
 
 ### Icons
 
-The definition tables carry their icons as `=IMAGE("https://drive.google.com/uc?export=view&id=…")` formulas, which the CSV export drops. The file ids were recovered from the sheet's `.xlsx` export (`xl/worksheets/sheet4.xml`) and now live in [src/data/icons/](../src/data/icons/) — `ingredients.json`, `ingredientStatuses.json`, `cellStatuses.json` — each row `{ id, name, emoji, fileId }`. The UI renders them via `https://drive.google.com/thumbnail?id=<fileId>&sz=w<size>`, which serves cross-origin (unlike `uc?export=view`); the `emoji` field is the fallback if an image fails to load. See [src/ui/icon.ts](../src/ui/icon.ts).
+The definition tables carry their icons as `=IMAGE("https://drive.google.com/uc?export=view&id=…")` formulas, which the CSV export drops. The file ids were recovered from the sheet's `.xlsx` export (`xl/worksheets/sheet4.xml`) and now sit as a **`fileId` field on each definition row** in the config tree. The UI renders them via `https://drive.google.com/thumbnail?id=<fileId>&sz=w<size>`, which serves cross-origin (unlike `uc?export=view`); the `emoji` field on the same row is the fallback if an image fails to load. See [src/ui/icon.ts](../src/ui/icon.ts).
+
+Map 2's thumbnail cells are `#ERROR!` in the sheet, so its `fileId`s are blank and it falls back to emoji.
+
+### Where each ConfigTables block landed
+
+| Block (columns) | Destination |
+|---|---|
+| Maps index (A–C) | `general/maps.json` |
+| Weather (E–F) | `general/weather.json` |
+| Emotions (H–M rows 3–7) | `general/emotions.json` |
+| Ingredient statuses (H–K rows 10–14) | `general/ingredient-statuses.json` |
+| Grid cell statuses (H–K rows 19–24) | `general/cell-statuses.json` |
+| Key colours (H–J rows 28–34) | `general/key-colors.json` |
+| Key/value blocks down column A (hearts, serve tray, save-me, rewards, feature flags, home) | `general/meta.json` |
+| Map 1 ingredients + thumbnails (O–T) | `map1-burger/ingredients.json` |
+| Map 1 dish recipes (V–W) | `map1-burger/dishes.json` |
+| Map 2 pieces / sizes / modifiers / recipes (Y–AM) | `map2-chicken_fried/recipe-parts.json` |
+| Map 2 ingredients + thumbnails (Y–AB rows 17–25) | `map2-chicken_fried/ingredients.json` |
+
+Cook times and the raw→cooked mapping are **no longer per-ingredient**: they moved into each map's `cooking-tools.json`, since a tool now defines what it converts, how long it takes and how many pieces it yields.
 
 ## Legacy encoded strings (as stored in the sheet)
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAP1_DATA } from "./initialData.ts";
+import { MAP1_DATA } from "./configLoader.ts";
 import { definitionsCsv, levelsCsv } from "./sheetSource.ts";
 
 describe("CSV export (the tool's save path)", () => {
@@ -17,6 +17,8 @@ describe("CSV export (the tool's save path)", () => {
     const csv = definitionsCsv(MAP1_DATA);
     expect(csv).toContain("-- Raw Ingredients --");
     expect(csv).toContain("burger_bun_raw");
-    expect(csv).toContain("-- Cook Mappings --");
+    expect(csv).toContain("-- Cooking Tools --");
+    // Recipes round-trip in the "in>out xN" shorthand the table editor parses.
+    expect(csv).toContain("0>0x1; 2>2x2");
   });
 });

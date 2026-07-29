@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { serializeCustomers, serializeGrid, serializeQueues } from "../core/parser.ts";
-import { MAP1_DATA } from "./initialData.ts";
+import { MAP1_DATA } from "./configLoader.ts";
 import { toMapDef } from "./mapLoader.ts";
 
 describe("bundled Map 1 (burger) snapshot", () => {

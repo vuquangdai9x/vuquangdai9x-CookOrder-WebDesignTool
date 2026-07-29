@@ -29,10 +29,20 @@ customer order needs matched from grid → dish completes → customer pays & le
   - *(extensible — future object types may be added)*
 - Queue items may carry **effects** (see §5), e.g. freezed, locked, key-holder.
 
-### 2.2 Cooking pipeline
+### 2.2 Cooking tools
 
-- Picking an ingredient sends it through **prepare → cook** automatically. Each stage takes time in the real game; the tool exposes **speed x1 / x2 / x3** plus **Skip**, which fast-forwards everything already in motion (cooking finishes, matching customers are served) and stops as soon as the level needs another pick. Time still advances realistically during a skip so patience timers stay honest.
-- **Cook mapping** is configured per map: one raw ingredient id maps to **N cooked ingredient ids** (raw and cooked are distinct entities with distinct id spaces). All N outputs are placed on the grid when cooking completes.
+- Each map defines its **cooking tools** (`cooking-tools.json`). A tool has an integer id, name, **number of slots**, a **cooking time**, and a list of **recipes** mapping one raw ingredient to what comes out and **how many pieces** (e.g. the Chopping Board turns 1 tomato into 2 tomato slices).
+- Picking an ingredient sends it to the tool that has a recipe for it. **An ingredient with no recipe in any tool needs no processing** and goes straight to the grid (Map 1: Ice).
+- A tool processes as many ingredients at once as it has slots. **When every slot is busy**, behaviour follows a per-level toggle:
+  - **Block the pick** (default) — the queue tile cannot be picked until a slot frees.
+  - **Park raw on the grid** — the raw ingredient goes to the grid and waits; the moment a slot opens, parked raws are checked **first** and moved into the tool ahead of any new pick.
+- **Speed** is a single option group: **×1 / ×2 / ×3 / Skip**. Skip resolves everything instantly with no animation.
+
+Map 1 tools: **Soda Machine** (1 slot, 2s — cup → soda), **Chopping Board** (1 slot, 1s — bun → 1 sliced bun; tomato, lettuce, onion, cheese → 2 pieces each), **Pan** (2 slots, 3s — patty → cooked patty, egg → fried egg).
+
+### 2.2.1 Movement and timing
+
+Every hand-off is a **flight**: the item is shown travelling from one place to the next, and **the next logic step only runs when it lands**. Arriving in a tool slot is what starts cooking; arriving on the grid is what triggers order matching; arriving at a customer is what fills the dish. The flights are queue→tool, queue→grid, tool→grid, grid→tool (a parked raw being reclaimed) and grid→customer.
 
 ### 2.3 Output grid
 
@@ -76,14 +86,16 @@ All element definitions live in **tables** (Google Sheets-backed; table UI in th
 
 | Table | Columns (minimum) |
 |---|---|
-| Raw ingredients (per map) | id, name, icon, prepare time, cook time |
-| Cooked ingredients (per map) | id, name, icon |
-| Cook mapping (per map) | raw id → list of cooked ids |
+| Raw ingredients (per map) | id, name, code, price, numSlices, icon fileId |
+| Cooked ingredients (per map) | id, name, icon fileId |
+| Cooking tools (per map) | id, name, numSlots, cookingTime, recipes (in → out × amount) |
 | Effect/status definitions (global) | id, name, icon, description, param definitions `<name, data-type>` |
 | Grid cell types (global) | id, name, icon, description, param definitions `<name, data-type>` |
 | Customer types (global) | id, name, icon, description, param definitions `<name, data-type>` |
 
 Effect/cell-type/customer-type **definitions are metadata** (designer-editable); their **behaviors are registered in code** via extensible registries (see §5). The definitions tables mirror the designer's existing Google Sheet schema.
+
+The config lives as JSON under `src/data/config/`: cross-map tables in **`general/`** (ingredient statuses, cell statuses, customer types, key colours, weather, emotions, meta key-values) and one folder per map named **`map<index>-<id>/`** (`map1-burger/`, `map2-chicken_fried/`) holding that map's `map.json`, `ingredients.json`, `cooked-ingredients.json`, `cooking-tools.json`, `dishes.json` and `levels.json`. Every definition row carries its artwork as a Google Drive **`fileId`** plus an `emoji` fallback.
 
 ## 5. Effects & Extensibility
 

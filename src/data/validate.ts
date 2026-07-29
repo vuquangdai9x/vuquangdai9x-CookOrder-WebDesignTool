@@ -1,6 +1,7 @@
 // Level sanity checks surfaced to designers in Design mode.
 
 import { parseCustomers, parseGrid, parseQueues } from "../core/parser.ts";
+import { findToolRecipe } from "../core/types.ts";
 import type { MapData } from "./mapLoader.ts";
 
 export interface LevelWarning {
@@ -47,12 +48,19 @@ export function validateMap(map: MapData): LevelWarning[] {
     }
 
     // Supply check: can the queues cover every ordered cooked ingredient?
+    // A tool recipe may yield several pieces from one raw unit (e.g. 1 tomato
+    // → 2 slices), and an ingredient with no tool passes through as itself.
     const supply = new Map<number, number>();
     for (const item of queues.flat()) {
       if (item.kind !== "ingredient") continue;
-      const mapping = map.cookMappings.find((m) => m.rawId === item.id);
-      for (const cooked of mapping?.cookedIds ?? []) {
-        supply.set(cooked, (supply.get(cooked) ?? 0) + 1);
+      const match = findToolRecipe(map.tools, item.id);
+      if (match) {
+        supply.set(
+          match.recipe.out,
+          (supply.get(match.recipe.out) ?? 0) + match.recipe.amount,
+        );
+      } else {
+        supply.set(item.id, (supply.get(item.id) ?? 0) + 1);
       }
     }
     const demand = new Map<number, number>();

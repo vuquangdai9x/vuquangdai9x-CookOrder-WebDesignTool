@@ -1,0 +1,37 @@
+{
+  "_source": "ConfigTables!H10:K14 (icons from the IMAGE() formulas in column J)",
+  "statuses": [
+    {
+      "id": 0,
+      "name": "None",
+      "emoji": "",
+      "fileId": "",
+      "description": "",
+      "paramDefs": []
+    },
+    {
+      "id": 1,
+      "name": "Freeze",
+      "emoji": "🧊",
+      "fileId": "1OpvkKdRvW2duUqfQ8Fy1sEE2x1LkPbGM",
+      "description": "Frozen ingredient; cannot be picked until N other ingredients have been picked.",
+      "paramDefs": [{ "name": "thawCount", "dataType": "int" }]
+    },
+    {
+      "id": 2,
+      "name": "Link",
+      "emoji": "🔗",
+      "fileId": "161DWQYesZYrDWv6iyPobiXLgjR4PVeRS",
+      "description": "Linked to the next linked ingredient in the same queue unless broken.",
+      "paramDefs": [{ "name": "broken", "dataType": "int" }]
+    },
+    {
+      "id": 3,
+      "name": "HoldingKey",
+      "emoji": "🗝️",
+      "fileId": "1BEOd_aJfcQp0Y7BqTlMjuT7wuYv0lEnQ",
+      "description": "Carries a coloured key that opens matching ColorLock grid cells.",
+      "paramDefs": [{ "name": "colorId", "dataType": "int" }]
+    }
+  ]
+}
