@@ -26,7 +26,8 @@ import { KEY_COLORS } from "../../data/configLoader.ts";
 import { button, clear, el } from "../dom.ts";
 import { cellIconEl, cookedIconEl, ingredientIconEl, statusIconEl, toolIconEl } from "../icon.ts";
 import { centerOf, EffectsLayer } from "./effectsLayer.ts";
-import { playStructureKey } from "./structureKey.ts";
+import type { Point } from "./effectsLayer.ts";
+import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
 
 /** ×1/×2/×3 and Skip are one option group; Skip resolves everything instantly. */
 const SPEED_OPTIONS = [
@@ -50,19 +51,48 @@ export class PlayView {
   private page!: HTMLElement;
   private onSelectLevel: (levelId: number) => void;
   private fx: EffectsLayer;
+  /** The map/level/speed/policy group in the toolbar; foldable to save space. */
+  private configGroupEl!: HTMLElement;
+  private foldBtn!: HTMLButtonElement;
+  private toolbarFolded = false;
 
   /**
-   * The DOM is rebuilt only when this signature changes. Rebuilding every frame
-   * would destroy a tile between its mousedown and mouseup, making tiles
-   * impossible to click.
+   * Each tier rebuilds only when its own signature changes — rebuilding every
+   * frame would destroy a tile between its mousedown and mouseup, making tiles
+   * impossible to click. Tiers are independent so, e.g., a grid update doesn't
+   * have to wait on a customer-exit animation, and vice versa.
    */
-  private structureKey = "";
+  private customersKey = "";
+  private middleKey = "";
+  private queuesKey = "";
+  private customersEl!: HTMLElement;
+  private middleEl!: HTMLElement;
+  private queuesEl!: HTMLElement;
+  private overlayEl: HTMLElement | null = null;
   private timerEls = new Map<number, HTMLElement>();
   private barEls = new Map<string, HTMLElement>();
   /** Flights already handed to the animation layer, so we never double-animate. */
   private animating = new Set<number>();
   /** Customers whose completion burst has already played. */
   private celebrated = new Set<number>();
+  /**
+   * Customer indices currently mid exit-animation. While non-empty, the
+   * customers tier holds its current DOM — even though the sim has already
+   * moved them out of `active` — so "old card shrinks away" finishes before
+   * "new card appears" starts, instead of the two overlapping.
+   */
+  private pendingExits = new Set<number>();
+  /** Bumped by restart()/mount() so a stale exit-animation callback is a no-op. */
+  private renderGeneration = 0;
+  /**
+   * Where the tile the player just clicked actually was, captured before
+   * `sim.pick()` removes it from the queue and the tier re-renders. Without
+   * this, a queue-originating flight had no way to know which of the 5+
+   * lanes' `.top` tiles it came from — `flightOrigin` fell back to whichever
+   * `.queue-tile.top` happened to be first in the DOM, so the flight always
+   * appeared to launch from lane 1 regardless of which lane was picked.
+   */
+  private lastPickOrigin: Point | null = null;
 
   constructor(
     root: HTMLElement,
@@ -127,6 +157,8 @@ export class PlayView {
     this.paused = false;
     this.animating.clear();
     this.celebrated.clear();
+    this.pendingExits.clear();
+    this.renderGeneration++; // orphans any exit-animation callback still pending
     this.renderPage();
   }
 
@@ -190,8 +222,17 @@ export class PlayView {
       );
       return slot ? centerOf(slot) : null;
     }
-    // Queue flights start at the lane the item was taken from; the tile is gone
-    // by now, so use the lane's top tile position as the launch point.
+    // Queue flights start where the picked tile actually was; it's already
+    // gone from the DOM by the time we get here, so the click handler stashed
+    // its position beforehand. Consume it once so a later queue flight
+    // (e.g. a parked raw's own eventual pick) doesn't reuse a stale point.
+    if (this.lastPickOrigin) {
+      const origin = this.lastPickOrigin;
+      this.lastPickOrigin = null;
+      return origin;
+    }
+    // Fallback (e.g. a flight created without going through the click handler):
+    // best-effort, first visible top tile.
     const lane = this.page.querySelector(".queue-lanes.play .queue-tile.top");
     return lane ? centerOf(lane) : null;
   }
@@ -274,7 +315,9 @@ export class PlayView {
       this.renderPage();
     });
 
-    return el("div", { class: "play-toolbar" }, [
+    // Map/level/speed/policy are "config" and fold away; the HUD is live game
+    // state, not config, so it stays visible either way.
+    this.configGroupEl = el("div", { class: "toolbar-config" }, [
       el("label", { class: "field small" }, ["Level", picker]),
       speedBar,
       button("⏸ Pause", () => {
@@ -283,9 +326,26 @@ export class PlayView {
       }, { id: "btn-pause" }),
       button("⟲ Restart", () => this.restart()),
       el("label", { class: "field small" }, ["When tool is full", policy]),
+    ]);
+
+    this.foldBtn = button("", () => {
+      this.toolbarFolded = !this.toolbarFolded;
+      this.applyFoldState();
+    }, { class: "fold-toggle", title: "Show/hide level, speed and tool-full settings" });
+
+    const bar = el("div", { class: "play-toolbar" }, [
+      this.foldBtn,
+      this.configGroupEl,
       el("span", { class: "spacer" }),
       el("div", { class: "hud", id: "play-hud" }),
     ]);
+    this.applyFoldState();
+    return bar;
+  }
+
+  private applyFoldState(): void {
+    this.configGroupEl.style.display = this.toolbarFolded ? "none" : "";
+    this.foldBtn.textContent = this.toolbarFolded ? "▸ Config" : "▾ Config";
   }
 
   private refreshToolbar(): void {
@@ -298,28 +358,69 @@ export class PlayView {
 
   // ---------- page ----------
 
-  private syncPage(): void {
-    const key = this.currentStructureKey();
-    if (key === this.structureKey) {
-      this.patchLiveValues();
-      return;
-    }
-    this.structureKey = key;
-    this.renderPage();
-  }
-
+  /** Full build — used on mount/restart, when every tier needs a fresh element. */
   private renderPage(): void {
-    this.structureKey = this.currentStructureKey();
     this.timerEls.clear();
     this.barEls.clear();
     clear(this.page);
-    this.page.append(this.customersTier(), this.middleTier(), this.queuesTier());
-    if (this.sim.status !== "playing") this.page.append(this.overlay());
+    this.customersEl = this.customersTier();
+    this.middleEl = this.middleTier();
+    this.queuesEl = this.queuesTier();
+    this.customersKey = customersStructureKey(this.sim);
+    this.middleKey = middleStructureKey(this.sim);
+    this.queuesKey = queuesStructureKey(this.sim);
+    this.page.append(this.customersEl, this.middleEl, this.queuesEl);
+    this.syncOverlay();
     this.patchLiveValues();
   }
 
-  private currentStructureKey(): string {
-    return playStructureKey(this.sim);
+  /**
+   * Rebuilds only the tier(s) whose structure actually changed. The customers
+   * tier is skipped entirely while an exit animation is playing — see
+   * `pendingExits` — so the row doesn't jump to its new layout mid-shrink.
+   */
+  private syncPage(): void {
+    const nextMiddle = middleStructureKey(this.sim);
+    if (nextMiddle !== this.middleKey) {
+      this.barEls.clear(); // only toolsEl() (part of the middle tier) populates this
+      const next = this.middleTier();
+      this.middleEl.replaceWith(next);
+      this.middleEl = next;
+      this.middleKey = nextMiddle;
+    }
+
+    const nextQueues = queuesStructureKey(this.sim);
+    if (nextQueues !== this.queuesKey) {
+      const next = this.queuesTier();
+      this.queuesEl.replaceWith(next);
+      this.queuesEl = next;
+      this.queuesKey = nextQueues;
+    }
+
+    if (this.pendingExits.size === 0) {
+      const nextCustomers = customersStructureKey(this.sim);
+      if (nextCustomers !== this.customersKey) {
+        this.timerEls.clear(); // only customerCard() populates this
+        const next = this.customersTier();
+        this.customersEl.replaceWith(next);
+        this.customersEl = next;
+        this.customersKey = nextCustomers;
+      }
+    }
+
+    this.syncOverlay();
+    this.patchLiveValues();
+  }
+
+  private syncOverlay(): void {
+    const shouldShow = this.sim.status !== "playing";
+    if (shouldShow && !this.overlayEl) {
+      this.overlayEl = this.overlay();
+      this.page.append(this.overlayEl);
+    } else if (!shouldShow && this.overlayEl) {
+      this.overlayEl.remove();
+      this.overlayEl = null;
+    }
   }
 
   /** Timers, cook progress and the HUD move every frame but never restructure. */
@@ -342,7 +443,10 @@ export class PlayView {
   }
 
   /**
-   * Fires the burst for any customer served since the last check.
+   * Starts the celebrate-then-shrink sequence for any customer served since the
+   * last check, and holds the customers tier (via `pendingExits`) until it
+   * finishes — that's what makes "old card shrinks to zero" complete strictly
+   * before "next card / mystery card appears", rather than the two overlapping.
    *
    * Must run *before* the page re-renders: the served customer has already left
    * `active`, so their card only exists in the DOM until the next render. That
@@ -351,10 +455,21 @@ export class PlayView {
   private playCelebrations(): void {
     for (const event of this.sim.events) {
       if (event.type !== "served" || event.customerIndex === undefined) continue;
-      if (this.celebrated.has(event.customerIndex)) continue;
-      this.celebrated.add(event.customerIndex);
-      const card = this.page.querySelector(`[data-customer="${event.customerIndex}"]`);
-      if (card) this.fx.celebrateCard(card, { instant: this.skipMode });
+      const idx = event.customerIndex; // narrowed here; keep as a local for the closure below
+      if (this.celebrated.has(idx)) continue;
+      this.celebrated.add(idx);
+
+      const card = this.page.querySelector<HTMLElement>(`[data-customer="${idx}"]`);
+      if (!card) continue;
+
+      if (this.skipMode) continue; // nothing to hold — the row updates on the next sync
+
+      const generation = this.renderGeneration;
+      this.pendingExits.add(idx);
+      void this.fx.celebrateAndRemove(card).then(() => {
+        if (generation !== this.renderGeneration) return; // restarted mid-animation
+        this.pendingExits.delete(idx);
+      });
     }
   }
 
@@ -390,11 +505,15 @@ export class PlayView {
    */
   private customersTier(): HTMLElement {
     const sim = this.sim;
-    const row = el("div", { class: "customer-cards" });
+    const row = el("div", { class: "customer-cards play" });
     for (const c of sim.active) row.append(this.customerCard(c, true));
     // Exactly one lookahead card, and its order stays secret.
     const next = sim.pending[0];
     if (next) row.append(this.mysteryCard(next));
+    // Fixed column count = always every card fits, never needs horizontal
+    // scrolling to see the 2nd/3rd card (a flex+overflow row let that happen).
+    const count = sim.active.length + (next ? 1 : 0);
+    row.style.gridTemplateColumns = `repeat(${Math.max(1, count)}, 1fr)`;
     return el("section", { class: "play-section" }, [
       el("h2", {}, [`Customers — ${sim.level.serveableSlots} serve slot(s)`]),
       row,
@@ -532,12 +651,16 @@ export class PlayView {
         node.append(el("div", { class: "bar-track" }, [bar]));
         slots.append(node);
       });
+      // Compact: name + slot/time detail live in the tooltip, not on screen —
+      // this row is meant to take as little vertical space as possible.
       wrap.append(
-        el("div", { class: "tool" }, [
+        el("div", {
+          class: "tool",
+          title: `${tool.def.name} — ${tool.def.numSlots} slot(s) · ${tool.def.cookingTime}s`,
+        }, [
           el("div", { class: "tool-head" }, [
             toolIconEl(tool.def, 64),
             el("span", { class: "tool-name" }, [tool.def.name]),
-            el("small", {}, [`${tool.def.numSlots} slot(s) · ${tool.def.cookingTime}s`]),
           ]),
           slots,
         ]),
@@ -578,6 +701,9 @@ export class PlayView {
         tile.title = check.reason ?? "Pick this ingredient";
         if (check.ok) {
           tile.addEventListener("click", () => {
+            // Capture before pick() removes this tile from the queue and the
+            // tier re-renders — this is the only moment its real position exists.
+            this.lastPickOrigin = centerOf(tile);
             this.sim.pick(qi);
             this.dispatchFlights();
             this.playCelebrations();

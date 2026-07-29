@@ -74,36 +74,33 @@ export class EffectsLayer {
   }
 
   /**
-   * Celebration for a completed order, scoped to that one customer's card.
+   * Celebration for a completed order, played on the customer's own card and
+   * ending with it shrinking away: brighten → burst → scale to zero. Resolves
+   * once the shrink finishes — the caller removes the card for real only then,
+   * so "new customer arrives" never overlaps "old one leaving".
    *
-   * The served customer leaves `active` immediately, so their card is about to
-   * be removed by the next render. We lift a copy of just that card into this
-   * layer at its exact on-screen position and brighten *it* — that keeps the
-   * effect on the single frame it belongs to instead of the whole row.
+   * The card is animated in place (not a clone) because the caller is expected
+   * to hold the surrounding layout still (e.g. not yet reassigning grid-column
+   * counts) until this resolves — see PlayView's `pendingExits` gate.
    */
-  celebrateCard(card: Element, opts: { instant?: boolean; count?: number } = {}): void {
-    if (opts.instant) return;
-
-    const rect = card.getBoundingClientRect();
-    const ghost = card.cloneNode(true) as HTMLElement;
-    ghost.classList.add("fx-card-ghost", "celebrating");
-    ghost.style.left = `${rect.left}px`;
-    ghost.style.top = `${rect.top}px`;
-    ghost.style.width = `${rect.width}px`;
-    ghost.style.height = `${rect.height}px`;
-    this.root.append(ghost);
-
-    const fade = ghost.animate(
-      [
-        { opacity: 1, transform: "scale(1)" },
-        { opacity: 1, transform: "scale(1.06)", offset: 0.35 },
-        { opacity: 0, transform: "scale(0.94)" },
-      ],
-      { duration: 700, easing: "ease-out" },
-    );
-    fade.finished.catch(() => undefined).then(() => ghost.remove());
+  celebrateAndRemove(
+    card: HTMLElement,
+    opts: { instant?: boolean; count?: number } = {},
+  ): Promise<void> {
+    if (opts.instant) return Promise.resolve();
 
     this.burst(centerOf(card), opts.count);
+
+    const anim = card.animate(
+      [
+        { transform: "scale(1)", filter: "brightness(1)", opacity: 1, offset: 0 },
+        { transform: "scale(1.06)", filter: "brightness(1.7)", opacity: 1, offset: 0.28 },
+        { transform: "scale(1)", filter: "brightness(1.15)", opacity: 1, offset: 0.55 },
+        { transform: "scale(0)", filter: "brightness(1)", opacity: 0, offset: 1 },
+      ],
+      { duration: 850, easing: "cubic-bezier(.4,0,.2,1)" },
+    );
+    return anim.finished.catch(() => undefined).then(() => undefined);
   }
 
   /**

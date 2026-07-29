@@ -66,6 +66,11 @@ export class History<T> {
     return this.index;
   }
 
+  /** The last-saved snapshot — the baseline change-tracking borders diff against. */
+  get savedState(): T {
+    return this.clone(this.entries[this.savedIndex].state);
+  }
+
   get isDirty(): boolean {
     return this.index !== this.savedIndex;
   }

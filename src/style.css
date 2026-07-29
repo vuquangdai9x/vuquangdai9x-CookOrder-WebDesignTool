@@ -162,6 +162,18 @@ main {
   padding: 0.9rem;
 }
 
+footer {
+  height: 256px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--muted);
+  background: var(--panel);
+  border-top: 1px solid #000;
+  font-size: 0.95rem;
+}
+
 /* ---------- level bar + warnings ---------- */
 
 .level-bar {
@@ -209,6 +221,27 @@ main {
 }
 
 /* ---------- design sections (Customer / Grid / Queue) ---------- */
+
+/*
+ * Change-tracking borders: a dashed outline on the specific cell/tile/lane/
+ * card that differs from the last-saved state (src/ui/design/changeTracking.ts
+ * decides which). Dashed rather than solid so it never gets mistaken for the
+ * "active lane" / "servable customer" solid-border states used elsewhere.
+ */
+.changed-added {
+  outline: 2px dashed var(--ok);
+  outline-offset: 1px;
+}
+
+.changed-modified {
+  outline: 2px dashed #e0c33a;
+  outline-offset: 1px;
+}
+
+.changed-removed-inside {
+  outline: 2px dashed var(--bad);
+  outline-offset: 1px;
+}
 
 .design-section {
   background: var(--panel);
@@ -260,6 +293,25 @@ main {
   overflow-x: auto;
   padding-bottom: 0.25rem;
   align-items: flex-start;
+}
+
+/*
+ * Play mode only ever shows a handful of cards (serve slots + one masked
+ * lookahead), so it uses a fixed-column grid instead of the Design list's
+ * flex+scroll — every card is guaranteed to fit, with no scrolling required
+ * to notice the 2nd/3rd one exists.
+ */
+.customer-cards.play {
+  display: grid;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.customer-cards.play .customer-card {
+  min-width: 0;
+  width: 100%;
 }
 
 .customer-card {
@@ -473,12 +525,19 @@ main {
   text-align: center;
 }
 
+/*
+ * Lanes stretch to fill the section's full width instead of being fixed-width
+ * boxes in a horizontally-scrolling strip: each track gets an equal share of
+ * whatever width is available, wrapping onto a new row once they'd otherwise
+ * get narrower than `minmax`'s floor. A lane's own tiles then wrap based on
+ * that resulting width (see .lane-tiles) — flexible in both dimensions from
+ * one layout, no manual per-queue math needed.
+ */
 .queue-lanes {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   gap: 0.6rem;
-  overflow-x: auto;
-  align-items: flex-start;
-  padding-bottom: 0.3rem;
+  align-items: start;
   --tile-zoom: 1;
 }
 
@@ -487,22 +546,11 @@ main {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.4rem;
-  min-width: 9rem;
-  flex: none;
+  min-width: 0; /* let the grid track shrink the lane, not the other way round */
 }
 
 .queue-lane.active {
   border-color: var(--accent);
-}
-
-.queue-lane.add-lane {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 4rem;
-  color: var(--muted);
-  cursor: pointer;
-  border-style: dashed;
 }
 
 .lane-head {
@@ -582,10 +630,11 @@ main {
   display: block;
 }
 
-/* Frozen ingredients read as iced over. */
+/* Frozen ingredients read as iced over: icy background + a light-blue filter. */
 .queue-tile.frozen {
-  filter: saturate(0.45) brightness(1.15) hue-rotate(165deg);
+  background: #cfe9f7;
   border-color: #6aa7e0;
+  filter: saturate(0.7) brightness(1.05) hue-rotate(180deg);
 }
 
 /* Unbroken links draw a bridge to the next linked tile in the lane. */
@@ -959,19 +1008,44 @@ td input {
 
 /* ---------- play mode ---------- */
 
+/*
+ * Stretches full width (unlike the portrait play zone below it) but stays
+ * visually small: compact padding/font, and the map/level/speed/policy group
+ * folds away behind a toggle, leaving just that toggle + the live HUD.
+ */
 .play-toolbar {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.45rem 0.7rem;
-  margin-bottom: 0.6rem;
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  margin-bottom: 0.5rem;
   position: sticky;
   top: 3rem;
   z-index: 4;
+  font-size: 0.82rem;
+  min-height: 1.9rem;
+}
+
+.play-toolbar .field.small,
+.play-toolbar button {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.toolbar-config {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.fold-toggle {
+  color: var(--muted);
+  border-style: dashed;
 }
 
 .speed-bar {
@@ -993,8 +1067,36 @@ td input {
   font-size: 0.75rem;
 }
 
+/*
+ * Portrait play zone: on desktop the driving constraint is height, not width —
+ * fix the height to the space actually available under the header/toolbar and
+ * above the footer, then derive width from the fixed 3:4 (w:h) ratio. Smaller
+ * tiles (--tile override) keep the three tiers legible at that narrower width.
+ * Internal scrolling is the fallback if a level's content still overflows.
+ */
 .play-page {
   position: relative;
+  aspect-ratio: 3 / 4;
+  height: min(calc(100vh - 10rem), 920px);
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  --tile: 2.5rem;
+}
+
+@media (max-width: 480px) {
+  /* True portrait devices: the viewport itself is already ~3:4 or narrower,
+     so let the zone use the full width instead of fighting the aspect-ratio. */
+  .play-page {
+    aspect-ratio: auto;
+    width: 100%;
+    height: auto;
+    max-height: none;
+  }
 }
 
 .play-section {
@@ -1002,7 +1104,22 @@ td input {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.6rem 0.75rem;
-  margin-bottom: 0.75rem;
+  /* .play-page spaces tiers with `gap` now, so no margin here (portrait mode). */
+}
+
+/*
+ * Customers / Grid+Tools / Queues split the play zone in strict equal thirds
+ * (flex-basis 0 + grow 1, all three), rather than each tier sizing to its own
+ * content — that used to let the middle tier balloon to fill whatever the
+ * other two didn't need. Each tier's own content area scrolls internally
+ * (see .customer-cards.play / .middle-split / .queue-lanes.play below) if it
+ * doesn't fit its exact third, instead of pushing the layout taller.
+ */
+.play-page > .play-section {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .play-section h2 {
@@ -1012,54 +1129,72 @@ td input {
 }
 
 /* Middle tier is one panel: grid left, cooking right. */
+/*
+ * Portrait layout: grid on top (gets whatever height is available), cooking
+ * tools as a compact horizontal strip below it rather than a side column —
+ * a left/right split would squeeze both into an unusably narrow half at
+ * portrait width.
+ */
 .middle-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.middle-left {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.middle-right {
+  flex: 0 0 auto;
 }
 
 /* ---------- cooking tools ---------- */
+/* A single-row strip, sized to content — "keep it min size as possible". */
 
 .tools {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  flex-direction: row;
+  gap: 0.4rem;
+  overflow-x: auto;
+  align-items: flex-start;
+  padding-bottom: 0.15rem;
 }
 
 .tool {
+  flex: 0 0 auto;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0.4rem 0.5rem;
+  padding: 0.3rem 0.4rem;
 }
 
 .tool-head {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  margin-bottom: 0.35rem;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
 }
 
 .tool-head .icon {
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .tool-name {
   font-weight: 600;
 }
 
-.tool-head small {
-  margin-left: auto;
-  color: var(--muted);
-}
-
 .tool-slots {
   display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+  gap: 0.3rem;
+  flex-wrap: nowrap;
 }
 
 .tool-slot {
@@ -1110,6 +1245,39 @@ td input {
 .bar {
   height: 100%;
   background: var(--accent);
+}
+
+/*
+ * Play mode's queue row is horizontal and fixed at 5 columns worth of width —
+ * each lane is exactly 20% regardless of how many queues actually exist, so 5
+ * queues fill the row exactly with no wrap (fewer just leave the rest blank;
+ * more scrolls rather than wrapping or shrinking below readable size).
+ */
+.queue-lanes.play {
+  display: flex;
+  flex-wrap: nowrap;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.queue-lanes.play .queue-lane {
+  flex: 0 0 20%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* One ingredient per row inside a queue: top tile, then its previews, stacked. */
+.queue-lanes.play .lane-tiles {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .queue-lanes.play .queue-tile.top {
@@ -1173,38 +1341,6 @@ td input {
   padding: 0.4rem 0 0.2rem;
 }
 
-/*
- * Order complete. The ghost is a copy of just that customer's card, lifted into
- * the effects layer at its exact position, so only that frame brightens.
- */
-.fx-card-ghost {
-  position: absolute;
-  margin: 0;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-.celebrating {
-  animation: tint-light 0.7s ease-out;
-  border-color: #ffd98e !important;
-  box-shadow: 0 0 18px -2px #ffd98e;
-}
-
-@keyframes tint-light {
-  0% {
-    background: var(--panel-2);
-    filter: brightness(1);
-  }
-  25% {
-    background: #fff6e2;
-    filter: brightness(1.7);
-  }
-  100% {
-    background: #fff6e2;
-    filter: brightness(1.2);
-  }
-}
-
 /* ---------- flight + particle layer ---------- */
 
 .fx-layer {
@@ -1250,9 +1386,6 @@ td input {
   .fx-flier {
     display: none;
   }
-  .celebrating {
-    animation: none;
-  }
 }
 
 .policy-picker {
@@ -1285,8 +1418,3 @@ td input {
   font-size: 0.85rem;
 }
 
-@media (max-width: 900px) {
-  .middle-split {
-    grid-template-columns: 1fr;
-  }
-}

@@ -2,7 +2,7 @@
 
 Companion to [GDD.md](GDD.md) and [SHEET_STRUCTURE.md](SHEET_STRUCTURE.md). Stack: **Vite + TypeScript + vanilla DOM** (no framework, no canvas — the game is discrete UI elements; DOM gives free hit-testing, easy table UIs, and inspectability for designers). Tests: **Vitest**. Static build; runs fully in browser, no server.
 
-**Status: Phases 1–5 complete, plus the ToolDesign layout rework (Phase 7) and the cooking-tool/animation model (Phase 8).** 59 tests green. Remaining work is Map 2's level import, blocked on its recipe encoding.
+**Status: Phases 1–5 complete, plus the ToolDesign layout rework (Phase 7), the cooking-tool/animation model (Phase 8), and a UX polish pass (Phase 9).** 72 tests green. Remaining work is Map 2's level import, blocked on its recipe encoding.
 
 ## Architecture principles
 
@@ -98,10 +98,19 @@ Verified in-browser: all 29 Drive icons load (no fallbacks); Freeze applies an i
 
 Verified in-browser against real Map 1 data: the three tools render with their real slot counts and times, a greedy bot wins level 1_1 (7/7 in 9s), `block-pick` reports "Chopping Board is full" while `park-on-grid` puts the raw on the grid, and the Definitions overlay lists the cooking-tools table (CSV export includes it).
 
+## Phase 9 — UX polish ✅
+
+- **Footer**: 256px, centered credit line, appended after `<main>`.
+- **Customer row fix**: `.customer-cards.play` switched from flex+`overflow-x:auto` to a grid with an inline `grid-template-columns` sized to the exact rendered card count — the flex row could clip the 2nd/3rd card without scrolling; the grid can't, by construction. Only one masked "?" lookahead card renders (was `pending.slice(0,4)`), matching the two-serveable-plus-one-hidden design.
+- **Portrait play layout**: `.play-page` fixes `height: min(calc(100vh - 10rem), 920px)` with `aspect-ratio: 3/4` and `width: auto`, so on desktop the zone is height-driven and derives a 3:4 width, with internal scroll as a fallback and a `max-width:480px` media query reverting to full-width on true portrait devices. `--tile` is overridden smaller inside `.play-page`. Cooking tools moved from a side column to a compact horizontal strip below the grid (`.middle-split` is now `flex-direction:column`; tool cards show name+icon only, slot/time detail moved to the `title` tooltip) — "keep it min size" per the designer.
+- **Foldable toolbar**: the map/level/speed/policy group (`.toolbar-config`) collapses behind a `▾/▸ Config` toggle; the HUD (live game state, not config) always stays visible. Toolbar padding/font shrunk so it reads as a slim strip either way.
+- **Change-tracking borders** (Design mode): [`changeTracking.ts`](../src/ui/design/changeTracking.ts) tags every queue item/lane and customer with a `_cid` at creation (an enumerable field that survives `structuredClone` but is ignored by the parsers/serializers, so it never leaks into saved strings) and diffs the live draft against `Section.savedState`. Dashed outline: green `changed-added` (new), yellow `changed-modified` (edited), red `changed-removed-inside` (lost a child — a lane that lost a tile, a customer whose order shrank). Grid cells are diffed positionally (no id needed, cells can't reorder). 11 unit tests in `changeTracking.test.ts`; verified live for all four elements (tile/lane/cell/customer-card) and confirmed Save clears every indicator.
+- **Scoped serve celebration + scale-out**: the play view now rebuilds each tier (customers/middle/queues) independently via three structure keys (`structureKey.ts`) instead of one page-wide key. `EffectsLayer.celebrateAndRemove()` bursts particles and shrinks the *real* served customer's card to zero in place; `PlayView.pendingExits` holds the customers-tier rebuild until that animation resolves, so the old card visibly finishes leaving before the next customer/mystery card appears — the other two tiers keep updating normally during the hold. Verified end-to-end in-browser by monkey-patching `Element.animate` to auto-finish (the sandboxed preview pane freezes both rAF and WAAPI timelines when hidden, confirmed via a raw `.finished` promise that never resolved after 1s), which let the real `dispatchFlights`/`playCelebrations`/`syncPage` code path run and confirmed the card stays through one `syncPage()` call while `pendingExits` is non-empty and is replaced only after it drains.
+
 ## Phase 6 — Data polish (remaining)
 
 - **Map 2 import — blocked.** Map 2's scenario recipes use composite ids (`20012`, `30201`, `703`) that encode piece + modifier(s) + size rather than the plain per-ingredient digit-runs Map 1 uses. Decoding them needs the designer's rule before import can be trusted; guessing would silently produce wrong orders.
-- Live-parse ConfigTables / Ingredient_config so definitions follow the sheet without code edits (currently a static copy in `initialData.ts`).
+- Live-parse ConfigTables / Ingredient_config so definitions follow the sheet without code edits (currently a static copy under `src/data/config/`).
 - CSV export column review with the designer.
 
 ## Verification

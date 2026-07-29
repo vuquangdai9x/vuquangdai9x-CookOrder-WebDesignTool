@@ -22,6 +22,8 @@ import { numberField, pickerGrid, showContextMenu, swatchRow } from "../contextM
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { ingredientIconEl, statusIconEl } from "../icon.ts";
+import { changeClass, cidOf, leafStatus, tagAllNew, tagNew } from "./changeTracking.ts";
+import type { ChangeStatus } from "./changeTracking.ts";
 import { Section } from "./section.ts";
 
 export interface QueueSectionDeps {
@@ -45,6 +47,16 @@ interface QueueUiState {
   drawerOpen: boolean;
 }
 
+/** Tags every lane (container identity) and every item within it (leaf identity). */
+function tagQueues(queues: QueueItem[][]): QueueItem[][] {
+  tagAllNew(queues);
+  for (const lane of queues) tagAllNew(lane);
+  return queues;
+}
+
+const sameQueueItem = (a: QueueItem, b: QueueItem) =>
+  a.kind === b.kind && a.id === b.id && JSON.stringify(a.effects) === JSON.stringify(b.effects);
+
 export function createQueueSection(deps: QueueSectionDeps): Section<QueueItem[][]> {
   const ui: QueueUiState = {
     activeLane: 0,
@@ -58,12 +70,18 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueItem[][
   const section: Section<QueueItem[][]> = new Section<QueueItem[][]>({
     title: "Ingredient Queues",
     saveLabel: "Save Order",
-    initial: deps.parse(),
+    initial: tagQueues(deps.parse()),
     renderBody: (draft, body) => renderBody(section, deps, ui, draft, body),
     save: (draft) => {
       deps.level.queueString = serializeQueues(draft);
       deps.onSaved();
     },
+    headerButtons: (sec) => [
+      button("＋ Queue", () => {
+        sec.draft.push(tagNew([]));
+        sec.commit("Add queue");
+      }, { class: "small-btn", title: "Append a new queue" }),
+    ],
     menuItems: (draft) => [
       {
         label: ui.removeMode ? "Exit Remove Mode" : "Remove Mode",
@@ -114,21 +132,17 @@ function renderBody(
   const lanes = el("div", { class: `queue-lanes${ui.removeMode ? " remove-mode" : ""}` });
   lanes.style.setProperty("--tile-zoom", String(ui.zoom));
 
+  // Compared against once per render — reordering/adding/removing during a
+  // render doesn't shift this baseline out from under the diff.
+  const savedQueues = section.savedState;
   draft.forEach((lane, laneIndex) => {
-    lanes.append(laneEl(section, deps, ui, draft, lane, laneIndex));
+    lanes.append(laneEl(section, deps, ui, draft, lane, laneIndex, savedQueues));
   });
-
-  const addLane = el("div", { class: "queue-lane add-lane" }, ["＋ Queue"]);
-  addLane.addEventListener("click", () => {
-    draft.push([]);
-    section.commit("Add queue");
-  });
-  lanes.append(addLane);
 
   // Lane reordering: drag a lane by its header.
   Sortable.create(lanes, {
     animation: 150,
-    draggable: ".queue-lane:not(.add-lane)",
+    draggable: ".queue-lane",
     handle: ".lane-head",
     onEnd: (evt) => {
       if (evt.oldIndex === undefined || evt.newIndex === undefined) return;
@@ -180,6 +194,24 @@ function toolbar(section: Section<QueueItem[][]>, ui: QueueUiState): HTMLElement
 
 // ---------- lanes & tiles ----------
 
+/**
+ * Lanes have no scalar fields of their own — only membership — so they only
+ * ever show "added" (a brand-new lane) or "removed-inside" (lost a tile,
+ * whether it was deleted outright or just dragged to another lane).
+ */
+function laneStatus(lane: QueueItem[], savedQueues: QueueItem[][]): ChangeStatus | null {
+  const cid = cidOf(lane);
+  const saved = savedQueues.find((l) => cidOf(l) === cid);
+  if (!saved) return "added";
+  const currentCids = new Set(lane.map(cidOf));
+  return saved.some((item) => !currentCids.has(cidOf(item))) ? "removed-inside" : null;
+}
+
+/** Search every saved lane, not just the same-position one — a tile may have moved lanes. */
+function tileStatus(item: QueueItem, savedQueues: QueueItem[][]): ChangeStatus | null {
+  return leafStatus(item, savedQueues, sameQueueItem);
+}
+
 function laneEl(
   section: Section<QueueItem[][]>,
   deps: QueueSectionDeps,
@@ -187,9 +219,10 @@ function laneEl(
   draft: QueueItem[][],
   lane: QueueItem[],
   laneIndex: number,
+  savedQueues: QueueItem[][],
 ): HTMLElement {
   const node = el("div", {
-    class: `queue-lane${ui.activeLane === laneIndex ? " active" : ""}`,
+    class: `queue-lane${ui.activeLane === laneIndex ? " active" : ""} ${changeClass(laneStatus(lane, savedQueues))}`,
   });
   node.addEventListener("click", () => {
     if (ui.activeLane === laneIndex) return;
@@ -206,7 +239,7 @@ function laneEl(
 
   const tiles = el("div", { class: "lane-tiles" });
   lane.forEach((item, itemIndex) => {
-    tiles.append(tileEl(section, deps, ui, draft, lane, item, itemIndex));
+    tiles.append(tileEl(section, deps, ui, draft, lane, item, itemIndex, savedQueues));
   });
 
   const addTile = el("div", { class: "queue-tile add-tile" }, ["＋"]);
@@ -214,7 +247,7 @@ function laneEl(
     e.stopPropagation();
     ui.activeLane = laneIndex;
     showContextMenu(e, [ingredientPickerItem(deps, (id) => {
-      lane.push({ kind: id < 0 ? "sweeper" : "ingredient", id, effects: [] });
+      lane.push(tagNew({ kind: id < 0 ? "sweeper" : "ingredient", id, effects: [] }));
       section.commit("Add ingredient", 1);
     })], { title: `Queue ${laneIndex + 1}` });
   });
@@ -258,12 +291,14 @@ function tileEl(
   lane: QueueItem[],
   item: QueueItem,
   itemIndex: number,
+  savedQueues: QueueItem[][],
 ): HTMLElement {
   const freeze = item.effects.find((e) => e.effectId === EFFECT_FREEZE);
   const link = item.effects.find((e) => e.effectId === EFFECT_LINK);
   const key = item.effects.find((e) => e.effectId === EFFECT_HOLDING_KEY);
-  // A link is "broken" when its first param says so; only unbroken links bridge.
-  const linkBridges = link && !link.params[0] && isLinked(lane[itemIndex + 1]);
+  // param 0 = continue the link (draw the connector), 1 = broken. Only needs
+  // a next item to exist in the lane — the next item's own effects don't matter.
+  const linkBridges = !!link && !link.params[0] && itemIndex + 1 < lane.length;
 
   const tile = el("div", {
     class: [
@@ -271,6 +306,7 @@ function tileEl(
       freeze ? "frozen" : "",
       linkBridges ? "linked" : "",
       item.kind === "sweeper" ? "sweeper" : "",
+      changeClass(tileStatus(item, savedQueues)),
     ]
       .filter(Boolean)
       .join(" "),
@@ -331,9 +367,6 @@ function tileEl(
   return tile;
 }
 
-const isLinked = (item: QueueItem | undefined) =>
-  !!item?.effects.some((e) => e.effectId === EFFECT_LINK && !e.params[0]);
-
 // ---------- menus ----------
 
 function ingredientPickerItem(
@@ -369,14 +402,14 @@ function laneMenu(
     {
       label: "Insert Queue Left",
       onSelect: () => {
-        draft.splice(laneIndex, 0, []);
+        draft.splice(laneIndex, 0, tagNew([]));
         section.commit("Insert queue left");
       },
     },
     {
       label: "Insert Queue Right",
       onSelect: () => {
-        draft.splice(laneIndex + 1, 0, []);
+        draft.splice(laneIndex + 1, 0, tagNew([]));
         section.commit("Insert queue right");
       },
     },
@@ -384,8 +417,10 @@ function laneMenu(
       label: "Clear Queue",
       separator: true,
       onSelect: () => {
+        // Empty it in place (not a fresh array) so the lane keeps its identity —
+        // it's the same lane with everything removed, not a new empty one.
         const removed = draft[laneIndex].length;
-        draft[laneIndex] = [];
+        draft[laneIndex].length = 0;
         section.commit("Clear queue", 0, removed);
       },
     },
@@ -422,7 +457,7 @@ function tileMenu(
             icon: ingredientIconEl(r.id, 64),
           })),
           (id) => {
-            lane.splice(itemIndex, 0, { kind: "ingredient", id, effects: [] });
+            lane.splice(itemIndex, 0, tagNew({ kind: "ingredient", id, effects: [] }));
             section.commit("Insert ingredient before", 1);
             close();
           },
@@ -438,7 +473,7 @@ function tileMenu(
             icon: ingredientIconEl(r.id, 64),
           })),
           (id) => {
-            lane.splice(itemIndex + 1, 0, { kind: "ingredient", id, effects: [] });
+            lane.splice(itemIndex + 1, 0, tagNew({ kind: "ingredient", id, effects: [] }));
             section.commit("Insert ingredient after", 1);
             close();
           },
@@ -554,11 +589,9 @@ function quickAddDrawer(
   ]);
   const pool = el("div", { class: "quick-add-pool" });
   const add = (id: number) => {
-    (draft[ui.activeLane] ?? draft[0]).push({
-      kind: id < 0 ? "sweeper" : "ingredient",
-      id,
-      effects: [],
-    });
+    (draft[ui.activeLane] ?? draft[0]).push(
+      tagNew({ kind: id < 0 ? "sweeper" : "ingredient", id, effects: [] }),
+    );
     section.commit("Quick add ingredient", 1);
   };
   for (const raw of deps.map.rawIngredients) {
@@ -617,7 +650,7 @@ function autoGenerate(
   const demand = demandByRaw(deps);
   const pool: QueueItem[] = [];
   for (const [rawId, count] of demand) {
-    for (let i = 0; i < count; i++) pool.push({ kind: "ingredient", id: rawId, effects: [] });
+    for (let i = 0; i < count; i++) pool.push(tagNew({ kind: "ingredient", id: rawId, effects: [] }));
   }
   // Interleave so no lane is a run of one ingredient.
   pool.sort(() => Math.random() - 0.5);
@@ -625,7 +658,7 @@ function autoGenerate(
   const laneCount = Math.max(1, draft.length);
   const before = draft.reduce((n, q) => n + q.length, 0);
   draft.length = 0;
-  for (let i = 0; i < laneCount; i++) draft.push([]);
+  for (let i = 0; i < laneCount; i++) draft.push(tagNew([]));
   pool.forEach((item, i) => draft[i % laneCount].push(item));
   section.commit("Auto-generate queue", pool.length, before);
 }

@@ -10,6 +10,8 @@ import { numberField, pickerGrid, showContextMenu } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { ingredientIconEl, statusIconEl } from "../icon.ts";
+import { changeClass, cidOf, tagAllNew, tagNew } from "./changeTracking.ts";
+import type { ChangeStatus } from "./changeTracking.ts";
 import { Section } from "./section.ts";
 
 export interface CustomerSectionDeps {
@@ -24,11 +26,48 @@ export interface CustomerSectionDeps {
 
 const isStaff = (c: CustomerConfig) => c.dishes.length === 0;
 
+/** Every cooked ingredient a customer's dishes call for, counted (a dish can repeat one). */
+function cookedIdCounts(c: CustomerConfig): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const dish of c.dishes) {
+    for (const id of dish.cookedIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Matched by `_cid` (survives reordering). "removed-inside" covers losing a
+ * whole dish or just one chip out of a dish — either way, the order asks for
+ * less than it used to. Cooked ids aren't individually tagged (a dish can
+ * repeat one), so this compares counts rather than identities.
+ */
+function customerStatus(
+  customer: CustomerConfig,
+  savedCustomers: CustomerConfig[],
+): ChangeStatus | null {
+  const cid = cidOf(customer);
+  const saved = savedCustomers.find((c) => cidOf(c) === cid);
+  if (!saved) return "added";
+
+  if (saved.dishes.length > customer.dishes.length) return "removed-inside";
+  const currentCounts = cookedIdCounts(customer);
+  const savedCounts = cookedIdCounts(saved);
+  for (const [id, count] of savedCounts) {
+    if ((currentCounts.get(id) ?? 0) < count) return "removed-inside";
+  }
+
+  const unchanged =
+    saved.waitTime === customer.waitTime &&
+    saved.weatherEff === customer.weatherEff &&
+    JSON.stringify(saved.dishes) === JSON.stringify(customer.dishes);
+  return unchanged ? null : "modified";
+}
+
 export function createCustomerSection(deps: CustomerSectionDeps): Section<CustomerConfig[]> {
   const section: Section<CustomerConfig[]> = new Section<CustomerConfig[]>({
     title: "Customers",
     saveLabel: "Save Customers",
-    initial: deps.parse(),
+    initial: tagAllNew(deps.parse()),
     renderBody: (draft, body) => renderBody(section, deps, draft, body),
     onCommit: () => deps.onCommit?.(),
     save: (draft) => {
@@ -61,14 +100,15 @@ function renderBody(
 ): void {
   const row = el("div", { class: "customer-cards" });
 
+  const savedCustomers = section.savedState;
   draft.forEach((customer, index) => {
-    row.append(customerCard(section, deps, draft, customer, index));
+    row.append(customerCard(section, deps, draft, customer, index, savedCustomers));
   });
 
   const addCard = el("div", { class: "customer-card add-card" }, ["＋"]);
   addCard.title = "Append a customer";
   addCard.addEventListener("click", () => {
-    draft.push({ waitTime: 0, weatherEff: 0, dishes: [{ cookedIds: [], effects: [] }] });
+    draft.push(tagNew({ waitTime: 0, weatherEff: 0, dishes: [{ cookedIds: [], effects: [] }] }));
     section.commit("Add customer", 1);
   });
   row.append(addCard);
@@ -95,9 +135,13 @@ function customerCard(
   draft: CustomerConfig[],
   customer: CustomerConfig,
   index: number,
+  savedCustomers: CustomerConfig[],
 ): HTMLElement {
   const staff = isStaff(customer);
-  const card = el("div", { class: `customer-card${staff ? " staff" : ""}` });
+  const status = customerStatus(customer, savedCustomers);
+  const card = el("div", {
+    class: `customer-card${staff ? " staff" : ""} ${changeClass(status)}`,
+  });
 
   const waitInput = el("input", {
     type: "number",
@@ -203,6 +247,9 @@ function customerCard(
       button(
         "+ Dish",
         () => {
+          // Dishes aren't individually tagged (a dish can repeat a cooked id,
+          // so identity isn't meaningful the way it is for a whole customer) —
+          // customerStatus compares dish content directly instead.
           customer.dishes.push({ cookedIds: [], effects: [] });
           section.commit("Add dish", 1);
         },
@@ -221,11 +268,12 @@ function cardMenu(
   customer: CustomerConfig,
   index: number,
 ): MenuItem[] {
-  const blank = (): CustomerConfig => ({
-    waitTime: 0,
-    weatherEff: 0,
-    dishes: [{ cookedIds: [], effects: [] }],
-  });
+  const blank = (): CustomerConfig =>
+    tagNew({
+      waitTime: 0,
+      weatherEff: 0,
+      dishes: [{ cookedIds: [], effects: [] }],
+    });
   return [
     {
       label: "Insert Before",
@@ -244,7 +292,10 @@ function cardMenu(
     {
       label: "Duplicate",
       onSelect: () => {
-        draft.splice(index + 1, 0, structuredClone(customer));
+        // A fresh identity — otherwise the clone would inherit the original's
+        // _cid (structuredClone copies it) and get matched against it as the
+        // "same" customer instead of showing as newly added.
+        draft.splice(index + 1, 0, tagNew(structuredClone(customer)));
         section.commit("Duplicate customer", 1);
       },
     },

@@ -18,6 +18,14 @@ export interface SectionOptions<T> {
   /** Extra kebab-menu entries beyond Undo/Redo. */
   menuItems?(draft: T): MenuItem[];
   /**
+   * Extra buttons rendered in the header, before Save (e.g. the queue
+   * section's "＋ Queue"). Built once at construction time with the `Section`
+   * instance itself — not a snapshot of `draft` — so a click handler that
+   * reads `section.draft`/calls `section.commit()` keeps working correctly
+   * even after undo/redo or a level switch reassigns `draft` wholesale.
+   */
+  headerButtons?(section: Section<T>): HTMLElement[];
+  /**
    * Fires after any commit. Lets sibling sections recompute cross-section
    * readouts live — e.g. the queue's Recipe Pieces counts depend on the
    * customer orders and the grid's ColorLocks.
@@ -51,6 +59,7 @@ export class Section<T> {
       this.badge,
       this.counters,
       el("div", { class: "section-actions" }, [
+        ...(opts.headerButtons?.(this) ?? []),
         button(opts.saveLabel, () => this.commitSave(), { class: "primary" }),
         button("⋮", (e) => this.openMenu(e), { class: "kebab", title: "More actions" }),
       ]),
@@ -86,6 +95,11 @@ export class Section<T> {
 
   get isDirty(): boolean {
     return this.history.isDirty;
+  }
+
+  /** The last-saved snapshot of this section's draft, for change-tracking borders. */
+  get savedState(): T {
+    return this.history.savedState;
   }
 
   private commitSave(): void {

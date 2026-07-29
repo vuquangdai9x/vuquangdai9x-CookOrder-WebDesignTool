@@ -16,6 +16,7 @@ reference; this doc focuses on what the designer sees and does.
   counters and unsaved badge are derived from `historyIndex !== lastSavedHistoryIndex`.
 - `beforeunload` guard warns if there's an unsaved history position.
 - Save is explicit and async via `google.script.run`; nothing auto-persists to the sheet.
+- A plain 256px footer sits at the bottom of every page (credit line only — no controls).
 
 ## Page Layout
 
@@ -63,8 +64,10 @@ orders.
     same visual language as ingredient statuses in the queue window.
 - Wait-time and weather-effect are editable inline on the card (number input / toggle) — no modal
   needed for the common case.
-- New/uncommitted cards, dishes, or chips get the same dashed green "unsaved" outline convention
-  used in the other two windows.
+- Cards get the same dashed change-tracking outline used in the other two windows: **green** if
+  the customer is new since the last save, **yellow** if it's the same customer edited (params,
+  or a dish grew), **red** if the order actually shrank — a dish or a needed cooked ingredient was
+  removed. Matched by a hidden per-customer identity so drag-reordering never reads as a change.
 - Live validation banner mirrors the queue window's Recipe Pieces foldout: flags cooked
   ingredients the orders need more of than the queues can currently supply, and flags orders
   referencing a cooked ingredient id that doesn't exist in the map's table.
@@ -93,7 +96,11 @@ Purpose: build the ordered sequence of ingredients a player pulls from during a 
     connecting "bridge" to the next linked tile in the same lane; HoldingKey shows a
     color-tinted badge bottom-right using the exact `LockColor` hex; other statuses show a
     small icon (+ optional param text) top-left.
-  - New/uncommitted tiles get a dashed green "unsaved" outline until saved.
+  - Change-tracking outline, per tile: **green** if it's new since the last save, **yellow** if
+    it's the same tile with a different effect. A tile has no removable children of its own, so
+    it never shows red — but the **lane** it used to sit in does, if that tile left it (deleted,
+    or dragged to another lane) since the save. Identity is a hidden tag on the tile/lane, so
+    reordering by drag never reads as a change.
 - **Remove Mode** (toggled from kebab menu): whole-canvas mode where dragging is disabled and
   clicking any tile deletes it immediately (crosshair cursor, red tint); a floating action bar
   offers **Undo All Removes** / **Done**.
@@ -135,7 +142,10 @@ level.
   - Picking the ColorLock type inline-expands a lock-color swatch picker and a lock-amount
     number input.
   - Any other parameterized type shows a raw `#`-separated params text input as a fallback.
-- Changed cells get a green dashed "unsaved" outline (`isChanged` flag) until saved.
+- Change-tracking outline per cell, compared position-for-position against the last save (cells
+  can't reorder, so no identity tag is needed here): **green** if it was blank and now has a type,
+  **yellow** if it had a type and now has a different one, **red** if it had a type and is blank
+  again — the cell lost its content, even though visually that leaves it looking empty.
 - Kebab menu: **Clear All** (confirms, resets every cell to empty) and Undo/Redo.
 - **Save Grid** disables the Map/Level dropdowns and the button during the async save (guards
   against switching level mid-save), serializes cells back to the `#`-joined grid string, then
@@ -154,15 +164,21 @@ tool.
 
 - Follows the same **Customer / Grid / Queue** top-to-bottom arrangement as Design mode (see
   Page Layout), so switching between editing and playtesting a level doesn't relocate anything.
-- **Top — Customer status**: active (serveable) customers first, then a preview of the next
-  pending ones, each showing its dish chips (filled vs. remaining cooked ingredients) and a live
-  countdown where wait-time applies.
-- **Middle — Grid + Cooking tools (one panel, split left/right)**: the grid occupies the left
-  half exactly as in Design mode (same cell rendering, now showing live contents — cooked items,
-  parked raws, dirty stacks, lock progress — instead of edit state); the right half draws **only
-  the tools this map defines**, each as a row of slots with a progress bar that fills while an
-  ingredient cooks in it. Being one panel rather than two stacked ones keeps the cause (a slot
-  finishing, right) and its effect (landing in the first free cell, left) visible together.
+- **Portrait play zone**: on desktop, the zone is height-driven — it takes whatever vertical space
+  is left under the header/toolbar and above the footer, then derives its width from a fixed
+  **3:4** ratio, rather than stretching full width like the toolbar does. Tiles/cells/icons are
+  correspondingly smaller than in Design mode so the three tiers stay legible at that narrower
+  width; a true-portrait viewport (≤480px) drops the ratio and just uses the full width instead.
+- **Top — Customer status**: the serveable customers first (highlighted), then exactly **one**
+  masked lookahead card marked **"?"** for whoever's next in line — their order isn't revealed
+  until a serve slot actually frees up for them. All cards share a fixed-column grid (never a
+  scrolling row), so the 2nd/3rd card is never accidentally clipped off-screen.
+- **Middle — Grid + Cooking tools (one panel, top/bottom in portrait)**: the grid takes most of
+  the panel's height (same cell rendering as Design mode, now showing live contents — cooked
+  items, parked raws, dirty stacks, lock progress — instead of edit state); cooking tools render
+  below it as a **compact horizontal strip** — icon + name only, slot count and cook time move
+  into the tooltip — sized to content rather than sharing a side-by-side column, since a left/right
+  split would leave too little width for either half at portrait size.
 - **When a tool is full**, a dropdown in the toolbar picks the behaviour: *Block the pick* (the
   queue tile is disabled with a reason tooltip) or *Park raw on the grid* (the raw ingredient
   waits on the grid, dimmed, and is pulled into the tool ahead of new picks the moment a slot
@@ -172,16 +188,19 @@ tool.
   The animation is the gate: cooking starts when the ingredient *arrives* in the slot, matching
   runs when an item *arrives* on the grid, and a dish fills when the piece *arrives* at the
   customer.
-- **Completion feedback**: when a customer's whole order is filled, their card tints light and a
-  burst of particles fires from it (Web Animations API). Customers currently in a serve slot are
-  highlighted; those still queued are dimmed.
+- **Completion feedback**: when a customer's whole order is filled, a burst of particles fires
+  from their card and the card itself brightens then **shrinks away to nothing** — only once that
+  finishes does the next customer (or the new "?" card) take its place, so the two never overlap.
+  Customers currently in a serve slot are highlighted; the "?" card is dimmed/dashed.
 - **Bottom — Ingredient queues**: same lane layout as the Design-mode queue window, but each
   lane's top tile is now a clickable "pick" button (disabled + reason tooltip when blocked by an
   effect like Freeze); items the currently-active customers need are highlighted.
+- **Config bar folds**: the map/level/speed/tool-full-policy controls stretch full width but stay
+  visually small and collapse behind a **▾/▸ Config** toggle; the HUD (elapsed time, served count,
+  picks, weather, keys) is live game state, not config, so it never folds away.
 - **Speed** is a single option group — ×1 / ×2 / ×3 / **Skip** — where picking one deselects the
   others. Skip runs with **no animation at all**: flights land the instant they are created and
-  cooking is fast-forwarded. Pause and Restart sit alongside, with a HUD strip (elapsed time,
-  served count, picks made, weather, keys collected).
+  cooking is fast-forwarded. Pause and Restart sit alongside.
 - A win/lose overlay appears over the whole layout when the level resolves, with the reason and a
   Restart button; the three sections stay rendered underneath so the final board state is still
   visible for review.

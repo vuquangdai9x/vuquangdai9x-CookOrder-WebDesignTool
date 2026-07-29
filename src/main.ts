@@ -119,7 +119,8 @@ function render(): void {
   ]);
 
   const main = el("main", {});
-  app.replaceChildren(header, main);
+  const footer = el("footer", {}, ["Cook Order Game Design Tool - by daivq"]);
+  app.replaceChildren(header, main, footer);
 
   // A view that throws must not leave an empty page with no way out.
   try {

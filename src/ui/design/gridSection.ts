@@ -13,6 +13,8 @@ import { numberField, pickerGrid, showContextMenu, swatchRow } from "../contextM
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { cellIconEl, ingredientIconEl } from "../icon.ts";
+import { changeClass } from "./changeTracking.ts";
+import type { ChangeStatus } from "./changeTracking.ts";
 import { Section } from "./section.ts";
 
 export interface GridSectionDeps {
@@ -80,8 +82,11 @@ function renderBody(
   const grid = el("div", { class: "grid editable" });
   grid.style.gridTemplateColumns = `repeat(${gridWidth}, 1fr)`;
 
+  // Cells are positional (no reordering is possible), so the saved baseline
+  // compares index-for-index — no identity tagging needed, unlike queues/customers.
+  const savedGrid = section.savedState;
   draft.forEach((cell, index) => {
-    grid.append(cellEl(section, deps, draft, cell, index));
+    grid.append(cellEl(section, deps, draft, cell, index, savedGrid[index]));
   });
 
   body.append(sizeRow, grid);
@@ -92,19 +97,42 @@ function resizeDraft(draft: GridCellConfig[], want: number): void {
   draft.length = want;
 }
 
+/**
+ * blank -> has an effect: added. had an effect -> different one (or params):
+ * modified. had an effect -> blank now: removed-inside (the cell lost its
+ * content). Resized-in cells with no saved counterpart count as added.
+ */
+function cellChangeStatus(
+  current: GridCellConfig,
+  saved: GridCellConfig | undefined,
+): ChangeStatus | null {
+  const now = current.effects[0];
+  const before = saved?.effects[0];
+  if (now && !before) return "added";
+  if (!now && before) return "removed-inside";
+  if (now && before) {
+    if (now.effectId !== before.effectId || JSON.stringify(now.params) !== JSON.stringify(before.params)) {
+      return "modified";
+    }
+  }
+  return null;
+}
+
 function cellEl(
   section: Section<GridCellConfig[]>,
   deps: GridSectionDeps,
   draft: GridCellConfig[],
   cell: GridCellConfig,
   index: number,
+  savedCell: GridCellConfig | undefined,
 ): HTMLElement {
   const effect = cell.effects[0];
   const typeDef = effect ? deps.defs.cellTypes.find((d) => d.id === effect.effectId) : undefined;
   const x = index % deps.level.gridWidth;
   const y = Math.floor(index / deps.level.gridWidth);
+  const status = cellChangeStatus(cell, savedCell);
 
-  const node = el("div", { class: `cell${effect ? " typed" : ""}` });
+  const node = el("div", { class: `cell${effect ? " typed" : ""} ${changeClass(status)}` });
   node.append(el("small", { class: "cell-coord" }, [`${x},${y}`]));
 
   if (effect) {
