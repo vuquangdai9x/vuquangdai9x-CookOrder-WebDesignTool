@@ -1,14 +1,14 @@
 {
-  "_note": "What lands on the grid and fills customer dishes. Ids mirror the raw ingredient ids for this map, which is why the dish strings in levels.json use the same numbers. Icons are reused from the raw thumbnails — the sheet has no separate cooked artwork.",
+  "_note": "What lands on the grid and fills customer dishes. Ids mirror the raw ingredient ids for this map, which is why the dish strings in levels.json use the same numbers. Icons are reused from the raw thumbnails — the sheet has no separate cooked artwork. baseId: another cooked ingredient id that must already be in the dish before this one can be served to it (toppings need the bun there first; ice needs the cup there first).",
   "cookedIngredients": [
     { "id": 0, "name": "Sliced Bun", "emoji": "🍞", "fileId": "1MLtLe69Gn6D-EQ4DAXmEr0R1h3gY7s2M" },
-    { "id": 1, "name": "Cooked Patty", "emoji": "🥩", "fileId": "1ANuBhLfhZOvzKsASxUZJt98aGED20NRZ" },
-    { "id": 2, "name": "Tomato Slice", "emoji": "🍅", "fileId": "1NK6RYawOXQo7CPVj9oQcuEa65L09DSM6" },
-    { "id": 3, "name": "Lettuce Cut", "emoji": "🥬", "fileId": "1DVvrnHUJjEFpcnbgj9ku1ue02tdTn8t2" },
+    { "id": 1, "name": "Cooked Patty", "emoji": "🥩", "fileId": "1ANuBhLfhZOvzKsASxUZJt98aGED20NRZ", "baseId": 0 },
+    { "id": 2, "name": "Tomato Slice", "emoji": "🍅", "fileId": "1NK6RYawOXQo7CPVj9oQcuEa65L09DSM6", "baseId": 0 },
+    { "id": 3, "name": "Lettuce Cut", "emoji": "🥬", "fileId": "1DVvrnHUJjEFpcnbgj9ku1ue02tdTn8t2", "baseId": 0 },
     { "id": 4, "name": "Onion Slice", "emoji": "🧅", "fileId": "1jGiMJnIAyw3JyOjPvg8RKuqrmZI0JjDa" },
-    { "id": 5, "name": "Cheese Slice", "emoji": "🧀", "fileId": "1RjP8ZeVgFfF6-kFF1kbzJFE-xThmw3oo" },
-    { "id": 6, "name": "Fried Egg", "emoji": "🍳", "fileId": "1JnHUAXkpkmLaTr2SxuOsxkpj7dt3OYiu" },
+    { "id": 5, "name": "Cheese Slice", "emoji": "🧀", "fileId": "1RjP8ZeVgFfF6-kFF1kbzJFE-xThmw3oo", "baseId": 0 },
+    { "id": 6, "name": "Fried Egg", "emoji": "🍳", "fileId": "1JnHUAXkpkmLaTr2SxuOsxkpj7dt3OYiu", "baseId": 0 },
     { "id": 7, "name": "Soda Cup", "emoji": "🥤", "fileId": "1LyYrqYSDVXHxH5fzw-LdlCTpo3O0_g89" },
-    { "id": 8, "name": "Ice", "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-" }
+    { "id": 8, "name": "Ice", "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-", "baseId": 7 }
   ]
 }

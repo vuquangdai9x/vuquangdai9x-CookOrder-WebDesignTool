@@ -61,6 +61,7 @@ interface CookedRow {
   name: string;
   emoji: string;
   fileId: string;
+  baseId?: number;
 }
 
 const toElementDef = (r: StatusRow): ElementDef => ({
@@ -131,6 +132,7 @@ function buildMap(
       name: c.name,
       icon: c.emoji,
       fileId: c.fileId,
+      baseId: c.baseId,
     })),
     tools,
     levels,

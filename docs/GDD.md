@@ -57,6 +57,7 @@ Every hand-off is a **flight**: the item is shown travelling from one place to t
 - There are **1–2 concurrent serveable slots** (per-level config). Customers beyond the serveable slots may already **show their order** (so the player can plan) but **cannot be served** until a slot frees up.
 - Each customer orders **one or more dishes**; each dish is an **ad-hoc list of cooked ingredient ids** (dishes are not predefined entities — the order string fully defines them). Dishes may carry effects.
 - **Serving is automatic**: whenever a needed cooked ingredient is present on the grid, the system moves it to the customer's dish. Priority between concurrent customers: first-come-first-served (earlier customer slot fills first).
+- Some cooked ingredients require a **base** already in the same dish before they can be served (a stacking rule): Map 1's burger toppings (Cooked Patty, Tomato Slice, Lettuce Cut, Cheese Slice, Fried Egg) need the Sliced Bun there first, and Ice needs the Soda Cup there first. This is per-dish, not per-customer — each dish must independently have its base served before its dependents follow. A dish that orders a dependent without also ordering its base can never complete, so designers must always pair them in the order string. See `baseId` in §4.
 - When all dishes of a customer are complete, the customer **pays and leaves**, freeing the slot.
 - Some (rare) customers have a **time limit**; failing it is a per-level designer decision (default: customer leaves unserved — configurable behavior, see events §6).
 
@@ -87,7 +88,7 @@ All element definitions live in **tables** (Google Sheets-backed; table UI in th
 | Table | Columns (minimum) |
 |---|---|
 | Raw ingredients (per map) | id, name, code, price, numSlices, icon fileId |
-| Cooked ingredients (per map) | id, name, icon fileId |
+| Cooked ingredients (per map) | id, name, icon fileId, `baseId` (optional — another cooked ingredient id required in the dish first, see §2.4) |
 | Cooking tools (per map) | id, name, numSlots, cookingTime, recipes (in → out × amount) |
 | Effect/status definitions (global) | id, name, icon, description, param definitions `<name, data-type>` |
 | Grid cell types (global) | id, name, icon, description, param definitions `<name, data-type>` |

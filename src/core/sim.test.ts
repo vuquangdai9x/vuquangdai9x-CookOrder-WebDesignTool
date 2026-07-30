@@ -174,6 +174,47 @@ describe("simulation core loop", () => {
   });
 });
 
+describe("base ingredient requirement", () => {
+  // cooked1 needs cooked0 already in the dish first (see CookedIngredientDef.baseId).
+  const baseMap: MapDef = {
+    ...testMap,
+    cookedIngredients: testMap.cookedIngredients.map((c) =>
+      c.id === 1 ? { ...c, baseId: 0 } : c,
+    ),
+  };
+
+  it("withholds the dependent ingredient until its base is already in the dish, then serves it", () => {
+    // instantFlights: false so flights stay pending until we complete them by
+    // hand — that's what lets this test observe the mid-way blocked state.
+    const sim = new Simulation(
+      baseMap,
+      level({ queueString: "1,0", gridString: EMPTY_GRID, customerString: "0;0;1.0" }),
+      { instantFlights: false },
+    );
+    sim.pick(0); // cooked1 (topping) into the tool
+    sim.pick(0); // cooked0 (base) into the tool
+    for (const f of [...sim.flights]) sim.completeFlight(f.id); // both land in their tool slots
+    sim.tick(2); // finishes cooking; tool-to-grid flights launch
+    for (const f of [...sim.flights]) sim.completeFlight(f.id); // both land on the grid
+    sim.tick(0); // let autoServe react to the now-populated grid
+
+    // Only cooked0 (the base) should be flying out — cooked1 is withheld
+    // because its base isn't in the dish yet.
+    const dish = sim.active[0].dishes[0];
+    expect(dish.filled).toHaveLength(0);
+    expect(sim.flights).toHaveLength(1);
+    expect(sim.flights[0]).toMatchObject({ kind: "grid-to-customer", itemId: 0 });
+
+    sim.completeFlight(sim.flights[0].id); // base lands in the dish
+    sim.tick(0); // now the dependent ingredient can be served too
+    expect(sim.flights).toHaveLength(1);
+    expect(sim.flights[0]).toMatchObject({ kind: "grid-to-customer", itemId: 1 });
+
+    sim.completeFlight(sim.flights[0].id);
+    expect(sim.status).toBe("won");
+  });
+});
+
 describe("cooking tools", () => {
   /** One-slot tool so the "tool is full" paths are easy to reach. */
   const oneSlotMap: MapDef = {

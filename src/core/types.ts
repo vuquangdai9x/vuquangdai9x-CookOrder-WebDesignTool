@@ -47,6 +47,13 @@ export interface CookedIngredientDef {
   name: string;
   icon: string;
   fileId?: string;
+  /**
+   * Another cooked ingredient id that must already be in a dish before this
+   * one can be served to it (e.g. Ice needs a Soda Cup already there; burger
+   * toppings need a Sliced Bun already there). Undefined = no requirement —
+   * this ingredient can serve on its own, or *is* a base.
+   */
+  baseId?: Id;
 }
 
 /** What a tool turns one raw ingredient into, and how many come out. */

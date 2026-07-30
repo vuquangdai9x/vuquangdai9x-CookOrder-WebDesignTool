@@ -606,6 +606,12 @@ export class Simulation {
           const wanted = dish.remaining.filter((id) => id === needed).length;
           if (inFlight >= wanted) continue;
 
+          // Some cooked ingredients can't be served until their "base" is
+          // already in this dish (toppings need the bun there first, ice
+          // needs the cup there first) — see CookedIngredientDef.baseId.
+          const baseId = this.map.cookedIngredients.find((c) => c.id === needed)?.baseId;
+          if (baseId !== undefined && !dish.filled.includes(baseId)) continue;
+
           const cell = this.grid.findIndex(
             (c, i) =>
               c.kind === "cooked" && c.cookedId === needed && !this.reservedCells.has(i),

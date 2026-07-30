@@ -198,6 +198,19 @@ export class PlayView {
     // the root cause of "switch to skip, back to x1, next fly doesn't play".
     for (const flight of [...this.sim.flights]) {
       if (this.animating.has(flight.id)) continue;
+
+      // fillSlots() can promote a pending customer straight to active and
+      // autoServe() can launch a flight to them in that very same tick — all
+      // before this frame's syncPage() has rebuilt the customers tier. Until
+      // that rebuild happens, their card is still the masked "?" mystery
+      // card (same data-customer index as the real one); hold the flight
+      // rather than fly an ingredient onto it. Retried every frame, so it
+      // goes the moment the reveal lands.
+      if (flight.kind === "grid-to-customer") {
+        const card = this.page.querySelector(`[data-customer="${flight.toCustomer!.index}"]`);
+        if (card?.classList.contains("mystery")) continue;
+      }
+
       this.animating.add(flight.id);
 
       if (this.skipMode) {
