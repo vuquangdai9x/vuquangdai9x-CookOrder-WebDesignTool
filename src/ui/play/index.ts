@@ -175,6 +175,7 @@ export class PlayView {
   private restart(): void {
     this.sim = new Simulation(this.map, this.level, {
       outOfSlotPolicy: this.sim.outOfSlotPolicy,
+      instantFlights: false, // this view animates every transfer — see the constructor above
     });
     this.paused = false;
     this.animating.clear();
