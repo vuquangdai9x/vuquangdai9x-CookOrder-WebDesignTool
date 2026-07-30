@@ -1620,3 +1620,33 @@ td input {
   padding: 0.25rem 0.6rem;
 }
 
+/* Sheet-permission dialog — a variant of the same blocking-overlay look,
+   above the plain loading overlay (both share z-index 60, so bump this one). */
+.sheet-permission-overlay {
+  z-index: 61;
+}
+
+.sheet-permission-panel {
+  align-items: stretch;
+  max-width: 24rem;
+  text-align: left;
+}
+
+.sheet-permission-panel h3 {
+  margin: 0;
+  color: var(--accent);
+}
+
+.sheet-permission-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.sheet-permission-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+

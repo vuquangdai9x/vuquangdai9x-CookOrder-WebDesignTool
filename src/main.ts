@@ -9,13 +9,21 @@ import { toMapDef } from "./data/mapLoader.ts";
 import type { MapData } from "./data/mapLoader.ts";
 import { toPlayableLevelConfig } from "./data/playLevel.ts";
 import { GLOBAL_DEFS, MAP1_DATA } from "./data/configLoader.ts";
-import { exportProjectCsv, GoogleSheetCsvSource, SHEET_ID } from "./data/sheetSource.ts";
+import {
+  exportProjectCsv,
+  GoogleSheetApiSource,
+  SHEET_ID,
+  SheetAuthRequiredError,
+  SheetPermissionError,
+} from "./data/sheetSource.ts";
 import { DesignView } from "./ui/design/index.ts";
 import { PlayView } from "./ui/play/index.ts";
 import { showContextMenu } from "./ui/contextMenu.ts";
 import { button, el } from "./ui/dom.ts";
 import { setIconMap } from "./ui/icon.ts";
 import { preloadMapWithOverlay } from "./ui/preloadOverlay.ts";
+import { hideBlockingOverlay, showBlockingOverlay } from "./ui/loadingOverlay.ts";
+import { showSheetPermissionDialog } from "./ui/sheetPermissionDialog.ts";
 
 type Mode = "design" | "play";
 
@@ -51,6 +59,8 @@ let playView: PlayView | null = null;
 let designView: DesignView | null = null;
 /** Identity of the map last preloaded, so a same-map re-render doesn't re-preload. */
 let preloadedMapRef: MapData | null = null;
+/** Set when the startup silent sign-in check found no Google session/consent yet. */
+let needsSignIn = false;
 
 function loadDraft(): { map: MapData; migrated: boolean } | null {
   let stored: unknown;
@@ -124,10 +134,18 @@ async function render(): Promise<void> {
     ]),
     el("div", { class: "data-actions" }, [
       el("span", { class: "data-origin" }, [`${dataOrigin} · sheet ${SHEET_ID.slice(0, 8)}…`]),
-      button("⟳ Load from Sheet", () => void reloadFromSheet(), {
-        class: "full-btn",
-        title: "Re-read the linked Google Sheet (read-only)",
-      }),
+      // Clicking either loads the sheet; the label just sets the right
+      // expectation — a fresh browser/tab has no Google session yet, so the
+      // first click always shows the account/consent picker.
+      needsSignIn
+        ? button("🔑 Sign in with Google", () => void loadFromSheet(true), {
+            class: "full-btn",
+            title: "Sign in to read the linked Google Sheet",
+          })
+        : button("⟳ Load from Sheet", () => void loadFromSheet(true), {
+            class: "full-btn",
+            title: "Re-read the linked Google Sheet",
+          }),
       button("⬇ Export CSV", () => exportProjectCsv([map]), {
         class: "full-btn",
         title: "Download levels + definitions as CSV",
@@ -142,7 +160,10 @@ async function render(): Promise<void> {
         showContextMenu(
           e,
           [
-            { label: "⟳ Load from Sheet", onSelect: () => void reloadFromSheet() },
+            {
+              label: needsSignIn ? "🔑 Sign in with Google" : "⟳ Load from Sheet",
+              onSelect: () => void loadFromSheet(true),
+            },
             { label: "⬇ Export CSV", onSelect: () => exportProjectCsv([map]) },
             { label: "♻ Reset draft", danger: true, separator: true, onSelect: () => resetDraft() },
           ],
@@ -209,12 +230,30 @@ function switchMode(next: Mode): void {
   void render();
 }
 
-async function reloadFromSheet(): Promise<void> {
-  if (designView?.isDirty && !confirm("Unsaved changes will be overwritten. Reload?")) return;
-  dataOrigin = "loading from Google Sheet…";
-  await render();
+/**
+ * Loads live level data via the Sheets API.
+ *
+ * `interactive` distinguishes two very different situations:
+ * - `true` (button/menu click): shows the blocking overlay, and passes
+ *   through to a token request that may pop up Google's account/consent
+ *   picker — safe here because we're still inside the click's call stack.
+ * - `false` (silent startup check): no overlay, no popup — either an
+ *   existing Google session silently grants a token, or we quietly give up
+ *   and flip `needsSignIn` so the header offers a sign-in button instead.
+ */
+async function loadFromSheet(interactive: boolean): Promise<void> {
+  if (interactive && designView?.isDirty) {
+    if (!confirm("Unsaved changes will be overwritten. Reload?")) return;
+  }
+
+  if (interactive) {
+    dataOrigin = "loading from Google Sheet…";
+    showBlockingOverlay("Loading data from Google Sheet…");
+    await render();
+  }
+
   try {
-    const project = await new GoogleSheetCsvSource().loadProject();
+    const project = await new GoogleSheetApiSource(interactive).loadProject();
     const fresh = project.maps[0];
     map = {
       ...map,
@@ -237,10 +276,23 @@ async function reloadFromSheet(): Promise<void> {
     };
     saveDraft();
     dataOrigin = "live Google Sheet";
+    needsSignIn = false;
   } catch (err) {
     console.error(err);
-    dataOrigin = `sheet load failed (${(err as Error).message}) — bundled snapshot`;
+    if (err instanceof SheetAuthRequiredError) {
+      needsSignIn = true;
+      // A silent check finding no session yet is the normal first-open state
+      // for every new browser/tab — stay quiet and just offer the sign-in
+      // button, rather than reporting it as a failure.
+      if (interactive) dataOrigin = `sign-in failed (${err.message}) — bundled snapshot`;
+    } else if (err instanceof SheetPermissionError) {
+      dataOrigin = `sheet load failed (${err.message}) — bundled snapshot`;
+      showSheetPermissionDialog();
+    } else {
+      dataOrigin = `sheet load failed (${(err as Error).message}) — bundled snapshot`;
+    }
   }
+  if (interactive) hideBlockingOverlay();
   await render();
 }
 
@@ -248,7 +300,9 @@ window.addEventListener("beforeunload", (e) => {
   if (designView?.isDirty) e.preventDefault();
 });
 
-// Best-effort: pull the latest data from the sheet on every open. Falls back
-// to the local draft/bundled snapshot (already rendered by reloadFromSheet's
-// own first render()) if the sheet is unreachable.
-void reloadFromSheet();
+// Render immediately with local data (draft/bundled) so the page is never
+// blank while we check for a Google session, then upgrade in the background:
+// a returning, already-signed-in user gets live data moments later, a first
+// visit just gets a "Sign in with Google" button instead of any error.
+void render();
+void loadFromSheet(false);

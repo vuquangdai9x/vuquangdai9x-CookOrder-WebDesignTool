@@ -1,7 +1,9 @@
 // Data layer.
-// - Reading: GoogleSheetCsvSource pulls the linked Google Sheet's tabs as CSV
-//   (via the Vite dev proxy, see vite.config.ts) and converts the legacy
-//   formats to the tool's canonical model.
+// - Reading: GoogleSheetApiSource calls the Sheets API v4 directly with an
+//   OAuth access token (see ../data/googleAuth.ts — Google Identity Services,
+//   no backend/client-secret involved) and converts the legacy formats to the
+//   tool's canonical model. Each user signs into their own Google account;
+//   Google enforces per-account Drive sharing on every request.
 // - Saving: exportProjectCsv() downloads CSV files instead of writing back to
 //   the sheet (per design decision — the sheet is read-only for this tool).
 
@@ -10,38 +12,66 @@ import {
   convertLegacyCustomer,
   convertLegacyLvConfig,
   convertLegacyQueueConfig,
-  parseCsv,
 } from "./legacyConvert.ts";
 import type { LevelData, MapData } from "./mapLoader.ts";
 import { toMapDef } from "./mapLoader.ts";
 import { GLOBAL_DEFS, MAP1_DATA } from "./configLoader.ts";
+import {
+  clearStoredToken,
+  getAccessTokenSilent,
+  requestAccessTokenInteractive,
+} from "./googleAuth.ts";
 
-//export const SHEET_ID = "1wayrsZlHCTtuMGD1Qft2Fmaeb19b-ULfO2F6abTlAEA";
 export const SHEET_ID = "1gfezXsHHO5y0Tb1r3IEXGLM6gUOSF2TD0QSDMBjFutQ";
 
-/** Tab name -> gid, discovered from the sheet (docs/SHEET_STRUCTURE.md). */
-export const TAB_GIDS = {
-  ConfigTables: 709436862,
-  Ingredient_config: 675328923,
-  Level_overall_config: 1529635743,
-  TOOL_Level_ingredient_queue: 266021364,
-  Level_Scenario_Map1_burger: 804770440,
-  Level_Scenario_Map2_chicken_fried: 722547124,
+/** Sheet tab names (exact titles), discovered from the sheet (docs/SHEET_STRUCTURE.md). */
+export const TAB_NAMES = {
+  Level_overall_config: "Level_overall_config",
+  TOOL_Level_ingredient_queue: "TOOL_Level_ingredient_queue",
+  Level_Scenario_Map1_burger: "Level_Scenario_Map1_burger",
+  Level_Scenario_Map2_chicken_fried: "Level_Scenario_Map2_chicken_fried",
 } as const;
 
 export interface DataSource {
   loadProject(): Promise<Project>;
 }
 
-/** CSV export URL, routed through the Vite proxy to avoid CORS in the browser. */
-function tabCsvUrl(gid: number): string {
-  return `/gsheet/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
+/**
+ * Thrown when the user isn't signed in yet (or their token expired) — the
+ * caller should trigger requestAccessTokenInteractive() from a click and
+ * retry, rather than treating this as a hard failure.
+ */
+export class SheetAuthRequiredError extends Error {
+  constructor(detail: string) {
+    super(`Google sign-in required (${detail})`);
+    this.name = "SheetAuthRequiredError";
+  }
 }
 
-async function fetchTabCsv(gid: number): Promise<string[][]> {
-  const res = await fetch(tabCsvUrl(gid));
-  if (!res.ok) throw new Error(`Sheet tab gid=${gid} fetch failed: ${res.status}`);
-  return parseCsv(await res.text());
+/**
+ * Thrown when the user IS signed in but their Google account isn't on the
+ * Sheet's share list (Sheets API returns 403 Forbidden for this case).
+ */
+export class SheetPermissionError extends Error {
+  constructor(detail: string) {
+    super(`No access to the Google Sheet (${detail})`);
+    this.name = "SheetPermissionError";
+  }
+}
+
+async function fetchTabValues(tabName: string, token: string): Promise<string[][]> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(tabName)}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 401) {
+    clearStoredToken();
+    throw new SheetAuthRequiredError("access token expired or invalid");
+  }
+  if (res.status === 403) {
+    throw new SheetPermissionError("this Google account isn't shared on the sheet");
+  }
+  if (!res.ok) throw new Error(`Sheet tab "${tabName}" fetch failed: ${res.status}`);
+  const json = (await res.json()) as { values?: unknown[][] };
+  return (json.values ?? []).map((row) => row.map((cell) => String(cell ?? "")));
 }
 
 const GRID_W = 5;
@@ -52,14 +82,19 @@ const GRID_H = 2;
  * `overallRowKey` = [Level_ID, Map] of the map's first level row, whose last
  * non-empty cell holds the '|'-joined MapConfig for the whole map.
  */
-async function loadMapLevels(mapId: number, firstLevelId: number): Promise<LevelData[]> {
+async function loadMapLevels(
+  mapId: number,
+  firstLevelId: number,
+  token: string,
+): Promise<LevelData[]> {
   const [overall, queues, scenario] = await Promise.all([
-    fetchTabCsv(TAB_GIDS.Level_overall_config),
-    fetchTabCsv(TAB_GIDS.TOOL_Level_ingredient_queue),
-    fetchTabCsv(
+    fetchTabValues(TAB_NAMES.Level_overall_config, token),
+    fetchTabValues(TAB_NAMES.TOOL_Level_ingredient_queue, token),
+    fetchTabValues(
       mapId === 1
-        ? TAB_GIDS.Level_Scenario_Map1_burger
-        : TAB_GIDS.Level_Scenario_Map2_chicken_fried,
+        ? TAB_NAMES.Level_Scenario_Map1_burger
+        : TAB_NAMES.Level_Scenario_Map2_chicken_fried,
+      token,
     ),
   ]);
 
@@ -108,10 +143,20 @@ function lastNonEmpty(row: string[]): string {
   return "";
 }
 
-/** Linked Google Sheet, read-only. Definition tables stay static for now. */
-export class GoogleSheetCsvSource implements DataSource {
+/**
+ * Linked Google Sheet, read-only, via the Sheets API v4 + a per-user OAuth
+ * token. Definition tables stay static for now (see data/configLoader.ts).
+ */
+export class GoogleSheetApiSource implements DataSource {
+  constructor(private interactive: boolean) {}
+
   async loadProject(): Promise<Project> {
-    const levels = await loadMapLevels(1, 1);
+    const token = this.interactive
+      ? await requestAccessTokenInteractive()
+      : await getAccessTokenSilent();
+    if (!token) throw new SheetAuthRequiredError("no Google sign-in yet");
+
+    const levels = await loadMapLevels(1, 1, token);
     const map1: MapData = { ...MAP1_DATA, levels };
     return { globalDefs: GLOBAL_DEFS, maps: [toMapDef(map1)] };
   }
