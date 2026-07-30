@@ -16,6 +16,7 @@ import {
 import { DIRTY_DISH_ID, Simulation } from "../../core/sim.ts";
 import type { CustomerState, Flight } from "../../core/sim.ts";
 import type {
+  Id,
   LevelConfig,
   MapDef,
   OutOfSlotPolicy,
@@ -700,6 +701,18 @@ export class PlayView {
     ]);
   }
 
+  /**
+   * Reorders a dish's cooked-ingredient ids so a "base" (e.g. Sliced Bun,
+   * Soda Cup) displays before whatever needs it already in the dish (e.g.
+   * toppings, Ice) — see CookedIngredientDef.baseId. Ids in neither role
+   * keep their original relative position (Array.sort is stable).
+   */
+  private sortByBase(ids: Id[]): Id[] {
+    const needsBase = (id: Id) =>
+      this.map.cookedIngredients.find((c) => c.id === id)?.baseId !== undefined;
+    return [...ids].sort((a, b) => Number(needsBase(a)) - Number(needsBase(b)));
+  }
+
   private customerCard(c: CustomerState, servable: boolean): HTMLElement {
     const card = el("div", {
       class: `customer-card${servable ? " servable" : " waiting"}${c.isStaff ? " staff" : ""}`,
@@ -721,13 +734,13 @@ export class PlayView {
     }
     for (const dish of c.dishes) {
       const row = el("div", { class: "dish-row" });
-      for (const id of dish.filled) {
+      for (const id of this.sortByBase(dish.filled)) {
         row.append(el("span", {
           class: "chip icon-chip dish-chip filled",
           "data-dish-ingredient": String(id),
         }, [cookedIconEl(id, 64)]));
       }
-      for (const id of dish.remaining) {
+      for (const id of this.sortByBase(dish.remaining)) {
         row.append(el("span", {
           class: "chip icon-chip dish-chip",
           "data-dish-ingredient": String(id),
