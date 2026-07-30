@@ -3,13 +3,14 @@
 // See docs/ToolDesign.md "Customer Config window".
 
 import Sortable from "sortablejs";
+import { CUSTOMER_STAFF } from "../../core/effects.ts";
 import { serializeCustomers } from "../../core/parser.ts";
-import type { CustomerConfig, GlobalDefs, MapDef } from "../../core/types.ts";
+import type { CustomerConfig, ElementDef, GlobalDefs, MapDef } from "../../core/types.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
-import { numberField, pickerGrid, showContextMenu } from "../contextMenu.ts";
+import { showContextMenu, toggleGrid } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
-import { ingredientIconEl, statusIconEl } from "../icon.ts";
+import { customerTypeIconEl, ingredientIconEl } from "../icon.ts";
 import { changeClass, cidOf, tagAllNew, tagNew } from "./changeTracking.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
 import { Section } from "./section.ts";
@@ -24,7 +25,19 @@ export interface CustomerSectionDeps {
   onCommit?(): void;
 }
 
-const isStaff = (c: CustomerConfig) => c.dishes.length === 0;
+/**
+ * Only Staff gets dedicated UI (no dish editor, a stack-amount field instead)
+ * — every other type, known or not, renders the standard dish editor. New
+ * types only need a row in general/customer-types.json (for the type-picker
+ * menu and icon) and, if their behavior differs from a plain order-taking
+ * customer, a registered handler in core/registry.ts; no UI change required
+ * unless they need dedicated fields like Staff's amount.
+ */
+const isStaff = (c: CustomerConfig) => c.typeId === CUSTOMER_STAFF;
+
+function typeDef(defs: GlobalDefs, typeId: number): ElementDef | undefined {
+  return defs.customerTypes.find((t) => t.id === typeId);
+}
 
 /** Every cooked ingredient a customer's dishes call for, counted (a dish can repeat one). */
 function cookedIdCounts(c: CustomerConfig): Map<number, number> {
@@ -57,8 +70,10 @@ function customerStatus(
   }
 
   const unchanged =
+    saved.typeId === customer.typeId &&
     saved.waitTime === customer.waitTime &&
     saved.weatherEff === customer.weatherEff &&
+    (saved.staffAmount ?? 1) === (customer.staffAmount ?? 1) &&
     JSON.stringify(saved.dishes) === JSON.stringify(customer.dishes);
   return unchanged ? null : "modified";
 }
@@ -74,6 +89,7 @@ export function createCustomerSection(deps: CustomerSectionDeps): Section<Custom
       deps.level.customerString = serializeCustomers(draft);
       deps.onSaved();
     },
+    stringPreview: (draft) => serializeCustomers(draft),
     menuItems: (draft) => [
       {
         label: "Clear All",
@@ -108,7 +124,9 @@ function renderBody(
   const addCard = el("div", { class: "customer-card add-card" }, ["＋"]);
   addCard.title = "Append a customer";
   addCard.addEventListener("click", () => {
-    draft.push(tagNew({ waitTime: 0, weatherEff: 0, dishes: [{ cookedIds: [], effects: [] }] }));
+    draft.push(
+      tagNew({ typeId: 0, waitTime: 0, weatherEff: 0, dishes: [{ cookedIds: [], effects: [] }] }),
+    );
     section.commit("Add customer", 1);
   });
   row.append(addCard);
@@ -165,8 +183,10 @@ function customerCard(
     },
   );
 
+  const def = typeDef(deps.defs, customer.typeId);
+  const typeMark = def && def.id !== 0 ? ` ${def.icon || def.name}` : "";
   const head = el("div", { class: "customer-head" }, [
-    el("span", { class: "cust-index" }, [staff ? `#${index + 1} 🧑‍🍳` : `#${index + 1}`]),
+    el("span", { class: "cust-index" }, [`#${index + 1}${typeMark}`]),
     el("span", { class: "wait-badge" }, [
       customer.waitTime === 0 ? "∞" : "", waitInput,
     ]),
@@ -180,7 +200,23 @@ function customerCard(
   card.append(head);
 
   if (staff) {
-    card.append(el("div", { class: "staff-note" }, ["Staff — clears dirty stacks"]));
+    const amountInput = el("input", {
+      type: "number",
+      min: "1",
+      value: String(customer.staffAmount ?? 1),
+      title: "How many dirty stacks this staff clears on arrival (even a partial stack counts)",
+    }) as HTMLInputElement;
+    amountInput.addEventListener("change", () => {
+      customer.staffAmount = Math.max(1, Number(amountInput.value) || 1);
+      section.commit("Set staff stack amount");
+    });
+    card.append(
+      el("div", { class: "staff-note" }, [
+        "Staff — clears ",
+        amountInput,
+        " dirty stack(s)",
+      ]),
+    );
   } else {
     customer.dishes.forEach((dish, di) => {
       const dishRow = el("div", { class: "dish-row" }, [
@@ -188,7 +224,7 @@ function customerCard(
       ]);
 
       dish.cookedIds.forEach((cookedId, ci) => {
-        const chip = el("span", { class: "chip icon-chip" }, [ingredientIconEl(cookedId, 64)]);
+        const chip = el("span", { class: "chip icon-chip dish-chip" }, [ingredientIconEl(cookedId, 64)]);
         chip.title = deps.map.cookedIngredients.find((c) => c.id === cookedId)?.name ?? "";
         chip.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -199,6 +235,10 @@ function customerCard(
         dishRow.append(chip);
       });
 
+      // A dish is a multiple-choice set: each cooked ingredient can only be in
+      // it once. The picker stays open across clicks (toggling membership)
+      // instead of closing after each pick — the menu's own click-outside/
+      // Escape handling is what closes it.
       const addChip = button(
         "＋",
         (e) =>
@@ -206,18 +246,27 @@ function customerCard(
             e,
             [
               {
-                label: "Add cooked ingredient",
-                expand: (close) =>
-                  pickerGrid(
+                label: "Toggle ingredients",
+                expand: () =>
+                  toggleGrid(
                     deps.map.cookedIngredients.map((c) => ({
                       id: c.id,
                       label: c.name,
                       icon: ingredientIconEl(c.id, 64),
                     })),
-                    (id) => {
-                      dish.cookedIds.push(id);
-                      section.commit("Add ingredient to dish", 1);
-                      close();
+                    dish.cookedIds,
+                    (id, nowSelected) => {
+                      if (nowSelected) {
+                        dish.cookedIds.push(id);
+                      } else {
+                        const at = dish.cookedIds.indexOf(id);
+                        if (at !== -1) dish.cookedIds.splice(at, 1);
+                      }
+                      section.commit(
+                        nowSelected ? "Add ingredient to dish" : "Remove ingredient from dish",
+                        nowSelected ? 1 : 0,
+                        nowSelected ? 0 : 1,
+                      );
                     },
                   ),
               },
@@ -228,17 +277,11 @@ function customerCard(
       );
       dishRow.append(addChip);
 
-      for (const effect of dish.effects) {
-        dishRow.append(
-          el("span", { class: "chip effect-chip" }, [
-            statusIconEl(effect.effectId, 48),
-            ...(effect.params.length ? [el("small", {}, [effect.params.join(":")])] : []),
-          ]),
-        );
-      }
+      // Dish effects come from a separate, not-yet-defined table (distinct
+      // from ingredient statuses) — nothing to show or offer here for now.
 
       dishRow.addEventListener("contextmenu", (e) =>
-        showContextMenu(e, dishMenu(section, deps, customer, di), { title: `Dish ${di + 1}` }),
+        showContextMenu(e, dishMenu(section, customer, di), { title: `Dish ${di + 1}` }),
       );
       card.append(dishRow);
     });
@@ -263,17 +306,35 @@ function customerCard(
 
 function cardMenu(
   section: Section<CustomerConfig[]>,
-  _deps: CustomerSectionDeps,
+  deps: CustomerSectionDeps,
   draft: CustomerConfig[],
   customer: CustomerConfig,
   index: number,
 ): MenuItem[] {
   const blank = (): CustomerConfig =>
     tagNew({
+      typeId: 0,
       waitTime: 0,
       weatherEff: 0,
       dishes: [{ cookedIds: [], effects: [] }],
     });
+
+  // One entry per row in the customer-types table — adding a type there is
+  // all it takes for it to show up here, no code change needed.
+  const typeItems: MenuItem[] = deps.defs.customerTypes.map((def, i) => ({
+    label: `Type: ${def.name}`,
+    icon: customerTypeIconEl(def.id, 48),
+    active: customer.typeId === def.id,
+    separator: i === 0,
+    onSelect: () => {
+      customer.typeId = def.id;
+      // Staff orders nothing; anything else needs at least one dish to edit.
+      if (def.id === CUSTOMER_STAFF) customer.dishes = [];
+      else if (customer.dishes.length === 0) customer.dishes = [{ cookedIds: [], effects: [] }];
+      section.commit(`Set type: ${def.name}`);
+    },
+  }));
+
   return [
     {
       label: "Insert Before",
@@ -299,15 +360,7 @@ function cardMenu(
         section.commit("Duplicate customer", 1);
       },
     },
-    {
-      label: isStaff(customer) ? "Convert to Customer" : "Mark as Staff",
-      separator: true,
-      onSelect: () => {
-        if (isStaff(customer)) customer.dishes = [{ cookedIds: [], effects: [] }];
-        else customer.dishes = []; // dish-less customer == staff
-        section.commit("Toggle staff");
-      },
-    },
+    ...typeItems,
     {
       label: "Remove",
       danger: true,
@@ -320,62 +373,21 @@ function cardMenu(
   ];
 }
 
+/**
+ * Dish statuses live in a separate table from ingredient statuses, not yet
+ * defined — so this menu deliberately offers nothing for them (per the ask,
+ * "leave it blank and not show in right-click menu") until that table exists.
+ */
 function dishMenu(
   section: Section<CustomerConfig[]>,
-  deps: CustomerSectionDeps,
   customer: CustomerConfig,
   dishIndex: number,
 ): MenuItem[] {
-  const dish = customer.dishes[dishIndex];
-  const items: MenuItem[] = deps.defs.effects
-    .filter((def) => def.id !== 0)
-    .map((def) => {
-      const active = dish.effects.some((e) => e.effectId === def.id);
-      return {
-        label: def.name,
-        icon: statusIconEl(def.id, 48),
-        active,
-        expand: (close: () => void) => {
-          const wrap = el("div", { class: "ctx-sub" });
-          const existing = dish.effects.find((e) => e.effectId === def.id);
-          const params = existing ? [...existing.params] : def.paramDefs.map(() => 1);
-          def.paramDefs.forEach((p, i) => {
-            wrap.append(
-              numberField(p.name, params[i] ?? 1, (v) => {
-                params[i] = v;
-              }),
-            );
-          });
-          wrap.append(
-            button(active ? "Update" : "Apply", () => {
-              dish.effects = dish.effects.filter((e) => e.effectId !== def.id);
-              dish.effects.push({ effectId: def.id, params });
-              section.commit(`Set dish effect ${def.name}`);
-              close();
-            }),
-            ...(active
-              ? [
-                  button(
-                    "Remove",
-                    () => {
-                      dish.effects = dish.effects.filter((e) => e.effectId !== def.id);
-                      section.commit(`Clear dish effect ${def.name}`);
-                      close();
-                    },
-                    { class: "danger" },
-                  ),
-                ]
-              : []),
-          );
-          return wrap;
-        },
-      };
-    });
+  const items: MenuItem[] = [];
 
   items.push({
     label: "Remove Dish",
     danger: true,
-    separator: true,
     onSelect: () => {
       customer.dishes.splice(dishIndex, 1);
       section.commit("Remove dish", 0, 1);

@@ -21,6 +21,7 @@ import ingredientStatusesJson from "./config/general/ingredient-statuses.json";
 import keyColorsJson from "./config/general/key-colors.json";
 import mapsJson from "./config/general/maps.json";
 import metaJson from "./config/general/meta.json";
+import tagsJson from "./config/general/tags.json";
 import weatherJson from "./config/general/weather.json";
 
 import map1Json from "./config/map1-burger/map.json";
@@ -75,6 +76,7 @@ const toElementDef = (r: StatusRow): ElementDef => ({
 
 export const KEY_COLORS = keyColorsJson.colors;
 export const WEATHER = weatherJson.weather;
+export const TAGS = tagsJson.tags;
 export const EMOTIONS = emotionsJson.emotions;
 export const META = metaJson;
 export const MAP_INDEX = mapsJson.maps;
@@ -87,8 +89,20 @@ export const GLOBAL_DEFS: GlobalDefs = {
 
 // ---------- per-map ----------
 
+interface MapMeta {
+  index: number;
+  id: string;
+  name: string;
+  dirtyDishName: string;
+  gridWidth: number;
+  gridHeight: number;
+  dirtyStackHeight: number;
+  disabledRawIds?: number[];
+  disabledCookedIds?: number[];
+}
+
 function buildMap(
-  meta: { index: number; id: string; name: string; dirtyDishName: string },
+  meta: MapMeta,
   ingredients: IngredientRow[],
   cooked: CookedRow[],
   tools: CookingToolDef[],
@@ -98,6 +112,11 @@ function buildMap(
     id: meta.index,
     name: meta.id,
     dirtyDishName: meta.dirtyDishName,
+    gridWidth: meta.gridWidth,
+    gridHeight: meta.gridHeight,
+    dirtyStackHeight: meta.dirtyStackHeight,
+    disabledRawIds: meta.disabledRawIds ?? [],
+    disabledCookedIds: meta.disabledCookedIds ?? [],
     rawIngredients: ingredients.map((r) => ({
       id: r.id,
       name: r.name,

@@ -5,7 +5,7 @@ import {
   CELL_COLOR_LOCK,
   CELL_INGREDIENT_SLOT,
 } from "../../core/effects.ts";
-import { serializeGrid } from "../../core/parser.ts";
+import { parseGrid, serializeGrid } from "../../core/parser.ts";
 import type { GlobalDefs, GridCellConfig, MapDef } from "../../core/types.ts";
 import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
@@ -38,6 +38,7 @@ export function createGridSection(deps: GridSectionDeps): Section<GridCellConfig
       deps.level.gridString = serializeGrid(draft);
       deps.onSaved();
     },
+    stringPreview: (draft) => serializeGrid(draft),
     menuItems: (draft) => [
       {
         label: "Clear All",
@@ -62,22 +63,9 @@ function renderBody(
   draft: GridCellConfig[],
   body: HTMLElement,
 ): void {
-  const { gridWidth, gridHeight } = deps.level;
-
-  const sizeRow = el("div", { class: "grid-size" });
-  const sizeField = (label: string, value: number, apply: (v: number) => void) => {
-    const input = el("input", { type: "number", value: String(value), min: "1" }) as HTMLInputElement;
-    input.addEventListener("change", () => {
-      apply(Math.max(1, Number(input.value) || 1));
-      resizeDraft(draft, deps.level.gridWidth * deps.level.gridHeight);
-      section.commit(`Resize grid`);
-    });
-    return el("label", { class: "field small" }, [label, input]);
-  };
-  sizeRow.append(
-    sizeField("Cols", gridWidth, (v) => (deps.level.gridWidth = v)),
-    sizeField("Rows", gridHeight, (v) => (deps.level.gridHeight = v)),
-  );
+  // Cols/Rows are fixed per map (see DesignView's Map Settings bar), not
+  // editable here — every level in a map shares one board shape.
+  const { gridWidth } = deps.map;
 
   const grid = el("div", { class: "grid editable" });
   grid.style.gridTemplateColumns = `repeat(${gridWidth}, 1fr)`;
@@ -89,12 +77,21 @@ function renderBody(
     grid.append(cellEl(section, deps, draft, cell, index, savedGrid[index]));
   });
 
-  body.append(sizeRow, grid);
+  body.append(grid);
 }
 
-function resizeDraft(draft: GridCellConfig[], want: number): void {
-  while (draft.length < want) draft.push({ effects: [] });
-  draft.length = want;
+/**
+ * Resizes a grid string to `width * height` cells, keeping existing cells at
+ * their same flat index (row-major) where the new size still has that index,
+ * padding new cells blank or truncating extras. Used when a map's Cols/Rows
+ * setting changes, across every level in the map at once.
+ */
+export function resizeGridString(gridString: string, width: number, height: number): string {
+  const cells = parseGrid(gridString);
+  const want = width * height;
+  while (cells.length < want) cells.push({ effects: [] });
+  cells.length = want;
+  return serializeGrid(cells);
 }
 
 /**
@@ -128,8 +125,8 @@ function cellEl(
 ): HTMLElement {
   const effect = cell.effects[0];
   const typeDef = effect ? deps.defs.cellTypes.find((d) => d.id === effect.effectId) : undefined;
-  const x = index % deps.level.gridWidth;
-  const y = Math.floor(index / deps.level.gridWidth);
+  const x = index % deps.map.gridWidth;
+  const y = Math.floor(index / deps.map.gridWidth);
   const status = cellChangeStatus(cell, savedCell);
 
   const node = el("div", { class: `cell${effect ? " typed" : ""} ${changeClass(status)}` });

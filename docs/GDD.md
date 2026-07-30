@@ -67,7 +67,7 @@ Every hand-off is a **flight**: the item is shown travelling from one place to t
 - Dirty stacks **occupy grid cells** and block cooked-ingredient placement. A dirty dish with **no cell to go to → lose**.
 - Cleaning:
   - **Sweeper** (queue object): instantly clears the oldest stack.
-  - **Staff** (special customer type): occupies a customer slot on arrival, immediately removes up to **X oldest dirty stacks**, requires no dishes, then leaves. Authored as a customer with an **empty dish list** (`0;0;`), since the customer string has no type field.
+  - **Staff** (special customer type, typeId 1 — see §4/§7.3): occupies a customer slot on arrival, immediately removes up to **X oldest dirty stacks** (the 5th string field), requires no dishes, then leaves.
 - The dirty dish is **abstract** — each map skins it (plate, cup, box, …).
 
 ## 3. Game Structure
@@ -148,14 +148,16 @@ All three level-config strings are authored/parsed by the tool and must **round-
 ### 7.3 Customer queue
 
 ```
-0;0;1.0.6,0.1.2.5#4|60;1;0.1.2.3.6#5:4#2:1,1.0.5.2.3|...
+0;0;0;1.0.6,0.1.2.5#4|1;0;0;;3|0;60;1;0.1.2.3.6#5:4#2:1,1.0.5.2.3|...
 ```
 
-- `|` separates customers; `;` separates the 3 customer params: `waitTime ; weatherEff ; order`.
+- `|` separates customers; `;` separates the customer params: `typeId ; waitTime ; weatherEff ; order [; staffAmount]`.
+  - `typeId`: row id from the **customer types** definition table (§4) — `0` = Customer (orders dishes), `1` = Staff (see below); new types are just new rows plus a registered behavior, no format change needed.
   - `waitTime`: patience timer in seconds, 0 = no limit.
   - `weatherEff`: 1 = customer affected by weather (halved timer + minigame in the real game).
-  - (The sheet's legacy 6-param form also had `delay`, `completePrev`, `vip` — dropped from the game; the import converter strips them.)
-- The order: `,` separates dishes; inside a dish, cooked-ingredient ids are separated by `.` (e.g. `0.1.2.5`), followed by optional dish effects (`#4`). The parser also accepts legacy digit-run form (`0125#4`) when all ids are single-digit.
+  - `staffAmount` (5th field, optional): for Staff, how many dirty stacks they clear on arrival (even a not-full stack counts); absent = 1. Meaningless for other types.
+  - (The sheet's legacy 6-param form also had `delay`, `completePrev`, `vip` — dropped from the game; the import converter strips them. The parser also still accepts the pre-typeId 3- and 4-field forms — `waitTime;weatherEff;order` and `waitTime;weatherEff;;staffAmount` — inferring `typeId` from whether the dish list is empty; re-serializing always emits the current typeId-first form.)
+- The order: `,` separates dishes; inside a dish, cooked-ingredient ids are separated by `.` (e.g. `0.1.2.5`), followed by optional dish effects (`#4`). The parser also accepts legacy digit-run form (`0125#4`) when all ids are single-digit. Staff has no order (empty field between the two `;;`).
 
 ## 8. The Tool: Modes
 

@@ -10,7 +10,7 @@
 import "./effects.ts"; // registers built-in behaviors
 import { CUSTOMER_STAFF, EFFECT_HOLDING_KEY } from "./effects.ts";
 import type { EffectContext } from "./registry.ts";
-import { getCellEffect, getCustomerType, getQueueEffect } from "./registry.ts";
+import { getCellEffect, getQueueEffect } from "./registry.ts";
 import type {
   CookingToolDef,
   CustomerConfig,
@@ -78,7 +78,9 @@ export type FlightKind =
   | "grid-to-tool"
   | "grid-to-customer"
   /** The dirty dish a departing customer leaves behind. */
-  | "customer-to-grid";
+  | "customer-to-grid"
+  /** One dirty stack flying into a staff customer as they clear it. */
+  | "dirty-to-staff";
 
 export interface Flight {
   id: number;
@@ -131,7 +133,12 @@ export interface SimOptions {
   instantFlights?: boolean;
 }
 
-const isStaffCustomer = (c: CustomerConfig) => c.dishes.length === 0;
+/**
+ * Type is explicit now (first element of the customer string), not inferred
+ * from an empty dish list. Unknown future type ids fall through to normal
+ * customer behavior until a handler is added for them (see fillSlots).
+ */
+const isStaffCustomer = (c: CustomerConfig) => c.typeId === CUSTOMER_STAFF;
 
 export class Simulation {
   readonly level: LevelConfig;
@@ -166,6 +173,8 @@ export class Simulation {
   private nextFlightId = 1;
   private options: SimOptions;
   private dirtyOrder: number[] = [];
+  /** Staff customer index -> dirty stacks still flying in before they finish. */
+  private pendingStaffClears = new Map<number, number>();
   /** Dirty dishes already heading for a cell, so stack capacity accounts for them. */
   private pendingDirty = new Map<number, number>();
   /** Grid cells reserved by an in-flight item so two flights can't target one cell. */
@@ -351,6 +360,24 @@ export class Simulation {
         if (left > 0) this.pendingDirty.set(cell, left);
         else this.pendingDirty.delete(cell);
         this.placeDirtyAt(cell);
+        break;
+      }
+      case "dirty-to-staff": {
+        const cell = flight.fromCell!;
+        this.releaseCell(cell);
+        this.grid[cell] = { kind: "empty" };
+        const at = this.dirtyOrder.indexOf(cell);
+        if (at !== -1) this.dirtyOrder.splice(at, 1);
+
+        const staffIndex = flight.toCustomer!.index;
+        const remaining = (this.pendingStaffClears.get(staffIndex) ?? 1) - 1;
+        if (remaining > 0) {
+          this.pendingStaffClears.set(staffIndex, remaining);
+        } else {
+          this.pendingStaffClears.delete(staffIndex);
+          const staff = this.active.find((c) => c.index === staffIndex);
+          if (staff) this.completeStaffCustomer(staff);
+        }
         break;
       }
       case "grid-to-customer": {
@@ -635,13 +662,19 @@ export class Simulation {
    * visible when the flight lands.
    */
   private addDirtyDish(fromCustomer: number): void {
-    const height = this.level.dirtyStackHeight || 1;
+    const height = this.map.dirtyStackHeight || 1;
     const openStack = this.dirtyOrder.find((i) => {
       const cell = this.grid[i];
       const pending = this.pendingDirty.get(i) ?? 0;
       const count = cell.kind === "dirty" ? cell.count : 0;
-      // A cell claimed by an in-flight dish counts as a stack already.
-      return (cell.kind === "dirty" || pending > 0) && count + pending < height;
+      // A cell claimed by an in-flight dish counts as a stack already. A cell
+      // reserved by a staff customer's in-flight clearing is excluded — it's
+      // about to disappear, so a new dish shouldn't target it mid-flight.
+      return (
+        (cell.kind === "dirty" || pending > 0) &&
+        count + pending < height &&
+        !this.reservedCells.has(i)
+      );
     });
 
     let target: number;
@@ -705,16 +738,59 @@ export class Simulation {
     while (this.active.length < this.level.serveableSlots && this.pending.length > 0) {
       const customer = this.pending.shift()!;
       if (customer.isStaff) {
-        getCustomerType(CUSTOMER_STAFF).onArrive?.([1], {
-          clearDirtyStacks: (n) => void this.clearDirtyStacks(n),
-        });
-        this.servedCount++;
-        this.log("customer-arrived", "Staff cleared dirty stacks");
+        // Visible in `active` (like a normal customer) while their stacks fly
+        // in, so the view has a card to animate the dirty dishes toward and
+        // to play the same completion celebration on once they're done.
+        this.active.push(customer);
+        this.startStaffClearing(customer);
         continue;
       }
       this.active.push(customer);
       this.log("customer-arrived", `Customer ${customer.index + 1} is ordering`);
     }
+  }
+
+  /**
+   * Launches one flight per dirty stack a staff customer will clear (oldest
+   * first; even a not-full stack counts). The customer only actually finishes
+   * once every one of those flights has landed — see the "dirty-to-staff"
+   * case in completeFlight().
+   *
+   * This bypasses the customer-type registry's synchronous `onArrive` (still
+   * registered for CUSTOMER_STAFF, still what the Definitions table describes)
+   * because clearing is now animated and can span multiple flights rather than
+   * happening in one synchronous call.
+   */
+  private startStaffClearing(customer: CustomerState): void {
+    const amount = customer.config.staffAmount ?? 1;
+    const stacks = this.dirtyOrder.slice(0, Math.max(0, amount));
+    if (stacks.length === 0) {
+      this.completeStaffCustomer(customer);
+      return;
+    }
+    this.pendingStaffClears.set(customer.index, stacks.length);
+    this.log("customer-arrived", `Staff clearing ${stacks.length} dirty stack(s)`);
+    for (const cell of stacks) {
+      this.reservedCells.add(cell);
+      this.launch({
+        kind: "dirty-to-staff",
+        itemId: DIRTY_DISH_ID,
+        fromCell: cell,
+        toCustomer: { index: customer.index, dish: 0 },
+      });
+    }
+  }
+
+  private completeStaffCustomer(customer: CustomerState): void {
+    const at = this.active.indexOf(customer);
+    if (at !== -1) this.active.splice(at, 1);
+    this.servedCount++;
+    this.events.push({
+      type: "served",
+      message: "Staff finished clearing dirty stacks",
+      atTime: this.time,
+      customerIndex: customer.index,
+    });
   }
 
   private checkEnd(): void {

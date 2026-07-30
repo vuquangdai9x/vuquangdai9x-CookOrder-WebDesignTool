@@ -76,6 +76,7 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueItem[][
       deps.level.queueString = serializeQueues(draft);
       deps.onSaved();
     },
+    stringPreview: (draft) => serializeQueues(draft),
     headerButtons: (sec) => [
       button("＋ Queue", () => {
         sec.draft.push(tagNew([]));
@@ -83,6 +84,13 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueItem[][
       }, { class: "small-btn", title: "Append a new queue" }),
     ],
     menuItems: (draft) => [
+      {
+        label: ui.drawerOpen ? "Hide Quick Add" : "＋ Quick Add",
+        onSelect: () => {
+          ui.drawerOpen = !ui.drawerOpen;
+          section.render();
+        },
+      },
       {
         label: ui.removeMode ? "Exit Remove Mode" : "Remove Mode",
         separator: true,
@@ -175,10 +183,6 @@ const clampZoom = (z: number) => Math.min(2.5, Math.max(0.5, Math.round(z * 10) 
 
 function toolbar(section: Section<QueueItem[][]>, ui: QueueUiState): HTMLElement {
   return el("div", { class: "queue-toolbar" }, [
-    button("＋ Quick Add", () => {
-      ui.drawerOpen = !ui.drawerOpen;
-      section.render();
-    }),
     el("span", { class: "spacer" }),
     button("−", () => {
       ui.zoom = clampZoom(ui.zoom - 0.1);

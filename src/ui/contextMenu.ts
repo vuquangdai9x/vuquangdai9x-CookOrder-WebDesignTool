@@ -126,6 +126,38 @@ export function pickerGrid(
   return grid;
 }
 
+/**
+ * Multi-select toggle grid: clicking an entry adds/removes its id from
+ * `selectedIds` in place and re-renders the active states — it does NOT close
+ * the menu (the caller passes this as a MenuItem's `expand`, and the menu's
+ * existing click-outside/Escape handling is what closes it, matching "keep
+ * the window open, toggle on/off, click outside to close"). Each id can only
+ * be selected once, so re-clicking a selected entry removes it rather than
+ * adding a duplicate.
+ */
+export function toggleGrid(
+  entries: { id: number; label: string; icon: HTMLElement }[],
+  selectedIds: number[],
+  onToggle: (id: number, nowSelected: boolean) => void,
+): HTMLElement {
+  const grid = el("div", { class: "ctx-picker" });
+  for (const entry of entries) {
+    const cell = el("button", {
+      class: `ctx-pick${selectedIds.includes(entry.id) ? " active" : ""}`,
+      title: entry.label,
+    });
+    cell.append(entry.icon);
+    cell.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const nowSelected = !cell.classList.contains("active");
+      cell.classList.toggle("active", nowSelected);
+      onToggle(entry.id, nowSelected);
+    });
+    grid.append(cell);
+  }
+  return grid;
+}
+
 /** Colour swatch row (used by ColorLock cells and HoldingKey statuses). */
 export function swatchRow(
   colors: { id: number; name: string; hex: string }[],

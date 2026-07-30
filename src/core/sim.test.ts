@@ -15,6 +15,11 @@ const testMap: MapDef = {
   id: 99,
   name: "test",
   dirtyDishName: "plate",
+  gridWidth: 5,
+  gridHeight: 2,
+  dirtyStackHeight: 5,
+  disabledRawIds: [],
+  disabledCookedIds: [],
   rawIngredients: [0, 1, 2, 3].map((id) => ({
     id,
     name: `raw${id}`,
@@ -49,10 +54,7 @@ function level(overrides: Partial<LevelConfig> & { queueString: string; gridStri
     levelTag: "",
     featureUnlock: "",
     shuffleDistance: 0,
-    gridWidth: 5,
-    gridHeight: 2,
     serveableSlots: 2,
-    dirtyStackHeight: 5,
     queues: parseQueues(overrides.queueString),
     grid: parseGrid(overrides.gridString),
     customers: parseCustomers(overrides.customerString),
@@ -323,13 +325,12 @@ describe("flight gating", () => {
   it("stacks simultaneous dirty dishes without exceeding the stack height", () => {
     // Two customers served together, stack height 1 → two separate stacks.
     const sim = new Simulation(
-      testMap,
+      { ...testMap, dirtyStackHeight: 1 },
       level({
         queueString: "2,2",
         gridString: EMPTY_GRID,
         customerString: "0;0;2|0;0;2",
         serveableSlots: 2,
-        dirtyStackHeight: 1,
       }),
       { instantFlights: false },
     );
@@ -339,6 +340,40 @@ describe("flight gating", () => {
     const stacks = sim.grid.filter((c) => c.kind === "dirty");
     expect(stacks).toHaveLength(2);
     expect(stacks.every((s) => s.kind === "dirty" && s.count === 1)).toBe(true);
+  });
+
+  it("a live for-of over sim.flights skips one when completeFlight splices mid-loop", () => {
+    // Regression for the Play-mode bug "switch to skip, back to x1, next fly
+    // doesn't play": PlayView's dispatchFlights() used to iterate the live
+    // sim.flights array while calling completeFlight() (which splices it)
+    // inside the loop — this test proves that pattern really does skip an
+    // element, and that snapshotting the array first (the fix) does not.
+    const sim = new Simulation(
+      testMap,
+      // Ingredient 3 splits into 2 pieces, so both finish in the same tick —
+      // two simultaneous flights, with a customer that wants neither (id 0),
+      // so nothing cascades into extra flights via auto-serve.
+      level({ queueString: "3", gridString: EMPTY_GRID, customerString: "0;0;0" }),
+      { instantFlights: false },
+    );
+    sim.pick(0);
+    sim.completeAllFlights(); // lands in the tool slot
+    sim.tick(1.1); // cooking finishes: launches 2 simultaneous tool-to-grid flights
+    expect(sim.flights).toHaveLength(2);
+    expect(sim.flights.every((f) => f.kind === "tool-to-grid")).toBe(true);
+
+    const visitedLive: number[] = [];
+    for (const f of sim.flights) {
+      // BUG PATTERN: live array, mutated by completeFlight below.
+      visitedLive.push(f.id);
+      sim.completeFlight(f.id);
+    }
+    expect(visitedLive).toHaveLength(1); // the other was skipped by the iterator
+    expect(sim.flights).toHaveLength(1); // ...and is still sitting there unresolved
+
+    // THE FIX: snapshot first, so both get visited and resolved.
+    for (const f of [...sim.flights]) sim.completeFlight(f.id);
+    expect(sim.flights).toHaveLength(0);
   });
 
   it("completeAllFlights resolves a whole chain at once (skip mode)", () => {
@@ -425,12 +460,11 @@ describe("serve slots and dirty dishes", () => {
 
   it("stacks dirty dishes up to dirtyStackHeight then opens a new stack", () => {
     const sim = new Simulation(
-      testMap,
+      { ...testMap, dirtyStackHeight: 2 },
       level({
         queueString: "0,0,0",
         gridString: EMPTY_GRID,
         customerString: "0;0;0|0;0;0|0;0;0",
-        dirtyStackHeight: 2,
         serveableSlots: 1,
       }),
     );
@@ -446,12 +480,11 @@ describe("serve slots and dirty dishes", () => {
 
   it("clears the oldest dirty stack when a sweeper is picked", () => {
     const sim = new Simulation(
-      testMap,
+      { ...testMap, dirtyStackHeight: 1 },
       level({
         queueString: `0,${SWEEPER_ID}`,
         gridString: EMPTY_GRID,
         customerString: "0;0;0|0;0;0",
-        dirtyStackHeight: 1,
         serveableSlots: 1,
       }),
     );
@@ -464,12 +497,11 @@ describe("serve slots and dirty dishes", () => {
 
   it("treats a dish-less customer as staff clearing dirty stacks", () => {
     const sim = new Simulation(
-      testMap,
+      { ...testMap, dirtyStackHeight: 1 },
       level({
         queueString: "0",
         gridString: EMPTY_GRID,
         customerString: "0;0;0|0;0;",
-        dirtyStackHeight: 1,
         serveableSlots: 1,
       }),
     );
@@ -477,6 +509,83 @@ describe("serve slots and dirty dishes", () => {
     sim.tick(2);
     expect(sim.status).toBe("won");
     expect(sim.grid.filter((c) => c.kind === "dirty")).toHaveLength(0);
+  });
+
+  it("flight-gates staff clearing: N flights for N stacks, celebration fires only once all land", () => {
+    // One serve slot forces strict turn-taking through A, B, C, then staff.
+    // A customer's *own* slot frees the instant their dish is filled — before
+    // their dirty dish has actually landed — so whoever is seated next in
+    // that same reactive step (the following pending customer) can never see
+    // that departing customer's dirty dish yet. That means a staff seated
+    // immediately after C leaves would only ever see A's and B's dishes
+    // (landed earlier, while B and then C were being served) — never C's own
+    // (still in flight). Stepping through flight-by-flight instead of via
+    // completeAllFlights lets the test land A's and B's dirty dishes before
+    // advancing C, so the staff is seated with exactly those two already on
+    // the grid — precisely the "N stacks already there" case this proves.
+    const sim = new Simulation(
+      { ...testMap, dirtyStackHeight: 1 },
+      level({
+        queueString: "2,2,2",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;2|0;0;2|0;0;2|0;0;;2",
+        serveableSlots: 1,
+      }),
+      { instantFlights: false },
+    );
+    const complete = (kind: string) => {
+      const f = sim.flights.find((fl) => fl.kind === kind);
+      if (!f) throw new Error(`no pending flight of kind ${kind}`);
+      sim.completeFlight(f.id);
+    };
+
+    sim.pick(0);
+    sim.pick(0);
+    sim.pick(0); // three queue-to-grid flights now pending
+
+    complete("queue-to-grid"); // A's item lands -> matched to A
+    complete("grid-to-customer"); // A's dish fills -> A leaves, A's dirty dish launches
+    complete("customer-to-grid"); // A's dirty dish lands: 1 stack. B now seated.
+
+    complete("queue-to-grid"); // B's item lands -> matched to B
+    complete("grid-to-customer"); // B's dish fills -> B leaves, B's dirty dish launches
+    complete("customer-to-grid"); // B's dirty dish lands: 2 stacks. C now seated.
+    expect(sim.grid.filter((c) => c.kind === "dirty")).toHaveLength(2);
+
+    complete("queue-to-grid"); // C's item lands -> matched to C
+    complete("grid-to-customer"); // C's dish fills -> C leaves, staff seated NOW,
+    // seeing exactly A's + B's stacks (C's own dirty dish is a separate,
+    // still-pending "customer-to-grid" flight at this point).
+
+    const staffFlights = sim.flights.filter((f) => f.kind === "dirty-to-staff");
+    expect(staffFlights).toHaveLength(2);
+    const staffIndex = staffFlights[0].toCustomer!.index;
+    expect(sim.active.some((c) => c.index === staffIndex && c.isStaff)).toBe(true);
+
+    // Landing the first of the two stacks alone must not finish the staff.
+    sim.completeFlight(staffFlights[0].id);
+    expect(sim.active.some((c) => c.index === staffIndex)).toBe(true);
+    expect(sim.events.some((e) => e.type === "served" && e.customerIndex === staffIndex)).toBe(
+      false,
+    );
+
+    // The second (last) stack landing is what completes them.
+    sim.completeFlight(staffFlights[1].id);
+    expect(sim.active.some((c) => c.index === staffIndex)).toBe(false);
+    expect(sim.events.some((e) => e.type === "served" && e.customerIndex === staffIndex)).toBe(
+      true,
+    );
+  });
+
+  it("a staff with nothing to clear finishes immediately with no flight", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;;5" }),
+      { instantFlights: false },
+    );
+    expect(sim.flights.filter((f) => f.kind === "dirty-to-staff")).toHaveLength(0);
+    expect(sim.active).toHaveLength(0);
+    expect(sim.servedCount).toBe(1);
   });
 });
 

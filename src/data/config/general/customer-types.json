@@ -1,12 +1,12 @@
 {
-  "_note": "Not a ConfigTables block — the customer string has no type field, so a customer with an empty dish list is a staff member. Kept here so designers can extend the roster.",
+  "_note": "Customer type definition table. The id is the FIRST element of each customer in the level's customer config string (typeId;waitTime;weatherEff;dishes[;staffAmount]). Add new rows here for future types; their behavior must also be registered in src/core/effects.ts (registerCustomerType) — unregistered ids behave like a normal customer.",
   "types": [
     {
       "id": 0,
-      "name": "Normal",
+      "name": "Customer",
       "emoji": "🙂",
       "fileId": "",
-      "description": "Orders dishes.",
+      "description": "Orders dishes; served from the grid.",
       "paramDefs": []
     },
     {
@@ -14,7 +14,7 @@
       "name": "Staff",
       "emoji": "🧑‍🍳",
       "fileId": "",
-      "description": "Clears X oldest dirty stacks, needs no dishes, leaves immediately.",
+      "description": "Clears the oldest dirty stacks (staffAmount, 5th string element), orders nothing, leaves once they're cleared.",
       "paramDefs": [{ "name": "stackCount", "dataType": "int" }]
     }
   ]

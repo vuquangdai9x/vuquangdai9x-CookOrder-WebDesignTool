@@ -89,11 +89,21 @@ select {
 
 /* ---------- icons ---------- */
 
+/*
+ * Every .icon box has a fixed size from one of the descendant-selector rules
+ * below, so an emoji glyph and its replacement <img> always occupy the exact
+ * same box — the box never resizes when a Drive image finishes loading over
+ * the emoji fallback. `overflow: hidden` is the actual fix for the visible
+ * jump: an emoji glyph commonly renders a little larger than its font-size
+ * box and was spilling past it, so swapping in the image (clipped to the box
+ * via object-fit) looked like a shrink.
+ */
 .icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
+  overflow: hidden;
 }
 
 .icon img {
@@ -118,6 +128,13 @@ select {
   width: 1.15rem;
   height: 1.15rem;
   font-size: 0.9rem;
+}
+
+/* A customer's dish ingredients read at 1.5x the normal chip icon size. */
+.dish-chip .icon {
+  width: 1.725rem;
+  height: 1.725rem;
+  font-size: 1.35rem;
 }
 
 /* ---------- header ---------- */
@@ -151,6 +168,21 @@ header h1 {
   display: flex;
   gap: 0.4rem;
   align-items: center;
+}
+
+/* Below ~700px there isn't room for three labelled buttons next to the tabs
+   and origin text, so they collapse into one kebab menu with the same items. */
+.data-actions .collapsed-btn {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .data-actions .full-btn {
+    display: none;
+  }
+  .data-actions .collapsed-btn {
+    display: inline-block;
+  }
 }
 
 .data-origin {
@@ -204,6 +236,16 @@ footer {
 .field.small input,
 .field.small select {
   width: 6.5rem;
+}
+
+.map-settings {
+  margin-bottom: 0.5rem;
+  border-color: #5a5d68;
+}
+
+.map-settings-label {
+  color: var(--accent);
+  font-size: 0.85rem;
 }
 
 .warnings {
@@ -273,6 +315,23 @@ footer {
   margin-left: auto;
   display: flex;
   gap: 0.35rem;
+}
+
+/*
+ * The section's live canonical string, shown in the same header row as the
+ * title/Save/kebab (not a separate panel) — `flex-basis: 100%` on a wrapping
+ * flex row just pushes it onto its own line under those controls.
+ */
+.section-string {
+  flex-basis: 100%;
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 
 .dirty-badge {
@@ -382,6 +441,13 @@ footer {
   font-size: 0.72rem;
   color: var(--muted);
   padding: 0.2rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.staff-note input {
+  width: 3rem;
 }
 
 .dish-row {
@@ -416,6 +482,22 @@ footer {
 .chip.filled {
   border-color: var(--ok);
   opacity: 0.5;
+}
+
+/*
+ * Plays the instant a cooked ingredient lands on this specific chip, while it
+ * is still "unfilled" — briefly flashes its background bright before the
+ * chip settles into its normal dimmed .filled look on the next render.
+ */
+.chip.arrival-flash {
+  animation: chip-flash 0.16s ease-out;
+}
+
+@keyframes chip-flash {
+  from {
+    background: #fff6d6;
+    border-color: var(--ok);
+  }
 }
 
 .add-chip {
@@ -943,6 +1025,14 @@ footer {
   height: 1.6rem;
 }
 
+.enabled-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -1086,6 +1176,9 @@ td input {
   gap: 0.5rem;
   overflow-y: auto;
   --tile: 2.5rem;
+  /* Grid cells are sized to match the cooking-tool slots exactly (see .grid
+     below and .tool-slot above) — one shared value, set once. */
+  --slot-size: 3rem;
 }
 
 @media (max-width: 480px) {
@@ -1108,18 +1201,35 @@ td input {
 }
 
 /*
- * Customers / Grid+Tools / Queues split the play zone in strict equal thirds
- * (flex-basis 0 + grow 1, all three), rather than each tier sizing to its own
- * content — that used to let the middle tier balloon to fill whatever the
- * other two didn't need. Each tier's own content area scrolls internally
- * (see .customer-cards.play / .middle-split / .queue-lanes.play below) if it
- * doesn't fit its exact third, instead of pushing the layout taller.
+ * Vertical space policy: the middle tier (grid + tools) is content-sized — it
+ * takes exactly what the fixed-size board and tools strip need and no more —
+ * while the customers and queues tiers split ALL remaining height between
+ * them (queues slightly favoured, since it stacks 3 tiles per lane). Grid
+ * cells are a fixed size matching the tool slots (see .grid / .tool-slot), so
+ * "minimal fit" for the middle tier is well-defined. Queue tile size then
+ * derives from the queues tier's actual height via a container query, so the
+ * top + 2 preview items always fit — shrinking the tiles rather than
+ * truncating the previews when the tier is short.
  */
 .play-page > .play-section {
-  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.play-page > .customers-tier {
+  flex: 1 1 0;
+}
+
+.play-page > .middle-tier {
+  flex: 0 0 auto;
+}
+
+.play-page > .queues-tier {
+  flex: 1.4 1 0;
+  /* Size container so the queue tile size can be computed from this tier's
+     real height (cqh) — see the --tile rule on .queue-lanes.play. */
+  container-type: size;
 }
 
 .play-section h2 {
@@ -1154,20 +1264,25 @@ td input {
 }
 
 /* ---------- cooking tools ---------- */
-/* A single-row strip, sized to content — "keep it min size as possible". */
+/*
+ * The tools strip stretches to the full tier width; each tool's share is
+ * proportional to its own slot count (set inline as flex-grow per tool, see
+ * toolsEl() — a 2-slot tool gets twice a 1-slot tool's width). Each tool also
+ * gets its own background color (also inline, cycled from a small palette)
+ * so adjacent tools are visually distinct at a glance.
+ */
 
 .tools {
   display: flex;
   flex-direction: row;
   gap: 0.4rem;
-  overflow-x: auto;
-  align-items: flex-start;
+  align-items: stretch;
   padding-bottom: 0.15rem;
 }
 
 .tool {
-  flex: 0 0 auto;
-  background: var(--panel-2);
+  flex: 1 1 0;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.3rem 0.4rem;
@@ -1195,12 +1310,13 @@ td input {
   display: flex;
   gap: 0.3rem;
   flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
 .tool-slot {
   position: relative;
-  width: 3.4rem;
-  height: 3.4rem;
+  width: var(--slot-size, 3.4rem);
+  height: var(--slot-size, 3.4rem);
   border: 1px dashed var(--line);
   border-radius: 8px;
   display: flex;
@@ -1248,18 +1364,48 @@ td input {
 }
 
 /*
- * Play mode's queue row is horizontal and fixed at 5 columns worth of width —
- * each lane is exactly 20% regardless of how many queues actually exist, so 5
- * queues fill the row exactly with no wrap (fewer just leave the rest blank;
- * more scrolls rather than wrapping or shrinking below readable size).
+ * The Play-mode grid uses a fixed cell size (matching .tool-slot via
+ * --slot-size) instead of stretching to its container's width — sized to
+ * content and centered, so the board's own footprint is what determines
+ * whether it fits, not the tier's width.
+ */
+.play-page .grid {
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.play-page .cell {
+  width: var(--slot-size);
+  height: var(--slot-size);
+  aspect-ratio: unset;
+}
+
+/*
+ * Play mode's queue row is horizontal, fixed at 5 columns worth of width (each
+ * lane exactly 20%, so 5 queues fill the row with no wrap), and centered — an
+ * emptied queue is skipped by queuesTier() entirely rather than rendered as a
+ * blank lane, so the remaining lanes re-center as a group instead of leaving
+ * a gap where it was.
  */
 .queue-lanes.play {
   display: flex;
   flex-wrap: nowrap;
+  justify-content: center;
   flex: 1 1 auto;
   min-height: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  /*
+   * Tile size is derived from the queues tier's actual height (100cqh — the
+   * tier is a size container): whatever remains after the tier's fixed
+   * overhead (panel padding + h2 + lane head + inter-tile gaps ≈ 5rem) is
+   * split across the 3 visible items (top + 2 previews), so all three always
+   * fit — when the tier is short, the tiles shrink instead of the previews
+   * being cut off. Capped at 5rem (the 2x reading size) and floored at 2.2rem
+   * (below that the icons stop being recognizable; previews may clip then).
+   */
+  --tile: clamp(2.2rem, calc((100cqh - 5rem) / 3), 5rem);
 }
 
 .queue-lanes.play .queue-lane {
@@ -1270,14 +1416,19 @@ td input {
   min-height: 0;
 }
 
-/* One ingredient per row inside a queue: top tile, then its previews, stacked. */
+/*
+ * One ingredient per row inside a queue: top tile, then its previews, stacked.
+ * If the tier isn't tall enough for all of them at this size, the extra
+ * tile(s) are clipped rather than scrolled — "truncated, don't create a
+ * scroll bar".
+ */
 .queue-lanes.play .lane-tiles {
   display: flex;
   flex-direction: column;
   align-items: center;
   flex-wrap: nowrap;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 .queue-lanes.play .queue-tile.top {
@@ -1416,5 +1567,56 @@ td input {
 .overlay .sub {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+/* Blocking image-preload overlay — above .overlay-panel (40) and .overlay (30)
+   since it can appear on top of either during a map switch mid-play/design. */
+.preload-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 15, 18, 0.85);
+  z-index: 60;
+}
+
+.preload-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--panel);
+  border: 1px solid #5a5d68;
+  border-radius: 10px;
+  padding: 1.5rem 2rem;
+  min-width: 16rem;
+  box-shadow: 0 8px 24px #0008;
+}
+
+.preload-label {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.preload-bar-track {
+  width: 100%;
+  height: 0.5rem;
+  border-radius: 4px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.preload-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.15s ease-out;
+}
+
+.preload-skip {
+  align-self: flex-end;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
 }
 

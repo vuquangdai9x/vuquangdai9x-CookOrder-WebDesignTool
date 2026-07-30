@@ -13,12 +13,13 @@ import type {
 } from "../../core/types.ts";
 import type { LevelData, MapData } from "../../data/mapLoader.ts";
 import { toMapDef } from "../../data/mapLoader.ts";
+import { TAGS, WEATHER } from "../../data/configLoader.ts";
 import { validateMap } from "../../data/validate.ts";
 import { button, el } from "../dom.ts";
 import { cellIconEl, ingredientIconEl, statusIconEl } from "../icon.ts";
 import type { Section } from "./section.ts";
 import { createCustomerSection } from "./customerSection.ts";
-import { createGridSection } from "./gridSection.ts";
+import { createGridSection, resizeGridString } from "./gridSection.ts";
 import { createQueueSection } from "./queueSection.ts";
 import { tableEditor } from "./tableEditor.ts";
 
@@ -98,6 +99,7 @@ export class DesignView {
     });
 
     this.root.replaceChildren(
+      this.mapSettingsBar(),
       this.levelBar(),
       this.warningsEl,
       // Customer on top, grid in the middle, queues on the bottom.
@@ -106,6 +108,56 @@ export class DesignView {
       this.queues.element,
     );
     this.refreshWarnings();
+  }
+
+  /**
+   * Grid Cols/Rows and dirty-stack height are fixed per map, not per level —
+   * one edit here applies to every level at once (see docs request: "no need
+   * to config for each level").
+   */
+  private mapSettingsBar(): HTMLElement {
+    const dimField = (
+      label: string,
+      value: number,
+      apply: (v: number) => void,
+    ) => {
+      const input = el("input", {
+        type: "number",
+        value: String(value),
+        min: "1",
+      }) as HTMLInputElement;
+      input.addEventListener("change", () => {
+        apply(Math.max(1, Number(input.value) || 1));
+        for (const level of this.map.levels) {
+          level.gridString = resizeGridString(
+            level.gridString,
+            this.map.gridWidth,
+            this.map.gridHeight,
+          );
+        }
+        this.onChange();
+        this.build(); // grid section must re-parse every level's resized string
+      });
+      return el("label", { class: "field small" }, [label, input]);
+    };
+
+    const stackInput = el("input", {
+      type: "number",
+      value: String(this.map.dirtyStackHeight),
+      min: "1",
+    }) as HTMLInputElement;
+    stackInput.addEventListener("change", () => {
+      this.map.dirtyStackHeight = Math.max(1, Number(stackInput.value) || 1);
+      this.onChange();
+    });
+
+    return el("div", { class: "level-bar map-settings" }, [
+      el("strong", { class: "map-settings-label" }, [`Map: ${this.map.name}`]),
+      dimField("Grid Cols", this.map.gridWidth, (v) => (this.map.gridWidth = v)),
+      dimField("Grid Rows", this.map.gridHeight, (v) => (this.map.gridHeight = v)),
+      el("label", { class: "field small" }, ["Dirty stack", stackInput]),
+      el("small", { class: "muted" }, ["Applies to every level in this map"]),
+    ]);
   }
 
   private levelBar(): HTMLElement {
@@ -133,16 +185,38 @@ export class DesignView {
       return el("label", { class: "field small" }, [label, input]);
     };
 
+    // Weather/Tag are fixed enums loaded from general/weather.json and
+    // general/tags.json; the current value is added as an extra option if
+    // it's somehow not one of the known ones, so old/unexpected data never
+    // gets silently clobbered by picking a select option.
+    const selectField = (
+      label: string,
+      options: { id: string; name: string }[],
+      value: string,
+      apply: (v: string) => void,
+    ) => {
+      const select = el("select", {}) as HTMLSelectElement;
+      const known = options.some((o) => o.id === value);
+      const all = known ? options : [{ id: value, name: `${value || "(blank)"} (unknown)` }, ...options];
+      for (const o of all) {
+        const opt = el("option", { value: o.id }, [o.name || "(blank)"]);
+        if (o.id === value) (opt as HTMLOptionElement).selected = true;
+        select.append(opt);
+      }
+      select.addEventListener("change", () => {
+        apply(select.value);
+        this.onChange();
+      });
+      return el("label", { class: "field small" }, [label, select]);
+    };
+
     return el("div", { class: "level-bar" }, [
       el("label", { class: "field small" }, ["Level", picker]),
-      metaField("Weather", this.level.weather, "text", (v) => (this.level.weather = v)),
-      metaField("Tag", this.level.levelTag, "text", (v) => (this.level.levelTag = v)),
+      selectField("Weather", WEATHER.map((w) => ({ id: w.id, name: w.id })), this.level.weather, (v) => (this.level.weather = v)),
+      selectField("Tag", TAGS, this.level.levelTag, (v) => (this.level.levelTag = v)),
       metaField("Unlock", this.level.featureUnlock, "text", (v) => (this.level.featureUnlock = v)),
       metaField("Serve slots", this.level.serveableSlots, "number", (v) =>
         (this.level.serveableSlots = Math.max(1, Number(v) || 1)),
-      ),
-      metaField("Dirty stack", this.level.dirtyStackHeight, "number", (v) =>
-        (this.level.dirtyStackHeight = Math.max(1, Number(v) || 1)),
       ),
       el("span", { class: "spacer" }),
       button("+ Level", () => this.addLevel()),
@@ -153,19 +227,17 @@ export class DesignView {
 
   private addLevel(): void {
     const id = Math.max(0, ...this.map.levels.map((l) => l.id)) + 1;
+    const blankGrid = Array(this.map.gridWidth * this.map.gridHeight).fill("").join(",");
     this.map.levels.push({
       id,
       name: `${this.map.id}_${id}`,
       weather: "Normal",
       levelTag: "",
       featureUnlock: "",
-      gridWidth: 5,
-      gridHeight: 2,
       serveableSlots: 2,
-      dirtyStackHeight: 5,
       shuffleDistance: 0,
       queueString: "0,1%0,1%0,1",
-      gridString: ",,,,,,,,,",
+      gridString: blankGrid,
       customerString: "0;0;0.1",
     });
     this.onChange();
@@ -190,6 +262,25 @@ export class DesignView {
     }
     this.warningsEl.append(el("strong", {}, [`⚠ ${warnings.length} warning(s)`]));
     for (const w of warnings) this.warningsEl.append(el("div", {}, [w.message]));
+  }
+
+  /**
+   * "Enabled" checkbox for a raw/cooked ingredient row: unticking adds its id
+   * to the given disabled-id list on the map. Play mode strips disabled ids
+   * from queues/orders before the level starts; Design mode (here) keeps
+   * showing and editing the row normally either way.
+   */
+  private enabledToggle(id: number, disabledIds: number[]): HTMLElement {
+    const checkbox = el("input", { type: "checkbox" }) as HTMLInputElement;
+    checkbox.checked = !disabledIds.includes(id);
+    checkbox.title = "Unchecked = skipped by Play mode (queues and orders)";
+    checkbox.addEventListener("change", () => {
+      const at = disabledIds.indexOf(id);
+      if (checkbox.checked && at !== -1) disabledIds.splice(at, 1);
+      else if (!checkbox.checked && at === -1) disabledIds.push(id);
+      this.onChange();
+    });
+    return el("label", { class: "enabled-toggle" }, [checkbox, "Enabled"]);
   }
 
   // ---------- definitions overlay ----------
@@ -254,7 +345,11 @@ export class DesignView {
           numSlices: 1,
         }),
         onChange: touch,
-        subEditor: (row) => el("div", { class: "def-sub" }, [ingredientIconEl(row.id, 64)]),
+        subEditor: (row) =>
+          el("div", { class: "def-sub" }, [
+            ingredientIconEl(row.id, 64),
+            this.enabledToggle(row.id, this.map.disabledRawIds),
+          ]),
       }),
       tableEditor({
         title: `Cooked ingredients — ${this.map.name}`,
@@ -270,6 +365,8 @@ export class DesignView {
           icon: "",
         }),
         onChange: touch,
+        subEditor: (row) =>
+          el("div", { class: "def-sub" }, [this.enabledToggle(row.id, this.map.disabledCookedIds)]),
       }),
       tableEditor({
         title: `Cooking tools — ${this.map.name}`,

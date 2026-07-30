@@ -24,7 +24,14 @@ import type {
 import { findToolRecipe } from "../../core/types.ts";
 import { KEY_COLORS } from "../../data/configLoader.ts";
 import { button, clear, el } from "../dom.ts";
-import { cellIconEl, cookedIconEl, ingredientIconEl, statusIconEl, toolIconEl } from "../icon.ts";
+import {
+  cellIconEl,
+  cookedIconEl,
+  customerTypeIconEl,
+  ingredientIconEl,
+  statusIconEl,
+  toolIconEl,
+} from "../icon.ts";
 import { centerOf, EffectsLayer } from "./effectsLayer.ts";
 import type { Point } from "./effectsLayer.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
@@ -38,6 +45,9 @@ const SPEED_OPTIONS = [
 ] as const;
 
 type SpeedId = (typeof SPEED_OPTIONS)[number]["id"];
+
+/** Cycled by position so adjacent tools always read as visually distinct. */
+const TOOL_COLORS = ["#3a4a5c", "#4a3a5c", "#3a5c4a", "#5c4a3a", "#5c3a4a", "#3a5c5c"];
 
 export class PlayView {
   private root: HTMLElement;
@@ -93,6 +103,17 @@ export class PlayView {
    * appeared to launch from lane 1 regardless of which lane was picked.
    */
   private lastPickOrigin: Point | null = null;
+  /** Customer/mystery indices rendered in the customers tier last build, so a
+   *  rebuild can tell which card(s) are newly appearing and slide them in
+   *  instead of just cutting straight to the finished layout. */
+  private lastCustomerIndices = new Set<number>();
+  /**
+   * Queue index the player just picked from, consumed by the next queues-tier
+   * rebuild: that lane's remaining tiles animate sliding up into their new
+   * positions (and the newly revealed bottom preview fades in) instead of the
+   * lane just snapping to its post-pick state.
+   */
+  private lastPickedLane: number | null = null;
 
   constructor(
     root: HTMLElement,
@@ -135,9 +156,10 @@ export class PlayView {
       this.lastFrame = now;
       if (!this.paused && this.sim.status === "playing") {
         if (this.skipMode) {
-          // Skip resolves flights and cooking without waiting on animation.
-          this.sim.completeAllFlights();
-          this.sim.tick(dt * 8);
+          // Skip is instant, not just fast: fastForward() jumps cooking
+          // straight to each completion rather than approximating it with an
+          // accelerated tick, then stops the moment the level needs a pick.
+          this.sim.fastForward();
         } else {
           this.sim.tick(dt * this.rate);
         }
@@ -166,7 +188,14 @@ export class PlayView {
 
   /** Starts an animation for every new flight; the sim commits it on arrival. */
   private dispatchFlights(): void {
-    for (const flight of this.sim.flights) {
+    // A snapshot, not a live view: completeFlight() below splices sim.flights,
+    // and iterating the array being spliced mid-for-of skips whichever flight
+    // shifts into the just-visited slot. Left unresolved, it lingers into a
+    // later call — including the very next pick after switching modes, where
+    // it can wrongly consume that pick's captured origin (see lastPickOrigin)
+    // and leave the real new flight to fall back to a stale position. This is
+    // the root cause of "switch to skip, back to x1, next fly doesn't play".
+    for (const flight of [...this.sim.flights]) {
       if (this.animating.has(flight.id)) continue;
       this.animating.add(flight.id);
 
@@ -197,13 +226,61 @@ export class PlayView {
           : cookedIconEl(flight.itemId, 96);
       const payload = el("div", { class: `fx-item${isDirty ? " dirty" : ""}` }, [icon]);
 
+      // The exact chip a grid-to-customer flight is landing on, captured now
+      // (flightTarget already resolved it) — needed so the arrival flash can
+      // be applied to *that* element once the flight lands.
+      const targetChip =
+        flight.kind === "grid-to-customer"
+          ? this.page.querySelector<HTMLElement>(
+              `[data-customer="${flight.toCustomer!.index}"] [data-dish-ingredient="${flight.itemId}"]:not(.filled)`,
+            )
+          : null;
+
+      // The sim only clears the source cell once this flight lands (see
+      // Simulation.completeFlight), but visually the item should leave the
+      // grid the moment it takes off — otherwise it sits duplicated in the
+      // cell for the whole flight, next to its own flying copy.
+      if (flight.kind === "grid-to-customer" && flight.fromCell !== undefined) {
+        this.page
+          .querySelector(`[data-cell="${flight.fromCell}"] .cell-main`)
+          ?.remove();
+      }
+
       void this.fx
         .fly(payload, from, to, { durationMs: 420 / Math.max(1, this.rate) })
+        .then(() => this.onFlightLanded(flight, to, targetChip))
         .then(() => {
           this.sim.completeFlight(flight.id);
           this.animating.delete(flight.id);
         });
     }
+  }
+
+  /**
+   * Per-kind landing feedback, played on the still-pre-completion state (the
+   * chip is still "unfilled", the stack is still on the grid) so it reads as
+   * marking *this* arrival rather than a generic after-the-fact effect.
+   * Resolves once any such feedback has had a moment to be seen; the caller
+   * commits the flight's real state change only after this settles.
+   */
+  private onFlightLanded(
+    flight: Flight,
+    at: Point,
+    targetChip: HTMLElement | null,
+  ): Promise<void> {
+    if (this.skipMode) return Promise.resolve();
+
+    if (flight.kind === "grid-to-customer" && targetChip) {
+      this.fx.burst(at, 8);
+      targetChip.classList.add("arrival-flash");
+      // Flash while still unfilled, *then* let completeFlight dim it — a
+      // fixed short beat is enough to read as "this one just arrived".
+      return new Promise((resolve) => setTimeout(resolve, 160));
+    }
+    if (flight.kind === "dirty-to-staff") {
+      this.fx.burst(at, 8);
+    }
+    return Promise.resolve();
   }
 
   private flightOrigin(flight: Flight) {
@@ -250,7 +327,17 @@ export class PlayView {
     }
     if (flight.toCustomer) {
       const card = this.page.querySelector(`[data-customer="${flight.toCustomer.index}"]`);
-      return card ? centerOf(card) : null;
+      if (!card) return null;
+      if (flight.kind === "grid-to-customer") {
+        // Aim at the specific unfilled chip this item satisfies, not just the
+        // card in general — that's what lets the arrival flash/burst land
+        // exactly on "the matching ingredient position".
+        const chip = card.querySelector(
+          `[data-dish-ingredient="${flight.itemId}"]:not(.filled)`,
+        );
+        if (chip) return centerOf(chip);
+      }
+      return centerOf(card);
     }
     return null;
   }
@@ -364,6 +451,7 @@ export class PlayView {
     this.barEls.clear();
     clear(this.page);
     this.customersEl = this.customersTier();
+    this.lastCustomerIndices = this.currentCustomerIndices();
     this.middleEl = this.middleTier();
     this.queuesEl = this.queuesTier();
     this.customersKey = customersStructureKey(this.sim);
@@ -395,16 +483,20 @@ export class PlayView {
       this.queuesEl.replaceWith(next);
       this.queuesEl = next;
       this.queuesKey = nextQueues;
+      this.animatePickedLaneShift();
     }
 
     if (this.pendingExits.size === 0) {
       const nextCustomers = customersStructureKey(this.sim);
       if (nextCustomers !== this.customersKey) {
         this.timerEls.clear(); // only customerCard() populates this
+        const previousIndices = this.lastCustomerIndices;
         const next = this.customersTier();
         this.customersEl.replaceWith(next);
         this.customersEl = next;
         this.customersKey = nextCustomers;
+        this.lastCustomerIndices = this.currentCustomerIndices();
+        this.slideInNewCustomers(previousIndices);
       }
     }
 
@@ -412,8 +504,82 @@ export class PlayView {
     this.patchLiveValues();
   }
 
+  /**
+   * After a pick rebuilds the queues tier, the picked lane's tiles don't just
+   * snap into place: the picked item is already gone (it left as the flight),
+   * so every remaining tile starts one slot lower — where it visually was a
+   * moment ago — and slides up into its new position. The tile that just
+   * scrolled into the preview window (the new bottom item) additionally fades
+   * in, reading as "added at the bottom" rather than having always been there.
+   */
+  private animatePickedLaneShift(): void {
+    const lane = this.lastPickedLane;
+    this.lastPickedLane = null;
+    if (lane === null || this.skipMode) return;
+
+    const laneEl = this.queuesEl.querySelector(`[data-lane="${lane}"]`);
+    if (!laneEl) return; // the pick emptied the queue; the lane is gone entirely
+    const tiles = [...laneEl.querySelectorAll<HTMLElement>(".queue-tile")];
+    if (tiles.length === 0) return;
+
+    // One slot's travel = distance between two adjacent tiles in the new
+    // layout (covers tile height + gap); single-tile lanes fall back to the
+    // tile's own height plus the 0.25rem gap.
+    const step =
+      tiles.length > 1
+        ? tiles[1].getBoundingClientRect().top - tiles[0].getBoundingClientRect().top
+        : tiles[0].getBoundingClientRect().height + 4;
+
+    tiles.forEach((tile, i) => {
+      // Only a full window (top + 2 previews) has a newly revealed tile: the
+      // new 3rd tile was the old 4th item, previously outside the preview
+      // window. With fewer tiles, everything shown was already visible.
+      const revealed = tiles.length === 3 && i === 2;
+      tile.animate(
+        [
+          { transform: `translateY(${step}px)`, opacity: revealed ? 0 : 1 },
+          { transform: "translateY(0)", opacity: 1 },
+        ],
+        { duration: 240, easing: "cubic-bezier(.2,.8,.3,1)", delay: i * 25 },
+      );
+    });
+  }
+
+  /** Every customer/mystery index currently rendered in the customers tier. */
+  private currentCustomerIndices(): Set<number> {
+    return new Set(
+      [...this.customersEl.querySelectorAll<HTMLElement>("[data-customer]")].map((el) =>
+        Number(el.dataset.customer),
+      ),
+    );
+  }
+
+  /**
+   * "When a customer/staff disappears, don't just remove and redraw — play
+   * an animation moving the next customer/staff in": whichever card(s) are
+   * newly present compared to the previous build slide in from the side and
+   * fade up, instead of the whole row just appearing in its finished state.
+   */
+  private slideInNewCustomers(previousIndices: Set<number>): void {
+    const cards = this.customersEl.querySelectorAll<HTMLElement>("[data-customer]");
+    for (const card of cards) {
+      const idx = Number(card.dataset.customer);
+      if (previousIndices.has(idx)) continue; // already on screen before this rebuild
+      card.animate(
+        [
+          { transform: "translateX(24px) scale(0.9)", opacity: 0 },
+          { transform: "translateX(0) scale(1)", opacity: 1 },
+        ],
+        { duration: 320, easing: "cubic-bezier(.2,.8,.3,1)" },
+      );
+    }
+  }
+
   private syncOverlay(): void {
-    const shouldShow = this.sim.status !== "playing";
+    // Wait for every still-flying item to land first — the overlay is opaque
+    // and full-screen, so popping it up the instant the sim ends would hide
+    // whatever's mid-flight behind it instead of letting it finish landing.
+    const shouldShow = this.sim.status !== "playing" && this.animating.size === 0;
     if (shouldShow && !this.overlayEl) {
       this.overlayEl = this.overlay();
       this.page.append(this.overlayEl);
@@ -514,7 +680,7 @@ export class PlayView {
     // scrolling to see the 2nd/3rd card (a flex+overflow row let that happen).
     const count = sim.active.length + (next ? 1 : 0);
     row.style.gridTemplateColumns = `repeat(${Math.max(1, count)}, 1fr)`;
-    return el("section", { class: "play-section" }, [
+    return el("section", { class: "play-section customers-tier" }, [
       el("h2", {}, [`Customers — ${sim.level.serveableSlots} serve slot(s)`]),
       row,
     ]);
@@ -529,7 +695,9 @@ export class PlayView {
     if (servable) this.timerEls.set(c.index, timer);
     card.append(
       el("div", { class: "customer-head" }, [
-        el("span", { class: "cust-index" }, [c.isStaff ? "🧑‍🍳" : `#${c.index + 1}`]),
+        c.isStaff
+          ? el("span", { class: "cust-index" }, [customerTypeIconEl(c.config.typeId, 48)])
+          : el("span", { class: "cust-index" }, [`#${c.index + 1}`]),
         timer,
       ]),
     );
@@ -540,10 +708,16 @@ export class PlayView {
     for (const dish of c.dishes) {
       const row = el("div", { class: "dish-row" });
       for (const id of dish.filled) {
-        row.append(el("span", { class: "chip icon-chip filled" }, [cookedIconEl(id, 64)]));
+        row.append(el("span", {
+          class: "chip icon-chip dish-chip filled",
+          "data-dish-ingredient": String(id),
+        }, [cookedIconEl(id, 64)]));
       }
       for (const id of dish.remaining) {
-        row.append(el("span", { class: "chip icon-chip" }, [cookedIconEl(id, 64)]));
+        row.append(el("span", {
+          class: "chip icon-chip dish-chip",
+          "data-dish-ingredient": String(id),
+        }, [cookedIconEl(id, 64)]));
       }
       card.append(row);
     }
@@ -571,7 +745,7 @@ export class PlayView {
     return el("section", { class: "play-section middle-tier" }, [
       el("div", { class: "middle-split" }, [
         el("div", { class: "middle-left" }, [
-          el("h2", {}, [`Grid ${this.level.gridWidth}×${this.level.gridHeight}`]),
+          el("h2", {}, [`Grid ${this.map.gridWidth}×${this.map.gridHeight}`]),
           this.gridEl(),
         ]),
         el("div", { class: "middle-right" }, [
@@ -585,7 +759,7 @@ export class PlayView {
   private gridEl(): HTMLElement {
     const sim = this.sim;
     const grid = el("div", { class: "grid" });
-    grid.style.gridTemplateColumns = `repeat(${sim.level.gridWidth}, 1fr)`;
+    grid.style.gridTemplateColumns = `repeat(${sim.map.gridWidth}, 1fr)`;
 
     for (let i = 0; i < sim.grid.length; i++) {
       const content = sim.grid[i];
@@ -636,7 +810,7 @@ export class PlayView {
       wrap.append(el("small", { class: "muted" }, ["This map defines no cooking tools."]));
       return wrap;
     }
-    for (const tool of this.sim.tools) {
+    this.sim.tools.forEach((tool, toolIndex) => {
       const slots = el("div", { class: "tool-slots" });
       tool.slots.forEach((slot, i) => {
         const bar = el("div", { class: "bar" });
@@ -653,19 +827,23 @@ export class PlayView {
       });
       // Compact: name + slot/time detail live in the tooltip, not on screen —
       // this row is meant to take as little vertical space as possible.
-      wrap.append(
-        el("div", {
-          class: "tool",
-          title: `${tool.def.name} — ${tool.def.numSlots} slot(s) · ${tool.def.cookingTime}s`,
-        }, [
-          el("div", { class: "tool-head" }, [
-            toolIconEl(tool.def, 64),
-            el("span", { class: "tool-name" }, [tool.def.name]),
-          ]),
-          slots,
+      const toolEl = el("div", {
+        class: "tool",
+        title: `${tool.def.name} — ${tool.def.numSlots} slot(s) · ${tool.def.cookingTime}s`,
+      }, [
+        el("div", { class: "tool-head" }, [
+          toolIconEl(tool.def, 64),
+          el("span", { class: "tool-name" }, [tool.def.name]),
         ]),
-      );
-    }
+        slots,
+      ]);
+      // Width share proportional to slot count (a 2-slot tool gets twice a
+      // 1-slot tool's width of the full-width strip); a distinct background
+      // per tool so adjacent ones are visually distinct at a glance.
+      toolEl.style.flexGrow = String(Math.max(1, tool.def.numSlots));
+      toolEl.style.background = TOOL_COLORS[toolIndex % TOOL_COLORS.length];
+      wrap.append(toolEl);
+    });
     return wrap;
   }
 
@@ -682,8 +860,12 @@ export class PlayView {
 
     const lanes = el("div", { class: "queue-lanes play" });
     sim.queues.forEach((queue, qi) => {
+      // An emptied queue disappears entirely rather than lingering as a blank
+      // lane — the remaining lanes then re-center as a group (see the
+      // .queue-lanes.play justify-content:center rule).
+      if (queue.length === 0) return;
       const check = sim.canPick(qi);
-      const lane = el("div", { class: "queue-lane" }, [
+      const lane = el("div", { class: "queue-lane", "data-lane": String(qi) }, [
         el("div", { class: "lane-head" }, [
           el("span", {}, [`Queue ${qi + 1}`]),
           el("small", {}, [`${queue.length}`]),
@@ -691,29 +873,27 @@ export class PlayView {
       ]);
       const tiles = el("div", { class: "lane-tiles" });
 
+      // queue.length === 0 already returned above, so there's always a top item.
       const top = queue[0];
-      if (top) {
-        const tile = this.queueTile(top, {
-          top: true,
-          wanted: wantedRaw.has(top.id),
-          disabled: !check.ok,
+      const tile = this.queueTile(top, {
+        top: true,
+        wanted: wantedRaw.has(top.id),
+        disabled: !check.ok,
+      });
+      tile.title = check.reason ?? "Pick this ingredient";
+      if (check.ok) {
+        tile.addEventListener("click", () => {
+          // Capture before pick() removes this tile from the queue and the
+          // tier re-renders — this is the only moment its real position exists.
+          this.lastPickOrigin = centerOf(tile);
+          this.lastPickedLane = qi;
+          this.sim.pick(qi);
+          this.dispatchFlights();
+          this.playCelebrations();
+          this.syncPage();
         });
-        tile.title = check.reason ?? "Pick this ingredient";
-        if (check.ok) {
-          tile.addEventListener("click", () => {
-            // Capture before pick() removes this tile from the queue and the
-            // tier re-renders — this is the only moment its real position exists.
-            this.lastPickOrigin = centerOf(tile);
-            this.sim.pick(qi);
-            this.dispatchFlights();
-            this.playCelebrations();
-            this.syncPage();
-          });
-        }
-        tiles.append(tile);
-      } else {
-        tiles.append(el("div", { class: "queue-tile empty" }, ["—"]));
       }
+      tiles.append(tile);
       for (const item of queue.slice(1, 3)) {
         tiles.append(this.queueTile(item, { preview: true }));
       }
@@ -721,7 +901,7 @@ export class PlayView {
       lanes.append(lane);
     });
 
-    return el("section", { class: "play-section" }, [
+    return el("section", { class: "play-section queues-tier" }, [
       el("h2", {}, ["Ingredient queues — click the top tile to pick"]),
       lanes,
     ]);

@@ -19,8 +19,19 @@ export function driveThumbUrl(fileId: string, size = 128): string {
 }
 
 /**
- * Renders an icon as a Drive <img>, keeping the emoji fallback in place until
- * the image actually loads (and restoring it if the load fails).
+ * fileIds confirmed already loaded, populated by imagePreload.ts. iconEl()
+ * consults this so a preloaded icon renders its image on the very first
+ * paint instead of the emoji-then-swap flash — the whole point of preloading.
+ */
+export const preloadedFileIds = new Set<string>();
+
+/**
+ * Renders an icon as a Drive <img>. If this fileId was already preloaded, the
+ * image is used immediately (still with an error fallback as a safety net —
+ * a prior success doesn't guarantee this exact request succeeds too).
+ * Otherwise, keeps the emoji fallback in place until the image loads (and
+ * restores it if the load fails) — the tool's normal lazy behavior, and what
+ * skipping the preload falls back to.
  */
 export function iconEl(
   spec: IconSpec | undefined,
@@ -31,15 +42,23 @@ export function iconEl(
   wrap.title = spec?.name ?? "";
   if (!spec?.fileId) return wrap;
 
+  const preloaded = preloadedFileIds.has(spec.fileId);
   const img = el("img", {
     src: driveThumbUrl(spec.fileId, opts.size ?? 128),
     alt: spec.name,
-    loading: "lazy",
+    loading: preloaded ? "eager" : "lazy",
   }) as HTMLImageElement;
   img.addEventListener("error", () => {
     img.remove();
     wrap.classList.add("icon-fallback");
   });
+
+  if (preloaded) {
+    wrap.textContent = "";
+    wrap.append(img);
+    return wrap;
+  }
+
   img.addEventListener("load", () => {
     wrap.textContent = "";
     wrap.append(img);
@@ -52,10 +71,16 @@ export function iconEl(
 // The active map is set once by the app shell so the section renderers can ask
 // for an icon by id without threading the map through every call.
 
-let activeMap: MapDef | { rawIngredients: MapDef["rawIngredients"]; cookedIngredients: MapDef["cookedIngredients"]; tools: CookingToolDef[] } =
-  MAP1_DATA as unknown as MapDef;
+interface IconMapSource {
+  rawIngredients: MapDef["rawIngredients"];
+  cookedIngredients: MapDef["cookedIngredients"];
+  tools: CookingToolDef[];
+}
 
-export function setIconMap(map: MapDef): void {
+let activeMap: IconMapSource = MAP1_DATA as unknown as MapDef;
+
+/** Called whenever the active map is established or changes (see main.ts). */
+export function setIconMap(map: IconMapSource): void {
   activeMap = map;
 }
 
@@ -81,6 +106,9 @@ export const statusIconEl = (id: number, size?: number) =>
 
 export const cellIconEl = (id: number, size?: number) =>
   iconEl(defSpec(GLOBAL_DEFS.cellTypes, id), { size, className: "icon-cell" });
+
+export const customerTypeIconEl = (id: number, size?: number) =>
+  iconEl(defSpec(GLOBAL_DEFS.customerTypes, id), { size, className: "icon-customer-type" });
 
 export const toolIconEl = (tool: CookingToolDef, size?: number) =>
   iconEl({ name: tool.name, emoji: tool.icon ?? "🍳", fileId: tool.fileId }, {

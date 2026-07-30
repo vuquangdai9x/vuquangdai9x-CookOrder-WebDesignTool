@@ -30,8 +30,8 @@ export function validateMap(map: MapData): LevelWarning[] {
     const itemCount = queues.reduce((n, q) => n + q.length, 0);
     if (itemCount === 0) add("No ingredients in any queue — level is unplayable.");
 
-    if (grid.length !== level.gridWidth * level.gridHeight) {
-      add(`Grid has ${grid.length} cells but is declared ${level.gridWidth}×${level.gridHeight}.`);
+    if (grid.length !== map.gridWidth * map.gridHeight) {
+      add(`Grid has ${grid.length} cells but the map declares ${map.gridWidth}×${map.gridHeight}.`);
     }
 
     const unknownRaw = queues

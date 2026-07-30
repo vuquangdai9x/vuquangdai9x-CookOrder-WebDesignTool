@@ -3,5 +3,11 @@
   "id": "chicken_fried",
   "name": "Fried Chicken",
   "dirtyDishName": "box",
-  "numLevels": 25
+  "numLevels": 25,
+  "gridWidth": 5,
+  "gridHeight": 2,
+  "dirtyStackHeight": 5,
+  "_note": "No level data is imported for this map yet, so these are placeholder defaults matching Map 1 rather than confirmed sheet values.",
+  "disabledRawIds": [],
+  "disabledCookedIds": []
 }

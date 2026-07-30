@@ -18,6 +18,13 @@ export interface SectionOptions<T> {
   /** Extra kebab-menu entries beyond Undo/Redo. */
   menuItems?(draft: T): MenuItem[];
   /**
+   * Renders the draft's current canonical string (the same format saved to
+   * the level) inline in the header, next to the title/Save/kebab, so a
+   * designer can see the exact string a level would serialize to without
+   * opening dev tools. Recomputed on every render.
+   */
+  stringPreview?(draft: T): string;
+  /**
    * Extra buttons rendered in the header, before Save (e.g. the queue
    * section's "＋ Queue"). Built once at construction time with the `Section`
    * instance itself — not a snapshot of `draft` — so a click handler that
@@ -44,6 +51,7 @@ export class Section<T> {
   private body: HTMLElement;
   private badge: HTMLElement;
   private counters: HTMLElement;
+  private stringEl: HTMLElement | null = null;
   private opts: SectionOptions<T>;
 
   constructor(opts: SectionOptions<T>) {
@@ -54,6 +62,8 @@ export class Section<T> {
     this.body = el("div", { class: "section-body" });
     this.history = new History<T>(this.draft, () => this.refreshHeader());
 
+    if (opts.stringPreview) this.stringEl = el("code", { class: "section-string" });
+
     const header = el("div", { class: "section-head" }, [
       el("h2", {}, [opts.title]),
       this.badge,
@@ -63,6 +73,7 @@ export class Section<T> {
         button(opts.saveLabel, () => this.commitSave(), { class: "primary" }),
         button("⋮", (e) => this.openMenu(e), { class: "kebab", title: "More actions" }),
       ]),
+      ...(this.stringEl ? [this.stringEl] : []),
     ]);
 
     this.element = el("section", { class: "design-section", tabindex: "0" }, [
@@ -84,6 +95,9 @@ export class Section<T> {
     this.body.replaceChildren();
     this.opts.renderBody(this.draft, this.body);
     this.refreshHeader();
+    if (this.stringEl && this.opts.stringPreview) {
+      this.stringEl.textContent = this.opts.stringPreview(this.draft) || "(empty)";
+    }
   }
 
   /** Replaces the draft wholesale (level switch) and resets history. */

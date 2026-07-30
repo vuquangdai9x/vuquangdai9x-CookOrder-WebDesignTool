@@ -16,7 +16,8 @@ import type { LevelData, MapData } from "./mapLoader.ts";
 import { toMapDef } from "./mapLoader.ts";
 import { GLOBAL_DEFS, MAP1_DATA } from "./configLoader.ts";
 
-export const SHEET_ID = "1wayrsZlHCTtuMGD1Qft2Fmaeb19b-ULfO2F6abTlAEA";
+//export const SHEET_ID = "1wayrsZlHCTtuMGD1Qft2Fmaeb19b-ULfO2F6abTlAEA";
+export const SHEET_ID = "1gfezXsHHO5y0Tb1r3IEXGLM6gUOSF2TD0QSDMBjFutQ";
 
 /** Tab name -> gid, discovered from the sheet (docs/SHEET_STRUCTURE.md). */
 export const TAB_GIDS = {
@@ -90,10 +91,7 @@ async function loadMapLevels(mapId: number, firstLevelId: number): Promise<Level
       weather: lv.weather,
       levelTag: lv.levelTag,
       featureUnlock: lv.featureUnlock,
-      gridWidth: GRID_W,
-      gridHeight: GRID_H,
       serveableSlots: 2,
-      dirtyStackHeight: 5,
       shuffleDistance: q.shuffleDistance,
       queueString: q.queueString,
       gridString: lv.gridString,
@@ -140,19 +138,23 @@ function toCsv(rows: (string | number)[][]): string {
 export function levelsCsv(map: MapData): string {
   const header = [
     "Level_ID", "Name", "Weather", "LevelTag", "FeatureUnlock", "ShuffleDistance",
-    "GridWidth", "GridHeight", "ServeableSlots", "DirtyStackHeight",
-    "QueueString", "GridString", "CustomerString",
+    "ServeableSlots", "QueueString", "GridString", "CustomerString",
   ];
   const rows = map.levels.map((l) => [
     l.id, l.name, l.weather, l.levelTag, l.featureUnlock, l.shuffleDistance,
-    l.gridWidth, l.gridHeight, l.serveableSlots, l.dirtyStackHeight,
-    l.queueString, l.gridString, l.customerString,
+    l.serveableSlots, l.queueString, l.gridString, l.customerString,
   ]);
   return toCsv([header, ...rows]);
 }
 
 export function definitionsCsv(map: MapData): string {
-  const rows: (string | number)[][] = [["-- Raw Ingredients --"]];
+  const rows: (string | number)[][] = [
+    ["-- Map --"],
+    ["GridWidth", "GridHeight", "DirtyStackHeight"],
+    [map.gridWidth, map.gridHeight, map.dirtyStackHeight],
+    [],
+    ["-- Raw Ingredients --"],
+  ];
   rows.push(["ID", "Name", "Code", "Price", "NumSlices"]);
   for (const r of map.rawIngredients) {
     rows.push([r.id, r.name, r.code, r.price, r.numSlices]);

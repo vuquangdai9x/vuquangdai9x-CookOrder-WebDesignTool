@@ -75,10 +75,24 @@ export interface MapDef {
   id: Id;
   name: string;
   dirtyDishName: string; // per-map skin: "plate" | "cup" | "box" | ...
+  /**
+   * Grid size and dirty-stack height are fixed per map, not per level — every
+   * level in a map shares one board shape and one stack cap.
+   */
+  gridWidth: number;
+  gridHeight: number;
+  dirtyStackHeight: number;
   rawIngredients: RawIngredientDef[];
   cookedIngredients: CookedIngredientDef[];
   tools: CookingToolDef[];
   levels: LevelConfig[];
+  /**
+   * Raw/cooked ingredient ids disabled for this map (e.g. Map 1's bun, id 0 in
+   * both spaces). Play mode strips them from queues and orders before the
+   * level starts; Design mode still shows and edits the underlying data.
+   */
+  disabledRawIds: Id[];
+  disabledCookedIds: Id[];
 }
 
 /** Finds the tool (and its recipe) that processes a raw ingredient, if any. */
@@ -115,11 +129,22 @@ export interface Dish {
 }
 
 export interface CustomerConfig {
+  /**
+   * Customer type id from the customer-types definition table (0 = Customer,
+   * 1 = Staff; future types get new rows + a registered behavior). First
+   * element of the customer config string.
+   */
+  typeId: Id;
   /** Patience timer in seconds; 0 = no time limit. */
   waitTime: number;
   /** 1 = customer is affected by weather (halved timer + minigame in the real game). */
   weatherEff: number;
   dishes: Dish[];
+  /**
+   * Staff only: how many dirty stacks they clear on arrival.
+   * Absent/undefined means the default of 1.
+   */
+  staffAmount?: number;
 }
 
 /** What happens when every tool slot for a picked ingredient is busy. */
@@ -133,12 +158,8 @@ export interface LevelConfig {
   featureUnlock: string; // e.g. "egg_fried"
   /** Queue shuffle distance from the sheet's TOOL_Level_ingredient_queue. */
   shuffleDistance: number;
-  gridWidth: number;
-  gridHeight: number;
   /** Serveable customer slots (1–2 typical). */
   serveableSlots: number;
-  /** Max dirty dishes per stack before a new stack starts. */
-  dirtyStackHeight: number;
   queues: QueueItem[][];
   grid: GridCellConfig[]; // length = gridWidth * gridHeight, scan order
   customers: CustomerConfig[];

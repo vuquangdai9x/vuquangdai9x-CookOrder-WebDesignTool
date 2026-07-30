@@ -16,7 +16,7 @@ describe("bundled Map 1 (burger) snapshot", () => {
       expect(serializeQueues(level.queues)).toBe(data.queueString);
       expect(serializeGrid(level.grid)).toBe(data.gridString);
       expect(serializeCustomers(level.customers)).toBe(data.customerString);
-      expect(level.grid).toHaveLength(level.gridWidth * level.gridHeight);
+      expect(level.grid).toHaveLength(map.gridWidth * map.gridHeight);
     }
   });
 

@@ -85,22 +85,48 @@ export function serializeGrid(grid: GridCellConfig[]): string {
 }
 
 // ---------- customers ----------
-// "0;0;1.0|60;1;1.0.6,0.1.2.5#4"
-// 3 params per customer: waitTime ; weatherEff ; dishes.
-// Dish ids are "."-separated; legacy digit-runs ("0125") are accepted when
-// every id is a single digit.
+// Canonical: "0;0;0;1.0|0;60;1;1.0.6,0.1.2.5#4|1;0;0;;3"
+// 4 params per customer: typeId ; waitTime ; weatherEff ; dishes, plus an
+// optional 5th (staffAmount, meaningful for type Staff; absent = 1 stack).
+// typeId comes from the customer-types definition table (0 Customer, 1 Staff,
+// extensible). Dish ids are "."-separated; legacy digit-runs ("0125") are
+// accepted when every id is a single digit.
+//
+// Legacy pre-typeId forms are still parsed (and normalize to canonical on the
+// next serialize): "waitTime;weatherEff;dishes" and the staff variant
+// "waitTime;weatherEff;;staffAmount" — recognizable among 4-part strings
+// because its dishes slot is empty where a canonical 4-part string has a
+// numeric weatherEff in that position. Legacy typeId is inferred: empty
+// dishes = Staff (1), otherwise Customer (0).
 
 export function parseCustomers(s: string): CustomerConfig[] {
   if (s.trim() === "") return [];
   return s.split("|").map((custStr) => {
     const parts = custStr.split(";");
-    if (parts.length !== 3) {
-      throw new Error(`Customer "${custStr}" must have 3 ';'-separated params`);
+
+    // Legacy: 3 parts, or 4 parts with the empty-dishes staff signature.
+    if (parts.length === 3 || (parts.length === 4 && parts[2] === "")) {
+      const dishes = parts[2] === "" ? [] : parts[2].split(",").map(parseDish);
+      const staffAmount = parts.length === 4 ? parseIntStrict(parts[3], custStr) : undefined;
+      return {
+        typeId: dishes.length === 0 ? 1 : 0,
+        waitTime: parseIntStrict(parts[0], custStr),
+        weatherEff: parseIntStrict(parts[1], custStr),
+        dishes,
+        ...(staffAmount !== undefined ? { staffAmount } : {}),
+      };
     }
+
+    if (parts.length !== 4 && parts.length !== 5) {
+      throw new Error(`Customer "${custStr}" must have 4 or 5 ';'-separated params`);
+    }
+    const staffAmount = parts.length === 5 ? parseIntStrict(parts[4], custStr) : undefined;
     return {
-      waitTime: parseIntStrict(parts[0], custStr),
-      weatherEff: parseIntStrict(parts[1], custStr),
-      dishes: parts[2] === "" ? [] : parts[2].split(",").map(parseDish),
+      typeId: parseIntStrict(parts[0], custStr),
+      waitTime: parseIntStrict(parts[1], custStr),
+      weatherEff: parseIntStrict(parts[2], custStr),
+      dishes: parts[3] === "" ? [] : parts[3].split(",").map(parseDish),
+      ...(staffAmount !== undefined ? { staffAmount } : {}),
     };
   });
 }
@@ -115,9 +141,11 @@ function parseDish(dishStr: string): Dish {
 
 export function serializeCustomers(customers: CustomerConfig[]): string {
   return customers
-    .map((c) =>
-      [c.waitTime, c.weatherEff, c.dishes.map(serializeDish).join(",")].join(";"),
-    )
+    .map((c) => {
+      const base = [c.typeId, c.waitTime, c.weatherEff, c.dishes.map(serializeDish).join(",")];
+      if (c.staffAmount !== undefined) base.push(c.staffAmount);
+      return base.join(";");
+    })
     .join("|");
 }
 

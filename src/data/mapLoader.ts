@@ -11,10 +11,7 @@ export interface LevelData {
   weather: string;
   levelTag: string;
   featureUnlock: string;
-  gridWidth: number;
-  gridHeight: number;
   serveableSlots: number;
-  dirtyStackHeight: number;
   shuffleDistance: number;
   queueString: string;
   gridString: string;
@@ -33,10 +30,7 @@ export function toLevelConfig(d: LevelData): LevelConfig {
     levelTag: d.levelTag,
     featureUnlock: d.featureUnlock,
     shuffleDistance: d.shuffleDistance,
-    gridWidth: d.gridWidth,
-    gridHeight: d.gridHeight,
     serveableSlots: d.serveableSlots,
-    dirtyStackHeight: d.dirtyStackHeight,
     queues: parseQueues(d.queueString),
     grid: parseGrid(d.gridString),
     customers: parseCustomers(d.customerString),
