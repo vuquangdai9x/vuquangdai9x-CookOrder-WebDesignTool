@@ -1697,3 +1697,32 @@ td input {
   gap: 0.5rem;
 }
 
+/*
+ * Placed after the base .play-page tier rules (equal specificity, so source
+ * order decides — this must come later to actually win) on purpose: on true
+ * portrait/mobile, .play-page drops to `height: auto` (see the 480px query
+ * near .play-page), so the tiers' `flex: N 1 0` proportional split has no
+ * free space to distribute. .queues-tier is `container-type: size` for its
+ * cqh-based tile sizing, and a size-contained box with no definite size
+ * collapses to 0 — silently zero-height queue lanes was the actual bug this
+ * fixes. Each tier instead takes exactly its natural content height here,
+ * and the whole page scrolls via .play-page's own overflow-y. Without a
+ * meaningful tier height to query, the tile size falls back to a fixed
+ * value instead of the cqh-based clamp().
+ */
+@media (max-width: 480px) {
+  .play-page > .customers-tier,
+  .play-page > .middle-tier,
+  .play-page > .queues-tier {
+    flex: 0 0 auto;
+  }
+
+  .play-page > .queues-tier {
+    container-type: normal;
+  }
+
+  .queue-lanes.play {
+    --tile: 3rem;
+  }
+}
+
