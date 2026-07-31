@@ -298,50 +298,97 @@ footer {
   border-color: #5a5d68;
 }
 
+/*
+ * Three-zone row: title/status pinned left (its natural width), the encoded
+ * string filling whatever's left in the middle, Save/kebab/Write pinned
+ * right — sized to their own content and never compressed, so their labels
+ * never wrap. The string is the only zone allowed to shrink/ellipsize.
+ */
 .section-head {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.6rem;
   margin-bottom: 0.5rem;
+}
+
+.section-head-left {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
 }
 
 .section-head h2 {
   margin: 0;
   font-size: 0.95rem;
   color: var(--accent);
+  white-space: nowrap;
 }
 
 .section-actions {
-  margin-left: auto;
+  flex: 0 0 auto;
+  margin-left: auto; /* fallback when there's no .section-string to fill the gap */
   display: flex;
+  align-items: center;
   gap: 0.35rem;
+  white-space: nowrap;
 }
 
-/*
- * The section's live canonical string, shown in the same header row as the
- * title/Save/kebab (not a separate panel) — `flex-basis: 100%` on a wrapping
- * flex row just pushes it onto its own line under those controls.
- */
+.section-actions button {
+  white-space: nowrap;
+}
+
+/* The section's live canonical string — the middle, flexible zone: it takes
+   whatever width is left between the title (left) and Save/kebab (right),
+   and ellipsizes instead of wrapping or pushing its neighbors. */
 .section-string {
-  flex-basis: 100%;
+  flex: 1 1 auto;
+  min-width: 3rem;
   font-size: 0.72rem;
   color: var(--muted);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0.2rem 0.4rem;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   user-select: all;
 }
 
 .dirty-badge {
   font-size: 0.72rem;
   color: #ffb0b0;
+  white-space: nowrap;
 }
 
 .dirty-counters {
   font-size: 0.72rem;
   color: var(--muted);
+  white-space: nowrap;
+}
+
+.write-status {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.write-status.pending {
+  color: var(--muted);
+}
+
+.write-status.ok {
+  color: var(--ok);
+}
+
+.write-status.stale {
+  color: var(--accent);
+}
+
+.write-status.failed {
+  color: var(--bad);
 }
 
 /* ---------- customer cards ---------- */

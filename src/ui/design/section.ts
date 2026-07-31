@@ -38,6 +38,17 @@ export interface SectionOptions<T> {
    * customer orders and the grid's ColorLocks.
    */
   onCommit?(): void;
+  /**
+   * Optional "Write to sheet" button + status, shown in the right-pinned
+   * action group next to Save. Status compares the live draft's
+   * stringPreview output against the string from the last successful write,
+   * so it reads "written" / "changed since write" without any extra state
+   * the caller has to track.
+   */
+  writeToSheet?: {
+    label?: string;
+    write(draft: T): Promise<void>;
+  };
 }
 
 /**
@@ -53,6 +64,11 @@ export class Section<T> {
   private counters: HTMLElement;
   private stringEl: HTMLElement | null = null;
   private opts: SectionOptions<T>;
+  private writeStatusEl: HTMLElement | null = null;
+  private writeBtn: HTMLButtonElement | null = null;
+  private lastWrittenString: string | null = null;
+  private writeError: string | null = null;
+  private writing = false;
 
   constructor(opts: SectionOptions<T>) {
     this.opts = opts;
@@ -64,16 +80,33 @@ export class Section<T> {
 
     if (opts.stringPreview) this.stringEl = el("code", { class: "section-string" });
 
-    const header = el("div", { class: "section-head" }, [
+    // Left group (title + dirty status) stays put; the string preview (if
+    // any) takes whatever's left in the middle; Save/kebab/Write are pinned
+    // to the far right in their own no-wrap group — see .section-head in
+    // style.css.
+    const left = el("div", { class: "section-head-left" }, [
       el("h2", {}, [opts.title]),
       this.badge,
       this.counters,
-      el("div", { class: "section-actions" }, [
-        ...(opts.headerButtons?.(this) ?? []),
-        button(opts.saveLabel, () => this.commitSave(), { class: "primary" }),
-        button("⋮", (e) => this.openMenu(e), { class: "kebab", title: "More actions" }),
-      ]),
+    ]);
+
+    const actions = el("div", { class: "section-actions" }, [
+      ...(opts.headerButtons?.(this) ?? []),
+    ]);
+    if (opts.writeToSheet) {
+      this.writeStatusEl = el("span", { class: "write-status" });
+      this.writeBtn = button(opts.writeToSheet.label ?? "⇪ Write to sheet", () => this.doWrite(), {});
+      actions.append(this.writeStatusEl, this.writeBtn);
+    }
+    actions.append(
+      button(opts.saveLabel, () => this.commitSave(), { class: "primary" }),
+      button("⋮", (e) => this.openMenu(e), { class: "kebab", title: "More actions" }),
+    );
+
+    const header = el("div", { class: "section-head" }, [
+      left,
       ...(this.stringEl ? [this.stringEl] : []),
+      actions,
     ]);
 
     this.element = el("section", { class: "design-section", tabindex: "0" }, [
@@ -98,12 +131,17 @@ export class Section<T> {
     if (this.stringEl && this.opts.stringPreview) {
       this.stringEl.textContent = this.opts.stringPreview(this.draft) || "(empty)";
     }
+    this.refreshWriteStatus();
   }
 
   /** Replaces the draft wholesale (level switch) and resets history. */
   reset(next: T): void {
     this.draft = structuredClone(next);
     this.history.reset(this.draft);
+    // A different level's draft has nothing to do with what was last
+    // written to the sheet for the previous level.
+    this.lastWrittenString = null;
+    this.writeError = null;
     this.render();
   }
 
@@ -155,5 +193,51 @@ export class Section<T> {
     const { added, removed } = this.history.counters;
     this.counters.textContent =
       this.history.isDirty && (added || removed) ? `+${added} / -${removed}` : "";
+  }
+
+  private async doWrite(): Promise<void> {
+    const spec = this.opts.writeToSheet;
+    if (!spec || this.writing) return;
+    this.writing = true;
+    this.writeError = null;
+    if (this.writeBtn) this.writeBtn.disabled = true;
+    this.refreshWriteStatus();
+    try {
+      await spec.write(this.draft);
+      this.lastWrittenString = this.opts.stringPreview?.(this.draft) ?? null;
+    } catch (err) {
+      console.error(err);
+      this.writeError = (err as Error).message;
+    } finally {
+      this.writing = false;
+      if (this.writeBtn) this.writeBtn.disabled = false;
+      this.refreshWriteStatus();
+    }
+  }
+
+  private refreshWriteStatus(): void {
+    if (!this.writeStatusEl) return;
+    if (this.writing) {
+      this.writeStatusEl.textContent = "⏳ Writing…";
+      this.writeStatusEl.className = "write-status pending";
+      return;
+    }
+    if (this.writeError) {
+      this.writeStatusEl.textContent = `✗ ${this.writeError}`;
+      this.writeStatusEl.className = "write-status failed";
+      this.writeStatusEl.title = this.writeError;
+      return;
+    }
+    if (this.lastWrittenString === null) {
+      this.writeStatusEl.textContent = "";
+      this.writeStatusEl.className = "write-status";
+      this.writeStatusEl.removeAttribute("title");
+      return;
+    }
+    const current = this.opts.stringPreview?.(this.draft);
+    const upToDate = this.lastWrittenString === current;
+    this.writeStatusEl.textContent = upToDate ? "✓ Written" : "● Changed since write";
+    this.writeStatusEl.className = `write-status ${upToDate ? "ok" : "stale"}`;
+    this.writeStatusEl.removeAttribute("title");
   }
 }

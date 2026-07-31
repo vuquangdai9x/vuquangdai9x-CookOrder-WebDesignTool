@@ -6,29 +6,37 @@
 import { SHEET_ID } from "../data/sheetSource.ts";
 import { button, el } from "./dom.ts";
 
-const SHEET_EDIT_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`;
+interface DialogOptions {
+  sheetId?: string;
+  message?: string;
+  dismissLabel?: string;
+}
 
-export function showSheetPermissionDialog(): void {
+export function showSheetPermissionDialog(opts: DialogOptions = {}): void {
+  const sheetId = opts.sheetId ?? SHEET_ID;
+  const editUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+  const message =
+    opts.message ??
+    "The linked sheet couldn't be read — this usually means the signed-in " +
+      "Google account doesn't have access yet. Open the sheet to sign in " +
+      "with the right account or request access, then try again.";
+
   let dialog: HTMLElement;
   const close = () => dialog.remove();
 
   dialog = el("div", { class: "preload-overlay sheet-permission-overlay" }, [
     el("div", { class: "preload-panel sheet-permission-panel" }, [
       el("h3", {}, ["Google Sheet access needed"]),
-      el("p", {}, [
-        "The linked sheet couldn't be read — this usually means the signed-in " +
-          "Google account doesn't have access yet. Open the sheet to sign in " +
-          "with the right account or request access, then try again.",
-      ]),
+      el("p", {}, [message]),
       el("div", { class: "sheet-permission-actions" }, [
         button(
           "Open Google Sheet ↗",
           () => {
-            window.open(SHEET_EDIT_URL, "_blank", "noopener");
+            window.open(editUrl, "_blank", "noopener");
           },
           { class: "full-btn" },
         ),
-        button("Continue with local data", close, {}),
+        button(opts.dismissLabel ?? "Continue with local data", close, {}),
       ]),
     ]),
   ]);

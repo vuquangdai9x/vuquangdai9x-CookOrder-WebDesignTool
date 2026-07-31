@@ -7,6 +7,7 @@ import { CUSTOMER_STAFF } from "../../core/effects.ts";
 import { serializeCustomers } from "../../core/parser.ts";
 import type { CustomerConfig, ElementDef, GlobalDefs, MapDef } from "../../core/types.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
+import { writeRowToSheet } from "../../data/sheetWrite.ts";
 import { showContextMenu, toggleGrid } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
@@ -90,6 +91,19 @@ export function createCustomerSection(deps: CustomerSectionDeps): Section<Custom
       deps.onSaved();
     },
     stringPreview: (draft) => serializeCustomers(draft),
+    writeToSheet: {
+      write: (draft) =>
+        writeRowToSheet(
+          {
+            mapIndex: deps.map.id,
+            levelIndex: deps.level.id,
+            weather: deps.level.weather,
+            tag: deps.level.levelTag,
+            unlock: deps.level.featureUnlock,
+          },
+          { customerSequence: serializeCustomers(draft) },
+        ),
+    },
     menuItems: (draft) => [
       {
         label: "Clear All",

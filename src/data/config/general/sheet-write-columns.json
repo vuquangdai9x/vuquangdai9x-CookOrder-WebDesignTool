@@ -1,0 +1,17 @@
+{
+  "_source": "CookOrder-RemoteConfigData, tab \"WebTool-Write\" — header row 2, data starts row 3.",
+  "_note": "0-based column indices (0 = A). Used by src/data/sheetWrite.ts to build the row it appends; keep in sync if the sheet's columns ever move.",
+  "spreadsheetId": "1dA-sSo1hTa2Mk9gWL-Az-dPnSS-UYw7QZyiXWa-D3cY",
+  "sheetName": "WebTool-Write",
+  "headerRow": 2,
+  "columns": {
+    "mapIndex": 0,
+    "levelIndex": 1,
+    "weather": 2,
+    "tag": 3,
+    "unlock": 4,
+    "customerSequence": 5,
+    "grid": 6,
+    "ingredientQueue": 7
+  }
+}

@@ -2,7 +2,14 @@
 // Each section owns its own draft, history, unsaved badge and Save button.
 // See docs/ToolDesign.md "Page Layout".
 
-import { parseCustomers, parseGrid, parseQueues } from "../../core/parser.ts";
+import {
+  parseCustomers,
+  parseGrid,
+  parseQueues,
+  serializeCustomers,
+  serializeGrid,
+  serializeQueues,
+} from "../../core/parser.ts";
 import type {
   CustomerConfig,
   ElementDef,
@@ -15,6 +22,7 @@ import type { LevelData, MapData } from "../../data/mapLoader.ts";
 import { toMapDef } from "../../data/mapLoader.ts";
 import { TAGS, WEATHER } from "../../data/configLoader.ts";
 import { validateMap } from "../../data/validate.ts";
+import { writeRowToSheet } from "../../data/sheetWrite.ts";
 import { button, el } from "../dom.ts";
 import { cellIconEl, ingredientIconEl, statusIconEl } from "../icon.ts";
 import type { Section } from "./section.ts";
@@ -34,6 +42,20 @@ export class DesignView {
   private grid!: Section<GridCellConfig[]>;
   private queues!: Section<QueueItem[][]>;
   private warningsEl = el("div", { class: "warnings" });
+
+  // ---------- combined "Write all to sheet" (level bar) ----------
+  private levelWriteStatusEl: HTMLElement | null = null;
+  private levelWriteSnapshot: {
+    levelId: number;
+    weather: string;
+    tag: string;
+    unlock: string;
+    customer: string;
+    grid: string;
+    queue: string;
+  } | null = null;
+  private levelWriteError: string | null = null;
+  private levelWriting = false;
 
   constructor(root: HTMLElement, map: MapData, defs: GlobalDefs, onChange: () => void) {
     this.root = root;
@@ -57,6 +79,10 @@ export class DesignView {
     this.customers.reset(parseCustomers(next.customerString));
     this.grid.reset(parseGrid(next.gridString));
     this.queues.reset(parseQueues(next.queueString));
+    // A different level's drafts have nothing to do with what was last
+    // written to the sheet for the previous level.
+    this.levelWriteSnapshot = null;
+    this.levelWriteError = null;
     this.refreshWarnings();
     this.build();
   }
@@ -69,8 +95,11 @@ export class DesignView {
     };
 
     // The queue's Recipe Pieces foldout reads the other two drafts, so their
-    // commits re-render it.
+    // commits re-render it. Every section's commits also keep the level
+    // bar's combined write-status readout (does this draft still match what
+    // was last written?) current.
     const refreshQueueReadout = () => this.queues?.render();
+    const refreshLevelWrite = () => this.refreshLevelWriteStatus();
 
     this.customers = createCustomerSection({
       map: parsedMap,
@@ -78,7 +107,10 @@ export class DesignView {
       level: this.level,
       parse: () => parseCustomers(this.level.customerString),
       onSaved: saved,
-      onCommit: refreshQueueReadout,
+      onCommit: () => {
+        refreshQueueReadout();
+        refreshLevelWrite();
+      },
     });
     this.grid = createGridSection({
       map: parsedMap,
@@ -86,7 +118,10 @@ export class DesignView {
       level: this.level,
       parse: () => parseGrid(this.level.gridString),
       onSaved: saved,
-      onCommit: refreshQueueReadout,
+      onCommit: () => {
+        refreshQueueReadout();
+        refreshLevelWrite();
+      },
     });
     this.queues = createQueueSection({
       map: parsedMap,
@@ -96,6 +131,7 @@ export class DesignView {
       currentCustomers: () => this.customers.draft,
       currentGrid: () => this.grid.draft,
       onSaved: saved,
+      onCommit: refreshLevelWrite,
     });
 
     this.root.replaceChildren(
@@ -181,6 +217,7 @@ export class DesignView {
       input.addEventListener("change", () => {
         apply(input.value);
         this.onChange();
+        this.refreshLevelWriteStatus();
       });
       return el("label", { class: "field small" }, [label, input]);
     };
@@ -206,9 +243,13 @@ export class DesignView {
       select.addEventListener("change", () => {
         apply(select.value);
         this.onChange();
+        this.refreshLevelWriteStatus();
       });
       return el("label", { class: "field small" }, [label, select]);
     };
+
+    this.levelWriteStatusEl = el("span", { class: "write-status" });
+    this.refreshLevelWriteStatus();
 
     return el("div", { class: "level-bar" }, [
       el("label", { class: "field small" }, ["Level", picker]),
@@ -219,10 +260,84 @@ export class DesignView {
         (this.level.serveableSlots = Math.max(1, Number(v) || 1)),
       ),
       el("span", { class: "spacer" }),
+      this.levelWriteStatusEl,
+      button("⇪ Write all to sheet", () => void this.writeLevelAll(), {
+        title: "Write this level's customer/grid/queue strings to the sheet in one row",
+      }),
       button("+ Level", () => this.addLevel()),
       button("🗑 Level", () => this.deleteLevel(), { class: "danger" }),
       button("Definitions…", () => this.openDefinitions()),
     ]);
+  }
+
+  /** Writes all three sections' live drafts to the sheet together, in one row. */
+  private async writeLevelAll(): Promise<void> {
+    if (this.levelWriting) return;
+    this.levelWriting = true;
+    this.levelWriteError = null;
+    this.refreshLevelWriteStatus();
+    try {
+      const customer = serializeCustomers(this.customers.draft);
+      const grid = serializeGrid(this.grid.draft);
+      const queue = serializeQueues(this.queues.draft);
+      await writeRowToSheet(
+        {
+          mapIndex: this.map.id,
+          levelIndex: this.level.id,
+          weather: this.level.weather,
+          tag: this.level.levelTag,
+          unlock: this.level.featureUnlock,
+        },
+        { customerSequence: customer, grid, ingredientQueue: queue },
+      );
+      this.levelWriteSnapshot = {
+        levelId: this.level.id,
+        weather: this.level.weather,
+        tag: this.level.levelTag,
+        unlock: this.level.featureUnlock,
+        customer,
+        grid,
+        queue,
+      };
+    } catch (err) {
+      console.error(err);
+      this.levelWriteError = (err as Error).message;
+    } finally {
+      this.levelWriting = false;
+      this.refreshLevelWriteStatus();
+    }
+  }
+
+  private refreshLevelWriteStatus(): void {
+    const statusEl = this.levelWriteStatusEl;
+    if (!statusEl) return;
+    if (this.levelWriting) {
+      statusEl.textContent = "⏳ Writing…";
+      statusEl.className = "write-status pending";
+      return;
+    }
+    if (this.levelWriteError) {
+      statusEl.textContent = `✗ ${this.levelWriteError}`;
+      statusEl.className = "write-status failed";
+      statusEl.title = this.levelWriteError;
+      return;
+    }
+    const snap = this.levelWriteSnapshot;
+    statusEl.removeAttribute("title");
+    if (!snap || snap.levelId !== this.level.id) {
+      statusEl.textContent = "";
+      statusEl.className = "write-status";
+      return;
+    }
+    const upToDate =
+      snap.weather === this.level.weather &&
+      snap.tag === this.level.levelTag &&
+      snap.unlock === this.level.featureUnlock &&
+      snap.customer === serializeCustomers(this.customers.draft) &&
+      snap.grid === serializeGrid(this.grid.draft) &&
+      snap.queue === serializeQueues(this.queues.draft);
+    statusEl.textContent = upToDate ? "✓ Level written" : "● Changed since write";
+    statusEl.className = `write-status ${upToDate ? "ok" : "stale"}`;
   }
 
   private addLevel(): void {

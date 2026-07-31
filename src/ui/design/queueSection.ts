@@ -18,6 +18,7 @@ import type {
 } from "../../core/types.ts";
 import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
+import { writeRowToSheet } from "../../data/sheetWrite.ts";
 import { numberField, pickerGrid, showContextMenu, swatchRow } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
@@ -35,6 +36,7 @@ export interface QueueSectionDeps {
   currentCustomers(): CustomerConfig[];
   currentGrid(): GridCellConfig[];
   onSaved(): void;
+  onCommit?(): void;
 }
 
 interface QueueUiState {
@@ -72,11 +74,25 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueItem[][
     saveLabel: "Save Order",
     initial: tagQueues(deps.parse()),
     renderBody: (draft, body) => renderBody(section, deps, ui, draft, body),
+    onCommit: () => deps.onCommit?.(),
     save: (draft) => {
       deps.level.queueString = serializeQueues(draft);
       deps.onSaved();
     },
     stringPreview: (draft) => serializeQueues(draft),
+    writeToSheet: {
+      write: (draft) =>
+        writeRowToSheet(
+          {
+            mapIndex: deps.map.id,
+            levelIndex: deps.level.id,
+            weather: deps.level.weather,
+            tag: deps.level.levelTag,
+            unlock: deps.level.featureUnlock,
+          },
+          { ingredientQueue: serializeQueues(draft) },
+        ),
+    },
     headerButtons: (sec) => [
       button("＋ Queue", () => {
         sec.draft.push(tagNew([]));
