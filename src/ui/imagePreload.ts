@@ -3,13 +3,20 @@
 // emoji-then-swap flash. Triggered on app start and whenever the active map
 // changes — see main.ts and preloadOverlay.ts.
 
-import type { CookedIngredientDef, CookingToolDef, GlobalDefs, RawIngredientDef } from "../core/types.ts";
+import type {
+  CookedIngredientDef,
+  CookingToolDef,
+  DirtyObjectDef,
+  GlobalDefs,
+  RawIngredientDef,
+} from "../core/types.ts";
 import { driveThumbUrl, preloadedFileIds } from "./icon.ts";
 
 /** The subset of MapDef/MapData this module needs — both satisfy it structurally. */
 export interface ImageBearingMap {
   rawIngredients: RawIngredientDef[];
   cookedIngredients: CookedIngredientDef[];
+  dirtyObjects: DirtyObjectDef[];
   tools: CookingToolDef[];
 }
 
@@ -24,6 +31,7 @@ export function collectMapFileIds(map: ImageBearingMap, defs: GlobalDefs): strin
   for (const d of defs.customerTypes) add(d.fileId);
   for (const r of map.rawIngredients) add(r.fileId);
   for (const c of map.cookedIngredients) add(c.fileId);
+  for (const d of map.dirtyObjects) add(d.fileId);
   for (const t of map.tools) add(t.fileId);
   return [...ids];
 }

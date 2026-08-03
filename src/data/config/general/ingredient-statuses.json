@@ -14,6 +14,7 @@
       "name": "Freeze",
       "emoji": "🧊",
       "fileId": "1OpvkKdRvW2duUqfQ8Fy1sEE2x1LkPbGM",
+      "localImage": "Global/IngredientStatus/ingredientSlot-frozen.png",
       "description": "Frozen ingredient; cannot be picked until N other ingredients have been picked.",
       "paramDefs": [{ "name": "thawCount", "dataType": "int" }]
     },
@@ -22,6 +23,7 @@
       "name": "Link",
       "emoji": "🔗",
       "fileId": "161DWQYesZYrDWv6iyPobiXLgjR4PVeRS",
+      "localImage": "Global/IngredientStatus/ingredientSlot-link.png",
       "description": "Linked to the next linked ingredient in the same queue unless broken.",
       "paramDefs": [{ "name": "broken", "dataType": "int" }]
     },
@@ -30,6 +32,7 @@
       "name": "HoldingKey",
       "emoji": "🗝️",
       "fileId": "1BEOd_aJfcQp0Y7BqTlMjuT7wuYv0lEnQ",
+      "localImage": "Global/IngredientStatus/ingredientSlot-HoldingKey.png",
       "description": "Carries a coloured key that opens matching ColorLock grid cells.",
       "paramDefs": [{ "name": "colorId", "dataType": "int" }]
     }

@@ -51,7 +51,8 @@ export type CellContent =
   | { kind: "cooked"; cookedId: Id }
   /** A raw ingredient parked because its tool was full (park-on-grid policy). */
   | { kind: "raw"; rawId: Id }
-  | { kind: "dirty"; count: number };
+  /** dirtyId indexes MapDef.dirtyObjects; stacks of different types never mix. */
+  | { kind: "dirty"; dirtyId: Id; count: number };
 
 export interface DishState {
   remaining: Id[];
@@ -101,6 +102,8 @@ export interface Flight {
   fromCustomer?: number;
   /** queue-to-grid only: true when the item is parked raw, awaiting a tool slot. */
   raw?: boolean;
+  /** customer-to-grid / dirty-to-staff only: which MapDef.dirtyObjects entry this is. */
+  dirtyId?: Id;
 }
 
 export interface SimEvent {
@@ -176,7 +179,7 @@ export class Simulation {
   /** Staff customer index -> dirty stacks still flying in before they finish. */
   private pendingStaffClears = new Map<number, number>();
   /** Dirty dishes already heading for a cell, so stack capacity accounts for them. */
-  private pendingDirty = new Map<number, number>();
+  private pendingDirty = new Map<number, { count: number; dirtyId: Id }>();
   /** Grid cells reserved by an in-flight item so two flights can't target one cell. */
   private reservedCells = new Set<number>();
   /** Tool slots reserved by an in-flight item. */
@@ -334,7 +337,14 @@ export class Simulation {
         if (tool) {
           tool.slots[slot].item = { uid: this.nextUid++, rawId: flight.itemId, elapsed: 0 };
         }
-        if (flight.fromCell !== undefined) this.grid[flight.fromCell] = { kind: "empty" };
+        if (flight.fromCell !== undefined) {
+          // reclaimParkedRaws() reserved this cell when it launched the
+          // flight (see there) — release it now the raw has actually left,
+          // or it leaks forever and findFreeCell() silently shrinks by one
+          // usable cell every time park-on-grid reclaims a parked raw.
+          this.releaseCell(flight.fromCell);
+          this.grid[flight.fromCell] = { kind: "empty" };
+        }
         break;
       }
       case "queue-to-grid": {
@@ -356,10 +366,10 @@ export class Simulation {
       case "customer-to-grid": {
         const cell = flight.toCell!;
         this.releaseCell(cell);
-        const left = (this.pendingDirty.get(cell) ?? 1) - 1;
-        if (left > 0) this.pendingDirty.set(cell, left);
+        const left = (this.pendingDirty.get(cell)?.count ?? 1) - 1;
+        if (left > 0) this.pendingDirty.set(cell, { count: left, dirtyId: flight.dirtyId! });
         else this.pendingDirty.delete(cell);
-        this.placeDirtyAt(cell);
+        this.placeDirtyAt(cell, flight.dirtyId!);
         break;
       }
       case "dirty-to-staff": {
@@ -659,25 +669,50 @@ export class Simulation {
       atTime: this.time,
       customerIndex: customer.index,
     });
-    this.addDirtyDish(customer.index);
+    for (const dirtyId of this.dirtyTypesFor(customer)) {
+      this.addDirtyDish(customer.index, dirtyId);
+    }
+  }
+
+  /**
+   * Which dirty object(s) a served customer leaves behind: one per dish that
+   * contains a defined dirty object's source cooked ingredient (see
+   * DirtyObjectDef.sourceCookedId) — so a customer who got a burger AND a
+   * soda leaves both a dirty plate and a dirty cup. Maps that don't define
+   * any dirty objects keep the old behavior: exactly one generic dirty dish
+   * per served customer.
+   */
+  private dirtyTypesFor(customer: CustomerState): Id[] {
+    if (this.map.dirtyObjects.length === 0) return [DIRTY_DISH_ID];
+    const ids: Id[] = [];
+    for (const dish of customer.dishes) {
+      for (const def of this.map.dirtyObjects) {
+        if (dish.filled.includes(def.sourceCookedId)) ids.push(def.id);
+      }
+    }
+    return ids;
   }
 
   /**
    * Sends the departing customer's dirty dish to the grid. The target stack is
    * claimed now (so simultaneous dishes don't overfill it) but only becomes
-   * visible when the flight lands.
+   * visible when the flight lands. Stacks never mix types — a dirty plate and
+   * a dirty cup always occupy separate cells.
    */
-  private addDirtyDish(fromCustomer: number): void {
+  private addDirtyDish(fromCustomer: number, dirtyId: Id): void {
     const height = this.map.dirtyStackHeight || 1;
     const openStack = this.dirtyOrder.find((i) => {
       const cell = this.grid[i];
-      const pending = this.pendingDirty.get(i) ?? 0;
+      const pendingEntry = this.pendingDirty.get(i);
+      const pending = pendingEntry?.count ?? 0;
       const count = cell.kind === "dirty" ? cell.count : 0;
+      const existingType = cell.kind === "dirty" ? cell.dirtyId : pendingEntry?.dirtyId;
       // A cell claimed by an in-flight dish counts as a stack already. A cell
       // reserved by a staff customer's in-flight clearing is excluded — it's
       // about to disappear, so a new dish shouldn't target it mid-flight.
       return (
         (cell.kind === "dirty" || pending > 0) &&
+        existingType === dirtyId &&
         count + pending < height &&
         !this.reservedCells.has(i)
       );
@@ -700,29 +735,33 @@ export class Simulation {
     // table is cleared (a staff member must not sweep a plate mid-air).
     if (this.instantFlights) {
       this.releaseCell(target);
-      this.placeDirtyAt(target);
+      this.placeDirtyAt(target, dirtyId);
       return;
     }
 
-    this.pendingDirty.set(target, (this.pendingDirty.get(target) ?? 0) + 1);
+    const prevPending = this.pendingDirty.get(target);
+    this.pendingDirty.set(target, { count: (prevPending?.count ?? 0) + 1, dirtyId });
     this.launch({
       kind: "customer-to-grid",
       itemId: DIRTY_DISH_ID,
+      dirtyId,
       fromCustomer,
       toCell: target,
     });
   }
 
-  private placeDirtyAt(cell: number): void {
+  private placeDirtyAt(cell: number, dirtyId: Id): void {
     const existing = this.grid[cell];
-    if (existing.kind === "dirty") {
+    if (existing.kind === "dirty" && existing.dirtyId === dirtyId) {
       existing.count++;
     } else {
-      // The stack may have been swept while this dish was travelling.
-      this.grid[cell] = { kind: "dirty", count: 1 };
+      // The stack may have been swept (or fully cleared) while this dish was
+      // travelling — or it just never mixes with a different-typed stack.
+      this.grid[cell] = { kind: "dirty", dirtyId, count: 1 };
       if (!this.dirtyOrder.includes(cell)) this.dirtyOrder.push(cell);
     }
-    this.log("dirty-added", `Dirty ${this.map.dirtyDishName} stacked`);
+    const def = this.map.dirtyObjects.find((d) => d.id === dirtyId);
+    this.log("dirty-added", `Dirty ${def?.name ?? this.map.dirtyDishName} stacked`);
   }
 
   /** Removes up to `count` oldest dirty stacks. Returns how many were cleared. */
@@ -778,9 +817,11 @@ export class Simulation {
     this.log("customer-arrived", `Staff clearing ${stacks.length} dirty stack(s)`);
     for (const cell of stacks) {
       this.reservedCells.add(cell);
+      const content = this.grid[cell];
       this.launch({
         kind: "dirty-to-staff",
         itemId: DIRTY_DISH_ID,
+        dirtyId: content.kind === "dirty" ? content.dirtyId : undefined,
         fromCell: cell,
         toCustomer: { index: customer.index, dish: 0 },
       });

@@ -30,6 +30,8 @@ const testMap: MapDef = {
     numSlices: 1,
   })),
   cookedIngredients: [0, 1].map((id) => ({ id, name: `cooked${id}`, icon: "" })),
+  dirtyObjects: [],
+  customerAvatars: [],
   tools: [
     {
       id: 0,

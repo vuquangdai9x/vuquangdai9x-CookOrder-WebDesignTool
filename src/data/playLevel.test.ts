@@ -14,6 +14,8 @@ const baseMap: MapDef = {
   disabledCookedIds: [],
   rawIngredients: [],
   cookedIngredients: [],
+  dirtyObjects: [],
+  customerAvatars: [],
   tools: [],
   levels: [],
 };

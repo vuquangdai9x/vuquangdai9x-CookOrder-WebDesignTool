@@ -8,6 +8,7 @@
 
 import type {
   CookingToolDef,
+  DirtyObjectDef,
   ElementDef,
   GlobalDefs,
   ParamDef,
@@ -29,6 +30,8 @@ import map1CookedJson from "./config/map1-burger/cooked-ingredients.json";
 import map1IngredientsJson from "./config/map1-burger/ingredients.json";
 import map1LevelsJson from "./config/map1-burger/levels.json";
 import map1ToolsJson from "./config/map1-burger/cooking-tools.json";
+import map1DirtyJson from "./config/map1-burger/dirty-objects.json";
+import map1AvatarsJson from "./config/map1-burger/customer-avatars.json";
 
 import map2Json from "./config/map2-chicken_fried/map.json";
 import map2IngredientsJson from "./config/map2-chicken_fried/ingredients.json";
@@ -42,6 +45,7 @@ interface StatusRow {
   name: string;
   emoji: string;
   fileId: string;
+  localImage?: string;
   description: string;
   paramDefs: ParamDef[];
 }
@@ -54,6 +58,7 @@ interface IngredientRow {
   numSlices: number;
   emoji: string;
   fileId: string;
+  localImage?: string;
 }
 
 interface CookedRow {
@@ -61,7 +66,18 @@ interface CookedRow {
   name: string;
   emoji: string;
   fileId: string;
+  localImage?: string;
   baseId?: number;
+}
+
+interface DirtyRow {
+  id: number;
+  name: string;
+  /** Name of the cooked ingredient whose presence in a dish spawns this object. */
+  source: string;
+  emoji: string;
+  fileId: string;
+  localImage?: string;
 }
 
 const toElementDef = (r: StatusRow): ElementDef => ({
@@ -69,6 +85,7 @@ const toElementDef = (r: StatusRow): ElementDef => ({
   name: r.name,
   icon: r.emoji,
   fileId: r.fileId,
+  localImage: r.localImage,
   description: r.description,
   paramDefs: r.paramDefs,
 });
@@ -108,6 +125,8 @@ function buildMap(
   cooked: CookedRow[],
   tools: CookingToolDef[],
   levels: LevelData[],
+  dirty: DirtyRow[] = [],
+  customerAvatars: string[] = [],
 ): MapData {
   return {
     id: meta.index,
@@ -123,6 +142,7 @@ function buildMap(
       name: r.name,
       icon: r.emoji,
       fileId: r.fileId,
+      localImage: r.localImage,
       code: r.code,
       price: r.price,
       numSlices: r.numSlices,
@@ -132,8 +152,20 @@ function buildMap(
       name: c.name,
       icon: c.emoji,
       fileId: c.fileId,
+      localImage: c.localImage,
       baseId: c.baseId,
     })),
+    dirtyObjects: dirty.map(
+      (d): DirtyObjectDef => ({
+        id: d.id,
+        name: d.name,
+        icon: d.emoji,
+        fileId: d.fileId,
+        localImage: d.localImage,
+        sourceCookedId: cooked.find((c) => c.name === d.source)?.id ?? -1,
+      }),
+    ),
+    customerAvatars,
     tools,
     levels,
   };
@@ -153,6 +185,8 @@ export const MAP1_DATA: MapData = buildMap(
   map1CookedJson.cookedIngredients as CookedRow[],
   map1ToolsJson.tools as CookingToolDef[],
   map1LevelsJson.levels as LevelData[],
+  map1DirtyJson.cookedIngredients as DirtyRow[],
+  map1AvatarsJson.avatars as string[],
 );
 
 export const MAP2_DATA: MapData = buildMap(

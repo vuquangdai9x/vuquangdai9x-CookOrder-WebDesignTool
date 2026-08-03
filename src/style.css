@@ -421,12 +421,33 @@ footer {
 }
 
 .customer-card {
+  position: relative;
+  overflow: hidden;
   min-width: 10rem;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.4rem;
   flex: none;
+}
+
+/* Random per-customer avatar (see PlayView.appendAvatar) — a transparent-PNG
+   character sitting behind the actual content, faint and left-aligned. */
+.customer-avatar {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: left;
+  opacity: 0.2;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.customer-content {
+  position: relative;
+  z-index: 1;
 }
 
 .customer-card.staff {

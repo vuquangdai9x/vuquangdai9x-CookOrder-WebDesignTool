@@ -15,6 +15,7 @@
       "name": "Blocked",
       "emoji": "⛔",
       "fileId": "1Ixj50ZnhdiedTUbRUQdN3gUlucekAT2X",
+      "localImage": "Global/SlotStatus/grid-blocked.png",
       "description": "Fully locked; unusable for the whole level.",
       "paramDefs": []
     },
@@ -23,6 +24,7 @@
       "name": "OrderLock",
       "emoji": "🔒",
       "fileId": "1A5tB2wfnJBtN4ow0DwIISvHP-H5t3I2Z",
+      "localImage": "Global/SlotStatus/grid-locked-by-order.png",
       "description": "Locked until X orders are completed.",
       "paramDefs": [{ "name": "orderCount", "dataType": "int" }]
     },
@@ -31,6 +33,7 @@
       "name": "IngredientSlot",
       "emoji": "🍽",
       "fileId": "1GoXmjpUKMsiBI2hOBdFDd5vsZK-9Jz3o",
+      "localImage": "Global/SlotStatus/grid-locked-by-ingredient.png",
       "description": "Keyed to one ingredient: opens once X of that specific ingredient have been used.",
       "paramDefs": [
         { "name": "ingredientId", "dataType": "int" },
@@ -42,6 +45,7 @@
       "name": "ColorLock",
       "emoji": "🎨",
       "fileId": "1EAjTKQ8LVlbdblvTgkYsNA2svGvoe1iM",
+      "localImage": "Global/SlotStatus/grid-locked-by-color.png",
       "description": "Colour-locked; serve X key-holding ingredients of the matching colour to open.",
       "paramDefs": [
         { "name": "colorId", "dataType": "int" },

@@ -33,7 +33,7 @@ export function middleStructureKey(sim: Simulation): string {
       if (lock) return `L${lock}`;
       if (cell.kind === "cooked") return `c${cell.cookedId}`;
       if (cell.kind === "raw") return `r${cell.rawId}`;
-      if (cell.kind === "dirty") return `d${cell.count}`;
+      if (cell.kind === "dirty") return `d${cell.dirtyId}:${cell.count}`;
       return "-";
     })
     .join(",");

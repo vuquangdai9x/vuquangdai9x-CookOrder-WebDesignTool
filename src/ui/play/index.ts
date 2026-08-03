@@ -29,10 +29,12 @@ import {
   cellIconEl,
   cookedIconEl,
   customerTypeIconEl,
+  dirtyIconEl,
   ingredientIconEl,
   statusIconEl,
   toolIconEl,
 } from "../icon.ts";
+import { localImageUrl } from "../localImages.ts";
 import { centerOf, EffectsLayer } from "./effectsLayer.ts";
 import type { Point } from "./effectsLayer.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
@@ -95,6 +97,8 @@ export class PlayView {
   private pendingExits = new Set<number>();
   /** Bumped by restart()/mount() so a stale exit-animation callback is a no-op. */
   private renderGeneration = 0;
+  /** Each customer's randomly-drawn avatar, cached so it doesn't reshuffle on every re-render. */
+  private customerAvatarByIndex = new Map<number, string>();
   /**
    * Where the tile the player just clicked actually was, captured before
    * `sim.pick()` removes it from the queue and the tier re-renders. Without
@@ -235,7 +239,7 @@ export class PlayView {
         (flight.kind === "queue-to-grid" && flight.raw);
       const isDirty = flight.itemId === DIRTY_DISH_ID;
       const icon = isDirty
-        ? el("span", { class: "icon" }, ["🍽"])
+        ? dirtyIconEl(flight.dirtyId ?? DIRTY_DISH_ID, 96)
         : isRaw
           ? ingredientIconEl(flight.itemId, 96)
           : cookedIconEl(flight.itemId, 96);
@@ -718,9 +722,11 @@ export class PlayView {
       class: `customer-card${servable ? " servable" : " waiting"}${c.isStaff ? " staff" : ""}`,
       "data-customer": String(c.index),
     });
+    this.appendAvatar(card, c.index);
+    const content = el("div", { class: "customer-content" });
     const timer = el("span", { class: "wait-badge" }, [this.timerText(c)]);
     if (servable) this.timerEls.set(c.index, timer);
-    card.append(
+    content.append(
       el("div", { class: "customer-head" }, [
         c.isStaff
           ? el("span", { class: "cust-index" }, [customerTypeIconEl(c.config.typeId, 48)])
@@ -729,7 +735,8 @@ export class PlayView {
       ]),
     );
     if (c.isStaff) {
-      card.append(el("div", { class: "staff-note" }, ["Clears dirty stacks"]));
+      content.append(el("div", { class: "staff-note" }, ["Clears dirty stacks"]));
+      card.append(content);
       return card;
     }
     for (const dish of c.dishes) {
@@ -746,8 +753,9 @@ export class PlayView {
           "data-dish-ingredient": String(id),
         }, [cookedIconEl(id, 64)]));
       }
-      card.append(row);
+      content.append(row);
     }
+    card.append(content);
     return card;
   }
 
@@ -758,13 +766,35 @@ export class PlayView {
       "data-customer": String(c.index),
       title: "Next in line — their order is revealed when a serve slot frees up",
     });
+    this.appendAvatar(card, c.index);
     card.append(
-      el("div", { class: "customer-head" }, [
-        el("span", { class: "cust-index" }, [`#${c.index + 1}`]),
+      el("div", { class: "customer-content" }, [
+        el("div", { class: "customer-head" }, [
+          el("span", { class: "cust-index" }, [`#${c.index + 1}`]),
+        ]),
+        el("div", { class: "mystery-mark" }, ["?"]),
       ]),
-      el("div", { class: "mystery-mark" }, ["?"]),
     );
     return card;
+  }
+
+  /**
+   * Draws a random avatar covering the whole card, behind its content —
+   * stable per customer index for as long as this PlayView lives (picked
+   * once, cached, not re-rolled on every re-render). No-op for maps that
+   * define no avatars, or if the chosen path isn't a bundled local image.
+   */
+  private appendAvatar(card: HTMLElement, index: number): void {
+    const avatars = this.map.customerAvatars;
+    if (avatars.length === 0) return;
+    let path = this.customerAvatarByIndex.get(index);
+    if (!path) {
+      path = avatars[Math.floor(Math.random() * avatars.length)];
+      this.customerAvatarByIndex.set(index, path);
+    }
+    const url = localImageUrl(path);
+    if (!url) return;
+    card.append(el("img", { src: url, alt: "", class: "customer-avatar" }));
   }
 
   /** Middle tier: one panel, grid left + cooking tools right. */
@@ -821,7 +851,7 @@ export class PlayView {
         cell.append(el("small", { class: "cell-badge" }, ["waiting"]));
       } else if (content.kind === "dirty") {
         cell.append(
-          el("span", { class: "cell-main dirty" }, ["🍽"]),
+          el("span", { class: "cell-main dirty" }, [dirtyIconEl(content.dirtyId, 96)]),
           el("span", { class: "cell-badge" }, [`×${content.count}`]),
         );
       }

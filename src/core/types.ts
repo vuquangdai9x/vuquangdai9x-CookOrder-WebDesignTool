@@ -20,10 +20,12 @@ export interface ParamDef {
 export interface ElementDef {
   id: Id;
   name: string;
-  /** Emoji fallback, used when the Drive image is missing or fails to load. */
+  /** Emoji fallback, used when neither the local nor the Drive image loads. */
   icon: string;
-  /** Google Drive file id of the artwork. */
+  /** Google Drive file id of the artwork — fallback when there's no local image. */
   fileId?: string;
+  /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
+  localImage?: string;
   description: string;
   paramDefs: ParamDef[];
 }
@@ -35,6 +37,8 @@ export interface RawIngredientDef {
   name: string;
   icon: string;
   fileId?: string;
+  /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
+  localImage?: string;
   /** String code used by the Unity game / sheet (e.g. "burger_bun_raw"). */
   code: string;
   price: number;
@@ -47,6 +51,8 @@ export interface CookedIngredientDef {
   name: string;
   icon: string;
   fileId?: string;
+  /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
+  localImage?: string;
   /**
    * Another cooked ingredient id that must already be in a dish before this
    * one can be served to it (e.g. Ice needs a Soda Cup already there; burger
@@ -54,6 +60,23 @@ export interface CookedIngredientDef {
    * this ingredient can serve on its own, or *is* a base.
    */
   baseId?: Id;
+}
+
+/**
+ * What a served customer leaves behind on the grid instead of the generic
+ * dirty dish — e.g. a burger dish leaves a Dirty Plate, a soda dish leaves a
+ * Dirty Cup. `sourceCookedId` is the cooked ingredient whose presence in a
+ * dish spawns this object (resolved from the config's "source" name at load
+ * time — see data/configLoader.ts).
+ */
+export interface DirtyObjectDef {
+  id: Id;
+  name: string;
+  icon: string;
+  fileId?: string;
+  /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
+  localImage?: string;
+  sourceCookedId: Id;
 }
 
 /** What a tool turns one raw ingredient into, and how many come out. */
@@ -73,6 +96,8 @@ export interface CookingToolDef {
   name: string;
   icon?: string;
   fileId?: string;
+  /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
+  localImage?: string;
   numSlots: number;
   cookingTime: number;
   recipes: ToolRecipe[];
@@ -91,6 +116,13 @@ export interface MapDef {
   dirtyStackHeight: number;
   rawIngredients: RawIngredientDef[];
   cookedIngredients: CookedIngredientDef[];
+  /** What served dishes leave behind on the grid — see DirtyObjectDef. */
+  dirtyObjects: DirtyObjectDef[];
+  /**
+   * Bundled transparent-PNG avatar images (paths relative to src/assets/) —
+   * Play mode picks one at random per customer card, stable for its lifetime.
+   */
+  customerAvatars: string[];
   tools: CookingToolDef[];
   levels: LevelConfig[];
   /**

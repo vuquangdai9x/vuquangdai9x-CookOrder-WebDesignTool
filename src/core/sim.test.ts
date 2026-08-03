@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { MAP1_DATA } from "../data/configLoader.ts";
 import { toMapDef } from "../data/mapLoader.ts";
 import { parseCustomers, parseGrid, parseQueues, SWEEPER_ID } from "./parser.ts";
-import { Simulation } from "./sim.ts";
+import { DIRTY_DISH_ID, Simulation } from "./sim.ts";
 import type { LevelConfig, MapDef } from "./types.ts";
 
 const map1 = toMapDef(MAP1_DATA);
@@ -29,6 +29,8 @@ const testMap: MapDef = {
     numSlices: id === 3 ? 2 : 1,
   })),
   cookedIngredients: [0, 1, 2, 3].map((id) => ({ id, name: `cooked${id}`, icon: "" })),
+  dirtyObjects: [],
+  customerAvatars: [],
   tools: [
     {
       id: 0,
@@ -294,6 +296,42 @@ describe("cooking tools", () => {
     sim.tick(2.1); // first item finishes and vacates the slot
     expect(sim.tools[0].slots[0].item?.rawId).toBe(0); // reclaimed immediately
   });
+
+  it("doesn't leak grid-cell reservations across repeated park+reclaim cycles", () => {
+    // Regression: reclaimParkedRaws() reserves the parked raw's cell when it
+    // launches the grid-to-tool flight, but completeFlight() never released
+    // it — each reclaim permanently shrank findFreeCell()'s usable count,
+    // even though the grid looked empty, eventually losing on a phantom
+    // "no free cell" once enough reclaims had happened.
+    //
+    // Steady state: exactly one raw parked at a time (a 2-cell grid has
+    // headroom to spare for that), repeated over many cycles — a genuine
+    // pile-up (e.g. picking faster than the tool drains) would also lose,
+    // so each cycle only picks once it's actually safe to.
+    const tinyGridMap: MapDef = { ...oneSlotMap, gridWidth: 2, gridHeight: 1 };
+    const cycles = 6;
+    const totalPicks = 2 + cycles;
+    const sim = new Simulation(
+      tinyGridMap,
+      level({
+        queueString: Array(totalPicks).fill(0).join(","),
+        gridString: ",",
+        customerString: "0;0;0;" + Array(totalPicks).fill(0).join("."),
+      }),
+      { outOfSlotPolicy: "park-on-grid" },
+    );
+    sim.pick(0); // into the free tool
+    sim.pick(0); // parks — establishes the steady state
+    for (let i = 0; i < cycles; i++) {
+      sim.tick(2.1); // finishes cooking, reclaims the parked raw
+      if (sim.canPick(0).ok) sim.pick(0); // parks the next raw again
+    }
+    sim.runToEnd();
+    expect(sim.status).toBe("won");
+    expect(sim.loseReason).toBeNull();
+    // Everything has settled — any lingering reservation would be a leak.
+    expect(sim["reservedCells"].size).toBe(0);
+  });
 });
 
 describe("flight gating", () => {
@@ -517,6 +555,36 @@ describe("serve slots and dirty dishes", () => {
     const dirty = sim.grid.filter((c) => c.kind === "dirty");
     expect(dirty).toHaveLength(2);
     expect(dirty.map((c) => (c as { count: number }).count).sort()).toEqual([1, 2]);
+    // testMap defines no dirty objects — every stack falls back to the
+    // legacy generic sentinel rather than any real MapDef.dirtyObjects id.
+    expect(dirty.every((c) => (c as { dirtyId: number }).dirtyId === DIRTY_DISH_ID)).toBe(true);
+  });
+
+  it("spawns the matching dirty-object type per dish, keeping types in separate stacks", () => {
+    const dirtyMap: MapDef = {
+      ...testMap,
+      dirtyObjects: [
+        { id: 10, name: "Plate", icon: "", sourceCookedId: 0 },
+        { id: 11, name: "Cup", icon: "", sourceCookedId: 1 },
+      ],
+    };
+    const sim = new Simulation(
+      dirtyMap,
+      level({
+        queueString: "0,1",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0|0;0;0;1",
+        serveableSlots: 2,
+      }),
+    );
+    sim.pick(0); // raw0 -> cooked0, satisfies customer0's dish (source of Plate)
+    sim.pick(0); // raw1 -> cooked1, satisfies customer1's dish (source of Cup)
+    sim.tick(2);
+    expect(sim.status).toBe("won");
+    const dirty = sim.grid.filter((c) => c.kind === "dirty") as { dirtyId: number; count: number }[];
+    expect(dirty).toHaveLength(2);
+    expect(dirty.map((c) => c.dirtyId).sort()).toEqual([10, 11]);
+    expect(dirty.every((c) => c.count === 1)).toBe(true);
   });
 
   it("clears the oldest dirty stack when a sweeper is picked", () => {

@@ -5,7 +5,8 @@
       "id": 0,
       "name": "Soda Machine",
       "emoji": "🥤",
-      "fileId": "",
+      "fileId": "1lGXHzrm8S2iN9R5pAzb1pJPNRG_TRj3c",
+      "localImage": "Map1-burger/tools/Asset_Tool_SodaMachine.png",
       "numSlots": 1,
       "cookingTime": 2,
       "recipes": [{ "in": 7, "out": 7, "amount": 1 }]
@@ -14,7 +15,8 @@
       "id": 1,
       "name": "Chopping Board",
       "emoji": "🔪",
-      "fileId": "",
+      "fileId": "1MrXWa0ogt892HOvsnWF_qfOPTotKO3al",
+      "localImage": "Map1-burger/tools/Asset_Tool_CuttingBoard.png",
       "numSlots": 1,
       "cookingTime": 1,
       "recipes": [
@@ -29,7 +31,8 @@
       "id": 2,
       "name": "Pan",
       "emoji": "🍳",
-      "fileId": "",
+      "fileId": "1EsvoM3g8RvlIE2TTPJZoU83zkcEIYy0C",
+      "localImage": "Map1-burger/tools/Asset_Tool_Pan.png",
       "numSlots": 2,
       "cookingTime": 3,
       "recipes": [
