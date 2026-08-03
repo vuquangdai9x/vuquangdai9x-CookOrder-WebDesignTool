@@ -300,9 +300,21 @@ window.addEventListener("beforeunload", (e) => {
   if (designView?.isDirty) e.preventDefault();
 });
 
+/**
+ * The GIS OAuth client's authorized JavaScript origins are pinned to a fixed
+ * set of hosts and don't include arbitrary localhost dev ports — a silent
+ * check there doesn't fail quietly, it can pop an "origin_mismatch" Google
+ * error page. Skip the automatic check entirely when running locally; the
+ * user can still click "Sign in with Google" manually if they want to.
+ */
+const isLocalDev =
+  location.hostname === "localhost" ||
+  location.hostname === "127.0.0.1" ||
+  location.hostname === "";
+
 // Render immediately with local data (draft/bundled) so the page is never
 // blank while we check for a Google session, then upgrade in the background:
 // a returning, already-signed-in user gets live data moments later, a first
 // visit just gets a "Sign in with Google" button instead of any error.
 void render();
-void loadFromSheet(false);
+if (!isLocalDev) void loadFromSheet(false);
