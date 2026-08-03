@@ -211,6 +211,45 @@ export class Simulation {
     this.fillSlots();
   }
 
+  /**
+   * A fully independent deep copy, sharing only the immutable `map`/`level`
+   * (never mutated after construction) and `options` (may hold a callback,
+   * never mutated either — safe to share by reference). Used by bot.ts's
+   * lookahead search to fork state at each candidate branch cheaply, instead
+   * of replaying pick-history from scratch for every branch.
+   */
+  clone(): Simulation {
+    const c = new Simulation(this.map, this.level, this.options);
+    c.status = this.status;
+    c.loseReason = this.loseReason;
+    c.time = this.time;
+    c.queues = structuredClone(this.queues);
+    c.tools = this.tools.map((t) => ({
+      def: t.def,
+      slots: t.slots.map((s) => ({ item: s.item ? { ...s.item } : null })),
+    }));
+    c.grid = this.grid.map((cell) => ({ ...cell }));
+    c.pending = structuredClone(this.pending);
+    c.active = structuredClone(this.active);
+    c.servedCount = this.servedCount;
+    c.events = [...this.events];
+    c.flights = this.flights.map((f) => ({ ...f }));
+    c.outOfSlotPolicy = this.outOfSlotPolicy;
+    c.ctx = {
+      ...this.ctx,
+      picksByIngredient: { ...this.ctx.picksByIngredient },
+      keysByColor: { ...this.ctx.keysByColor },
+    };
+    c.nextUid = this.nextUid;
+    c.nextFlightId = this.nextFlightId;
+    c.dirtyOrder = [...this.dirtyOrder];
+    c.pendingStaffClears = new Map(this.pendingStaffClears);
+    c.pendingDirty = new Map([...this.pendingDirty].map(([k, v]) => [k, { ...v }]));
+    c.reservedCells = new Set(this.reservedCells);
+    c.reservedSlots = new Set(this.reservedSlots);
+    return c;
+  }
+
   // ---------- public API ----------
 
   get totalCustomers(): number {

@@ -1,70 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { MAP1_DATA } from "../data/configLoader.ts";
 import { toMapDef } from "../data/mapLoader.ts";
-import { parseCustomers, parseGrid, parseQueues, SWEEPER_ID } from "./parser.ts";
+import { SWEEPER_ID } from "./parser.ts";
 import { DIRTY_DISH_ID, Simulation } from "./sim.ts";
-import type { LevelConfig, MapDef } from "./types.ts";
+import type { MapDef } from "./types.ts";
+import { EMPTY_GRID, level, testMap } from "./testFixtures.ts";
 
 const map1 = toMapDef(MAP1_DATA);
-
-/**
- * Small test map: one tool with plenty of slots and a 1s cook time, so sims
- * resolve quickly. Ingredient 2 has no recipe, so it goes straight to the grid.
- */
-const testMap: MapDef = {
-  id: 99,
-  name: "test",
-  dirtyDishName: "plate",
-  gridWidth: 5,
-  gridHeight: 2,
-  dirtyStackHeight: 5,
-  disabledRawIds: [],
-  disabledCookedIds: [],
-  rawIngredients: [0, 1, 2, 3].map((id) => ({
-    id,
-    name: `raw${id}`,
-    icon: "",
-    code: `raw${id}`,
-    price: 1,
-    numSlices: id === 3 ? 2 : 1,
-  })),
-  cookedIngredients: [0, 1, 2, 3].map((id) => ({ id, name: `cooked${id}`, icon: "" })),
-  dirtyObjects: [],
-  customerAvatars: [],
-  tools: [
-    {
-      id: 0,
-      name: "Test Tool",
-      numSlots: 8,
-      cookingTime: 1,
-      recipes: [
-        { in: 0, out: 0, amount: 1 },
-        { in: 1, out: 1, amount: 1 },
-        // Ingredient 3 splits into two pieces, like a chopping board.
-        { in: 3, out: 3, amount: 2 },
-      ],
-    },
-  ],
-  levels: [],
-};
-
-function level(overrides: Partial<LevelConfig> & { queueString: string; gridString: string; customerString: string }): LevelConfig {
-  return {
-    id: 1,
-    name: "test",
-    weather: "Normal",
-    levelTag: "",
-    featureUnlock: "",
-    shuffleDistance: 0,
-    serveableSlots: 2,
-    queues: parseQueues(overrides.queueString),
-    grid: parseGrid(overrides.gridString),
-    customers: parseCustomers(overrides.customerString),
-    ...overrides,
-  };
-}
-
-const EMPTY_GRID = ",,,,,,,,,";
 
 describe("simulation core loop", () => {
   it("serves a customer and wins", () => {
@@ -804,5 +746,48 @@ describe("real Map 1 level data", () => {
       .filter((i) => !l11.isCellUsable(i));
     expect(locked.length).toBeGreaterThan(0);
     expect(l11.cellLockLabel(locked[0])).toMatch(/keys/);
+  });
+});
+
+describe("clone()", () => {
+  it("produces a fully independent deep copy", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0,1", gridString: EMPTY_GRID, customerString: "0;0;0.1" }),
+    );
+    sim.pick(0);
+    const clone = sim.clone();
+
+    // Mutate the clone's mutable containers directly — the original must be
+    // unaffected, both structurally (different array/object instances) and
+    // by value (post-mutation values don't leak back).
+    clone.grid[0] = { kind: "raw", rawId: 3 };
+    clone.tools[0].slots[0].item = { uid: 999, rawId: 3, elapsed: 9 };
+    clone.queues[0].push({ kind: "ingredient", id: 3, effects: [] });
+    clone.active[0].dishes[0].remaining.push(99);
+
+    expect(sim.grid[0]).not.toEqual({ kind: "raw", rawId: 3 });
+    expect(sim.tools[0].slots[0].item?.uid).not.toBe(999);
+    expect(sim.queues[0]).not.toContainEqual({ kind: "ingredient", id: 3, effects: [] });
+    expect(sim.active[0].dishes[0].remaining).not.toContain(99);
+
+    // The clone starts as a faithful snapshot of the same state, though.
+    expect(clone.status).toBe(sim.status);
+    expect(clone.servedCount).toBe(sim.servedCount);
+  });
+
+  it("clone can progress independently of the original", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0,1", gridString: EMPTY_GRID, customerString: "0;0;0.1" }),
+    );
+    const clone = sim.clone();
+    clone.pick(0);
+    clone.pick(0);
+    clone.tick(2);
+    expect(clone.status).toBe("won");
+    // The original never had anything picked from it.
+    expect(sim.status).toBe("playing");
+    expect(sim.queues[0]).toHaveLength(2);
   });
 });

@@ -13,6 +13,8 @@ import {
   EFFECT_FREEZE,
   EFFECT_HOLDING_KEY,
 } from "../../core/effects.ts";
+import type { BotBatchResult, BotType } from "../../core/bot.ts";
+import { runBotTrials } from "../../core/bot.ts";
 import { DIRTY_DISH_ID, Simulation } from "../../core/sim.ts";
 import type { CustomerState, Flight } from "../../core/sim.ts";
 import type {
@@ -119,6 +121,14 @@ export class PlayView {
    * lane just snapping to its post-pick state.
    */
   private lastPickedLane: number | null = null;
+
+  /** Auto-play bot playtesting panel state — independent of the live game session. */
+  private botType: BotType = "greedy";
+  private botLookaheadN = 2;
+  private botTrialCount = 10;
+  private botRunning = false;
+  private lastBotBatchResult: BotBatchResult | null = null;
+  private botTierEl!: HTMLElement;
 
   constructor(
     root: HTMLElement,
@@ -473,10 +483,11 @@ export class PlayView {
     this.lastCustomerIndices = this.currentCustomerIndices();
     this.middleEl = this.middleTier();
     this.queuesEl = this.queuesTier();
+    this.botTierEl = this.botTier();
     this.customersKey = customersStructureKey(this.sim);
     this.middleKey = middleStructureKey(this.sim);
     this.queuesKey = queuesStructureKey(this.sim);
-    this.page.append(this.customersEl, this.middleEl, this.queuesEl);
+    this.page.append(this.customersEl, this.middleEl, this.queuesEl, this.botTierEl);
     this.syncOverlay();
     this.patchLiveValues();
   }
@@ -962,6 +973,151 @@ export class PlayView {
       el("h2", {}, ["Ingredient queues — click the top tile to pick"]),
       lanes,
     ]);
+  }
+
+  /**
+   * Playtesting panel: runs a headless bot (no animation) against the
+   * currently-loaded level many times and reports a win/lose tally. Fully
+   * independent of the live `this.sim` session — each trial builds its own
+   * fresh Simulation, so running a batch never disturbs the game on screen.
+   */
+  private botTier(): HTMLElement {
+    const BOT_OPTIONS: { id: BotType; label: string; title: string }[] = [
+      { id: "random", label: "Random", title: "Picks any currently-pickable ingredient at random" },
+      { id: "greedy", label: "Greedy", title: "Always picks whatever the current orders need right now" },
+      { id: "intelligent", label: "Intelligent", title: "Searches N picks ahead to choose the best move" },
+    ];
+
+    const botBar = el("div", { class: "speed-bar", role: "radiogroup" });
+    for (const option of BOT_OPTIONS) {
+      const b = button(
+        option.label,
+        () => {
+          this.botType = option.id;
+          this.refreshBotTier();
+        },
+        {
+          class: this.botType === option.id ? "active" : "",
+          role: "radio",
+          "data-bot-type": option.id,
+          title: option.title,
+        },
+      );
+      botBar.append(b);
+    }
+
+    const nInput = el("input", {
+      type: "number",
+      value: String(this.botLookaheadN),
+      min: "1",
+    }) as HTMLInputElement;
+    nInput.addEventListener("change", () => {
+      this.botLookaheadN = Math.max(1, Number(nInput.value) || 1);
+      nInput.value = String(this.botLookaheadN);
+    });
+
+    const trialsInput = el("input", {
+      type: "number",
+      value: String(this.botTrialCount),
+      min: "1",
+    }) as HTMLInputElement;
+    trialsInput.addEventListener("change", () => {
+      this.botTrialCount = Math.max(1, Number(trialsInput.value) || 1);
+      trialsInput.value = String(this.botTrialCount);
+    });
+
+    const playBtn = button(
+      this.botRunning ? "Running…" : "▶ Play",
+      () => void this.runBotBatch(),
+      { class: "primary" },
+    );
+    playBtn.disabled = this.botRunning;
+
+    const resultsEl = el("div", { class: "bot-results" });
+    this.renderBotResults(resultsEl);
+
+    return el("section", { class: "play-section bot-tier" }, [
+      el("h2", {}, ["Auto-play bot — playtest this level headlessly"]),
+      el("div", { class: "bot-controls" }, [
+        botBar,
+        el("label", { class: "field small" }, ["N (lookahead)", nInput]),
+        el("label", { class: "field small" }, ["Trials", trialsInput]),
+        playBtn,
+      ]),
+      resultsEl,
+    ]);
+  }
+
+  private renderBotResults(target: HTMLElement): void {
+    clear(target);
+    const result = this.lastBotBatchResult;
+    if (!result) {
+      target.append(el("small", { class: "muted" }, ["No runs yet."]));
+      return;
+    }
+    target.append(
+      el("span", {}, [`${result.type}: ${result.wins} win${result.wins === 1 ? "" : "s"} / ${result.losses} loss${result.losses === 1 ? "" : "es"} (${result.trials.length} trials)`]),
+    );
+    if (result.zeroWins) {
+      target.append(
+        el("span", { class: "warn-badge bad" }, ["⚠ This bot never won a single trial — the level may be unsolvable, or this bot isn't smart enough"]),
+      );
+    }
+  }
+
+  /** Rebuild-and-replace: the bot tier only changes on its own clicks, never per frame. */
+  private refreshBotTier(): void {
+    const next = this.botTier();
+    this.botTierEl.replaceWith(next);
+    this.botTierEl = next;
+  }
+
+  /**
+   * Runs trials in time-boxed chunks (rather than one at a time) so a small
+   * default batch finishes in a single chunk with no perceptible delay, while
+   * a user-inflated trial-count/N still yields regularly instead of freezing
+   * the tab or stalling the live animated game loop. `bot.ts`'s
+   * `runBotTrials` itself stays a plain synchronous function per chunk,
+   * simplest to unit-test — the chunking lives here, at the UI boundary.
+   */
+  private async runBotBatch(): Promise<void> {
+    if (this.botRunning) return;
+    this.botRunning = true;
+    this.refreshBotTier();
+
+    const type = this.botType;
+    const opts = { type, lookaheadN: this.botLookaheadN };
+    const total = this.botTrialCount;
+    const CHUNK_BUDGET_MS = 32;
+    const trials: BotBatchResult["trials"] = [];
+
+    let i = 0;
+    while (i < total) {
+      const chunkStart = performance.now();
+      let ran = 0;
+      // Always run at least one trial per chunk, even if it alone blows the
+      // budget, so a single very slow trial can't spin this loop forever.
+      do {
+        runBotTrials(this.map, this.level, opts, 1).trials.forEach((t) => trials.push(t));
+        i++;
+        ran++;
+      } while (i < total && ran < total && performance.now() - chunkStart < CHUNK_BUDGET_MS);
+      // setTimeout, not requestAnimationFrame: rAF never fires for a hidden/
+      // backgrounded tab, which would stall the batch indefinitely if the
+      // user switches away mid-run.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+
+    const wins = trials.filter((t) => t.status === "won").length;
+    this.lastBotBatchResult = {
+      type,
+      trials,
+      wins,
+      losses: trials.length - wins,
+      zeroWins: wins === 0,
+    };
+    this.botRunning = false;
+    this.refreshBotTier();
   }
 
   private queueTile(
