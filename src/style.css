@@ -1194,11 +1194,19 @@ td input {
   padding: 0.2rem 0.5rem;
 }
 
-.toolbar-config {
+.toolbar-config,
+.toolbar-bot {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
+}
+
+.bot-results {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .fold-toggle {
@@ -1300,24 +1308,6 @@ td input {
   container-type: size;
 }
 
-.play-page > .bot-tier {
-  flex: 0 0 auto;
-}
-
-.bot-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.6rem;
-}
-
-.bot-results {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.4rem;
-}
 
 .play-section h2 {
   margin: 0 0 0.45rem;

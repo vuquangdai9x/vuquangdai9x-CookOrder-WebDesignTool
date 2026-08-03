@@ -122,13 +122,18 @@ export class PlayView {
    */
   private lastPickedLane: number | null = null;
 
-  /** Auto-play bot playtesting panel state — independent of the live game session. */
+  /**
+   * Auto-play bot playtesting panel state — independent of the live game
+   * session. Lives in the toolbar as its own foldout, collapsed by default.
+   */
   private botType: BotType = "greedy";
   private botLookaheadN = 2;
   private botTrialCount = 10;
   private botRunning = false;
   private lastBotBatchResult: BotBatchResult | null = null;
-  private botTierEl!: HTMLElement;
+  private botGroupEl!: HTMLElement;
+  private botFoldBtn!: HTMLButtonElement;
+  private botFolded = true;
 
   constructor(
     root: HTMLElement,
@@ -449,19 +454,33 @@ export class PlayView {
       this.applyFoldState();
     }, { class: "fold-toggle", title: "Show/hide level, speed and tool-full settings" });
 
+    this.botGroupEl = this.botGroup();
+    this.botFoldBtn = button("", () => {
+      this.botFolded = !this.botFolded;
+      this.applyBotFoldState();
+    }, { class: "fold-toggle", title: "Show/hide the auto-play bot playtesting panel" });
+
     const bar = el("div", { class: "play-toolbar" }, [
       this.foldBtn,
       this.configGroupEl,
+      this.botFoldBtn,
+      this.botGroupEl,
       el("span", { class: "spacer" }),
       el("div", { class: "hud", id: "play-hud" }),
     ]);
     this.applyFoldState();
+    this.applyBotFoldState();
     return bar;
   }
 
   private applyFoldState(): void {
     this.configGroupEl.style.display = this.toolbarFolded ? "none" : "";
     this.foldBtn.textContent = this.toolbarFolded ? "▸ Config" : "▾ Config";
+  }
+
+  private applyBotFoldState(): void {
+    this.botGroupEl.style.display = this.botFolded ? "none" : "";
+    this.botFoldBtn.textContent = this.botFolded ? "▸ Bot" : "▾ Bot";
   }
 
   private refreshToolbar(): void {
@@ -483,11 +502,10 @@ export class PlayView {
     this.lastCustomerIndices = this.currentCustomerIndices();
     this.middleEl = this.middleTier();
     this.queuesEl = this.queuesTier();
-    this.botTierEl = this.botTier();
     this.customersKey = customersStructureKey(this.sim);
     this.middleKey = middleStructureKey(this.sim);
     this.queuesKey = queuesStructureKey(this.sim);
-    this.page.append(this.customersEl, this.middleEl, this.queuesEl, this.botTierEl);
+    this.page.append(this.customersEl, this.middleEl, this.queuesEl);
     this.syncOverlay();
     this.patchLiveValues();
   }
@@ -976,12 +994,14 @@ export class PlayView {
   }
 
   /**
-   * Playtesting panel: runs a headless bot (no animation) against the
+   * Playtesting panel content: runs a headless bot (no animation) against the
    * currently-loaded level many times and reports a win/lose tally. Fully
    * independent of the live `this.sim` session — each trial builds its own
    * fresh Simulation, so running a batch never disturbs the game on screen.
+   * Lives in the toolbar as its own foldout (see toolbar()/applyBotFoldState()),
+   * collapsed by default since it's a playtesting tool, not everyday HUD state.
    */
-  private botTier(): HTMLElement {
+  private botGroup(): HTMLElement {
     const BOT_OPTIONS: { id: BotType; label: string; title: string }[] = [
       { id: "random", label: "Random", title: "Picks any currently-pickable ingredient at random" },
       { id: "greedy", label: "Greedy", title: "Always picks whatever the current orders need right now" },
@@ -994,7 +1014,7 @@ export class PlayView {
         option.label,
         () => {
           this.botType = option.id;
-          this.refreshBotTier();
+          this.refreshBotGroup();
         },
         {
           class: this.botType === option.id ? "active" : "",
@@ -1036,14 +1056,11 @@ export class PlayView {
     const resultsEl = el("div", { class: "bot-results" });
     this.renderBotResults(resultsEl);
 
-    return el("section", { class: "play-section bot-tier" }, [
-      el("h2", {}, ["Auto-play bot — playtest this level headlessly"]),
-      el("div", { class: "bot-controls" }, [
-        botBar,
-        el("label", { class: "field small" }, ["N (lookahead)", nInput]),
-        el("label", { class: "field small" }, ["Trials", trialsInput]),
-        playBtn,
-      ]),
+    return el("div", { class: "toolbar-bot" }, [
+      botBar,
+      el("label", { class: "field small" }, ["N (lookahead)", nInput]),
+      el("label", { class: "field small" }, ["Trials", trialsInput]),
+      playBtn,
       resultsEl,
     ]);
   }
@@ -1065,11 +1082,12 @@ export class PlayView {
     }
   }
 
-  /** Rebuild-and-replace: the bot tier only changes on its own clicks, never per frame. */
-  private refreshBotTier(): void {
-    const next = this.botTier();
-    this.botTierEl.replaceWith(next);
-    this.botTierEl = next;
+  /** Rebuild-and-replace: the bot group only changes on its own clicks, never per frame. */
+  private refreshBotGroup(): void {
+    const next = this.botGroup();
+    this.botGroupEl.replaceWith(next);
+    this.botGroupEl = next;
+    this.applyBotFoldState();
   }
 
   /**
@@ -1083,7 +1101,7 @@ export class PlayView {
   private async runBotBatch(): Promise<void> {
     if (this.botRunning) return;
     this.botRunning = true;
-    this.refreshBotTier();
+    this.refreshBotGroup();
 
     const type = this.botType;
     const opts = { type, lookaheadN: this.botLookaheadN };
@@ -1117,7 +1135,7 @@ export class PlayView {
       zeroWins: wins === 0,
     };
     this.botRunning = false;
-    this.refreshBotTier();
+    this.refreshBotGroup();
   }
 
   private queueTile(
