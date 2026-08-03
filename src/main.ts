@@ -35,9 +35,11 @@ const DRAFT_KEY = "cookorder-draft-map";
  * that predates the cooking-tool model left the page blank. v3 moved
  * gridWidth/gridHeight/dirtyStackHeight from per-level to per-map and added
  * disabledRawIds/disabledCookedIds to MapDef; a v2 draft has none of those,
- * which would otherwise render the grid with NaN dimensions.
+ * which would otherwise render the grid with NaN dimensions. v4 added
+ * dirtyObjects to MapDef; a v3 draft has no such array, which crashed image
+ * preload (`map.dirtyObjects is not iterable`) instead of falling back.
  */
-const DRAFT_VERSION = 3;
+const DRAFT_VERSION = 4;
 
 interface Draft {
   version: number;
@@ -89,7 +91,8 @@ function loadDraft(): { map: MapData; migrated: boolean } | null {
     typeof candidate.gridHeight === "number" &&
     typeof candidate.dirtyStackHeight === "number" &&
     Array.isArray(candidate.disabledRawIds) &&
-    Array.isArray(candidate.disabledCookedIds);
+    Array.isArray(candidate.disabledCookedIds) &&
+    Array.isArray(candidate.dirtyObjects);
   if (current) return { map: candidate as MapData, migrated: false };
 
   // Only the level edits are the designer's own work; everything else now comes
