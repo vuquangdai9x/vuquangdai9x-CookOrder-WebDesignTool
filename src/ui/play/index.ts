@@ -1481,14 +1481,32 @@ export class PlayView {
   private overlay(): HTMLElement {
     const sim = this.sim;
     const won = sim.status === "won";
+    const nextLevel = won ? this.nextLevel() : null;
     return el("div", { class: `overlay ${won ? "won" : "lost"}` }, [
       el("h2", {}, [won ? "🎉 Level complete" : "💥 Level failed"]),
       el("p", {}, [sim.events.at(-1)?.message ?? ""]),
       el("p", { class: "sub" }, [
         `Served ${sim.servedCount}/${sim.totalCustomers} · ${sim.time.toFixed(1)}s`,
       ]),
-      button("⟲ Restart", () => this.restart(), { class: "primary" }),
+      el("div", { class: "overlay-actions" }, [
+        ...(nextLevel
+          ? [
+              button(
+                `▶ Next Level: ${nextLevel.name}`,
+                () => this.onSelectLevel(nextLevel.id),
+                { class: "primary" },
+              ),
+            ]
+          : []),
+        button("⟲ Restart", () => this.restart(), { class: nextLevel ? "" : "primary" }),
+      ]),
     ]);
+  }
+
+  /** The level right after the current one in this map's level list, or null if this is the last one. */
+  private nextLevel(): LevelConfig | null {
+    const i = this.map.levels.findIndex((l) => l.id === this.level.id);
+    return i !== -1 ? (this.map.levels[i + 1] ?? null) : null;
   }
 
   /** One-more-chance offer on loss — see canOfferSaveMe()/handleSaveMe(). */

@@ -41,7 +41,7 @@
   "params": {
     "numRowPick": 7,
     "numCleanStack": -1,
-    "saveMeCount": 1,
+    "saveMeCount": 10,
     "backpack": { "name": "Backpack", "emoji": "🎒", "fileId": "", "localImage": "" }
   }
 }
