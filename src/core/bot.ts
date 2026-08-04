@@ -8,12 +8,10 @@ import type { Id, LevelConfig, MapDef } from "./types.ts";
 import { Simulation } from "./sim.ts";
 import type { SimStatus } from "./sim.ts";
 
-export type BotType = "random" | "greedy" | "intelligent";
+export type BotType = "random" | "greedy";
 
 export interface BotRunOptions {
   type: BotType;
-  /** "intelligent" only — how many picks ahead to search. Default 2. */
-  lookaheadN?: number;
   /** Injectable for "random", so tests can seed a deterministic sequence. */
   rng?: () => number;
   /** Driver safety guard: max decision points (picks + stall-advances) per trial. Default 5000. */
@@ -43,16 +41,12 @@ export interface BotBatchResult {
 
 const DEFAULT_MAX_ITERATIONS = 5000;
 const DEFAULT_STALL_TICK_STEP = 0.5;
-const DEFAULT_LOOKAHEAD_N = 2;
-/** Caps total lookahead search nodes per real decision, so a user-typed huge N degrades to a shallow best-effort search instead of hanging the tab. */
-const MAX_LOOKAHEAD_NODES = 5000;
 
 /**
  * Queue lanes whose fronting instance can be picked right now. A combined or
  * linked block spanning several columns fronts more than one lane, but it's
  * one instance — dedup by group so it isn't offered (and picked) twice, which
- * would otherwise bias Random toward wide blocks and waste Intelligent's
- * lookahead budget on duplicate children.
+ * would otherwise bias Random toward wide blocks.
  */
 function pickableCandidates(sim: Simulation): number[] {
   const out: number[] = [];
@@ -177,74 +171,6 @@ function urgencyKey(sim: Simulation, map: MapDef, queueIndex: number): [number, 
   return [minTimeLeft, minRemaining];
 }
 
-// ---------- Intelligent ----------
-
-function terminalScore(sim: Simulation): number {
-  if (sim.status === "won") return 100_000 + sim.servedCount;
-  // A loss that happened later (more served first) still beats an earlier one.
-  return -100_000 + sim.servedCount * 10;
-}
-
-function leafScore(sim: Simulation): number {
-  let score = 1000 * sim.servedCount;
-  for (const c of sim.active) {
-    for (const dish of c.dishes) score -= 10 * dish.remaining.length;
-    if (c.config.waitTime > 0) {
-      const urgency = Math.max(0, 1 - c.timeLeft / c.config.waitTime);
-      score -= 5 * urgency;
-    }
-  }
-  score -= 50 * sim.grid.filter((c) => c.kind === "dirty").length;
-  return score;
-}
-
-interface LookaheadState {
-  nodesUsed: number;
-}
-
-function evaluateBranch(sim: Simulation, depthRemaining: number, state: LookaheadState, stallGuard = 0): number {
-  if (sim.status !== "playing") return terminalScore(sim);
-  if (depthRemaining <= 0 || state.nodesUsed >= MAX_LOOKAHEAD_NODES) return leafScore(sim);
-
-  const candidates = pickableCandidates(sim);
-  if (candidates.length === 0) {
-    if (stallGuard > 20) return leafScore(sim);
-    const elapsed = sim.fastForward();
-    if (elapsed === 0) sim.tick(DEFAULT_STALL_TICK_STEP);
-    // Advancing time doesn't consume a depth level — only a pick does.
-    return evaluateBranch(sim, depthRemaining, state, stallGuard + 1);
-  }
-
-  let best = -Infinity;
-  for (const idx of candidates) {
-    state.nodesUsed++;
-    const child = sim.clone();
-    child.pick(idx);
-    best = Math.max(best, evaluateBranch(child, depthRemaining - 1, state));
-    if (state.nodesUsed >= MAX_LOOKAHEAD_NODES) break;
-  }
-  return best;
-}
-
-function chooseIntelligent(n: number) {
-  return (sim: Simulation, candidates: number[]): number => {
-    const state: LookaheadState = { nodesUsed: 0 };
-    let bestScore = -Infinity;
-    let bestIndex = candidates[0];
-    for (const idx of candidates) {
-      const branch = sim.clone();
-      branch.pick(idx);
-      const score = evaluateBranch(branch, n - 1, state);
-      if (score > bestScore) {
-        bestScore = score;
-        bestIndex = idx;
-      }
-      if (state.nodesUsed >= MAX_LOOKAHEAD_NODES) break;
-    }
-    return bestIndex;
-  };
-}
-
 // ---------- public API ----------
 
 export function runBotTrial(map: MapDef, level: LevelConfig, opts: BotRunOptions): BotTrialResult {
@@ -252,12 +178,7 @@ export function runBotTrial(map: MapDef, level: LevelConfig, opts: BotRunOptions
   const maxIterations = opts.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   const stallTickStep = opts.stallTickStep ?? DEFAULT_STALL_TICK_STEP;
 
-  const chooseMove =
-    opts.type === "random"
-      ? chooseRandom(opts.rng ?? Math.random)
-      : opts.type === "greedy"
-        ? chooseGreedy(map)
-        : chooseIntelligent(opts.lookaheadN ?? DEFAULT_LOOKAHEAD_N);
+  const chooseMove = opts.type === "random" ? chooseRandom(opts.rng ?? Math.random) : chooseGreedy(map);
 
   const { iterations, bailedOut } = runDriver(sim, chooseMove, maxIterations, stallTickStep);
 

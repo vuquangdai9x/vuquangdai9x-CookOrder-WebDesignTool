@@ -53,7 +53,13 @@ export type CellContent =
   /** A raw ingredient parked because its tool was full (park-on-grid policy). */
   | { kind: "raw"; rawId: Id }
   /** dirtyId indexes MapDef.dirtyObjects; stacks of different types never mix. */
-  | { kind: "dirty"; dirtyId: Id; count: number };
+  | { kind: "dirty"; dirtyId: Id; count: number }
+  /**
+   * The Save Me booster's collapsed grid — cooked ids only (a swept raw is
+   * converted through its recipe first). Checked by autoServe()/
+   * autoCompleteDish() before the grid itself.
+   */
+  | { kind: "backpack"; items: Id[] };
 
 export interface DishState {
   remaining: Id[];
@@ -101,7 +107,9 @@ export type FlightKind =
   /** The dirty dish a departing customer leaves behind. */
   | "customer-to-grid"
   /** One dirty stack flying into a staff customer as they clear it. */
-  | "dirty-to-staff";
+  | "dirty-to-staff"
+  /** A cooked item served out of the Save Me backpack instead of the grid. */
+  | "backpack-to-customer";
 
 export interface Flight {
   id: number;
@@ -136,7 +144,8 @@ export interface SimEvent {
     | "dirty-added"
     | "dirty-cleared"
     | "won"
-    | "lost";
+    | "lost"
+    | "saved";
   message: string;
   atTime: number;
   /** Customer index, for events the view wants to animate. */
@@ -170,6 +179,8 @@ export class Simulation {
   status: SimStatus = "playing";
   loseReason: LoseReason | null = null;
   time = 0;
+  /** How many times saveMe() has successfully rescued this run — see BOOSTER_PARAMS.saveMeCount. */
+  saveMeUsed = 0;
 
   /**
    * queueGrid[x][y] — column x (= queue index), row y (0 = pickable front).
@@ -213,6 +224,14 @@ export class Simulation {
   private reservedCells = new Set<number>();
   /** Tool slots reserved by an in-flight item. */
   private reservedSlots = new Set<string>();
+  /**
+   * Auto Complete booster: how many units of a cooked id have been "taken"
+   * from a still-in-queue raw ingredient that yields more than one unit per
+   * pick. The raw itself stays in the queue (visibly untouched) until the
+   * tally reaches the recipe's amount, at which point it's removed — see
+   * autoCompleteDish().
+   */
+  private partialYield = new Map<Id, number>();
 
   constructor(map: MapDef, level: LevelConfig, options: SimOptions = {}) {
     this.map = map;
@@ -242,45 +261,6 @@ export class Simulation {
     this.fillSlots();
   }
 
-  /**
-   * A fully independent deep copy, sharing only the immutable `map`/`level`
-   * (never mutated after construction) and `options` (may hold a callback,
-   * never mutated either — safe to share by reference). Used by bot.ts's
-   * lookahead search to fork state at each candidate branch cheaply, instead
-   * of replaying pick-history from scratch for every branch.
-   */
-  clone(): Simulation {
-    const c = new Simulation(this.map, this.level, this.options);
-    c.status = this.status;
-    c.loseReason = this.loseReason;
-    c.time = this.time;
-    c.queueGrid = structuredClone(this.queueGrid);
-    c.tools = this.tools.map((t) => ({
-      def: t.def,
-      slots: t.slots.map((s) => ({ item: s.item ? { ...s.item } : null })),
-    }));
-    c.grid = this.grid.map((cell) => ({ ...cell }));
-    c.pending = structuredClone(this.pending);
-    c.active = structuredClone(this.active);
-    c.servedCount = this.servedCount;
-    c.events = [...this.events];
-    c.flights = this.flights.map((f) => ({ ...f }));
-    c.outOfSlotPolicy = this.outOfSlotPolicy;
-    c.ctx = {
-      ...this.ctx,
-      picksByIngredient: { ...this.ctx.picksByIngredient },
-      keysByColor: { ...this.ctx.keysByColor },
-    };
-    c.nextUid = this.nextUid;
-    c.nextFlightId = this.nextFlightId;
-    c.dirtyOrder = [...this.dirtyOrder];
-    c.pendingStaffClears = new Map(this.pendingStaffClears);
-    c.pendingDirty = new Map([...this.pendingDirty].map(([k, v]) => [k, { ...v }]));
-    c.reservedCells = new Set(this.reservedCells);
-    c.reservedSlots = new Set(this.reservedSlots);
-    return c;
-  }
-
   // ---------- public API ----------
 
   get totalCustomers(): number {
@@ -301,7 +281,7 @@ export class Simulation {
     return this.queueGrid.length;
   }
 
-  /** Row count every column is padded to. Derived, not stored — clone() needs nothing extra. */
+  /** Row count every column is padded to. */
   get queueHeight(): number {
     return this.queueGrid[0]?.length ?? 0;
   }
@@ -328,13 +308,18 @@ export class Simulation {
     return this.pickInstanceCells(x) ?? [];
   }
 
+  /** Every cell a pickAt(x,y) click would pick right now — the Ingredient Pick booster's equivalent of pickTargets(). */
+  pickTargetsAt(x: number, y: number): { x: number; y: number }[] {
+    return this.instanceAt(x, y) ?? [];
+  }
+
   setOutOfSlotPolicy(policy: OutOfSlotPolicy): void {
     this.outOfSlotPolicy = policy;
   }
 
   /** True when the instance fronting this lane may be picked right now. */
   canPick(queueIndex: number): { ok: boolean; reason?: string } {
-    const r = this.evaluatePick(queueIndex, false);
+    const r = this.evaluatePick(queueIndex, 0, false);
     return r.ok ? { ok: true } : { ok: false, reason: r.reason };
   }
 
@@ -345,9 +330,76 @@ export class Simulation {
    * completeFlight().
    */
   pick(queueIndex: number): boolean {
-    const r = this.evaluatePick(queueIndex, true); // reservations are now held
+    const r = this.evaluatePick(queueIndex, 0, true); // reservations are now held
     if (!r.ok) return false;
+    this.applyPick(r);
+    return true;
+  }
 
+  /**
+   * Ingredient Pick booster: picks the instance at an arbitrary (x,y), not
+   * limited to the front row — including a combined block or a linked chain
+   * not yet all at the front. Shares evaluatePick()/applyPick() with pick(),
+   * just without the row-0 gate.
+   */
+  pickAt(x: number, y: number): boolean {
+    const r = this.evaluatePick(x, y, true, true);
+    if (!r.ok) return false;
+    this.applyPick(r);
+    return true;
+  }
+
+  /**
+   * Resolves what picking cell (x,y) would do: which cells make up the
+   * instance, its items, and where each item would go. `canPick`/`pick` call
+   * this at y=0 with `anyRow=false` (the normal front-row-only rule);
+   * `pickAt` calls it with `anyRow=true` to bypass that gate for the
+   * Ingredient Pick booster. `commit=false` is a pure query (any
+   * reservations are rolled back before returning); `commit=true` keeps them
+   * for the flights about to launch. Because both go through the same
+   * planDispatch(), a "canPick weaker than the actual placement" bug —
+   * which would let a pick write a `-1` cell/slot and corrupt state — isn't
+   * possible: the placement loop *is* the check.
+   */
+  private evaluatePick(
+    x: number,
+    y: number,
+    commit: boolean,
+    anyRow = false,
+  ):
+    | { ok: true; cells: { x: number; y: number }[]; items: QueueItem[]; plan: Dispatch[] }
+    | { ok: false; reason: string } {
+    if (this.status !== "playing") return { ok: false, reason: "Level finished" };
+
+    const cells = anyRow ? this.instanceAt(x, y) : this.pickInstanceCells(x);
+    if (!cells) {
+      const at = this.queueGrid[x]?.[y];
+      return {
+        ok: false,
+        reason: at ? "Linked items are not all at the front" : "Queue empty",
+      };
+    }
+    const items = cells.map((c) => this.queueGrid[c.x][c.y]!.item);
+
+    // Any member's canPick effect (e.g. Freeze) blocks the whole instance.
+    for (const item of items) {
+      for (const effect of item.effects) {
+        const check = getQueueEffect(effect.effectId).canPick?.(effect, this.ctx);
+        if (check && !check.ok) return { ok: false, reason: check.reason ?? "Blocked" };
+      }
+    }
+
+    const planned = this.planDispatch(items, commit);
+    if (!planned.ok) return planned;
+    return { ok: true, cells, items, plan: planned.plan };
+  }
+
+  /** Clears the picked cells, settles gravity, and dispatches every item — the shared tail of pick() and pickAt(). */
+  private applyPick(r: {
+    cells: { x: number; y: number }[];
+    items: QueueItem[];
+    plan: Dispatch[];
+  }): void {
     // Clear the picked cells and let gravity settle *before* dispatching, so
     // nothing re-entrant (an onPick hook, a log line) can observe a
     // half-picked instance or the same cell twice.
@@ -371,53 +423,11 @@ export class Simulation {
       this.settle();
       this.completeAllFlights();
     }
-    return true;
   }
 
   /**
-   * Resolves what picking lane `x` would do: which cells make up the fronting
-   * instance, its items, and where each item would go. `canPick` calls this
-   * with commit=false (a pure query — any reservations are rolled back
-   * before returning); `pick` calls it with commit=true and keeps the
-   * reservations for the flights it's about to launch. Because both go
-   * through the same planDispatch(), a "canPick weaker than the actual
-   * placement" bug — which would let pick() write a `-1` cell/slot and
-   * corrupt state — isn't possible: the placement loop *is* the check.
-   */
-  private evaluatePick(
-    queueIndex: number,
-    commit: boolean,
-  ):
-    | { ok: true; cells: { x: number; y: number }[]; items: QueueItem[]; plan: Dispatch[] }
-    | { ok: false; reason: string } {
-    if (this.status !== "playing") return { ok: false, reason: "Level finished" };
-
-    const cells = this.pickInstanceCells(queueIndex);
-    if (!cells) {
-      const front = this.queueGrid[queueIndex]?.[0];
-      return {
-        ok: false,
-        reason: front ? "Linked items are not all at the front" : "Queue empty",
-      };
-    }
-    const items = cells.map((c) => this.queueGrid[c.x][c.y]!.item);
-
-    // Any member's canPick effect (e.g. Freeze) blocks the whole instance.
-    for (const item of items) {
-      for (const effect of item.effects) {
-        const check = getQueueEffect(effect.effectId).canPick?.(effect, this.ctx);
-        if (check && !check.ok) return { ok: false, reason: check.reason ?? "Blocked" };
-      }
-    }
-
-    const planned = this.planDispatch(items, commit);
-    if (!planned.ok) return planned;
-    return { ok: true, cells, items, plan: planned.plan };
-  }
-
-  /**
-   * Cells of the instance a click on lane x would pick, or null when nothing
-   * is pickable there yet.
+   * Cells of the instance fronting lane x, or null when nothing is pickable
+   * there yet.
    *   ungrouped — just the front cell.
    *   combined  — the whole block. No extra check needed: a cell of the
    *               block sitting at row 0 already proves its min-y is 0.
@@ -426,10 +436,38 @@ export class Simulation {
   private pickInstanceCells(x: number): { x: number; y: number }[] | null {
     const front = this.queueGrid[x]?.[0];
     if (!front) return null; // empty column, or a hole
-    if (front.group === -1) return [{ x, y: 0 }];
-    const cells = this.groupCells(front.group);
-    if (this.groupKinds[front.group] === "linked" && cells.some((c) => c.y !== 0)) return null;
+    const cells = this.instanceAt(x, 0)!;
+    if (front.group !== -1 && this.groupKinds[front.group] === "linked" && cells.some((c) => c.y !== 0)) {
+      return null;
+    }
     return cells;
+  }
+
+  /**
+   * The whole instance a pick at (x,y) would dispatch, with no row-0 or
+   * "linked members all at the front" gate — used by pickAt() (the
+   * Ingredient Pick booster) and by pickInstanceCells() (which layers the
+   * front-row gate back on for the normal click path). Combined and linked
+   * groups both resolve to their *entire* membership here: picking either
+   * always dispatches every member together. Contrast movementInstanceAt(),
+   * which only combined blocks resolve as a rigid multi-cell unit — a linked
+   * group is never a movement instance.
+   */
+  private instanceAt(x: number, y: number): { x: number; y: number }[] | null {
+    const cell = this.queueGrid[x]?.[y];
+    if (!cell) return null;
+    if (cell.group === -1) return [{ x, y }];
+    return this.groupCells(cell.group);
+  }
+
+  /** The rigid movement unit at (x,y): a whole combined block, or just that one cell (a linked member moves independently). */
+  private movementInstanceAt(x: number, y: number): { x: number; y: number }[] | null {
+    const cell = this.queueGrid[x]?.[y];
+    if (!cell) return null;
+    if (cell.group !== -1 && this.groupKinds[cell.group] === "combined") {
+      return this.groupCells(cell.group);
+    }
+    return [{ x, y }];
   }
 
   /** Every live cell carrying group index g, sorted by (y, x). */
@@ -600,6 +638,60 @@ export class Simulation {
     }
   }
 
+  /**
+   * Shift-up Row booster: sends every column's current front-row movement
+   * instance to the back of its own column(s), letting whatever's behind it
+   * rise via the normal gravity pass — the "leftover" ingredient(s) refill
+   * the hole the shift just created. A combined block spanning several
+   * columns is moved once as a whole (its cells still refill independently,
+   * each at the back of its own column — a column with a deeper hole just
+   * gets a deeper refill, growing the grid if that column runs out of room).
+   * A linked member moves alone (linked is never a movement instance, same
+   * as gravity) — its group tag travels with it either way, since the whole
+   * QueueCell object (item + group) is what's relocated, never just the item.
+   * A column with nothing at row 0 is left untouched. Returns false if no
+   * column had anything to shift.
+   */
+  forceShiftUp(): boolean {
+    if (this.status !== "playing") return false;
+    const seenGroups = new Set<number>();
+    const removed: { x: number; cell: QueueCell }[] = [];
+    let touchedAny = false;
+
+    for (let x = 0; x < this.queueGrid.length; x++) {
+      const front = this.queueGrid[x][0];
+      if (!front) continue;
+      const isCombined = front.group !== -1 && this.groupKinds[front.group] === "combined";
+      if (isCombined) {
+        if (seenGroups.has(front.group)) continue; // already collected via an earlier column
+        seenGroups.add(front.group);
+      }
+      touchedAny = true;
+      for (const c of this.movementInstanceAt(x, 0)!) {
+        removed.push({ x: c.x, cell: this.queueGrid[c.x][c.y]! });
+        this.queueGrid[c.x][c.y] = null;
+      }
+    }
+    if (!touchedAny) return false;
+
+    this.advanceQueues();
+    for (const { x, cell } of removed) this.appendToColumnBack(x, cell);
+    return true;
+  }
+
+  /** Places `cell` immediately after the last occupied row of column x, growing every column by one row if it's already full. */
+  private appendToColumnBack(x: number, cell: QueueCell): void {
+    const col = this.queueGrid[x];
+    let y = col.length - 1;
+    while (y >= 0 && col[y] === null) y--;
+    const target = y + 1;
+    if (target >= col.length) {
+      // The grid must stay rectangular — grow every column by one row, not just this one.
+      for (const c of this.queueGrid) c.push(null);
+    }
+    this.queueGrid[x][target] = cell;
+  }
+
   /** Advance the simulation by `dt` seconds. */
   tick(dt: number): void {
     if (this.status !== "playing") return;
@@ -690,16 +782,22 @@ export class Simulation {
           this.releaseCell(flight.fromCell);
           this.grid[flight.fromCell] = { kind: "empty" };
         }
-        const customer = this.active.find((c) => c.index === index);
-        const dishState = customer?.dishes[dish];
-        if (dishState) {
-          const at = dishState.remaining.indexOf(flight.itemId);
-          if (at !== -1) dishState.remaining.splice(at, 1);
-          dishState.filled.push(flight.itemId);
+        this.fillDish(index, dish, flight.itemId);
+        break;
+      }
+      case "backpack-to-customer": {
+        const { index, dish } = flight.toCustomer!;
+        const cell = flight.fromCell!;
+        this.releaseCell(cell);
+        const content = this.grid[cell];
+        if (content.kind === "backpack") {
+          const at = content.items.indexOf(flight.itemId);
+          if (at !== -1) content.items.splice(at, 1);
+          // Only clear the cell once it's fully drained — other items may
+          // still be waiting in the same backpack.
+          if (content.items.length === 0) this.grid[cell] = { kind: "empty" };
         }
-        if (customer && customer.dishes.every((d) => d.remaining.length === 0)) {
-          this.completeCustomer(customer);
-        }
+        this.fillDish(index, dish, flight.itemId);
         break;
       }
     }
@@ -769,6 +867,109 @@ export class Simulation {
       for (const dish of customer.dishes) for (const id of dish.remaining) set.add(id);
     }
     return set;
+  }
+
+  /**
+   * Auto Complete booster: finishes one dish of the left-most active
+   * customer, drawing each remaining cooked id from the backpack first, then
+   * the grid, then the queues (a still-queued raw counts as already
+   * processed once taken this way). All-or-nothing: if any remaining id
+   * can't be covered from any source, nothing is taken and this returns
+   * false. baseId topping order is irrelevant here — the whole dish
+   * completes atomically, bypassing the normal serve pipeline entirely.
+   */
+  autoCompleteDish(): boolean {
+    if (this.status !== "playing") return false;
+    const customer = this.active[0];
+    if (!customer) return false;
+    const dish = customer.dishes.find((d) => d.remaining.length > 0);
+    if (!dish) return false;
+    const needed = [...dish.remaining];
+
+    type Take =
+      | { source: "backpack"; cell: number; itemIndex: number }
+      | { source: "grid"; cell: number }
+      | { source: "queue"; x: number; y: number; amount: number };
+
+    const takenGridCells = new Set<number>();
+    const takenQueueCells = new Set<string>();
+    const plan: Take[] = [];
+
+    for (const cookedId of needed) {
+      const backpackCell = this.grid.findIndex(
+        (c, i) => c.kind === "backpack" && c.items.includes(cookedId) && !takenGridCells.has(i),
+      );
+      if (backpackCell !== -1) {
+        const content = this.grid[backpackCell];
+        if (content.kind === "backpack") {
+          takenGridCells.add(backpackCell);
+          plan.push({ source: "backpack", cell: backpackCell, itemIndex: content.items.indexOf(cookedId) });
+          continue;
+        }
+      }
+
+      const gridCell = this.grid.findIndex(
+        (c, i) =>
+          c.kind === "cooked" && c.cookedId === cookedId && !takenGridCells.has(i) && !this.reservedCells.has(i),
+      );
+      if (gridCell !== -1) {
+        takenGridCells.add(gridCell);
+        plan.push({ source: "grid", cell: gridCell });
+        continue;
+      }
+
+      let found: { x: number; y: number; amount: number } | null = null;
+      for (let x = 0; x < this.queueGrid.length && !found; x++) {
+        for (let y = 0; y < this.queueGrid[x].length; y++) {
+          if (takenQueueCells.has(`${x}:${y}`)) continue;
+          const cell = this.queueGrid[x][y];
+          if (!cell || cell.item.kind !== "ingredient") continue;
+          const match = findToolRecipe(this.map.tools, cell.item.id);
+          const producedId = match ? match.recipe.out : cell.item.id;
+          if (producedId !== cookedId) continue;
+          found = { x, y, amount: match?.recipe.amount ?? 1 };
+          break;
+        }
+      }
+      if (!found) return false; // this id can't be covered from any source — abort, nothing taken
+      takenQueueCells.add(`${found.x}:${found.y}`);
+      plan.push({ source: "queue", x: found.x, y: found.y, amount: found.amount });
+    }
+
+    // Every id is covered — commit.
+    needed.forEach((cookedId, i) => {
+      const step = plan[i];
+      if (step.source === "backpack") {
+        const content = this.grid[step.cell];
+        if (content.kind === "backpack") {
+          content.items.splice(step.itemIndex, 1);
+          if (content.items.length === 0) this.grid[step.cell] = { kind: "empty" };
+        }
+      } else if (step.source === "grid") {
+        this.grid[step.cell] = { kind: "empty" };
+      } else if (step.amount <= 1) {
+        this.queueGrid[step.x][step.y] = null;
+      } else {
+        const tally = (this.partialYield.get(cookedId) ?? 0) + 1;
+        if (tally >= step.amount) {
+          this.queueGrid[step.x][step.y] = null;
+          this.partialYield.set(cookedId, 0);
+        } else {
+          this.partialYield.set(cookedId, tally);
+        }
+      }
+      const at = dish.remaining.indexOf(cookedId);
+      if (at !== -1) dish.remaining.splice(at, 1);
+      dish.filled.push(cookedId);
+    });
+
+    this.advanceQueues();
+    if (customer.dishes.every((d) => d.remaining.length === 0)) {
+      this.completeCustomer(customer);
+    }
+    this.settle();
+    this.checkEnd();
+    return true;
   }
 
   isCellUsable(index: number): boolean {
@@ -894,15 +1095,16 @@ export class Simulation {
     }
   }
 
-  /** Launches grid → customer flights for cooked items that match an order (FCFS). */
+  /** Launches backpack/grid → customer flights for cooked items that match an order (FCFS, backpack checked before the grid). */
   private autoServe(): void {
     for (const customer of this.active) {
       customer.dishes.forEach((dish, dishIndex) => {
         for (const needed of [...dish.remaining]) {
-          // Don't double-book: an item already flying to this dish counts.
+          // Don't double-book: an item already flying to this dish counts,
+          // whether it's coming from the backpack or the grid.
           const inFlight = this.flights.filter(
             (f) =>
-              f.kind === "grid-to-customer" &&
+              (f.kind === "grid-to-customer" || f.kind === "backpack-to-customer") &&
               f.toCustomer?.index === customer.index &&
               f.toCustomer.dish === dishIndex &&
               f.itemId === needed,
@@ -915,6 +1117,21 @@ export class Simulation {
           // needs the cup there first) — see CookedIngredientDef.baseId.
           const baseId = this.map.cookedIngredients.find((c) => c.id === needed)?.baseId;
           if (baseId !== undefined && !dish.filled.includes(baseId)) continue;
+
+          // The Save Me backpack is checked before the grid — see saveMe().
+          const backpackCell = this.grid.findIndex(
+            (c, i) => c.kind === "backpack" && c.items.includes(needed) && !this.reservedCells.has(i),
+          );
+          if (backpackCell !== -1) {
+            this.reservedCells.add(backpackCell);
+            this.launch({
+              kind: "backpack-to-customer",
+              itemId: needed,
+              fromCell: backpackCell,
+              toCustomer: { index: customer.index, dish: dishIndex },
+            });
+            continue;
+          }
 
           const cell = this.grid.findIndex(
             (c, i) =>
@@ -949,6 +1166,20 @@ export class Simulation {
         fromCell: cell,
         toTool: this.reserveSlot(match.tool.id, slot),
       });
+    }
+  }
+
+  /** Fills one dish slot with a served item and completes the customer if that was their last one — shared by the grid-to-customer and backpack-to-customer flight cases. */
+  private fillDish(customerIndex: number, dishIndex: number, itemId: Id): void {
+    const customer = this.active.find((c) => c.index === customerIndex);
+    const dishState = customer?.dishes[dishIndex];
+    if (dishState) {
+      const at = dishState.remaining.indexOf(itemId);
+      if (at !== -1) dishState.remaining.splice(at, 1);
+      dishState.filled.push(itemId);
+    }
+    if (customer && customer.dishes.every((d) => d.remaining.length === 0)) {
+      this.completeCustomer(customer);
     }
   }
 
@@ -1058,8 +1289,9 @@ export class Simulation {
     this.log("dirty-added", `Dirty ${def?.name ?? this.map.dirtyDishName} stacked`);
   }
 
-  /** Removes up to `count` oldest dirty stacks. Returns how many were cleared. */
+  /** Removes up to `count` oldest dirty stacks (negative = all of them, for the Clean Table booster). Returns how many were cleared. */
   clearDirtyStacks(count: number): number {
+    if (count < 0) count = this.dirtyOrder.length;
     let cleared = 0;
     while (cleared < count && this.dirtyOrder.length > 0) {
       const index = this.dirtyOrder.shift()!;
@@ -1146,10 +1378,65 @@ export class Simulation {
       this.cookingCount === 0 &&
       this.flights.length === 0 &&
       !this.grid.some((c) => c.kind === "raw");
-    if (queuesEmpty && nothingMoving && this.active.length > 0) {
+    // A non-empty backpack still holds servable items even when the grid and
+    // queues are otherwise dry — without this, an out-of-ingredient loss
+    // could re-fire the instant a Save Me rescue lands, before autoServe()
+    // ever gets a chance to draw from what was just collapsed into it.
+    const backpackEmpty = !this.grid.some((c) => c.kind === "backpack" && c.items.length > 0);
+    if (queuesEmpty && nothingMoving && backpackEmpty && this.active.length > 0) {
       if (this.options.onOutOfIngredient) this.options.onOutOfIngredient(this);
       else this.lose("out-of-ingredient", "Queues empty with orders outstanding");
     }
+  }
+
+  /**
+   * Save Me: rescues a lost run, up to `maxUses` times total across the run
+   * (the caller passes BOOSTER_PARAMS.saveMeCount — sim.ts stays free of any
+   * dependency on the data-loading layer). Sweeps every cooked/raw ingredient
+   * off the grid into a backpack cell (a raw is converted through its tool
+   * recipe first, so the backpack only ever holds cooked ids) and resets
+   * every active customer's patience, so a customer-timeout loss doesn't
+   * immediately re-fire on the very next tick. Dirty stacks are left alone.
+   * Returns false (no-op) if the sim isn't currently lost, or maxUses is
+   * already spent.
+   */
+  saveMe(maxUses: number): boolean {
+    if (this.status !== "lost" || this.saveMeUsed >= maxUses) return false;
+
+    const items: Id[] = [];
+    let firstClearedCell = -1;
+    for (let i = 0; i < this.grid.length; i++) {
+      const cell = this.grid[i];
+      if (cell.kind !== "cooked" && cell.kind !== "raw") continue;
+      if (cell.kind === "cooked") {
+        items.push(cell.cookedId);
+      } else {
+        const match = findToolRecipe(this.map.tools, cell.rawId);
+        if (match) for (let n = 0; n < match.recipe.amount; n++) items.push(match.recipe.out);
+        else items.push(cell.rawId);
+      }
+      this.grid[i] = { kind: "empty" };
+      if (firstClearedCell === -1) firstClearedCell = i;
+    }
+
+    if (items.length > 0) {
+      const existingBackpack = this.grid.findIndex((c) => c.kind === "backpack");
+      if (existingBackpack !== -1) {
+        const content = this.grid[existingBackpack];
+        if (content.kind === "backpack") content.items.push(...items);
+      } else {
+        const freeCell = this.findFreeCell();
+        this.grid[freeCell !== -1 ? freeCell : firstClearedCell] = { kind: "backpack", items };
+      }
+    }
+
+    for (const customer of this.active) customer.timeLeft = this.customerTime(customer.config);
+
+    this.status = "playing";
+    this.loseReason = null;
+    this.saveMeUsed++;
+    this.log("saved", "Save Me: grid ingredients collapsed into the backpack");
+    return true;
   }
 
   private lose(reason: LoseReason, message: string): void {

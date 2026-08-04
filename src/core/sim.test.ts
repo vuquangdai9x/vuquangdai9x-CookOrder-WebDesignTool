@@ -946,45 +946,225 @@ describe("queue groups", () => {
   });
 });
 
-describe("clone()", () => {
-  it("produces a fully independent deep copy", () => {
+describe("boosters", () => {
+  it("clearDirtyStacks(-1) clears every dirty stack, not just one", () => {
     const sim = new Simulation(
-      testMap,
-      level({ queueString: "0,1", gridString: EMPTY_GRID, customerString: "0;0;0.1" }),
+      { ...testMap, dirtyStackHeight: 1 },
+      level({
+        queueString: "0,0",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0|0;0;0",
+        serveableSlots: 1,
+      }),
     );
     sim.pick(0);
-    const clone = sim.clone();
-
-    // Mutate the clone's mutable containers directly — the original must be
-    // unaffected, both structurally (different array/object instances) and
-    // by value (post-mutation values don't leak back).
-    clone.grid[0] = { kind: "raw", rawId: 3 };
-    clone.tools[0].slots[0].item = { uid: 999, rawId: 3, elapsed: 9 };
-    clone.queueGrid[0].push({ item: { kind: "ingredient", id: 3, effects: [] }, group: -1 });
-    clone.active[0].dishes[0].remaining.push(99);
-
-    expect(sim.grid[0]).not.toEqual({ kind: "raw", rawId: 3 });
-    expect(sim.tools[0].slots[0].item?.uid).not.toBe(999);
-    expect(sim.queueGrid[0].some((c) => c?.item.id === 3)).toBe(false);
-    expect(sim.active[0].dishes[0].remaining).not.toContain(99);
-
-    // The clone starts as a faithful snapshot of the same state, though.
-    expect(clone.status).toBe(sim.status);
-    expect(clone.servedCount).toBe(sim.servedCount);
+    sim.tick(2);
+    sim.pick(0);
+    sim.tick(2);
+    expect(sim.grid.filter((c) => c.kind === "dirty")).toHaveLength(2); // two separate 1-high stacks
+    expect(sim.clearDirtyStacks(-1)).toBe(2);
+    expect(sim.grid.filter((c) => c.kind === "dirty")).toHaveLength(0);
   });
 
-  it("clone can progress independently of the original", () => {
+  it("forceShiftUp rotates a plain column: the front item cycles to the back", () => {
     const sim = new Simulation(
       testMap,
-      level({ queueString: "0,1", gridString: EMPTY_GRID, customerString: "0;0;0.1" }),
+      level({ queueString: "0,1,2", gridString: EMPTY_GRID, customerString: "0;0;0" }),
     );
-    const clone = sim.clone();
-    clone.pick(0);
-    clone.pick(0);
-    clone.tick(2);
-    expect(clone.status).toBe("won");
-    // The original never had anything picked from it.
-    expect(sim.status).toBe("playing");
+    expect(sim.forceShiftUp()).toBe(true);
+    expect(sim.queueGrid[0][0]?.item.id).toBe(1);
+    expect(sim.queueGrid[0][1]?.item.id).toBe(2);
+    expect(sim.queueGrid[0][2]?.item.id).toBe(0);
+  });
+
+  it("forceShiftUp moves a combined block as one unit, keeping its group tag, into the back of each column", () => {
+    const sim = new Simulation(
+      testMap,
+      level({
+        queueString: "0,2,2%0,2,2$0-0,1-0$",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0",
+      }),
+    );
+    expect(sim.forceShiftUp()).toBe(true);
+    // The block (id0, row 0 of both columns) vacated; each column's plain
+    // id2's rose to fill the front, and the block refilled the back of its
+    // own columns — never mixing into the other column's hole.
+    expect(sim.queueGrid[0][0]?.item.id).toBe(2);
+    expect(sim.queueGrid[0][0]?.group).toBe(-1);
+    expect(sim.queueGrid[1][0]?.item.id).toBe(2);
+    expect(sim.queueGrid[0][2]?.item.id).toBe(0);
+    expect(sim.queueGrid[1][2]?.item.id).toBe(0);
+    expect(sim.queueGrid[0][2]?.group).not.toBe(-1);
+    expect(sim.queueGrid[0][2]?.group).toBe(sim.queueGrid[1][2]?.group);
+    expect(sim.groupKinds[sim.queueGrid[0][2]!.group]).toBe("combined");
+  });
+
+  it("pickAt picks a non-front-row plain cell, leaving the front untouched", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0,1,2", gridString: EMPTY_GRID, customerString: "0;0;0" }),
+    );
+    expect(sim.pickAt(0, 1)).toBe(true);
+    expect(sim.queueGrid[0][0]?.item.id).toBe(0); // front untouched
+    expect(sim.queueGrid[0][1]?.item.id).toBe(2); // the row behind slid up into the hole
     expect(sim.remainingIn(0)).toBe(2);
+  });
+
+  it("pickAt picks a whole combined block from a non-front row", () => {
+    const sim = new Simulation(
+      testMap,
+      level({
+        queueString: "2,0,2%2,0,2$0-1,1-1$",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0",
+      }),
+    );
+    expect(sim.pickAt(0, 1)).toBe(true); // targeting one member takes the whole group
+    expect(sim.remainingIn(0)).toBe(2);
+    expect(sim.remainingIn(1)).toBe(2);
+    expect(sim.queueGrid[0][0]?.item.id).toBe(2); // the front plain item is untouched
+    expect(sim.queueGrid[0][1]?.item.id).toBe(2); // row 2 slid up to fill the hole
+    expect(sim.queueGrid[0][1]?.group).toBe(-1);
+    expect(sim.effectContext.picksMade).toBe(2); // both block members were dispatched
+  });
+
+  it("autoCompleteDish satisfies from the backpack, then the grid, then the queue, in that priority order", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;0.0.0" }),
+    );
+    sim.grid[0] = { kind: "backpack", items: [0] };
+    sim.grid[1] = { kind: "cooked", cookedId: 0 };
+    expect(sim.autoCompleteDish()).toBe(true);
+    // Completing the customer also spawns their dirty dish into the first
+    // free grid cell in scan order, so cell 0 doesn't stay literally empty —
+    // what matters is that nothing "cooked" or "backpack" is left on the grid.
+    expect(sim.grid.some((c) => c.kind === "backpack")).toBe(false); // drained, then cleared
+    expect(sim.grid.some((c) => c.kind === "cooked")).toBe(false); // grid cell taken second
+    expect(sim.queueGrid[0][0]).toBeNull(); // queue's raw taken last
+    expect(sim.status).toBe("won"); // the sole customer's sole dish just completed
+  });
+
+  it("autoCompleteDish takes nothing when any remaining id can't be covered from any source (all-or-nothing)", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;0.1" }), // needs cooked0 AND cooked1
+    );
+    sim.grid[0] = { kind: "cooked", cookedId: 0 }; // only cooked0 is available anywhere
+    expect(sim.autoCompleteDish()).toBe(false);
+    expect(sim.grid[0]).toEqual({ kind: "cooked", cookedId: 0 }); // left untouched
+    expect(sim.queueGrid[0][0]?.item.id).toBe(0); // queue's raw0 untouched too
+  });
+
+  it("a queue raw with amount > 1 stays put until autoCompleteDish's tally reaches its yield", () => {
+    // One raw3 (recipe amount 2) in the queue; two separate customers each
+    // need one unit of cooked3 — the first completion only spends a "part"
+    // of the raw, the second finally removes it.
+    const sim = new Simulation(
+      testMap,
+      level({
+        queueString: "3",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;3|0;0;3",
+        serveableSlots: 1,
+      }),
+    );
+    expect(sim.autoCompleteDish()).toBe(true);
+    expect(sim.queueGrid[0][0]).not.toBeNull(); // raw3 still has one part left
+    expect(sim.autoCompleteDish()).toBe(true);
+    expect(sim.queueGrid[0][0]).toBeNull(); // fully spent now
+    expect(sim.status).toBe("won");
+  });
+
+  it("saveMe converts grid raws to cooked ingredients in the backpack and resets active customers' patience", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "10;0;0" }),
+    );
+    for (const c of sim.active) c.timeLeft = 0.001;
+    sim.tick(1);
+    expect(sim.status).toBe("lost");
+    expect(sim.loseReason).toBe("customer-timeout");
+
+    // Seeded *after* the loss, not before: tick()'s settle() would otherwise
+    // reclaim a grid-parked raw into a free tool slot before saveMe() ever
+    // gets to see it, since the sim is only frozen once status !== "playing".
+    sim.grid[0] = { kind: "raw", rawId: 3 }; // recipe: in 3 -> out 3, amount 2
+    sim.grid[1] = { kind: "cooked", cookedId: 1 };
+
+    expect(sim.saveMe(1)).toBe(true);
+    expect(sim.status).toBe("playing");
+    expect(sim.loseReason).toBeNull();
+    expect(sim.saveMeUsed).toBe(1);
+    expect(sim.active[0].timeLeft).toBe(10); // patience reset
+
+    const backpack = sim.grid.find((c) => c.kind === "backpack") as
+      | { kind: "backpack"; items: number[] }
+      | undefined;
+    expect(backpack).toBeDefined();
+    // raw3 (amount 2) converts to two cooked3's; the plain cooked1 carries over as-is.
+    expect([...backpack!.items].sort()).toEqual([1, 3, 3]);
+    // Both swept cells are cleared; the backpack itself lands in the first
+    // free cell going forward (which can be one of the very cells it just
+    // emptied), so only one of the two is left as plain "empty".
+    expect(sim.grid.filter((c) => c.kind === "raw" || c.kind === "cooked")).toHaveLength(0);
+    expect(sim.grid.filter((c) => c.kind === "backpack")).toHaveLength(1);
+  });
+
+  it("refuses saveMe when the sim isn't lost, and once maxUses is exhausted", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;0.1" }),
+    );
+    expect(sim.saveMe(1)).toBe(false); // not lost yet
+
+    for (const c of sim.active) c.timeLeft = 0.001;
+    sim.tick(1);
+    expect(sim.status).toBe("lost");
+    expect(sim.saveMe(0)).toBe(false); // maxUses already spent (0 allowed uses)
+
+    expect(sim.saveMe(1)).toBe(true);
+    expect(sim.status).toBe("playing");
+
+    for (const c of sim.active) c.timeLeft = 0.001;
+    sim.tick(1);
+    expect(sim.status).toBe("lost");
+    expect(sim.saveMe(1)).toBe(false); // saveMeUsed(1) already meets maxUses(1)
+  });
+
+  it("autoServe prefers a backpack item over an identical item still on the grid", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;0" }),
+      { instantFlights: false },
+    );
+    sim.grid[0] = { kind: "backpack", items: [0] };
+    sim.grid[1] = { kind: "cooked", cookedId: 0 };
+    sim.tick(0);
+    expect(sim.flights).toHaveLength(1);
+    expect(sim.flights[0].kind).toBe("backpack-to-customer");
+    expect(sim.flights[0].fromCell).toBe(0);
+    expect(sim.grid[1]).toEqual({ kind: "cooked", cookedId: 0 }); // the grid item is untouched
+  });
+
+  it("a backpack-to-customer flight drains one item without clearing the cell while items remain", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;0.0" }),
+      { instantFlights: false },
+    );
+    sim.grid[0] = { kind: "backpack", items: [0, 0] };
+    sim.tick(0);
+    expect(sim.flights).toHaveLength(1);
+    expect(sim.flights[0].kind).toBe("backpack-to-customer");
+
+    sim.completeFlight(sim.flights[0].id);
+    expect(sim.grid[0]).toEqual({ kind: "backpack", items: [0] }); // one left, cell stays
+    expect(sim.flights).toHaveLength(1); // settle() inside completeFlight launched the second
+
+    sim.completeFlight(sim.flights[0].id);
+    expect(sim.grid[0]).toEqual({ kind: "empty" }); // fully drained now
+    expect(sim.status).toBe("won");
   });
 });

@@ -16,6 +16,7 @@ export const testMap: MapDef = {
   gridWidth: 5,
   gridHeight: 2,
   dirtyStackHeight: 5,
+  visibleRows: 3,
   disabledRawIds: [],
   disabledCookedIds: [],
   rawIngredients: [0, 1, 2, 3].map((id) => ({

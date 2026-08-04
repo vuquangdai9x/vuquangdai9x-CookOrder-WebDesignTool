@@ -53,20 +53,6 @@ describe("greedy bot", () => {
   });
 });
 
-describe("intelligent bot", () => {
-  it("wins simple fixtures with the default lookahead", () => {
-    const lvl = level({ queueString: "0%1%2%3", gridString: EMPTY_GRID, customerString: "0;0;0;0.1" });
-    const result = runBotTrial(testMap, lvl, { type: "intelligent" });
-    expect(result.status).toBe("won");
-  });
-
-  it("wins map 1 level 1_1", () => {
-    const result = runBotTrial(map1, map1.levels[0], { type: "intelligent", lookaheadN: 2 });
-    expect(result.status).toBe("won");
-    expect(result.servedCount).toBe(7);
-  });
-});
-
 describe("driver iteration guard", () => {
   // A customer whose first dish needs many units of cooked0 (kept perpetually
   // "needed", so arriving cooked0 is always auto-served away and the grid
@@ -81,7 +67,7 @@ describe("driver iteration guard", () => {
     customerString: `0;0;0;${Array(50).fill(0).join(".")},99`,
   });
 
-  for (const type of ["random", "greedy", "intelligent"] as const) {
+  for (const type of ["random", "greedy"] as const) {
     it(`bails out instead of hanging (${type})`, () => {
       const result = runBotTrial(testMap, unwinnable, { type, maxIterations: 15 });
       expect(result.bailedOut).toBe(true);

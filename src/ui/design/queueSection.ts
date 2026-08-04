@@ -568,12 +568,14 @@ function tileCenter(lanes: HTMLElement, host: DOMRect, cid: string): Point | nul
 }
 
 /**
- * Draws linked-slot ropes (dashed, one line per consecutive pair) and
- * combined-slot rails (solid double lines across each shared edge) as one
- * SVG overlay positioned over the whole lanes grid. Reads tile centers via
- * getBoundingClientRect() right after the lanes are appended — cheap, and
- * always current since the tier is fully rebuilt on every render rather than
- * patched. The overlay is layered behind the tile frames (see
+ * Draws linked-slot ropes (dashed, one line per consecutive pair whose
+ * columns are adjacent — a pair two or more columns apart, or in the same
+ * column, draws nothing, so a rope never reads as a long diagonal across the
+ * board) and combined-slot rails (solid double lines across each shared
+ * edge) as one SVG overlay positioned over the whole lanes grid. Reads tile
+ * centers via getBoundingClientRect() right after the lanes are appended —
+ * cheap, and always current since the tier is fully rebuilt on every render
+ * rather than patched. The overlay is layered behind the tile frames (see
  * .queue-link-overlay's z-index in style.css), so only the gap between two
  * tiles actually shows a line.
  */
@@ -584,13 +586,19 @@ function renderGroupOverlay(lanes: HTMLElement, draft: QueueDraft): void {
 
   const host = lanes.getBoundingClientRect();
   const svg = createOverlay(host);
+  const coords = coordsByCid(draft.queues);
 
   for (const g of linked) {
-    const centers = g.cids
-      .map((cid) => tileCenter(lanes, host, cid))
-      .filter((p): p is Point => !!p);
-    for (let i = 0; i < centers.length - 1; i++) {
-      appendLine(svg, centers[i], centers[i + 1], "queue-link-rope");
+    for (let i = 0; i < g.cids.length - 1; i++) {
+      const cidA = g.cids[i];
+      const cidB = g.cids[i + 1];
+      const ca = coords.get(cidA);
+      const cb = coords.get(cidB);
+      if (!ca || !cb || Math.abs(ca.x - cb.x) !== 1) continue;
+      const p1 = tileCenter(lanes, host, cidA);
+      const p2 = tileCenter(lanes, host, cidB);
+      if (!p1 || !p2) continue;
+      appendLine(svg, p1, p2, "queue-link-rope");
     }
   }
 
@@ -739,9 +747,14 @@ function tileMenu(
         section.commit("Combine slots");
       },
     });
+    // A link is a short-range relationship: exactly two slots, in two
+    // different but adjacent columns — never same-column, never spanning a
+    // gap, and never more than a pair (unlike Combine's arbitrary block).
+    const linkable =
+      selectedCells.length === 2 && Math.abs(selectedCells[0].x - selectedCells[1].x) === 1;
     items.push({
       label: "Link",
-      disabled: alreadyGrouped,
+      disabled: alreadyGrouped || !linkable,
       onSelect: () => {
         draft.groups.push({ kind: "linked", cids: [...selection] });
         selection.clear();

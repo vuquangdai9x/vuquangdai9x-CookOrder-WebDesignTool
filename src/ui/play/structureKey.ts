@@ -34,6 +34,7 @@ export function middleStructureKey(sim: Simulation): string {
       if (cell.kind === "cooked") return `c${cell.cookedId}`;
       if (cell.kind === "raw") return `r${cell.rawId}`;
       if (cell.kind === "dirty") return `d${cell.dirtyId}:${cell.count}`;
+      if (cell.kind === "backpack") return `b${cell.items.join(".")}`;
       return "-";
     })
     .join(",");

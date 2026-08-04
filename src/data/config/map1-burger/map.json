@@ -7,7 +7,8 @@
   "gridWidth": 5,
   "gridHeight": 2,
   "dirtyStackHeight": 5,
-  "_note": "Grid size and dirty-stack height are fixed for every level in this map (confirmed: all 15 imported levels use 5x2 / stack 5).",
+  "visibleRows": 3,
+  "_note": "Grid size and dirty-stack height are fixed for every level in this map (confirmed: all 15 imported levels use 5x2 / stack 5). visibleRows = queue rows Play mode shows (1 interactable + previews).",
   "disabledRawIds": [],
   "disabledCookedIds": []
 }

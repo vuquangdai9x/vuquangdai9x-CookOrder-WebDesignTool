@@ -1369,6 +1369,55 @@ td input {
   color: var(--accent);
 }
 
+/*
+ * Boosters panel: a sibling of .play-page, not a child (see mount()) — the
+ * page's height and its three tiers stay exactly as before, and this section
+ * lands below the page's bottom edge, reachable by the normal document
+ * scroll rather than eating into the fixed-height layout above it.
+ */
+.boosters-bar {
+  max-width: min(calc(100vh - 10rem), 920px);
+  margin: 0 auto;
+}
+
+.boosters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.booster-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  position: relative;
+  padding: 0.4rem 0.7rem;
+  min-width: 5rem;
+}
+
+.booster-btn.armed {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.booster-name {
+  font-size: 0.75rem;
+}
+
+.booster-charge {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  background: var(--accent);
+  color: var(--bg, #fff);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  padding: 0 0.35rem;
+  line-height: 1.3;
+}
+
 /* Middle tier is one panel: grid left, cooking right. */
 /*
  * Portrait layout: grid on top (gets whatever height is available), cooking
@@ -1533,13 +1582,16 @@ td input {
    * Tile size is derived from the queues tier's actual height (100cqh — the
    * tier is a size container): whatever remains after the tier's fixed
    * overhead (panel padding + h2 + lane head + inter-tile gaps ≈ 5rem) is
-   * split across the WINDOW_ROWS visible rows (play/index.ts), so all of
-   * them always fit — when the tier is short, the tiles shrink instead of
-   * rows being cut off. Capped at 5rem (the 2x reading size) and floored at
-   * 2.2rem (below that the icons stop being recognizable; rows may clip then).
-   * The "4" here must match WINDOW_ROWS in play/index.ts.
+   * split across the visible rows, so all of them always fit — when the tier
+   * is short, the tiles shrink instead of rows being cut off. Capped at 5rem
+   * (the 2x reading size) and floored at 2.2rem (below that the icons stop
+   * being recognizable; rows may clip then). --window-rows is set inline by
+   * queuesTier() (play/index.ts) from the map's `visibleRows` config (or the
+   * Ingredient Pick booster's expanded count) — static CSS can't read that
+   * JS value directly, so this reads the custom property instead of a
+   * hardcoded divisor.
    */
-  --tile: clamp(2.2rem, calc((100cqh - 5rem) / 4), 5rem);
+  --tile: clamp(2.2rem, calc((100cqh - 5rem) / var(--window-rows, 3)), 5rem);
 }
 
 .queue-lanes.play .queue-lane {
@@ -1607,6 +1659,11 @@ td input {
 .cell-main.parked {
   opacity: 0.55;
   filter: grayscale(0.5);
+}
+
+/* The Save Me booster's collapsed grid — reads as a distinct source, not just another occupied cell. */
+.cell-main.backpack {
+  filter: drop-shadow(0 0 4px var(--accent));
 }
 
 /* ---------- serveable / celebrating customers ---------- */
@@ -1714,6 +1771,11 @@ td input {
 .overlay .sub {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.overlay-actions {
+  display: flex;
+  gap: 0.75rem;
 }
 
 /* Blocking image-preload overlay — above .overlay-panel (40) and .overlay (30)

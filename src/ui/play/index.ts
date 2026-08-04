@@ -26,9 +26,11 @@ import type {
   QueueItem,
 } from "../../core/types.ts";
 import { findToolRecipe } from "../../core/types.ts";
-import { KEY_COLORS } from "../../data/configLoader.ts";
+import { BOOSTER_PARAMS, GLOBAL_DEFS, KEY_COLORS } from "../../data/configLoader.ts";
 import { button, clear, el } from "../dom.ts";
 import {
+  backpackIconEl,
+  boosterIconEl,
   cellIconEl,
   cookedIconEl,
   customerTypeIconEl,
@@ -55,15 +57,6 @@ type SpeedId = (typeof SPEED_OPTIONS)[number]["id"];
 
 /** Cycled by position so adjacent tools always read as visually distinct. */
 const TOOL_COLORS = ["#3a4a5c", "#4a3a5c", "#3a5c4a", "#5c4a3a", "#5c3a4a", "#3a5c5c"];
-
-/**
- * Fixed number of top rows each queue lane shows, aligned across every
- * column (short columns pad with empty cells) — a linked-slot pick needs to
- * see whether every member has reached row 0, and a combined block needs its
- * whole visible shape. Must match the `/ 4` divisor in the `--tile` clamp
- * for `.queue-lanes.play` in style.css.
- */
-const WINDOW_ROWS = 4;
 
 export class PlayView {
   private root: HTMLElement;
@@ -143,13 +136,24 @@ export class PlayView {
    * session. Lives in the toolbar as its own foldout, collapsed by default.
    */
   private botType: BotType = "greedy";
-  private botLookaheadN = 2;
   private botTrialCount = 10;
   private botRunning = false;
   private lastBotBatchResult: BotBatchResult | null = null;
   private botGroupEl!: HTMLElement;
   private botFoldBtn!: HTMLButtonElement;
   private botFolded = true;
+
+  /**
+   * Boosters: remaining-charge count per GLOBAL_DEFS.boosters index (Shift-up
+   * Row, Ingredient Pick, Clean Table, Auto Complete). Ingredient Pick's armed
+   * state expands `windowRows` and makes every visible tile pickable — see
+   * queuesTier(). Both reset in restart(), same as other per-run state.
+   */
+  private boosterCharges: number[] = [];
+  private ingredientPickMode = false;
+  private boostersEl!: HTMLElement;
+  /** Set once the player picks "Give Up" on the Save Me offer, so the plain failure overlay shows instead — reset on restart(). */
+  private saveMeDeclined = false;
 
   constructor(
     root: HTMLElement,
@@ -166,6 +170,7 @@ export class PlayView {
       instantFlights: false, // this view animates every transfer
     });
     this.fx = new EffectsLayer();
+    this.boosterCharges = [...(level.boosterCharges ?? [3, 3, 3, 3])];
     this.mount();
     this.start();
   }
@@ -181,6 +186,15 @@ export class PlayView {
 
   private get rate(): number {
     return SPEED_OPTIONS.find((s) => s.id === this.speedId)?.rate ?? 1;
+  }
+
+  /**
+   * Queue rows shown per column: the map's configured default, unless the
+   * Ingredient Pick booster is armed, in which case every row up to
+   * BOOSTER_PARAMS.numRowPick is shown and pickable — see queuesTier().
+   */
+  private get windowRows(): number {
+    return this.ingredientPickMode ? BOOSTER_PARAMS.numRowPick : this.map.visibleRows;
   }
 
   // ---------- lifecycle ----------
@@ -219,6 +233,9 @@ export class PlayView {
     this.pendingExits.clear();
     this.pendingPickOrigins = [];
     this.lastPickedLanes = new Map();
+    this.boosterCharges = [...(this.level.boosterCharges ?? [3, 3, 3, 3])];
+    this.ingredientPickMode = false;
+    this.saveMeDeclined = false;
     this.renderGeneration++; // orphans any exit-animation callback still pending
     this.renderPage();
   }
@@ -244,7 +261,7 @@ export class PlayView {
       // card (same data-customer index as the real one); hold the flight
       // rather than fly an ingredient onto it. Retried every frame, so it
       // goes the moment the reveal lands.
-      if (flight.kind === "grid-to-customer") {
+      if (flight.kind === "grid-to-customer" || flight.kind === "backpack-to-customer") {
         const card = this.page.querySelector(`[data-customer="${flight.toCustomer!.index}"]`);
         if (card?.classList.contains("mystery")) continue;
       }
@@ -278,11 +295,11 @@ export class PlayView {
           : cookedIconEl(flight.itemId, 96);
       const payload = el("div", { class: `fx-item${isDirty ? " dirty" : ""}` }, [icon]);
 
-      // The exact chip a grid-to-customer flight is landing on, captured now
-      // (flightTarget already resolved it) — needed so the arrival flash can
-      // be applied to *that* element once the flight lands.
+      // The exact chip a grid-/backpack-to-customer flight is landing on,
+      // captured now (flightTarget already resolved it) — needed so the
+      // arrival flash can be applied to *that* element once the flight lands.
       const targetChip =
-        flight.kind === "grid-to-customer"
+        flight.kind === "grid-to-customer" || flight.kind === "backpack-to-customer"
           ? this.page.querySelector<HTMLElement>(
               `[data-customer="${flight.toCustomer!.index}"] [data-dish-ingredient="${flight.itemId}"]:not(.filled)`,
             )
@@ -322,7 +339,7 @@ export class PlayView {
   ): Promise<void> {
     if (this.skipMode) return Promise.resolve();
 
-    if (flight.kind === "grid-to-customer" && targetChip) {
+    if ((flight.kind === "grid-to-customer" || flight.kind === "backpack-to-customer") && targetChip) {
       this.fx.burst(at, 8);
       targetChip.classList.add("arrival-flash");
       // Flash while still unfilled, *then* let completeFlight dim it — a
@@ -380,7 +397,7 @@ export class PlayView {
     if (flight.toCustomer) {
       const card = this.page.querySelector(`[data-customer="${flight.toCustomer.index}"]`);
       if (!card) return null;
-      if (flight.kind === "grid-to-customer") {
+      if (flight.kind === "grid-to-customer" || flight.kind === "backpack-to-customer") {
         // Aim at the specific unfilled chip this item satisfies, not just the
         // card in general — that's what lets the arrival flash/burst land
         // exactly on "the matching ingredient position".
@@ -399,7 +416,11 @@ export class PlayView {
   private mount(): void {
     clear(this.root);
     this.page = el("div", { class: "play-page" });
-    this.root.append(this.toolbar(), this.page);
+    this.boostersEl = this.boostersBar();
+    // A sibling of .play-page, not a child: the page's height/tiers are fixed
+    // (see .play-page in style.css), so a 4th child inside it would shrink
+    // the existing three tiers instead of the player just scrolling further.
+    this.root.append(this.toolbar(), this.page, this.boostersEl);
     this.renderPage();
   }
 
@@ -537,7 +558,7 @@ export class PlayView {
    */
   private refreshQueueGroupOverlay(): void {
     const lanes = this.queuesEl.querySelector<HTMLElement>(".queue-lanes");
-    if (lanes) renderGroupOverlay(lanes, this.sim);
+    if (lanes) renderGroupOverlay(lanes, this.sim, this.windowRows);
   }
 
   /**
@@ -557,11 +578,7 @@ export class PlayView {
 
     const nextQueues = queuesStructureKey(this.sim);
     if (nextQueues !== this.queuesKey) {
-      const next = this.queuesTier();
-      this.queuesEl.replaceWith(next);
-      this.queuesEl = next;
-      this.queuesKey = nextQueues;
-      this.refreshQueueGroupOverlay();
+      this.rebuildQueuesTier();
       this.animatePickedLaneShift();
     }
 
@@ -581,6 +598,20 @@ export class PlayView {
 
     this.syncOverlay();
     this.patchLiveValues();
+  }
+
+  /**
+   * Rebuilds the queues tier unconditionally — used both by syncPage() (when
+   * queuesStructureKey changed) and by useBooster() when arming/disarming
+   * Ingredient Pick, which changes `windowRows` without changing any sim
+   * state the structure key would otherwise notice.
+   */
+  private rebuildQueuesTier(): void {
+    const next = this.queuesTier();
+    this.queuesEl.replaceWith(next);
+    this.queuesEl = next;
+    this.queuesKey = queuesStructureKey(this.sim);
+    this.refreshQueueGroupOverlay();
   }
 
   /**
@@ -620,7 +651,7 @@ export class PlayView {
         // rows were previously outside the window. With fewer tiles (the
         // lane is shorter than the window), everything shown was already
         // visible.
-        const revealed = tiles.length === WINDOW_ROWS && i >= WINDOW_ROWS - vacated;
+        const revealed = tiles.length === this.windowRows && i >= this.windowRows - vacated;
         tile.animate(
           [
             { transform: `translateY(${step}px)`, opacity: revealed ? 0 : 1 },
@@ -668,12 +699,21 @@ export class PlayView {
     // whatever's mid-flight behind it instead of letting it finish landing.
     const shouldShow = this.sim.status !== "playing" && this.animating.size === 0;
     if (shouldShow && !this.overlayEl) {
-      this.overlayEl = this.overlay();
+      this.overlayEl = this.canOfferSaveMe() ? this.saveMeOverlay() : this.overlay();
       this.page.append(this.overlayEl);
     } else if (!shouldShow && this.overlayEl) {
       this.overlayEl.remove();
       this.overlayEl = null;
     }
+  }
+
+  /** Whether the Save Me offer, rather than the plain failure overlay, should show on this loss. */
+  private canOfferSaveMe(): boolean {
+    return (
+      this.sim.status === "lost" &&
+      !this.saveMeDeclined &&
+      this.sim.saveMeUsed < BOOSTER_PARAMS.saveMeCount
+    );
   }
 
   /** Timers, cook progress and the HUD move every frame but never restructure. */
@@ -922,6 +962,14 @@ export class PlayView {
           el("span", { class: "cell-main dirty" }, [dirtyIconEl(content.dirtyId, 96)]),
           el("span", { class: "cell-badge" }, [`×${content.count}`]),
         );
+      } else if (content.kind === "backpack") {
+        // The Save Me booster's collapsed grid — autoServe()/autoCompleteDish()
+        // draw from this before the grid itself, so it needs to read as a
+        // distinct source, not just another occupied cell.
+        cell.append(
+          el("span", { class: "cell-main backpack" }, [backpackIconEl(96)]),
+          el("small", { class: "cell-badge" }, [`×${content.items.length}`]),
+        );
       }
       grid.append(cell);
     }
@@ -973,13 +1021,17 @@ export class PlayView {
   }
 
   /**
-   * Bottom tier: a fixed window of the top WINDOW_ROWS rows, aligned across
-   * every column (short columns show blank filler cells) — that's what gives
-   * a combined block its visible shape and lets the player see how close a
-   * linked chain's members are to the front. Only row 0 is ever clickable:
-   * `sim.pick(x)` always resolves "the instance fronting column x", whether
-   * that's a plain item, a combined block (pickable once any of its cells
-   * reaches row 0), or a linked chain (pickable once every member does).
+   * Bottom tier: a fixed window of the top `this.windowRows` rows, aligned
+   * across every column (short columns show blank filler cells) — that's
+   * what gives a combined block its visible shape and lets the player see
+   * how close a linked chain's members are to the front. Normally only row 0
+   * is clickable: `sim.pick(x)` always resolves "the instance fronting
+   * column x", whether that's a plain item, a combined block (pickable once
+   * any of its cells reaches row 0), or a linked chain (pickable once every
+   * member does). While the Ingredient Pick booster is armed
+   * (`ingredientPickMode`), every rendered tile is clickable instead —
+   * `sim.pickAt(x,y)` resolves the instance at that exact cell with no
+   * front-row gate.
    */
   private queuesTier(): HTMLElement {
     const sim = this.sim;
@@ -991,7 +1043,11 @@ export class PlayView {
       if (needed.has(match ? match.recipe.out : raw.id)) wantedRaw.add(raw.id);
     }
 
+    const windowRows = this.windowRows;
     const lanes = el("div", { class: "queue-lanes play" });
+    // Static CSS can't read a per-map/booster JS value — the --tile clamp's
+    // row divisor reads this custom property instead (style.css).
+    lanes.style.setProperty("--window-rows", String(windowRows));
     for (let x = 0; x < sim.columnCount; x++) {
       // An emptied queue disappears entirely rather than lingering as a blank
       // lane — the remaining lanes then re-center as a group (see the
@@ -1006,7 +1062,7 @@ export class PlayView {
       ]);
       const tiles = el("div", { class: "lane-tiles" });
 
-      for (let y = 0; y < WINDOW_ROWS; y++) {
+      for (let y = 0; y < windowRows; y++) {
         const cell: QueueCell | null = sim.queueGrid[x]?.[y] ?? null;
         if (!cell) {
           tiles.append(el("div", { class: "queue-tile empty" }));
@@ -1017,14 +1073,17 @@ export class PlayView {
           cell.group !== -1 ? sim.groupKinds[cell.group] : undefined;
         const tile = this.queueTile(cell.item, {
           top: isTop,
-          preview: !isTop,
+          preview: !isTop && !this.ingredientPickMode,
           wanted: wantedRaw.has(cell.item.id),
-          disabled: isTop && !check.ok,
+          disabled: isTop && !this.ingredientPickMode && !check.ok,
           group: groupKind,
         });
         tile.dataset.qx = String(x);
         tile.dataset.qy = String(y);
-        if (isTop) {
+        if (this.ingredientPickMode) {
+          tile.title = "Pick this ingredient";
+          tile.addEventListener("click", () => this.performPickAt(x, y));
+        } else if (isTop) {
           tile.title = check.reason ?? "Pick this ingredient";
           if (check.ok) {
             tile.addEventListener("click", () => this.performPick(x));
@@ -1041,7 +1100,11 @@ export class PlayView {
     // only happens after queuesTier() returns. Callers draw it themselves
     // right after attaching — see refreshQueueGroupOverlay().
     return el("section", { class: "play-section queues-tier" }, [
-      el("h2", {}, ["Ingredient queues — click the top tile to pick"]),
+      el("h2", {}, [
+        this.ingredientPickMode
+          ? "Ingredient queues — Ingredient Pick armed: click any tile"
+          : "Ingredient queues — click the top tile to pick",
+      ]),
       lanes,
     ]);
   }
@@ -1075,6 +1138,125 @@ export class PlayView {
   }
 
   /**
+   * Ingredient Pick booster: picks the instance at an arbitrary (x,y) instead
+   * of a lane's front — same origin-capture dance as performPick(), keyed by
+   * pickTargetsAt() instead of pickTargets(). Consumes one Ingredient Pick
+   * charge and returns to normal mode only on a successful pick; a blocked
+   * pick (e.g. frozen) leaves the booster armed so the player can try another
+   * tile.
+   */
+  private performPickAt(x: number, y: number): void {
+    const sim = this.sim;
+    const cells = sim.pickTargetsAt(x, y);
+
+    const perLane = new Map<number, number>();
+    for (const c of cells) perLane.set(c.x, (perLane.get(c.x) ?? 0) + 1);
+    this.lastPickedLanes = perLane;
+
+    this.pendingPickOrigins = cells
+      .filter((c) => sim.queueGrid[c.x][c.y]?.item.kind !== "sweeper")
+      .map((c) => {
+        const tileEl = this.queuesEl.querySelector<HTMLElement>(`[data-qx="${c.x}"][data-qy="${c.y}"]`);
+        return tileEl ? centerOf(tileEl) : null;
+      })
+      .filter((p): p is Point => p !== null);
+
+    if (!sim.pickAt(x, y)) {
+      this.pendingPickOrigins = [];
+      this.lastPickedLanes = new Map();
+      return;
+    }
+    this.boosterCharges[1] = Math.max(0, (this.boosterCharges[1] ?? 0) - 1);
+    this.ingredientPickMode = false;
+    this.dispatchFlights();
+    this.playCelebrations();
+    this.syncPage();
+    this.refreshBoosters();
+  }
+
+  /**
+   * The four boosters, rendered below the play page as a scroll-only panel —
+   * see mount(). Each button shows its icon, name and remaining-charge badge;
+   * disabled once its charges reach 0, while the level isn't playing, or
+   * (except Ingredient Pick itself, which becomes a "cancel" button) while
+   * Ingredient Pick is armed. Charges only decrement on a successful use —
+   * see useBooster().
+   */
+  private boostersBar(): HTMLElement {
+    const row = el("div", { class: "boosters-row" });
+    GLOBAL_DEFS.boosters.forEach((def, id) => {
+      const charges = this.boosterCharges[id] ?? 0;
+      const armed = id === 1 && this.ingredientPickMode;
+      const btn = button("", () => this.useBooster(id), {
+        class: `booster-btn${armed ? " armed" : ""}`,
+        title: armed ? "Cancel Ingredient Pick" : def.description,
+      }) as HTMLButtonElement;
+      btn.disabled =
+        !armed &&
+        (charges <= 0 || this.sim.status !== "playing" || this.ingredientPickMode);
+      btn.append(
+        boosterIconEl(id, 48),
+        el("span", { class: "booster-name" }, [armed ? "Cancel pick" : def.name]),
+        el("span", { class: "booster-charge" }, [`×${charges}`]),
+      );
+      row.append(btn);
+    });
+    return el("section", { class: "play-section boosters-bar" }, [
+      el("h2", {}, ["Boosters"]),
+      row,
+    ]);
+  }
+
+  /** Rebuild-and-replace: the boosters bar only changes on its own clicks or a pick, never per frame. */
+  private refreshBoosters(): void {
+    const next = this.boostersBar();
+    this.boostersEl.replaceWith(next);
+    this.boostersEl = next;
+  }
+
+  /**
+   * Dispatches a booster button click. Shift-up Row/Clean Table/Auto Complete
+   * fire immediately and consume a charge only if they actually changed
+   * something; Ingredient Pick just arms/disarms pick mode (see
+   * `ingredientPickMode`/queuesTier()) — its charge is spent by
+   * performPickAt() once a pick actually lands.
+   */
+  private useBooster(id: number): void {
+    if (this.sim.status !== "playing") return;
+
+    if (id === 1) {
+      if (this.ingredientPickMode) {
+        this.ingredientPickMode = false;
+      } else {
+        if ((this.boosterCharges[1] ?? 0) <= 0) return;
+        this.ingredientPickMode = true;
+      }
+      this.rebuildQueuesTier();
+      this.refreshBoosters();
+      return;
+    }
+
+    if ((this.boosterCharges[id] ?? 0) <= 0) return;
+    let ok = false;
+    switch (id) {
+      case 0:
+        ok = this.sim.forceShiftUp();
+        break;
+      case 2:
+        ok = this.sim.clearDirtyStacks(BOOSTER_PARAMS.numCleanStack) > 0;
+        break;
+      case 3:
+        ok = this.sim.autoCompleteDish();
+        break;
+    }
+    if (ok) this.boosterCharges[id]--;
+    this.dispatchFlights();
+    this.playCelebrations();
+    this.syncPage();
+    this.refreshBoosters();
+  }
+
+  /**
    * Playtesting panel content: runs a headless bot (no animation) against the
    * currently-loaded level many times and reports a win/lose tally. Fully
    * independent of the live `this.sim` session — each trial builds its own
@@ -1086,7 +1268,6 @@ export class PlayView {
     const BOT_OPTIONS: { id: BotType; label: string; title: string }[] = [
       { id: "random", label: "Random", title: "Picks any currently-pickable ingredient at random" },
       { id: "greedy", label: "Greedy", title: "Always picks whatever the current orders need right now" },
-      { id: "intelligent", label: "Intelligent", title: "Searches N picks ahead to choose the best move" },
     ];
 
     const botBar = el("div", { class: "speed-bar", role: "radiogroup" });
@@ -1106,16 +1287,6 @@ export class PlayView {
       );
       botBar.append(b);
     }
-
-    const nInput = el("input", {
-      type: "number",
-      value: String(this.botLookaheadN),
-      min: "1",
-    }) as HTMLInputElement;
-    nInput.addEventListener("change", () => {
-      this.botLookaheadN = Math.max(1, Number(nInput.value) || 1);
-      nInput.value = String(this.botLookaheadN);
-    });
 
     const trialsInput = el("input", {
       type: "number",
@@ -1139,7 +1310,6 @@ export class PlayView {
 
     return el("div", { class: "toolbar-bot" }, [
       botBar,
-      el("label", { class: "field small" }, ["N (lookahead)", nInput]),
       el("label", { class: "field small" }, ["Trials", trialsInput]),
       playBtn,
       resultsEl,
@@ -1185,7 +1355,7 @@ export class PlayView {
     this.refreshBotGroup();
 
     const type = this.botType;
-    const opts = { type, lookaheadN: this.botLookaheadN };
+    const opts = { type };
     const total = this.botTrialCount;
     const CHUNK_BUDGET_MS = 32;
     const trials: BotBatchResult["trials"] = [];
@@ -1279,6 +1449,63 @@ export class PlayView {
       button("⟲ Restart", () => this.restart(), { class: "primary" }),
     ]);
   }
+
+  /** One-more-chance offer on loss — see canOfferSaveMe()/handleSaveMe(). */
+  private saveMeOverlay(): HTMLElement {
+    const sim = this.sim;
+    return el("div", { class: "overlay lost save-me" }, [
+      el("h2", {}, ["💥 Level failed"]),
+      el("p", {}, [sim.events.at(-1)?.message ?? ""]),
+      backpackIconEl(64),
+      el("p", { class: "sub" }, [
+        "Save Me: collapse the grid's ingredients into your backpack and keep playing.",
+      ]),
+      el("div", { class: "overlay-actions" }, [
+        button("🎒 Save Me", () => this.handleSaveMe(), { class: "primary" }),
+        button("Give Up", () => {
+          this.saveMeDeclined = true;
+          this.overlayEl?.remove();
+          this.overlayEl = null;
+          this.syncOverlay();
+        }),
+      ]),
+    ]);
+  }
+
+  /**
+   * Captures every swept grid cell's on-screen position *before* calling
+   * sim.saveMe() (which clears them synchronously), then — once the page has
+   * re-rendered with the new backpack cell in place — flies a copy of the
+   * backpack icon from each captured origin into it. Purely cosmetic: the
+   * state change already happened synchronously in saveMe(), so this doesn't
+   * gate on Flight/dispatchFlights() like normal transfers do.
+   */
+  private handleSaveMe(): void {
+    const origins: Point[] = [];
+    for (let i = 0; i < this.sim.grid.length; i++) {
+      const content = this.sim.grid[i];
+      if (content.kind !== "cooked" && content.kind !== "raw") continue;
+      const cellMain = this.page.querySelector(`[data-cell="${i}"] .cell-main`);
+      if (cellMain) origins.push(centerOf(cellMain));
+    }
+
+    if (!this.sim.saveMe(BOOSTER_PARAMS.saveMeCount)) return;
+
+    this.renderPage();
+    this.refreshBoosters();
+
+    const backpackIndex = this.sim.grid.findIndex((c) => c.kind === "backpack");
+    const backpackEl =
+      backpackIndex !== -1 ? this.page.querySelector(`[data-cell="${backpackIndex}"]`) : null;
+    if (!backpackEl || origins.length === 0 || this.skipMode) return;
+    const to = centerOf(backpackEl);
+    for (const from of origins) {
+      void this.fx.fly(el("div", { class: "fx-item" }, [backpackIconEl(64)]), from, to, {
+        durationMs: 480,
+      });
+    }
+    this.fx.burst(to, 12);
+  }
 }
 
 // ---------- queue-group connectors: linked ropes, combined rails ----------
@@ -1329,15 +1556,15 @@ function clipToBottom(x1: number, y1: number, x2: number, y2: number, maxY: numb
 }
 
 /** Adjacent (x,y) cell pairs within the same combined group, both inside the window — checked right/down only so each shared edge is counted once. */
-function combinedAdjacentPairs(sim: Simulation): [Point, Point][] {
+function combinedAdjacentPairs(sim: Simulation, windowRows: number): [Point, Point][] {
   const pairs: [Point, Point][] = [];
   for (let x = 0; x < sim.queueGrid.length; x++) {
-    for (let y = 0; y < Math.min(sim.queueGrid[x].length, WINDOW_ROWS); y++) {
+    for (let y = 0; y < Math.min(sim.queueGrid[x].length, windowRows); y++) {
       const cell = sim.queueGrid[x][y];
       if (!cell || cell.group === -1 || sim.groupKinds[cell.group] !== "combined") continue;
       const right = sim.queueGrid[x + 1]?.[y];
       if (right?.group === cell.group) pairs.push([{ x, y }, { x: x + 1, y }]);
-      const down = y + 1 < WINDOW_ROWS ? sim.queueGrid[x][y + 1] : undefined;
+      const down = y + 1 < windowRows ? sim.queueGrid[x][y + 1] : undefined;
       if (down?.group === cell.group) pairs.push([{ x, y }, { x, y: y + 1 }]);
     }
   }
@@ -1352,16 +1579,19 @@ function combinedAdjacentPairs(sim: Simulation): [Point, Point][] {
  *
  * A linked rope connects each consecutive pair of a group's current cells
  * (sorted front-to-back — the sim itself doesn't preserve an authored chain
- * order beyond membership, since ordering has no gameplay effect). A partner
- * outside the visible window still gets a segment drawn toward it, clipped
- * at the window edge but at the true angle, so the player can judge how many
- * rows away it is — see virtualPoint()/clipToBottom(). A pair with neither
- * endpoint on screen draws nothing. A combined rail only connects cells that
- * are both inside the window — a block extending past it just shows its
- * visible part, with no off-window extrapolation (unlike a rope, a rail has
- * no "how far away" question to answer).
+ * order beyond membership, since ordering has no gameplay effect) — but only
+ * when the pair sits in two ADJACENT columns; a pair two or more columns
+ * apart (or in the same column) draws nothing, so a rope never reads as a
+ * long diagonal across the board. A partner outside the visible window still
+ * gets a segment drawn toward it, clipped at the window edge but at the true
+ * angle, so the player can judge how many rows away it is — see
+ * virtualPoint()/clipToBottom(). A pair with neither endpoint on screen also
+ * draws nothing. A combined rail only connects cells that are both inside
+ * the window — a block extending past it just shows its visible part, with
+ * no off-window extrapolation (unlike a rope, a rail has no "how far away"
+ * question to answer).
  */
-function renderGroupOverlay(lanes: HTMLElement, sim: Simulation): void {
+function renderGroupOverlay(lanes: HTMLElement, sim: Simulation, windowRows: number): void {
   const linkedGroupIndices = new Set<number>();
   for (const col of sim.queueGrid) {
     for (const cell of col) {
@@ -1370,7 +1600,7 @@ function renderGroupOverlay(lanes: HTMLElement, sim: Simulation): void {
       }
     }
   }
-  const combinedPairs = combinedAdjacentPairs(sim);
+  const combinedPairs = combinedAdjacentPairs(sim, windowRows);
   if (linkedGroupIndices.size === 0 && combinedPairs.length === 0) return;
 
   const host = lanes.getBoundingClientRect();
@@ -1388,8 +1618,9 @@ function renderGroupOverlay(lanes: HTMLElement, sim: Simulation): void {
     for (let i = 0; i < cells.length - 1; i++) {
       const a = cells[i];
       const b = cells[i + 1];
-      const aVisible = a.y < WINDOW_ROWS;
-      const bVisible = b.y < WINDOW_ROWS;
+      if (Math.abs(a.x - b.x) !== 1) continue; // rope only spans two adjacent columns
+      const aVisible = a.y < windowRows;
+      const bVisible = b.y < windowRows;
       if (!aVisible && !bVisible) continue; // neither endpoint is on screen
 
       const p1 = aVisible ? realPoint(lanes, host, a.x, a.y) : virtualPoint(lanes, host, a.x, a.y);

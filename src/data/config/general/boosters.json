@@ -1,0 +1,47 @@
+{
+  "_source": "Hand-authored — no sheet source yet. Applies game-wide, not per-map.",
+  "boosters": [
+    {
+      "id": 0,
+      "name": "Shift-up Row",
+      "emoji": "⏫",
+      "fileId": "",
+      "localImage": "",
+      "description": "Rotate every queue column up one instance; the displaced front item(s) refill from the bottom of their own column.",
+      "paramDefs": []
+    },
+    {
+      "id": 1,
+      "name": "Ingredient Pick",
+      "emoji": "🎯",
+      "fileId": "",
+      "localImage": "",
+      "description": "Reveal more rows and pick any one slot, not just the front row — including a combined or linked instance.",
+      "paramDefs": [{ "name": "numRowPick", "dataType": "int" }]
+    },
+    {
+      "id": 2,
+      "name": "Clean Table",
+      "emoji": "🧽",
+      "fileId": "",
+      "localImage": "",
+      "description": "Clear dirty stacks from the grid. numCleanStack = -1 clears all of them.",
+      "paramDefs": [{ "name": "numCleanStack", "dataType": "int" }]
+    },
+    {
+      "id": 3,
+      "name": "Auto Complete",
+      "emoji": "✨",
+      "fileId": "",
+      "localImage": "",
+      "description": "Finish one dish of the left-most customer, drawing from the backpack first, then the grid, then the queues.",
+      "paramDefs": []
+    }
+  ],
+  "params": {
+    "numRowPick": 7,
+    "numCleanStack": -1,
+    "saveMeCount": 1,
+    "backpack": { "name": "Backpack", "emoji": "🎒", "fileId": "", "localImage": "" }
+  }
+}

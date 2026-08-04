@@ -7,7 +7,7 @@
 // blocked image degrades gracefully in exactly one place.
 
 import type { CookingToolDef, ElementDef, MapDef } from "../core/types.ts";
-import { GLOBAL_DEFS, MAP1_DATA } from "../data/configLoader.ts";
+import { BOOSTER_PARAMS, GLOBAL_DEFS, MAP1_DATA } from "../data/configLoader.ts";
 import { el } from "./dom.ts";
 import { localImageUrl } from "./localImages.ts";
 
@@ -143,6 +143,12 @@ export const cellIconEl = (id: number, size?: number) =>
 
 export const customerTypeIconEl = (id: number, size?: number) =>
   iconEl(defSpec(GLOBAL_DEFS.customerTypes, id), { size, className: "icon-customer-type" });
+
+export const boosterIconEl = (id: number, size?: number) =>
+  iconEl(defSpec(GLOBAL_DEFS.boosters, id), { size, className: "icon-status" });
+
+export const backpackIconEl = (size?: number) =>
+  iconEl(BOOSTER_PARAMS.backpack, { size, className: "icon-status" });
 
 export const toolIconEl = (tool: CookingToolDef, size?: number) =>
   iconEl(

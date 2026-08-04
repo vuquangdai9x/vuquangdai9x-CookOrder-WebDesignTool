@@ -114,6 +114,11 @@ export interface MapDef {
   gridWidth: number;
   gridHeight: number;
   dirtyStackHeight: number;
+  /**
+   * Queue rows Play mode shows per column: 1 interactable front row plus the
+   * rest as preview-only. Default 3 (1 interactable + 2 preview).
+   */
+  visibleRows: number;
   rawIngredients: RawIngredientDef[];
   cookedIngredients: CookedIngredientDef[];
   /** What served dishes leave behind on the grid — see DirtyObjectDef. */
@@ -233,6 +238,12 @@ export interface LevelConfig {
   customers: CustomerConfig[];
   /** Overrides the default behaviour when a picked ingredient's tool is full. */
   outOfSlotPolicy?: OutOfSlotPolicy;
+  /**
+   * Starting charge count for each of the 4 boosters, indexed the same as
+   * GlobalDefs.boosters (Shift-up Row, Ingredient Pick, Clean Table, Auto
+   * Complete). Absent means every booster starts with DEFAULT_BOOSTER_CHARGES.
+   */
+  boosterCharges?: number[];
 }
 
 // ---------- Global (cross-map) definitions ----------
@@ -241,6 +252,23 @@ export interface GlobalDefs {
   effects: ElementDef[];
   cellTypes: ElementDef[];
   customerTypes: ElementDef[];
+  boosters: ElementDef[];
+}
+
+/**
+ * Global (whole-game, not per-map) booster tuning — loaded once from
+ * config/general/boosters.json's "params" block. Static; not editable in
+ * Design mode.
+ */
+export interface BoosterParams {
+  /** Ingredient Pick — rows revealed while the booster is armed. */
+  numRowPick: number;
+  /** Clean Table — dirty stacks cleared; -1 clears all of them. */
+  numCleanStack: number;
+  /** Save Me — how many times a run may be rescued from a loss. */
+  saveMeCount: number;
+  /** Icon spec for the Save Me backpack — structurally matches ui/icon.ts's IconSpec. */
+  backpack: { name: string; emoji: string; fileId?: string; localImage?: string };
 }
 
 export interface Project {

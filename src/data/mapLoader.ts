@@ -18,6 +18,8 @@ export interface LevelData {
   customerString: string;
   /** Optional per-level override of what happens when a tool is full. */
   outOfSlotPolicy?: "block-pick" | "park-on-grid";
+  /** Starting charge count for each of the 4 boosters — see LevelConfig.boosterCharges. */
+  boosterCharges?: number[];
 }
 
 export type MapData = Omit<MapDef, "levels"> & { levels: LevelData[] };
@@ -36,6 +38,7 @@ export function toLevelConfig(d: LevelData): LevelConfig {
     grid: parseGrid(d.gridString),
     customers: parseCustomers(d.customerString),
     outOfSlotPolicy: d.outOfSlotPolicy,
+    boosterCharges: d.boosterCharges,
   };
 }
 

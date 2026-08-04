@@ -7,6 +7,7 @@
 // an `emoji` fallback — there is no separate icon table.
 
 import type {
+  BoosterParams,
   CookingToolDef,
   DirtyObjectDef,
   ElementDef,
@@ -15,6 +16,7 @@ import type {
 } from "../core/types.ts";
 import type { LevelData, MapData } from "./mapLoader.ts";
 
+import boostersJson from "./config/general/boosters.json";
 import cellStatusesJson from "./config/general/cell-statuses.json";
 import customerTypesJson from "./config/general/customer-types.json";
 import emotionsJson from "./config/general/emotions.json";
@@ -103,7 +105,11 @@ export const GLOBAL_DEFS: GlobalDefs = {
   effects: (ingredientStatusesJson.statuses as StatusRow[]).map(toElementDef),
   cellTypes: (cellStatusesJson.statuses as StatusRow[]).map(toElementDef),
   customerTypes: (customerTypesJson.types as StatusRow[]).map(toElementDef),
+  boosters: (boostersJson.boosters as StatusRow[]).map(toElementDef),
 };
+
+/** Global booster tuning (Ingredient Pick's row count, Clean Table's stack count, Save Me's count, the backpack icon spec). Static — not editable in Design mode. */
+export const BOOSTER_PARAMS: BoosterParams = boostersJson.params as BoosterParams;
 
 // ---------- per-map ----------
 
@@ -115,6 +121,7 @@ interface MapMeta {
   gridWidth: number;
   gridHeight: number;
   dirtyStackHeight: number;
+  visibleRows?: number;
   disabledRawIds?: number[];
   disabledCookedIds?: number[];
 }
@@ -135,6 +142,7 @@ function buildMap(
     gridWidth: meta.gridWidth,
     gridHeight: meta.gridHeight,
     dirtyStackHeight: meta.dirtyStackHeight,
+    visibleRows: meta.visibleRows ?? 3,
     disabledRawIds: meta.disabledRawIds ?? [],
     disabledCookedIds: meta.disabledCookedIds ?? [],
     rawIngredients: ingredients.map((r) => ({

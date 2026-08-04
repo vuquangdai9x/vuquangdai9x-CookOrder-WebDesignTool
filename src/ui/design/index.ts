@@ -193,11 +193,23 @@ export class DesignView {
       this.onChange();
     });
 
+    const visibleRowsInput = el("input", {
+      type: "number",
+      value: String(this.map.visibleRows),
+      min: "1",
+    }) as HTMLInputElement;
+    visibleRowsInput.title = "Queue rows Play mode shows: 1 interactable front row + the rest as preview.";
+    visibleRowsInput.addEventListener("change", () => {
+      this.map.visibleRows = Math.max(1, Number(visibleRowsInput.value) || 1);
+      this.onChange();
+    });
+
     return el("div", { class: "level-bar map-settings" }, [
       el("strong", { class: "map-settings-label" }, [`Map: ${this.map.name}`]),
       dimField("Grid Cols", this.map.gridWidth, (v) => (this.map.gridWidth = v)),
       dimField("Grid Rows", this.map.gridHeight, (v) => (this.map.gridHeight = v)),
       el("label", { class: "field small" }, ["Dirty stack", stackInput]),
+      el("label", { class: "field small" }, ["Visible rows", visibleRowsInput]),
       el("small", { class: "muted" }, ["Applies to every level in this map"]),
     ]);
   }
