@@ -22,7 +22,14 @@ import {
   requestAccessTokenInteractive,
 } from "./googleAuth.ts";
 
-export const SHEET_ID = "1gfezXsHHO5y0Tb1r3IEXGLM6gUOSF2TD0QSDMBjFutQ";
+/**
+ * No default on purpose: the actual spreadsheet id is project-private, so it
+ * isn't checked into source — only someone who already has it (paste it into
+ * the header's "Sheet ID" field, see main.ts) can pull live data. Every
+ * caller here treats an empty id as "no sheet configured" and falls back to
+ * the bundled snapshot rather than crashing.
+ */
+export const SHEET_ID = "";
 
 /** Sheet tab names (exact titles), discovered from the sheet (docs/SHEET_STRUCTURE.md). */
 export const TAB_NAMES = {
@@ -150,13 +157,16 @@ function lastNonEmpty(row: string[]): string {
  * token. Definition tables stay static for now (see data/configLoader.ts).
  */
 export class GoogleSheetApiSource implements DataSource {
-  /** `sheetId` defaults to the bundled SHEET_ID — pass a different id (e.g. from the header's spreadsheet-id field) to read a different spreadsheet with the same tab layout. */
+  /** `sheetId` has no baked-in default (see SHEET_ID) — pass the id from the header's "Sheet ID" field to read that spreadsheet. */
   constructor(
     private interactive: boolean,
     private sheetId: string = SHEET_ID,
   ) {}
 
   async loadProject(): Promise<Project> {
+    if (!this.sheetId.trim()) {
+      throw new Error("No spreadsheet id — paste one into the Sheet ID field");
+    }
     const token = this.interactive
       ? await requestAccessTokenInteractive()
       : await getAccessTokenSilent();

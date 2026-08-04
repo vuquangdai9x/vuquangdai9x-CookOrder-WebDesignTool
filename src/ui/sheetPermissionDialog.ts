@@ -14,7 +14,7 @@ interface DialogOptions {
 
 export function showSheetPermissionDialog(opts: DialogOptions = {}): void {
   const sheetId = opts.sheetId ?? SHEET_ID;
-  const editUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+  const editUrl = sheetId.trim() ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : null;
   const message =
     opts.message ??
     "The linked sheet couldn't be read — this usually means the signed-in " +
@@ -24,20 +24,27 @@ export function showSheetPermissionDialog(opts: DialogOptions = {}): void {
   let dialog: HTMLElement;
   const close = () => dialog.remove();
 
+  const actions = [
+    // No sheetId at all (SHEET_ID has no baked-in default) — nothing to open.
+    ...(editUrl
+      ? [
+          button(
+            "Open Google Sheet ↗",
+            () => {
+              window.open(editUrl, "_blank", "noopener");
+            },
+            { class: "full-btn" },
+          ),
+        ]
+      : []),
+    button(opts.dismissLabel ?? "Continue with local data", close, {}),
+  ];
+
   dialog = el("div", { class: "preload-overlay sheet-permission-overlay" }, [
     el("div", { class: "preload-panel sheet-permission-panel" }, [
       el("h3", {}, ["Google Sheet access needed"]),
       el("p", {}, [message]),
-      el("div", { class: "sheet-permission-actions" }, [
-        button(
-          "Open Google Sheet ↗",
-          () => {
-            window.open(editUrl, "_blank", "noopener");
-          },
-          { class: "full-btn" },
-        ),
-        button(opts.dismissLabel ?? "Continue with local data", close, {}),
-      ]),
+      el("div", { class: "sheet-permission-actions" }, actions),
     ]),
   ]);
   document.body.append(dialog);

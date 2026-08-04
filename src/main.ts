@@ -64,7 +64,7 @@ let designView: DesignView | null = null;
 let preloadedMapRef: MapData | null = null;
 /** Set when the startup silent sign-in check found no Google session/consent yet. */
 let needsSignIn = false;
-/** Spreadsheet id "Load from Sheet" reads from — editable in the header, defaults to the bundled SHEET_ID. */
+/** Spreadsheet id "Load from Sheet" reads from — editable in the header. No default is baked in (see SHEET_ID); only someone who pastes in their own project's id gets live data. */
 let sheetIdInput = SHEET_ID;
 
 function loadDraft(): { map: MapData; migrated: boolean } | null {
@@ -139,7 +139,9 @@ async function render(): Promise<void> {
       }),
     ]),
     el("div", { class: "data-actions" }, [
-      el("span", { class: "data-origin" }, [`${dataOrigin} · sheet ${sheetIdInput.slice(0, 8)}…`]),
+      el("span", { class: "data-origin" }, [
+        sheetIdInput.trim() ? `${dataOrigin} · sheet ${sheetIdInput.slice(0, 8)}…` : dataOrigin,
+      ]),
       sheetIdField(),
       // Clicking either loads the sheet; the label just sets the right
       // expectation — a fresh browser/tab has no Google session yet, so the
@@ -223,15 +225,20 @@ async function render(): Promise<void> {
   }
 }
 
-/** Text input for a custom spreadsheet id, defaulting to the currently effective one — lets a designer point "Load from Sheet" at a different spreadsheet with the same tab layout. */
+/**
+ * Text input for the spreadsheet id — no default is checked into source (see
+ * SHEET_ID), so this starts empty and "Load from Sheet" only ever reads live
+ * data for whoever pastes in an id they actually have.
+ */
 function sheetIdField(): HTMLElement {
   const input = el("input", {
     type: "text",
     value: sheetIdInput,
+    placeholder: "Paste a spreadsheet ID…",
     class: "sheet-id-input",
   }) as HTMLInputElement;
   input.addEventListener("change", () => {
-    sheetIdInput = input.value.trim() || SHEET_ID;
+    sheetIdInput = input.value.trim();
     input.value = sheetIdInput;
   });
   return el("label", { class: "field small sheet-id-field", title: "Spreadsheet ID to read from" }, [
@@ -269,6 +276,15 @@ function switchMode(next: Mode): void {
  *   and flip `needsSignIn` so the header offers a sign-in button instead.
  */
 async function loadFromSheet(interactive: boolean): Promise<void> {
+  // No id typed in yet — most people opening this tool for the first time,
+  // since no default is checked into source (see SHEET_ID). A silent startup
+  // check just stays quiet on local data; an explicit click says why nothing
+  // happened rather than firing a request that can only fail.
+  if (!sheetIdInput.trim()) {
+    if (interactive) alert("Paste a spreadsheet ID into the Sheet ID field first.");
+    return;
+  }
+
   if (interactive && designView?.isDirty) {
     if (!confirm("Unsaved changes will be overwritten. Reload?")) return;
   }
@@ -318,7 +334,7 @@ async function loadFromSheet(interactive: boolean): Promise<void> {
       if (interactive) dataOrigin = `sign-in failed (${err.message}) — bundled snapshot`;
     } else if (err instanceof SheetPermissionError) {
       dataOrigin = `sheet load failed (${err.message}) — bundled snapshot`;
-      showSheetPermissionDialog();
+      showSheetPermissionDialog({ sheetId: sheetIdInput });
     } else {
       dataOrigin = `sheet load failed (${(err as Error).message}) — bundled snapshot`;
     }
@@ -347,5 +363,8 @@ const isLocalDev =
 // blank while we check for a Google session, then upgrade in the background:
 // a returning, already-signed-in user gets live data moments later, a first
 // visit just gets a "Sign in with Google" button instead of any error.
+// Skipped entirely with no sheetId typed in (the common case, since no
+// default is checked into source — see SHEET_ID): there's nothing to load
+// yet, so there's no reason to trigger a Google auth check at all.
 void render();
-if (!isLocalDev) void loadFromSheet(false);
+if (!isLocalDev && sheetIdInput.trim()) void loadFromSheet(false);
