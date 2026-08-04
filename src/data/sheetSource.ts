@@ -59,8 +59,8 @@ export class SheetPermissionError extends Error {
   }
 }
 
-async function fetchTabValues(tabName: string, token: string): Promise<string[][]> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(tabName)}`;
+async function fetchTabValues(tabName: string, token: string, sheetId: string): Promise<string[][]> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(tabName)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 401) {
     clearStoredToken();
@@ -86,15 +86,17 @@ async function loadMapLevels(
   mapId: number,
   firstLevelId: number,
   token: string,
+  sheetId: string,
 ): Promise<LevelData[]> {
   const [overall, queues, scenario] = await Promise.all([
-    fetchTabValues(TAB_NAMES.Level_overall_config, token),
-    fetchTabValues(TAB_NAMES.TOOL_Level_ingredient_queue, token),
+    fetchTabValues(TAB_NAMES.Level_overall_config, token, sheetId),
+    fetchTabValues(TAB_NAMES.TOOL_Level_ingredient_queue, token, sheetId),
     fetchTabValues(
       mapId === 1
         ? TAB_NAMES.Level_Scenario_Map1_burger
         : TAB_NAMES.Level_Scenario_Map2_chicken_fried,
       token,
+      sheetId,
     ),
   ]);
 
@@ -148,7 +150,11 @@ function lastNonEmpty(row: string[]): string {
  * token. Definition tables stay static for now (see data/configLoader.ts).
  */
 export class GoogleSheetApiSource implements DataSource {
-  constructor(private interactive: boolean) {}
+  /** `sheetId` defaults to the bundled SHEET_ID — pass a different id (e.g. from the header's spreadsheet-id field) to read a different spreadsheet with the same tab layout. */
+  constructor(
+    private interactive: boolean,
+    private sheetId: string = SHEET_ID,
+  ) {}
 
   async loadProject(): Promise<Project> {
     const token = this.interactive
@@ -156,7 +162,7 @@ export class GoogleSheetApiSource implements DataSource {
       : await getAccessTokenSilent();
     if (!token) throw new SheetAuthRequiredError("no Google sign-in yet");
 
-    const levels = await loadMapLevels(1, 1, token);
+    const levels = await loadMapLevels(1, 1, token, this.sheetId);
     const map1: MapData = { ...MAP1_DATA, levels };
     return { globalDefs: GLOBAL_DEFS, maps: [toMapDef(map1)] };
   }

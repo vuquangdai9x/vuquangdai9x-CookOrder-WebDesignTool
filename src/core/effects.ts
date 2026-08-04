@@ -29,15 +29,17 @@ export const CUSTOMER_STAFF = 1;
 
 registerQueueEffect(EFFECT_NONE, {});
 
-/** Freeze: item cannot be picked until `thawCount` other ingredients are picked. */
-registerQueueEffect(EFFECT_FREEZE, {
-  canPick(effect, ctx) {
-    const thawAt = effect.params[0] ?? 0;
-    return ctx.picksMade >= thawAt
-      ? { ok: true }
-      : { ok: false, reason: `Frozen until ${thawAt} picks (now ${ctx.picksMade})` };
-  },
-});
+/**
+ * Freeze: params[0] is the thaw count — how many picks of an ADJACENT slot
+ * (4-connected in the queue grid) are needed before the item can be picked.
+ * Not registered here: this needs per-item remaining-count state and the
+ * picked cell's coordinates, neither of which the generic
+ * canPick(effect, ctx) signature carries (ctx is just a flat shared-counters
+ * snapshot, with no way to identify which QueueItem an EffectInstance
+ * belongs to). See Simulation.freezeCount()/decrementAdjacentFreezes() in
+ * sim.ts, which special-case EFFECT_FREEZE directly instead.
+ */
+registerQueueEffect(EFFECT_FREEZE, {});
 
 /** Link: paired with another item. Pairing rules are map-specific; no-op for now. */
 registerQueueEffect(EFFECT_LINK, {});

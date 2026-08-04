@@ -641,15 +641,29 @@ describe("serve slots and dirty dishes", () => {
 });
 
 describe("effects", () => {
-  it("blocks picking a frozen item until enough other picks happen", () => {
+  it("blocks picking a frozen item until enough ADJACENT picks happen", () => {
+    // Column 0 is frozen (thaw count 2); column 1 (adjacent) holds two items,
+    // so picking its front twice provides two adjacent picks in a row.
     const sim = new Simulation(
       testMap,
-      level({ queueString: "0#1:2%0%0", gridString: EMPTY_GRID, customerString: "0;0;0" }),
+      level({ queueString: "0#1:2%0,1", gridString: EMPTY_GRID, customerString: "0;0;0" }),
     );
     expect(sim.canPick(0).ok).toBe(false);
-    sim.pick(1);
+    expect(sim.canPick(0).reason).toMatch(/frozen/i);
+    sim.pick(1); // adjacent column, first thaw pick
     expect(sim.canPick(0).ok).toBe(false);
-    sim.pick(2);
+    sim.pick(1); // adjacent column, second thaw pick (the next item shifted to front)
+    expect(sim.canPick(0).ok).toBe(true);
+  });
+
+  it("a pick in a NON-adjacent column doesn't thaw a frozen item", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0#1:1%0%0", gridString: EMPTY_GRID, customerString: "0;0;0" }),
+    );
+    sim.pick(2); // column 2 is two columns away from the frozen column 0
+    expect(sim.canPick(0).ok).toBe(false);
+    sim.pick(1); // column 1 IS adjacent
     expect(sim.canPick(0).ok).toBe(true);
   });
 
@@ -909,20 +923,23 @@ describe("queue groups", () => {
     expect(sim["reservedSlots"].size).toBe(0);
   });
 
-  it("counts every item of a group pick toward picksMade, so a freeze threshold can clear in one click", () => {
+  it("an L-shaped combined pick can touch a frozen neighbor from two sides at once, thawing it by two in one click", () => {
+    // Combined block: (0,0)-(1,0)-(1,1), an "L". The frozen item behind it at
+    // (0,1) is 4-connected to BOTH (0,0) and (1,1) — two separate block
+    // members — so picking the whole block in one click decrements its
+    // thaw-2 count by two, clearing it immediately.
     const sim = new Simulation(
       testMap,
       level({
-        queueString: "0,1#1:3%0%0$0-0,1-0,2-0$",
+        queueString: "0,1#1:2%0,0$0-0,1-0,1-1$",
         gridString: EMPTY_GRID,
-        customerString: "0;0;0;0.0.0.1",
+        customerString: "0;0;0",
       }),
     );
-    expect(sim.canPick(0).ok).toBe(true); // sanity: the 3-cell block fronts lane 0
-    sim.pick(0); // one click, three items
-    expect(sim.effectContext.picksMade).toBe(3);
+    expect(sim.canPick(0).ok).toBe(true); // sanity: the block fronts lane 0
+    sim.pick(0); // one click, three items, two of them adjacent to the frozen cell
     expect(sim.frontCell(0)?.item.id).toBe(1); // the previously-frozen item rose to the front
-    expect(sim.canPick(0).ok).toBe(true); // and is now unfrozen (3 picks made)
+    expect(sim.canPick(0).ok).toBe(true); // and is now unfrozen (thawed by 2 in one click)
   });
 
   it("a sweeper inside a group still triggers settle() and isn't counted in picksMade", () => {

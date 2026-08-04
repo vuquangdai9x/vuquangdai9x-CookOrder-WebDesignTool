@@ -90,9 +90,11 @@ export function validateMap(map: MapData): LevelWarning[] {
         );
         if (frozen) {
           add(
-            `${label} contains a Freeze effect — the block (and everything ` +
-              "behind it, in its columns) can never move, so picksMade can never " +
-              "reach the thaw threshold. This is an unrecoverable deadlock.",
+            `${label} contains a Freeze effect — since it's a rigid combined ` +
+              "block, it (and everything behind it, in its columns) can never " +
+              "move while frozen. It can still thaw from a pick in an adjacent " +
+              "lane, but if no adjacent lane ever offers one, this is an " +
+              "unrecoverable deadlock — double-check the surrounding columns.",
           );
         }
       }

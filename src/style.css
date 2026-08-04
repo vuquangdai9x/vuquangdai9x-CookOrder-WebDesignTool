@@ -191,6 +191,27 @@ header h1 {
   font-size: 0.78rem;
 }
 
+.sheet-id-field {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.sheet-id-input {
+  width: 11rem;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.35rem;
+}
+
+@media (max-width: 700px) {
+  /* Same room constraint as the full-width action buttons — see .data-actions .full-btn. */
+  .sheet-id-field {
+    display: none;
+  }
+}
+
 main {
   padding: 0.9rem;
 }
@@ -782,6 +803,21 @@ footer {
   pointer-events: none;
 }
 
+/* Bottom-right: how many more adjacent picks are needed to break the ice. */
+.tile-freeze-count {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #0b3a5c;
+  background: #eaffff;
+  border-radius: 999px;
+  padding: 0 0.25rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
 .tile-remove {
   position: absolute;
   top: -6px;
@@ -834,18 +870,26 @@ footer {
 /*
  * Linked-slot ropes + combined-slot rails: one absolutely positioned overlay
  * over the whole lanes grid, so a chain can connect any two columns, not
- * just adjacent tiles. z-index: -1 sinks it below the lanes' own normal-flow
- * children (the tile frames) — .queue-lanes' `position: relative` plus this
- * negative z-index is what makes that "behind" relationship hold, per the
- * standard positioned-descendant-under-static-siblings stacking rule. The
- * only part of a line actually visible is therefore the small gap between
- * two tiles; the rest is hidden under their opaque backgrounds.
+ * just adjacent tiles. It needs to sit ABOVE each lane's own opaque panel
+ * background (.queue-lane) — otherwise a rail between two vertically-stacked
+ * members of the same lane is entirely hidden under that panel, since a
+ * lane's background always paints before any positioned sibling/descendant
+ * regardless of z-index — but BELOW the tile frames themselves (.queue-tile),
+ * so only the small gap between two tiles actually shows a line.
+ *
+ * z-index alone can't express "above this, below that" here: .queue-lane has
+ * no `position`, so it always paints before any z-index:auto/0 positioned
+ * element no matter the overlay's z-index value. The overlay is therefore
+ * given z-index: 0 (same bucket as .queue-tile's own implicit z-index:auto)
+ * AND prepended as .queue-lanes' first child (see renderGroupOverlay()) —
+ * within one z-index bucket, paint order falls back to tree order, and
+ * "first child" paints before every tile nested deeper in later siblings.
  */
 .queue-link-overlay {
   position: absolute;
   top: 0;
   left: 0;
-  z-index: -1;
+  z-index: 0;
   pointer-events: none;
   overflow: visible;
 }

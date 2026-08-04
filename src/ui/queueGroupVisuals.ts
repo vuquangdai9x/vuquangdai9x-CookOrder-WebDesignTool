@@ -26,15 +26,30 @@ export function railSegments(p1: Point, p2: Point, offset = 3): [Point, Point][]
   ]);
 }
 
-/** Appends one <line> to `svg` with the given class, in the overlay's local coordinate space. */
-export function appendLine(svg: SVGSVGElement, a: Point, b: Point, className: string): void {
+/** Appends one <line> to `svg` with the given class, in the overlay's local coordinate space. An explicit `color` overrides the class's default stroke (see railColor()). */
+export function appendLine(
+  svg: SVGSVGElement,
+  a: Point,
+  b: Point,
+  className: string,
+  color?: string,
+): void {
   const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
   line.setAttribute("x1", String(a.x));
   line.setAttribute("y1", String(a.y));
   line.setAttribute("x2", String(b.x));
   line.setAttribute("y2", String(b.y));
   line.setAttribute("class", className);
+  if (color) line.style.stroke = color;
   svg.append(line);
+}
+
+/** Cycled per combined-slot group so distinct blocks read apart at a glance, especially when two blocks sit in adjacent lanes. */
+const COMBINE_RAIL_COLORS = ["#cfd8ff", "#ffcf8f", "#8fffc0", "#ff8fd6", "#8fe0ff", "#e0ff8f"];
+
+/** Picks a stable rail color for a combined-slot group, keyed by its group index (need not be consecutive — just distinct). */
+export function railColor(groupIndex: number): string {
+  return COMBINE_RAIL_COLORS[((groupIndex % COMBINE_RAIL_COLORS.length) + COMBINE_RAIL_COLORS.length) % COMBINE_RAIL_COLORS.length];
 }
 
 /** A fresh, absolutely-positioned SVG overlay sized to `host`, appended by the caller once populated. */

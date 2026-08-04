@@ -25,7 +25,7 @@ import { numberField, pickerGrid, showContextMenu, swatchRow } from "../contextM
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { ingredientIconEl, statusIconEl } from "../icon.ts";
-import { appendLine, createOverlay, railSegments } from "../queueGroupVisuals.ts";
+import { appendLine, createOverlay, railColor, railSegments } from "../queueGroupVisuals.ts";
 import type { Point } from "../queueGroupVisuals.ts";
 import { changeClass, cidOf, leafStatus, tagAllNew, tagNew } from "./changeTracking.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
@@ -538,25 +538,25 @@ function tileEl(
   return tile;
 }
 
-/** Adjacent (cid, cid) pairs within the same combined group — one per shared edge, checked right/down only so each edge is counted once. */
-function combinedAdjacentCidPairs(draft: QueueDraft): [string, string][] {
+/** Adjacent (cid, cid) pairs within the same combined group — one per shared edge, checked right/down only so each edge is counted once. Carries the group's index in draft.groups so each block gets its own color (see railColor()). */
+function combinedAdjacentCidPairs(draft: QueueDraft): { a: string; b: string; group: number }[] {
   const coords = coordsByCid(draft.queues);
   const byCoord = new Map<string, string>();
   for (const [cid, c] of coords) byCoord.set(`${c.x}:${c.y}`, cid);
 
-  const pairs: [string, string][] = [];
-  for (const g of draft.groups) {
-    if (g.kind !== "combined") continue;
+  const pairs: { a: string; b: string; group: number }[] = [];
+  draft.groups.forEach((g, groupIndex) => {
+    if (g.kind !== "combined") return;
     const members = new Set(g.cids);
     for (const cid of g.cids) {
       const c = coords.get(cid);
       if (!c) continue;
       const right = byCoord.get(`${c.x + 1}:${c.y}`);
-      if (right && members.has(right)) pairs.push([cid, right]);
+      if (right && members.has(right)) pairs.push({ a: cid, b: right, group: groupIndex });
       const down = byCoord.get(`${c.x}:${c.y + 1}`);
-      if (down && members.has(down)) pairs.push([cid, down]);
+      if (down && members.has(down)) pairs.push({ a: cid, b: down, group: groupIndex });
     }
-  }
+  });
   return pairs;
 }
 
@@ -572,12 +572,13 @@ function tileCenter(lanes: HTMLElement, host: DOMRect, cid: string): Point | nul
  * columns are adjacent — a pair two or more columns apart, or in the same
  * column, draws nothing, so a rope never reads as a long diagonal across the
  * board) and combined-slot rails (solid double lines across each shared
- * edge) as one SVG overlay positioned over the whole lanes grid. Reads tile
- * centers via getBoundingClientRect() right after the lanes are appended —
- * cheap, and always current since the tier is fully rebuilt on every render
- * rather than patched. The overlay is layered behind the tile frames (see
- * .queue-link-overlay's z-index in style.css), so only the gap between two
- * tiles actually shows a line.
+ * edge, one color per combined group — see railColor()) as one SVG overlay
+ * positioned over the whole lanes grid. Reads tile centers via
+ * getBoundingClientRect() right after the lanes are appended — cheap, and
+ * always current since the tier is fully rebuilt on every render rather than
+ * patched. The overlay is layered above each lane's own panel background but
+ * below the tile frames (see .queue-link-overlay's z-index in style.css), so
+ * only the gap between two tiles actually shows a line.
  */
 function renderGroupOverlay(lanes: HTMLElement, draft: QueueDraft): void {
   const linked = draft.groups.filter((g) => g.kind === "linked");
@@ -589,9 +590,15 @@ function renderGroupOverlay(lanes: HTMLElement, draft: QueueDraft): void {
   const coords = coordsByCid(draft.queues);
 
   for (const g of linked) {
-    for (let i = 0; i < g.cids.length - 1; i++) {
-      const cidA = g.cids[i];
-      const cidB = g.cids[i + 1];
+    // Sorted by COLUMN, not authored/selection order: Link only accepts one
+    // member per column in one contiguous run, so column order is the
+    // chain's real edge order regardless of the order the cids were shift-
+    // clicked in — see the matching comment in play/index.ts's
+    // renderGroupOverlay().
+    const orderedCids = [...g.cids].sort((a, b) => (coords.get(a)?.x ?? 0) - (coords.get(b)?.x ?? 0));
+    for (let i = 0; i < orderedCids.length - 1; i++) {
+      const cidA = orderedCids[i];
+      const cidB = orderedCids[i + 1];
       const ca = coords.get(cidA);
       const cb = coords.get(cidB);
       if (!ca || !cb || Math.abs(ca.x - cb.x) !== 1) continue;
@@ -602,16 +609,21 @@ function renderGroupOverlay(lanes: HTMLElement, draft: QueueDraft): void {
     }
   }
 
-  for (const [cidA, cidB] of combinedPairs) {
+  for (const { a: cidA, b: cidB, group } of combinedPairs) {
     const p1 = tileCenter(lanes, host, cidA);
     const p2 = tileCenter(lanes, host, cidB);
     if (!p1 || !p2) continue;
+    const color = railColor(group);
     for (const [a, b] of railSegments(p1, p2)) {
-      appendLine(svg, a, b, "queue-combine-rail");
+      appendLine(svg, a, b, "queue-combine-rail", color);
     }
   }
 
-  lanes.append(svg);
+  // Prepended, not appended — see the matching comment in play/index.ts's
+  // renderGroupOverlay() for why this ordering (paired with
+  // .queue-link-overlay's z-index: 0) is what puts the overlay above each
+  // lane's panel background but below every tile frame.
+  lanes.prepend(svg);
 }
 
 // ---------- menus ----------
@@ -747,11 +759,17 @@ function tileMenu(
         section.commit("Combine slots");
       },
     });
-    // A link is a short-range relationship: exactly two slots, in two
-    // different but adjacent columns — never same-column, never spanning a
-    // gap, and never more than a pair (unlike Combine's arbitrary block).
+    // A link is a chain of 2+ slots, at most one per column, whose columns
+    // form one unbroken adjacent run — never two slots sharing a column,
+    // never a gap between columns (unlike Combine's arbitrary 4-connected
+    // block, which can be any shape and even stack several cells in one
+    // column).
+    const linkColumns = selectedCells.map((c) => c.x);
+    const uniqueLinkColumns = new Set(linkColumns);
     const linkable =
-      selectedCells.length === 2 && Math.abs(selectedCells[0].x - selectedCells[1].x) === 1;
+      selectedCells.length >= 2 &&
+      uniqueLinkColumns.size === linkColumns.length && // no two cells share a column
+      Math.max(...linkColumns) - Math.min(...linkColumns) + 1 === uniqueLinkColumns.size; // contiguous run
     items.push({
       label: "Link",
       disabled: alreadyGrouped || !linkable,

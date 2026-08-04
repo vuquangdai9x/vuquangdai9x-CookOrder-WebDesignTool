@@ -56,13 +56,16 @@ let dataOrigin = restored
     ? "local draft (levels kept, definitions refreshed)"
     : "local draft"
   : "bundled Map 1 snapshot";
-let playLevelId = map.levels[0]?.id ?? 1;
+/** Shared between Design and Play mode so switching modes never resets which level is open — see DesignView's onLevelChange and PlayView's onSelectLevel below. */
+let currentLevelId = map.levels[0]?.id ?? 1;
 let playView: PlayView | null = null;
 let designView: DesignView | null = null;
 /** Identity of the map last preloaded, so a same-map re-render doesn't re-preload. */
 let preloadedMapRef: MapData | null = null;
 /** Set when the startup silent sign-in check found no Google session/consent yet. */
 let needsSignIn = false;
+/** Spreadsheet id "Load from Sheet" reads from — editable in the header, defaults to the bundled SHEET_ID. */
+let sheetIdInput = SHEET_ID;
 
 function loadDraft(): { map: MapData; migrated: boolean } | null {
   let stored: unknown;
@@ -136,7 +139,8 @@ async function render(): Promise<void> {
       }),
     ]),
     el("div", { class: "data-actions" }, [
-      el("span", { class: "data-origin" }, [`${dataOrigin} · sheet ${SHEET_ID.slice(0, 8)}…`]),
+      el("span", { class: "data-origin" }, [`${dataOrigin} · sheet ${sheetIdInput.slice(0, 8)}…`]),
+      sheetIdField(),
       // Clicking either loads the sheet; the label just sets the right
       // expectation — a fresh browser/tab has no Google session yet, so the
       // first click always shows the account/consent picker.
@@ -183,10 +187,12 @@ async function render(): Promise<void> {
   // A view that throws must not leave an empty page with no way out.
   try {
     if (mode === "design") {
-      designView = new DesignView(main, map, GLOBAL_DEFS, saveDraft);
+      designView = new DesignView(main, map, GLOBAL_DEFS, saveDraft, currentLevelId, (id) => {
+        currentLevelId = id;
+      });
     } else {
       const parsed = toMapDef(map);
-      const rawLevel = parsed.levels.find((l) => l.id === playLevelId) ?? parsed.levels[0];
+      const rawLevel = parsed.levels.find((l) => l.id === currentLevelId) ?? parsed.levels[0];
       if (!rawLevel) {
         main.append(el("p", {}, ["No levels to play."]));
         return;
@@ -195,7 +201,7 @@ async function render(): Promise<void> {
       // a map's disabled ingredients (e.g. Map 1's bun) actually disappear.
       const level = toPlayableLevelConfig(parsed, rawLevel);
       playView = new PlayView(main, parsed, level, (id) => {
-        playLevelId = id;
+        currentLevelId = id;
         void render();
       });
     }
@@ -217,11 +223,29 @@ async function render(): Promise<void> {
   }
 }
 
+/** Text input for a custom spreadsheet id, defaulting to the currently effective one — lets a designer point "Load from Sheet" at a different spreadsheet with the same tab layout. */
+function sheetIdField(): HTMLElement {
+  const input = el("input", {
+    type: "text",
+    value: sheetIdInput,
+    class: "sheet-id-input",
+  }) as HTMLInputElement;
+  input.addEventListener("change", () => {
+    sheetIdInput = input.value.trim() || SHEET_ID;
+    input.value = sheetIdInput;
+  });
+  return el("label", { class: "field small sheet-id-field", title: "Spreadsheet ID to read from" }, [
+    "Sheet ID",
+    input,
+  ]);
+}
+
 function resetDraft(): void {
   if (!confirm("Discard the local draft and reload the bundled snapshot?")) return;
   localStorage.removeItem(DRAFT_KEY);
   map = structuredClone(MAP1_DATA);
   dataOrigin = "bundled Map 1 snapshot";
+  currentLevelId = map.levels[0]?.id ?? 1;
   void render();
 }
 
@@ -256,7 +280,7 @@ async function loadFromSheet(interactive: boolean): Promise<void> {
   }
 
   try {
-    const project = await new GoogleSheetApiSource(interactive).loadProject();
+    const project = await new GoogleSheetApiSource(interactive, sheetIdInput).loadProject();
     const fresh = project.maps[0];
     map = {
       ...map,

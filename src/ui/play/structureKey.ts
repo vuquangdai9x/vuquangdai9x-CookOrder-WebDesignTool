@@ -55,7 +55,18 @@ export function queuesStructureKey(sim: Simulation): string {
   // block stalled) and any group's shape changing, plus per-column pickability.
   const queues = sim.queueGrid
     .map((col, x) => {
-      const cells = col.map((cell) => (cell ? `${cell.item.id}/${cell.group}` : "-")).join(".");
+      const cells = col
+        .map((cell) => {
+          if (!cell) return "-";
+          // A frozen item's remaining thaw count decrements from an ADJACENT
+          // pick, which may not touch this cell's own lane at all (so
+          // canPick(x) below wouldn't change) — include it explicitly so a
+          // buried, still-frozen preview tile's badge stays live instead of
+          // going stale until something else rebuilds the tier.
+          const freeze = sim.freezeCount(cell.item);
+          return `${cell.item.id}/${cell.group}${freeze > 0 ? `f${freeze}` : ""}`;
+        })
+        .join(".");
       return `${cells}:${sim.canPick(x).ok ? 1 : 0}`;
     })
     .join(",");

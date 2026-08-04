@@ -104,14 +104,15 @@ export class EffectsLayer {
   }
 
   /**
-   * Ring of particles bursting from a point.
+   * Ring of particles bursting from a point. `colors` overrides the default
+   * warm palette — used for e.g. an icy palette on a Freeze break.
    * Adapted from the Web Animations API particle technique:
    * https://css-tricks.com/playing-with-particles-using-the-web-animations-api/
    */
-  burst(origin: Point, particleCount?: number): void {
+  burst(origin: Point, particleCount?: number, colorPalette?: string[]): void {
     const opts = { count: particleCount };
     const count = opts.count ?? 18;
-    const colors = ["#f0a441", "#6bbf59", "#ffd98e", "#ffffff", "#8fd1ff"];
+    const colors = colorPalette ?? ["#f0a441", "#6bbf59", "#ffd98e", "#ffffff", "#8fd1ff"];
 
     for (let i = 0; i < count; i++) {
       const particle = el("div", { class: "fx-particle" });

@@ -37,6 +37,8 @@ export class DesignView {
   private map: MapData;
   private defs: GlobalDefs;
   private onChange: () => void;
+  /** Reports every level switch (picker, +Level, delete-then-fallback) so the app shell can carry the selection over into Play mode — see main.ts. */
+  private onLevelChange?: (levelId: number) => void;
   private level!: LevelData;
 
   private customers!: Section<CustomerConfig[]>;
@@ -58,12 +60,20 @@ export class DesignView {
   private levelWriteError: string | null = null;
   private levelWriting = false;
 
-  constructor(root: HTMLElement, map: MapData, defs: GlobalDefs, onChange: () => void) {
+  constructor(
+    root: HTMLElement,
+    map: MapData,
+    defs: GlobalDefs,
+    onChange: () => void,
+    initialLevelId?: number,
+    onLevelChange?: (levelId: number) => void,
+  ) {
     this.root = root;
     this.map = map;
     this.defs = defs;
     this.onChange = onChange;
-    this.level = map.levels[0];
+    this.onLevelChange = onLevelChange;
+    this.level = map.levels.find((l) => l.id === initialLevelId) ?? map.levels[0];
     this.build();
   }
 
@@ -88,6 +98,7 @@ export class DesignView {
     this.levelWriteError = null;
     this.refreshWarnings();
     this.build();
+    this.onLevelChange?.(levelId);
   }
 
   private build(): void {

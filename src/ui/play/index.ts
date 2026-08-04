@@ -40,7 +40,7 @@ import {
   toolIconEl,
 } from "../icon.ts";
 import { localImageUrl } from "../localImages.ts";
-import { appendLine, createOverlay, railSegments } from "../queueGroupVisuals.ts";
+import { appendLine, createOverlay, railColor, railSegments } from "../queueGroupVisuals.ts";
 import { centerOf, EffectsLayer } from "./effectsLayer.ts";
 import type { Point } from "./effectsLayer.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
@@ -57,6 +57,9 @@ type SpeedId = (typeof SPEED_OPTIONS)[number]["id"];
 
 /** Cycled by position so adjacent tools always read as visually distinct. */
 const TOOL_COLORS = ["#3a4a5c", "#4a3a5c", "#3a5c4a", "#5c4a3a", "#5c3a4a", "#3a5c5c"];
+
+/** Particle palette for a Freeze break burst — icy blues/whites instead of the default warm palette. */
+const ICE_BURST_COLORS = ["#bfe8ff", "#eaffff", "#8fd1ff", "#ffffff", "#5ec8ff"];
 
 export class PlayView {
   private root: HTMLElement;
@@ -1131,10 +1134,39 @@ export class PlayView {
       })
       .filter((p): p is Point => p !== null);
 
+    const frozenBefore = this.snapshotFrozenItems();
     sim.pick(x);
+    this.playFreezeBreakBursts(frozenBefore);
     this.dispatchFlights();
     this.playCelebrations();
     this.syncPage();
+  }
+
+  /**
+   * Every currently-frozen item (thaw count > 0) paired with its on-screen
+   * tile center, captured right before a pick — an adjacent pick can thaw a
+   * frozen neighbor without ever picking it directly, so comparing a
+   * before/after snapshot by item identity is what tells
+   * playFreezeBreakBursts() which one(s) just broke.
+   */
+  private snapshotFrozenItems(): Map<QueueItem, Point> {
+    const snapshot = new Map<QueueItem, Point>();
+    this.sim.queueGrid.forEach((col, x) => {
+      col.forEach((cell, y) => {
+        if (!cell || this.sim.freezeCount(cell.item) <= 0) return;
+        const tileEl = this.queuesEl.querySelector<HTMLElement>(`[data-qx="${x}"][data-qy="${y}"]`);
+        if (tileEl) snapshot.set(cell.item, centerOf(tileEl));
+      });
+    });
+    return snapshot;
+  }
+
+  /** Plays a small ice-colored particle burst at every item a pick just thawed, per snapshotFrozenItems(). */
+  private playFreezeBreakBursts(before: Map<QueueItem, Point>): void {
+    if (this.skipMode || before.size === 0) return;
+    for (const [item, point] of before) {
+      if (this.sim.freezeCount(item) === 0) this.fx.burst(point, 10, ICE_BURST_COLORS);
+    }
   }
 
   /**
@@ -1161,11 +1193,13 @@ export class PlayView {
       })
       .filter((p): p is Point => p !== null);
 
+    const frozenBefore = this.snapshotFrozenItems();
     if (!sim.pickAt(x, y)) {
       this.pendingPickOrigins = [];
       this.lastPickedLanes = new Map();
       return;
     }
+    this.playFreezeBreakBursts(frozenBefore);
     this.boosterCharges[1] = Math.max(0, (this.boosterCharges[1] ?? 0) - 1);
     this.ingredientPickMode = false;
     this.dispatchFlights();
@@ -1400,7 +1434,13 @@ export class PlayView {
       group?: QueueGroupKind;
     },
   ): HTMLElement {
-    const freeze = item.effects.find((e) => e.effectId === EFFECT_FREEZE);
+    // The item keeps carrying its Freeze effect for its whole life in the
+    // queue (level data is authored/immutable) — whether it still BLOCKS the
+    // pick is a separate, decrementing runtime count (see
+    // Simulation.freezeCount()/decrementAdjacentFreezes()), so "frozen" here
+    // means remaining > 0, not just "has a Freeze effect".
+    const freezeRemaining = this.sim.freezeCount(item);
+    const frozen = freezeRemaining > 0;
     const key = item.effects.find((e) => e.effectId === EFFECT_HOLDING_KEY);
     const tile = el("div", {
       class: [
@@ -1409,7 +1449,7 @@ export class PlayView {
         opts.preview ? "preview" : "",
         opts.wanted ? "wanted" : "",
         opts.disabled ? "disabled" : "",
-        freeze ? "frozen" : "",
+        frozen ? "frozen" : "",
         item.kind === "sweeper" ? "sweeper" : "",
         opts.group ? `group-${opts.group}` : "",
       ]
@@ -1421,12 +1461,13 @@ export class PlayView {
         ? el("span", { class: "tile-main" }, ["🧹"])
         : el("span", { class: "tile-main" }, [ingredientIconEl(item.id, 96)]),
     );
-    if (freeze) {
+    if (frozen) {
       tile.append(
-        el("span", { class: "tile-corner" }, [
-          statusIconEl(EFFECT_FREEZE, 48),
-          el("small", {}, [String(freeze.params[0] ?? "")]),
-        ]),
+        el("span", { class: "tile-corner" }, [statusIconEl(EFFECT_FREEZE, 48)]),
+        // Bottom-right: how many more ADJACENT picks (see the Freeze
+        // mechanic in sim.ts) still needed to break the ice — distinct from
+        // the top-left corner's plain "this is frozen" icon.
+        el("span", { class: "tile-freeze-count" }, [String(freezeRemaining)]),
       );
     }
     if (key) {
@@ -1555,17 +1596,20 @@ function clipToBottom(x1: number, y1: number, x2: number, y2: number, maxY: numb
   return { x: x1 + t * (x2 - x1), y: maxY };
 }
 
-/** Adjacent (x,y) cell pairs within the same combined group, both inside the window — checked right/down only so each shared edge is counted once. */
-function combinedAdjacentPairs(sim: Simulation, windowRows: number): [Point, Point][] {
-  const pairs: [Point, Point][] = [];
+/** Adjacent (x,y) cell pairs within the same combined group, both inside the window — checked right/down only so each shared edge is counted once. Carries the group index along so each block can be drawn in its own color (see railColor()). */
+function combinedAdjacentPairs(
+  sim: Simulation,
+  windowRows: number,
+): { a: Point; b: Point; group: number }[] {
+  const pairs: { a: Point; b: Point; group: number }[] = [];
   for (let x = 0; x < sim.queueGrid.length; x++) {
     for (let y = 0; y < Math.min(sim.queueGrid[x].length, windowRows); y++) {
       const cell = sim.queueGrid[x][y];
       if (!cell || cell.group === -1 || sim.groupKinds[cell.group] !== "combined") continue;
       const right = sim.queueGrid[x + 1]?.[y];
-      if (right?.group === cell.group) pairs.push([{ x, y }, { x: x + 1, y }]);
+      if (right?.group === cell.group) pairs.push({ a: { x, y }, b: { x: x + 1, y }, group: cell.group });
       const down = y + 1 < windowRows ? sim.queueGrid[x][y + 1] : undefined;
-      if (down?.group === cell.group) pairs.push([{ x, y }, { x, y: y + 1 }]);
+      if (down?.group === cell.group) pairs.push({ a: { x, y }, b: { x, y: y + 1 }, group: cell.group });
     }
   }
   return pairs;
@@ -1573,9 +1617,10 @@ function combinedAdjacentPairs(sim: Simulation, windowRows: number): [Point, Poi
 
 /**
  * Draws linked-slot ropes (dashed) and combined-slot rails (solid double
- * lines) as one SVG overlay, layered behind the tile frames (see
- * .queue-link-overlay's z-index in style.css) so only the gap between two
- * tiles actually shows a line.
+ * lines, one color per combined group — see railColor()) as one SVG overlay,
+ * layered above each lane's own panel background but below the tile frames
+ * (see .queue-link-overlay's z-index in style.css) so only the gap between
+ * two tiles actually shows a line.
  *
  * A linked rope connects each consecutive pair of a group's current cells
  * (sorted front-to-back — the sim itself doesn't preserve an authored chain
@@ -1613,7 +1658,14 @@ function renderGroupOverlay(lanes: HTMLElement, sim: Simulation, windowRows: num
         if (cell?.group === gi) cells.push({ x, y });
       });
     });
-    cells.sort((a, b) => a.y - b.y || a.x - b.x);
+    // Sorted by COLUMN, not row: Design mode only allows authoring a chain
+    // with one member per column in one contiguous run, so column order is
+    // the chain's real edge order. Row order would break for a 3+ member
+    // chain the instant its members drift onto different rows — linking
+    // never restricts movement, so each member rises independently, and a
+    // row-based sort would then pair up whichever members happen to share a
+    // row rather than whichever are actually adjacent in the chain.
+    cells.sort((a, b) => a.x - b.x || a.y - b.y);
 
     for (let i = 0; i < cells.length - 1; i++) {
       const a = cells[i];
@@ -1633,14 +1685,21 @@ function renderGroupOverlay(lanes: HTMLElement, sim: Simulation, windowRows: num
     }
   }
 
-  for (const [a, b] of combinedPairs) {
+  for (const { a, b, group } of combinedPairs) {
     const p1 = realPoint(lanes, host, a.x, a.y);
     const p2 = realPoint(lanes, host, b.x, b.y);
     if (!p1 || !p2) continue;
+    const color = railColor(group);
     for (const [s, e] of railSegments(p1, p2)) {
-      appendLine(svg, s, e, "queue-combine-rail");
+      appendLine(svg, s, e, "queue-combine-rail", color);
     }
   }
 
-  lanes.append(svg);
+  // Prepended, not appended: paired with .queue-link-overlay's z-index: 0 in
+  // style.css, this puts the overlay first in tree order among this stacking
+  // context's z-index:0 layer, so it paints under every .queue-tile (which
+  // are nested deeper, later in tree order) while still painting over each
+  // .queue-lane's own opaque panel background (an unpositioned element,
+  // always painted before any z-index:0 layer regardless of DOM position).
+  lanes.prepend(svg);
 }

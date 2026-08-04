@@ -8,7 +8,7 @@
 // travelling and guarantees the next logic step only runs once it lands.
 
 import "./effects.ts"; // registers built-in behaviors
-import { CUSTOMER_STAFF, EFFECT_HOLDING_KEY } from "./effects.ts";
+import { CUSTOMER_STAFF, EFFECT_FREEZE, EFFECT_HOLDING_KEY } from "./effects.ts";
 import type { EffectContext } from "./registry.ts";
 import { getCellEffect, getQueueEffect } from "./registry.ts";
 import type {
@@ -232,6 +232,16 @@ export class Simulation {
    * autoCompleteDish().
    */
   private partialYield = new Map<Id, number>();
+  /**
+   * Freeze: how many more adjacent picks a frozen item still needs before it
+   * thaws. Keyed by object identity (queue items are never cloned — the same
+   * QueueItem reference just moves between queueGrid cells — so this is a
+   * stable per-item store without needing a uid field on QueueItem itself).
+   * Absent means "not yet queried" — see freezeCountFor(), which lazily
+   * initializes an item's remaining count from its own Freeze effect param
+   * the first time it's asked about, then only ever decrements it.
+   */
+  private freezeRemaining = new Map<QueueItem, number>();
 
   constructor(map: MapDef, level: LevelConfig, options: SimOptions = {}) {
     this.map = map;
@@ -350,6 +360,50 @@ export class Simulation {
   }
 
   /**
+   * Remaining adjacent-picks-to-thaw for a frozen queue item — 0 once it's
+   * pickable, or if the item carries no Freeze effect at all. Lazily
+   * initialized from the effect's own thawCount param on first query (so the
+   * UI can call this every frame with no setup); only ever decremented by
+   * decrementAdjacentFreezes(), never by this getter itself.
+   */
+  freezeCount(item: QueueItem): number {
+    const freeze = item.effects.find((e) => e.effectId === EFFECT_FREEZE);
+    if (!freeze) return 0;
+    let remaining = this.freezeRemaining.get(item);
+    if (remaining === undefined) {
+      remaining = freeze.params[0] ?? 0;
+      this.freezeRemaining.set(item, remaining);
+    }
+    return remaining;
+  }
+
+  /**
+   * Adjacency-based Freeze thaw: for each cell just picked, every
+   * still-frozen 4-connected neighbor (up/down/left/right in the queue grid
+   * — the same "physically touching" notion Combine uses) has its remaining
+   * count decremented by one. Called from applyPick() with the picked cells'
+   * pre-removal coordinates, so a still-frozen neighbor is found via its
+   * still-current queueGrid position. A combined/linked pick that touches a
+   * frozen item from two sides at once thaws it by two in a single click.
+   */
+  private decrementAdjacentFreezes(pickedCells: { x: number; y: number }[]): void {
+    for (const { x, y } of pickedCells) {
+      const neighbors = [
+        { x: x - 1, y },
+        { x: x + 1, y },
+        { x, y: y - 1 },
+        { x, y: y + 1 },
+      ];
+      for (const n of neighbors) {
+        const cell = this.queueGrid[n.x]?.[n.y];
+        if (!cell) continue;
+        const remaining = this.freezeCount(cell.item);
+        if (remaining > 0) this.freezeRemaining.set(cell.item, remaining - 1);
+      }
+    }
+  }
+
+  /**
    * Resolves what picking cell (x,y) would do: which cells make up the
    * instance, its items, and where each item would go. `canPick`/`pick` call
    * this at y=0 with `anyRow=false` (the normal front-row-only rule);
@@ -381,9 +435,24 @@ export class Simulation {
     }
     const items = cells.map((c) => this.queueGrid[c.x][c.y]!.item);
 
-    // Any member's canPick effect (e.g. Freeze) blocks the whole instance.
+    // Any member's canPick effect blocks the whole instance. Freeze is
+    // special-cased here rather than going through the generic registry: its
+    // remaining count is now per-item state (decremented only by adjacent
+    // picks — see decrementAdjacentFreezes()), and the registry's
+    // canPick(effect, ctx) signature has no way to identify which QueueItem
+    // an EffectInstance belongs to, only a flat shared counters snapshot.
     for (const item of items) {
       for (const effect of item.effects) {
+        if (effect.effectId === EFFECT_FREEZE) {
+          const remaining = this.freezeCount(item);
+          if (remaining > 0) {
+            return {
+              ok: false,
+              reason: `Frozen — pick ${remaining} adjacent slot(s) to break the ice`,
+            };
+          }
+          continue;
+        }
         const check = getQueueEffect(effect.effectId).canPick?.(effect, this.ctx);
         if (check && !check.ok) return { ok: false, reason: check.reason ?? "Blocked" };
       }
@@ -400,6 +469,10 @@ export class Simulation {
     items: QueueItem[];
     plan: Dispatch[];
   }): void {
+    // Adjacent-freeze thaw first, while the picked cells' neighbors can still
+    // be found at their pre-pick queueGrid coordinates.
+    this.decrementAdjacentFreezes(r.cells);
+
     // Clear the picked cells and let gravity settle *before* dispatching, so
     // nothing re-entrant (an onPick hook, a log line) can observe a
     // half-picked instance or the same cell twice.
@@ -1232,14 +1305,18 @@ export class Simulation {
       const pending = pendingEntry?.count ?? 0;
       const count = cell.kind === "dirty" ? cell.count : 0;
       const existingType = cell.kind === "dirty" ? cell.dirtyId : pendingEntry?.dirtyId;
-      // A cell claimed by an in-flight dish counts as a stack already. A cell
-      // reserved by a staff customer's in-flight clearing is excluded — it's
-      // about to disappear, so a new dish shouldn't target it mid-flight.
+      // A cell claimed by an in-flight dish counts as a stack already — that
+      // includes another dish from this SAME completeCustomer() call (e.g. two
+      // dishes that both leave a dirty plate), which is exactly what should
+      // stack together rather than spill onto a second cell. Only a cell a
+      // staff member is actively clearing is excluded — it's about to
+      // disappear, so a new dish shouldn't target it mid-flight.
+      const beingCleared = this.flights.some((f) => f.kind === "dirty-to-staff" && f.fromCell === i);
       return (
         (cell.kind === "dirty" || pending > 0) &&
         existingType === dirtyId &&
         count + pending < height &&
-        !this.reservedCells.has(i)
+        !beingCleared
       );
     });
 
