@@ -67,4 +67,32 @@ describe("toPlayableLevelConfig", () => {
       { kind: "sweeper", id: -1, effects: [] },
     ]);
   });
+
+  it("remaps a group's coordinates past a disabled raw ingredient above it", () => {
+    // lane0 = [id0, id1, id0]; disabling id0 filters it to [id1] — the
+    // surviving item (old row 1) becomes row 0. lane1 = [id1, id0] is
+    // untouched at row 0. A linked group spanning (0,1) and (1,0) should
+    // remap to (0,0) and (1,0).
+    const map: MapDef = { ...baseMap, disabledRawIds: [0] };
+    const lvl: LevelConfig = {
+      ...level(),
+      queueGroups: [{ kind: "linked", cells: [{ x: 0, y: 1 }, { x: 1, y: 0 }] }],
+    };
+    const result = toPlayableLevelConfig(map, lvl);
+    expect(result.queueGroups).toEqual([
+      { kind: "linked", cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
+    ]);
+  });
+
+  it("drops a group left with fewer than 2 cells after filtering", () => {
+    // (0,0) is the disabled id0 item — filtered away entirely, leaving the
+    // group with only its (1,0) member.
+    const map: MapDef = { ...baseMap, disabledRawIds: [0] };
+    const lvl: LevelConfig = {
+      ...level(),
+      queueGroups: [{ kind: "combined", cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }] }],
+    };
+    const result = toPlayableLevelConfig(map, lvl);
+    expect(result.queueGroups).toEqual([]);
+  });
 });

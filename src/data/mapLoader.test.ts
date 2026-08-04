@@ -13,7 +13,7 @@ describe("bundled Map 1 (burger) snapshot", () => {
     const map = toMapDef(MAP1_DATA);
     for (const [i, level] of map.levels.entries()) {
       const data = MAP1_DATA.levels[i];
-      expect(serializeQueues(level.queues)).toBe(data.queueString);
+      expect(serializeQueues(level.queues, level.queueGroups)).toBe(data.queueString);
       expect(serializeGrid(level.grid)).toBe(data.gridString);
       expect(serializeCustomers(level.customers)).toBe(data.customerString);
       expect(level.grid).toHaveLength(map.gridWidth * map.gridHeight);

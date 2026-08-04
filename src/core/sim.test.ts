@@ -729,9 +729,14 @@ describe("real Map 1 level data", () => {
       sim.completeAllFlights();
       const needed = sim.neededCookedIds();
       const wantedRaw = new Set([...needed].map((c) => cookedToRaw.get(c) ?? c));
-      const queueIndex = sim.queues.findIndex(
-        (q, i) => q.length > 0 && wantedRaw.has(q[0].id) && sim.canPick(i).ok,
-      );
+      let queueIndex = -1;
+      for (let i = 0; i < sim.columnCount; i++) {
+        const front = sim.frontCell(i);
+        if (front && wantedRaw.has(front.item.id) && sim.canPick(i).ok) {
+          queueIndex = i;
+          break;
+        }
+      }
       if (queueIndex >= 0) sim.pick(queueIndex);
       else sim.tick(0.5);
     }
@@ -749,6 +754,198 @@ describe("real Map 1 level data", () => {
   });
 });
 
+describe("queue groups", () => {
+  it("has no groups when the level defines none (regression)", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0,1%1", gridString: EMPTY_GRID, customerString: "0;0;0.1" }),
+    );
+    expect(sim.columnCount).toBe(2);
+    expect(sim.queueHeight).toBe(2);
+    expect(sim.frontCell(0)?.group).toBe(-1);
+    expect(sim.frontCell(1)?.group).toBe(-1);
+    expect(sim.remainingIn(0)).toBe(2);
+    expect(sim.remainingIn(1)).toBe(1);
+  });
+
+  it("a stuck combined block leaves a hole and blocks the cells behind it", () => {
+    // lane0 = lane1 = [0,0,0]; a combined block sits at the middle row of
+    // both columns. Picking lane0's front plain item can't free the block
+    // (lane1's front is still occupied), so it stalls — leaving a hole at
+    // (0,0) and keeping the item behind the block (at row 2) stuck too.
+    const sim = new Simulation(
+      testMap,
+      level({
+        queueString: "0,0,0%0,0,0$0-1,1-1$",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.0.0.0.0.0",
+      }),
+    );
+    sim.pick(0);
+    expect(sim.frontCell(0)).toBeNull(); // the hole
+    expect(sim.queueGrid[0][1]?.group).toBe(0); // the block didn't move
+    expect(sim.queueGrid[0][2]).not.toBeNull(); // stuck behind it
+    expect(sim.canPick(0).ok).toBe(false);
+
+    sim.pick(1); // frees the block's other front cell
+    expect(sim.frontCell(0)?.group).toBe(0);
+    expect(sim.frontCell(1)?.group).toBe(0); // the block rose into both front columns
+    expect(sim.queueGrid[0][1]).not.toBeNull(); // the items behind followed it up
+    expect(sim.queueGrid[1][1]).not.toBeNull();
+  });
+
+  it("a combined block is pickable from either front column and dispatches every item", () => {
+    const sim = new Simulation(
+      testMap,
+      level({
+        queueString: "0,0%0,0$0-0,1-0$",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.0.0.0",
+      }),
+      { instantFlights: false },
+    );
+    expect(sim.pick(1)).toBe(true); // any front column of the block works
+    expect(sim.flights).toHaveLength(2);
+    expect(sim.effectContext.picksMade).toBe(2);
+  });
+
+  it("a linked chain is unpickable until every member reaches the front row", () => {
+    const sim = new Simulation(
+      testMap,
+      level({
+        queueString: "0,0%0,0$$0-1,1-0",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.0.0.0",
+      }),
+    );
+    expect(sim.canPick(1).ok).toBe(false);
+    expect(sim.canPick(1).reason).toMatch(/not all at the front/i);
+    expect(sim.canPick(0).ok).toBe(true); // the plain item fronting lane 0
+
+    sim.pick(0); // clears the way for the linked member behind it to rise
+    expect(sim.frontCell(0)?.group).toBe(0);
+    expect(sim.canPick(0).ok).toBe(true);
+    expect(sim.canPick(1).ok).toBe(true); // every member is at the front now
+
+    expect(sim.pick(0)).toBe(true); // picks the whole chain, both columns
+    expect(sim.frontCell(0)).toBeNull(); // lane 0 had nothing behind the chain
+    // Lane 1's own plain item (behind its chain member) is unrelated to the
+    // chain and rose to the front on its own — the pick didn't touch it.
+    expect(sim.remainingIn(1)).toBe(1);
+    expect(sim.frontCell(1)?.group).toBe(-1);
+  });
+
+  it("linking doesn't restrict movement — a member rises independently of its partner", () => {
+    const sim = new Simulation(
+      testMap,
+      level({
+        queueString: "0,0%0,0$$0-1,1-0",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.0.0.0",
+      }),
+    );
+    sim.pick(0);
+    // The (0,1) member rose to (0,0) on its own, even though its linked
+    // partner at (1,0) never moved (it was already at the front).
+    expect(sim.queueGrid[0][0]?.group).toBe(0);
+    expect(sim.queueGrid[1][0]?.group).toBe(0);
+  });
+
+  it("group overflow always parks on the grid, even under block-pick", () => {
+    const oneSlotMap: MapDef = {
+      ...testMap,
+      tools: [{ id: 0, name: "Single", numSlots: 1, cookingTime: 2, recipes: [{ in: 0, out: 0, amount: 1 }] }],
+    };
+    const sim = new Simulation(
+      oneSlotMap,
+      level({
+        queueString: "0%0$0-0,1-0$",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.0",
+      }),
+      { outOfSlotPolicy: "block-pick" },
+    );
+    // A single item would be refused ("Single is full"), but a 2-item group
+    // may always spill its overflow onto the grid — that's the mechanic.
+    expect(sim.canPick(0).ok).toBe(true);
+    sim.pick(0);
+    expect(sim.tools[0].slots[0].item?.rawId).toBe(0);
+    expect(sim.grid.some((c) => c.kind === "raw" && c.rawId === 0)).toBe(true);
+
+    sim.runToEnd();
+    expect(sim.grid.some((c) => c.kind === "raw")).toBe(false); // reclaimed
+    expect(sim.status).toBe("won");
+  });
+
+  it("refuses a group pick when the grid can't hold the overflow, and rolls back cleanly", () => {
+    const oneSlotMap: MapDef = {
+      ...testMap,
+      tools: [{ id: 0, name: "Single", numSlots: 1, cookingTime: 2, recipes: [{ in: 0, out: 0, amount: 1 }] }],
+    };
+    // Only cell 0 is usable; the rest are locked. Pre-picks fill the one
+    // tool slot and the one usable grid cell, so the 2-item group that
+    // follows has nowhere at all to go — not even one of its two items.
+    const sim = new Simulation(
+      oneSlotMap,
+      level({
+        queueString: "0%2%0%0$2-0,3-0$",
+        gridString: ",#1,#1,#1,#1,#1,#1,#1,#1,#1",
+        customerString: "0;0;0;0",
+      }),
+      { outOfSlotPolicy: "block-pick" },
+    );
+    sim.pick(0); // fills the only tool slot
+    sim.pick(1); // ingredient 2 has no recipe — fills the only usable grid cell
+
+    const check = sim.canPick(2);
+    expect(check.ok).toBe(false);
+    expect(check.reason).toMatch(/no space/i);
+    expect(sim.pick(2)).toBe(false);
+    expect(sim.queueGrid[2][0]).not.toBeNull(); // nothing left the queue
+    // This is the direct regression test for the "toCell: -1" corruption
+    // class: canPick() and pick() share one code path, so a refusal can
+    // never leave a half-made reservation behind.
+    expect(sim["reservedCells"].size).toBe(0);
+    expect(sim["reservedSlots"].size).toBe(0);
+  });
+
+  it("counts every item of a group pick toward picksMade, so a freeze threshold can clear in one click", () => {
+    const sim = new Simulation(
+      testMap,
+      level({
+        queueString: "0,1#1:3%0%0$0-0,1-0,2-0$",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.0.0.1",
+      }),
+    );
+    expect(sim.canPick(0).ok).toBe(true); // sanity: the 3-cell block fronts lane 0
+    sim.pick(0); // one click, three items
+    expect(sim.effectContext.picksMade).toBe(3);
+    expect(sim.frontCell(0)?.item.id).toBe(1); // the previously-frozen item rose to the front
+    expect(sim.canPick(0).ok).toBe(true); // and is now unfrozen (3 picks made)
+  });
+
+  it("a sweeper inside a group still triggers settle() and isn't counted in picksMade", () => {
+    const sim = new Simulation(
+      testMap,
+      level({
+        queueString: `0%${SWEEPER_ID}$0-0,1-0$`,
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0",
+      }),
+    );
+    // Seed a dirty stack directly — equivalent to what a served customer
+    // leaves behind — so the sweeper in the group under test has something
+    // to clear.
+    sim.grid[0] = { kind: "dirty", dirtyId: DIRTY_DISH_ID, count: 1 };
+    (sim as unknown as { dirtyOrder: number[] }).dirtyOrder.push(0);
+
+    sim.pick(0); // the ingredient + the sweeper, one click
+    expect(sim.grid.some((c) => c.kind === "dirty")).toBe(false); // cleared synchronously
+    expect(sim.effectContext.picksMade).toBe(1); // the sweeper doesn't count
+  });
+});
+
 describe("clone()", () => {
   it("produces a fully independent deep copy", () => {
     const sim = new Simulation(
@@ -763,12 +960,12 @@ describe("clone()", () => {
     // by value (post-mutation values don't leak back).
     clone.grid[0] = { kind: "raw", rawId: 3 };
     clone.tools[0].slots[0].item = { uid: 999, rawId: 3, elapsed: 9 };
-    clone.queues[0].push({ kind: "ingredient", id: 3, effects: [] });
+    clone.queueGrid[0].push({ item: { kind: "ingredient", id: 3, effects: [] }, group: -1 });
     clone.active[0].dishes[0].remaining.push(99);
 
     expect(sim.grid[0]).not.toEqual({ kind: "raw", rawId: 3 });
     expect(sim.tools[0].slots[0].item?.uid).not.toBe(999);
-    expect(sim.queues[0]).not.toContainEqual({ kind: "ingredient", id: 3, effects: [] });
+    expect(sim.queueGrid[0].some((c) => c?.item.id === 3)).toBe(false);
     expect(sim.active[0].dishes[0].remaining).not.toContain(99);
 
     // The clone starts as a faithful snapshot of the same state, though.
@@ -788,6 +985,6 @@ describe("clone()", () => {
     expect(clone.status).toBe("won");
     // The original never had anything picked from it.
     expect(sim.status).toBe("playing");
-    expect(sim.queues[0]).toHaveLength(2);
+    expect(sim.remainingIn(0)).toBe(2);
   });
 });

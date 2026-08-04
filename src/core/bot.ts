@@ -47,11 +47,24 @@ const DEFAULT_LOOKAHEAD_N = 2;
 /** Caps total lookahead search nodes per real decision, so a user-typed huge N degrades to a shallow best-effort search instead of hanging the tab. */
 const MAX_LOOKAHEAD_NODES = 5000;
 
-/** Queue lanes whose top item can be picked right now. */
+/**
+ * Queue lanes whose fronting instance can be picked right now. A combined or
+ * linked block spanning several columns fronts more than one lane, but it's
+ * one instance — dedup by group so it isn't offered (and picked) twice, which
+ * would otherwise bias Random toward wide blocks and waste Intelligent's
+ * lookahead budget on duplicate children.
+ */
 function pickableCandidates(sim: Simulation): number[] {
   const out: number[] = [];
-  for (let i = 0; i < sim.queues.length; i++) {
-    if (sim.queues[i].length > 0 && sim.canPick(i).ok) out.push(i);
+  const seenGroups = new Set<number>();
+  for (let i = 0; i < sim.columnCount; i++) {
+    const front = sim.frontCell(i);
+    if (!front) continue;
+    if (front.group !== -1) {
+      if (seenGroups.has(front.group)) continue;
+      seenGroups.add(front.group);
+    }
+    if (sim.canPick(i).ok) out.push(i);
   }
   return out;
 }
@@ -115,7 +128,7 @@ function chooseGreedy(map: MapDef) {
   return (sim: Simulation, candidates: number[]): number => {
     const wanted = wantedRawIds(sim, map);
     const needed = candidates.filter((i) => {
-      const item = sim.queues[i][0];
+      const item = sim.frontCell(i)!.item;
       return item.kind === "ingredient" && wanted.has(item.id);
     });
 
@@ -138,7 +151,7 @@ function chooseGreedy(map: MapDef) {
     // actually something dirty to clear; otherwise it's a wasted pick.
     const hasDirty = sim.grid.some((c) => c.kind === "dirty");
     if (hasDirty) {
-      const sweeper = candidates.find((i) => sim.queues[i][0].kind === "sweeper");
+      const sweeper = candidates.find((i) => sim.frontCell(i)!.item.kind === "sweeper");
       if (sweeper !== undefined) return sweeper;
     }
 
@@ -150,7 +163,7 @@ function chooseGreedy(map: MapDef) {
 
 /** [minTimeLeft among customers needing this pick, fewest-remaining-items of that dish]. */
 function urgencyKey(sim: Simulation, map: MapDef, queueIndex: number): [number, number] {
-  const item = sim.queues[queueIndex][0];
+  const item = sim.frontCell(queueIndex)!.item;
   const cookedId = producedCookedId(map, item.id);
   let minTimeLeft = Infinity;
   let minRemaining = Infinity;

@@ -157,6 +157,28 @@ export interface QueueItem {
   effects: EffectInstance[];
 }
 
+/**
+ * "combined": a 4-connected block of cells (may span several columns and
+ * rows) that moves and is picked as one solid instance — if any of its cells
+ * can't rise, none of it does, and the plain slots behind it in its columns
+ * are blocked too (holes can appear at runtime).
+ * "linked": N cells (need not be adjacent) chained together and drawn with
+ * ropes. Doesn't restrict movement at all; pickable only once every member
+ * has reached the front row, and then all fly together.
+ */
+export type QueueGroupKind = "combined" | "linked";
+
+/** Authored coordinate into the dense queue grid: x = column, y = row (0 = front). */
+export interface QueueCellRef {
+  x: number;
+  y: number;
+}
+
+export interface QueueGroup {
+  kind: QueueGroupKind;
+  cells: QueueCellRef[];
+}
+
 export interface GridCellConfig {
   /** Effects / cell-type markers; empty = blank cell. */
   effects: EffectInstance[];
@@ -200,6 +222,13 @@ export interface LevelConfig {
   /** Serveable customer slots (1–2 typical). */
   serveableSlots: number;
   queues: QueueItem[][];
+  /**
+   * Combined/linked-slot lookup, addressed by (x,y) into the dense `queues`
+   * grid (x = column/queue index, y = row, 0 = front). Absent/empty means
+   * every item is a plain single slot. `queues` itself stays dense — this
+   * list is the sole carrier of grouping geometry.
+   */
+  queueGroups?: QueueGroup[];
   grid: GridCellConfig[]; // length = gridWidth * gridHeight, scan order
   customers: CustomerConfig[];
   /** Overrides the default behaviour when a picked ingredient's tool is full. */

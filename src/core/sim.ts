@@ -19,6 +19,7 @@ import type {
   LevelConfig,
   MapDef,
   OutOfSlotPolicy,
+  QueueGroupKind,
   QueueItem,
 } from "./types.ts";
 import { findToolRecipe } from "./types.ts";
@@ -69,6 +70,25 @@ export interface CustomerState {
   /** Set the moment the last dish completes, for the celebration animation. */
   justCompleted?: boolean;
 }
+
+// ---------- queue grid ----------
+
+/**
+ * One occupied cell of the runtime queue grid — column x = queue index,
+ * row y = 0 is the pickable front row. `item` is shared by reference with
+ * `level.queues` (never mutated); `group` indexes `Simulation.groupKinds`,
+ * or is -1 for a plain single slot.
+ */
+export interface QueueCell {
+  item: QueueItem;
+  group: number;
+}
+
+/** Where one picked item ends up, decided by planDispatch(). */
+type Dispatch =
+  | { kind: "sweeper" }
+  | { kind: "tool"; toolId: Id; slot: number }
+  | { kind: "grid"; cell: number; raw: boolean };
 
 // ---------- flights ----------
 
@@ -151,7 +171,16 @@ export class Simulation {
   loseReason: LoseReason | null = null;
   time = 0;
 
-  queues: QueueItem[][];
+  /**
+   * queueGrid[x][y] — column x (= queue index), row y (0 = pickable front).
+   * Rectangular: every column has `queueHeight` entries; null = no item
+   * there. Unlike the authored `level.queues`, this permits holes: a
+   * combined block that can't rise leaves empty cells in front of whatever
+   * is behind it. The only writer is advanceQueues()'s moveUp() and pick().
+   */
+  queueGrid: (QueueCell | null)[][];
+  /** Kind of each group index, derived once from level.queueGroups. */
+  readonly groupKinds: QueueGroupKind[];
   tools: ToolState[];
   grid: CellContent[];
   pending: CustomerState[];
@@ -191,7 +220,9 @@ export class Simulation {
     this.options = options;
     this.outOfSlotPolicy = options.outOfSlotPolicy ?? "block-pick";
     this.instantFlights = options.instantFlights ?? true;
-    this.queues = level.queues.map((q) => [...q]);
+    this.groupKinds = (level.queueGroups ?? []).map((g) => g.kind);
+    this.queueGrid = buildQueueGrid(level);
+    this.advanceQueues(); // settle any authored misalignment before turn 1 (cheap: dense authored data is already a fixpoint)
     this.tools = map.tools.map((def) => ({
       def,
       slots: Array.from({ length: def.numSlots }, () => ({ item: null }) as ToolSlotState),
@@ -223,7 +254,7 @@ export class Simulation {
     c.status = this.status;
     c.loseReason = this.loseReason;
     c.time = this.time;
-    c.queues = structuredClone(this.queues);
+    c.queueGrid = structuredClone(this.queueGrid);
     c.tools = this.tools.map((t) => ({
       def: t.def,
       slots: t.slots.map((s) => ({ item: s.item ? { ...s.item } : null })),
@@ -265,84 +296,308 @@ export class Simulation {
     return this.tools.reduce((n, t) => n + t.slots.filter((s) => s.item).length, 0);
   }
 
+  /** Number of queue columns (lanes). */
+  get columnCount(): number {
+    return this.queueGrid.length;
+  }
+
+  /** Row count every column is padded to. Derived, not stored — clone() needs nothing extra. */
+  get queueHeight(): number {
+    return this.queueGrid[0]?.length ?? 0;
+  }
+
+  /** Total items still sitting in the queue grid, across every column. */
+  get remainingItems(): number {
+    let n = 0;
+    for (const col of this.queueGrid) for (const cell of col) if (cell) n++;
+    return n;
+  }
+
+  /** The cell fronting a lane (row 0), or null for an empty column or a hole. */
+  frontCell(x: number): QueueCell | null {
+    return this.queueGrid[x]?.[0] ?? null;
+  }
+
+  /** Items still in a column, for the lane's counter badge. */
+  remainingIn(x: number): number {
+    return this.queueGrid[x]?.reduce((n, c) => n + (c ? 1 : 0), 0) ?? 0;
+  }
+
+  /** Every cell a click on lane x would pick right now (for a hover highlight). */
+  pickTargets(x: number): { x: number; y: number }[] {
+    return this.pickInstanceCells(x) ?? [];
+  }
+
   setOutOfSlotPolicy(policy: OutOfSlotPolicy): void {
     this.outOfSlotPolicy = policy;
   }
 
-  /** True when a queue's top item may be picked right now. */
+  /** True when the instance fronting this lane may be picked right now. */
   canPick(queueIndex: number): { ok: boolean; reason?: string } {
-    if (this.status !== "playing") return { ok: false, reason: "Level finished" };
-    const item = this.queues[queueIndex]?.[0];
-    if (!item) return { ok: false, reason: "Queue empty" };
-
-    for (const effect of item.effects) {
-      const check = getQueueEffect(effect.effectId).canPick?.(effect, this.ctx);
-      if (check && !check.ok) return check;
-    }
-
-    if (item.kind === "sweeper") return { ok: true };
-
-    const match = findToolRecipe(this.map.tools, item.id);
-    if (!match) {
-      // No tool needed — it only has to fit on the grid.
-      return this.findFreeCell() === -1
-        ? { ok: false, reason: "No free grid cell" }
-        : { ok: true };
-    }
-    if (this.freeSlot(match.tool.id) !== -1) return { ok: true };
-
-    if (this.outOfSlotPolicy === "block-pick") {
-      return { ok: false, reason: `${match.tool.name} is full` };
-    }
-    return this.findFreeCell() === -1
-      ? { ok: false, reason: `${match.tool.name} is full and the grid has no space` }
-      : { ok: true };
+    const r = this.evaluatePick(queueIndex, false);
+    return r.ok ? { ok: true } : { ok: false, reason: r.reason };
   }
 
   /**
-   * Picks the top item of a queue. The item leaves the queue immediately and
-   * becomes a flight; it only reaches its destination on completeFlight().
+   * Picks the instance fronting a lane — a plain item, a whole combined
+   * block, or a whole linked chain. Every item leaves the queue immediately
+   * and becomes its own flight; they only reach their destinations on
+   * completeFlight().
    */
   pick(queueIndex: number): boolean {
-    if (!this.canPick(queueIndex).ok) return false;
-    const item = this.queues[queueIndex].shift()!;
+    const r = this.evaluatePick(queueIndex, true); // reservations are now held
+    if (!r.ok) return false;
 
-    for (const effect of item.effects) {
-      getQueueEffect(effect.effectId).onPick?.(effect, this.ctx);
+    // Clear the picked cells and let gravity settle *before* dispatching, so
+    // nothing re-entrant (an onPick hook, a log line) can observe a
+    // half-picked instance or the same cell twice.
+    for (const c of r.cells) this.queueGrid[c.x][c.y] = null;
+    this.advanceQueues();
+
+    for (const item of r.items) {
+      for (const effect of item.effects) {
+        getQueueEffect(effect.effectId).onPick?.(effect, this.ctx);
+      }
+    }
+    r.items.forEach((item, i) => this.dispatchPicked(item, r.plan[i]));
+
+    if (this.instantFlights) {
+      // settle() unconditionally, THEN resolve flights: an all-sweeper pick
+      // launches no flight at all, so completeAllFlights() alone would be a
+      // no-op and never trigger reclaimParkedRaws()/autoServe() off the
+      // stack the sweeper just cleared. A non-sweeper pick's flights each
+      // settle again internally via completeFlight() — harmless, settle()
+      // is idempotent once nothing changes.
+      this.settle();
+      this.completeAllFlights();
+    }
+    return true;
+  }
+
+  /**
+   * Resolves what picking lane `x` would do: which cells make up the fronting
+   * instance, its items, and where each item would go. `canPick` calls this
+   * with commit=false (a pure query — any reservations are rolled back
+   * before returning); `pick` calls it with commit=true and keeps the
+   * reservations for the flights it's about to launch. Because both go
+   * through the same planDispatch(), a "canPick weaker than the actual
+   * placement" bug — which would let pick() write a `-1` cell/slot and
+   * corrupt state — isn't possible: the placement loop *is* the check.
+   */
+  private evaluatePick(
+    queueIndex: number,
+    commit: boolean,
+  ):
+    | { ok: true; cells: { x: number; y: number }[]; items: QueueItem[]; plan: Dispatch[] }
+    | { ok: false; reason: string } {
+    if (this.status !== "playing") return { ok: false, reason: "Level finished" };
+
+    const cells = this.pickInstanceCells(queueIndex);
+    if (!cells) {
+      const front = this.queueGrid[queueIndex]?.[0];
+      return {
+        ok: false,
+        reason: front ? "Linked items are not all at the front" : "Queue empty",
+      };
+    }
+    const items = cells.map((c) => this.queueGrid[c.x][c.y]!.item);
+
+    // Any member's canPick effect (e.g. Freeze) blocks the whole instance.
+    for (const item of items) {
+      for (const effect of item.effects) {
+        const check = getQueueEffect(effect.effectId).canPick?.(effect, this.ctx);
+        if (check && !check.ok) return { ok: false, reason: check.reason ?? "Blocked" };
+      }
     }
 
-    if (item.kind === "sweeper") {
+    const planned = this.planDispatch(items, commit);
+    if (!planned.ok) return planned;
+    return { ok: true, cells, items, plan: planned.plan };
+  }
+
+  /**
+   * Cells of the instance a click on lane x would pick, or null when nothing
+   * is pickable there yet.
+   *   ungrouped — just the front cell.
+   *   combined  — the whole block. No extra check needed: a cell of the
+   *               block sitting at row 0 already proves its min-y is 0.
+   *   linked    — every member, but only once ALL of them are at row 0.
+   */
+  private pickInstanceCells(x: number): { x: number; y: number }[] | null {
+    const front = this.queueGrid[x]?.[0];
+    if (!front) return null; // empty column, or a hole
+    if (front.group === -1) return [{ x, y: 0 }];
+    const cells = this.groupCells(front.group);
+    if (this.groupKinds[front.group] === "linked" && cells.some((c) => c.y !== 0)) return null;
+    return cells;
+  }
+
+  /** Every live cell carrying group index g, sorted by (y, x). */
+  private groupCells(g: number): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    for (let x = 0; x < this.queueGrid.length; x++) {
+      const col = this.queueGrid[x];
+      for (let y = 0; y < col.length; y++) {
+        if (col[y]?.group === g) out.push({ x, y });
+      }
+    }
+    return out.sort((a, b) => a.y - b.y || a.x - b.x);
+  }
+
+  /**
+   * Works out where every item of a pick would go, using the same
+   * freeSlot()/reserveCell() helpers pick() uses, in the same order.
+   * commit=false rolls every reservation it made back before returning (a
+   * pure query); commit=true keeps them, and the caller must launch exactly
+   * one flight per Dispatch (releasing them on landing).
+   *
+   * A pick of more than one item (a combined block or linked chain) may
+   * always spill onto the grid, even under "Block the pick" — parking the
+   * overflow is inherent to those mechanics. A single plain item still
+   * honors outOfSlotPolicy exactly as before.
+   */
+  private planDispatch(
+    items: QueueItem[],
+    commit: boolean,
+  ): { ok: true; plan: Dispatch[] } | { ok: false; reason: string } {
+    const plan: Dispatch[] = [];
+    const reservedSlots: { toolId: Id; slot: number }[] = [];
+    const reservedCells: number[] = [];
+    const rollback = () => {
+      for (const s of reservedSlots) this.releaseSlot(s.toolId, s.slot);
+      for (const c of reservedCells) this.releaseCell(c);
+    };
+
+    const allowPark = this.outOfSlotPolicy === "park-on-grid" || items.length > 1;
+
+    for (const item of items) {
+      if (item.kind === "sweeper") {
+        plan.push({ kind: "sweeper" });
+        continue;
+      }
+
+      const match = findToolRecipe(this.map.tools, item.id);
+      if (!match) {
+        // No tool needed — it only has to fit on the grid.
+        const cell = this.reserveCell();
+        if (cell === -1) {
+          rollback();
+          return { ok: false, reason: "No free grid cell" };
+        }
+        reservedCells.push(cell);
+        plan.push({ kind: "grid", cell, raw: false });
+        continue;
+      }
+
+      const slot = this.freeSlot(match.tool.id);
+      if (slot !== -1) {
+        this.reserveSlot(match.tool.id, slot);
+        reservedSlots.push({ toolId: match.tool.id, slot });
+        plan.push({ kind: "tool", toolId: match.tool.id, slot });
+        continue;
+      }
+
+      if (!allowPark) {
+        rollback();
+        return { ok: false, reason: `${match.tool.name} is full` };
+      }
+      const cell = this.reserveCell();
+      if (cell === -1) {
+        rollback();
+        return { ok: false, reason: `${match.tool.name} is full and the grid has no space` };
+      }
+      reservedCells.push(cell);
+      plan.push({ kind: "grid", cell, raw: true });
+    }
+
+    if (!commit) rollback();
+    return { ok: true, plan };
+  }
+
+  /** Routes one already-planned item to its destination, logging/counting it. */
+  private dispatchPicked(item: QueueItem, d: Dispatch): void {
+    if (d.kind === "sweeper") {
       const cleared = this.clearDirtyStacks(1);
       this.log("pick", `Sweeper used (${cleared} stack cleared)`);
-      if (this.instantFlights) this.settle();
-      return true;
+      return;
     }
-
     this.ctx.picksMade++;
     this.ctx.picksByIngredient[item.id] = (this.ctx.picksByIngredient[item.id] ?? 0) + 1;
     const def = this.map.rawIngredients.find((r) => r.id === item.id);
     this.log("pick", `Picked ${def?.name ?? item.id}`);
-
-    const match = findToolRecipe(this.map.tools, item.id);
-    if (!match) {
-      // Needs no cooking: fly straight to the grid as a finished item.
-      this.launch({ kind: "queue-to-grid", itemId: item.id, toCell: this.reserveCell() });
-      if (this.instantFlights) this.completeAllFlights();
-      return true;
-    }
-    const slot = this.freeSlot(match.tool.id);
-    if (slot !== -1) {
-      this.launch({
-        kind: "queue-to-tool",
-        itemId: item.id,
-        toTool: this.reserveSlot(match.tool.id, slot),
-      });
+    if (d.kind === "tool") {
+      this.launch({ kind: "queue-to-tool", itemId: item.id, toTool: { toolId: d.toolId, slot: d.slot } });
     } else {
-      // park-on-grid: the raw ingredient waits on the grid for a slot.
-      this.launch({ kind: "queue-to-grid", itemId: item.id, toCell: this.reserveCell(), raw: true });
+      this.launch({ kind: "queue-to-grid", itemId: item.id, toCell: d.cell, raw: d.raw });
     }
-    if (this.instantFlights) this.completeAllFlights();
+  }
+
+  /**
+   * Gravity. Every instance (a lone cell, or a whole "combined" group — a
+   * "linked" group is NOT a movement instance, its members move
+   * independently) rises toward row 0 until nothing can move. Only ever
+   * called at construction and right after pick() clears cells — nothing
+   * else changes queue geometry, and keeping that invariant is what keeps
+   * the queues' structure key cheap to compute.
+   * Postcondition: canMoveUp() is false for every instance.
+   */
+  private advanceQueues(): void {
+    const height = this.queueHeight;
+    const cols = this.queueGrid.length;
+    // +1 so the final pass can run and prove stability (no move happened).
+    for (let pass = 0; pass <= height; pass++) {
+      const byGroup = new Map<number, { x: number; y: number }[]>();
+      for (let x = 0; x < cols; x++) {
+        for (let y = 0; y < height; y++) {
+          const g = this.queueGrid[x][y]?.group ?? -1;
+          if (g === -1 || this.groupKinds[g] !== "combined") continue;
+          if (!byGroup.has(g)) byGroup.set(g, []);
+          byGroup.get(g)!.push({ x, y });
+        }
+      }
+      for (const cells of byGroup.values()) cells.sort((a, b) => a.y - b.y || a.x - b.x);
+
+      let moved = false;
+      for (let y = 1; y < height; y++) {
+        for (let x = 0; x < cols; x++) {
+          const cell = this.queueGrid[x][y];
+          if (!cell) continue;
+          const g = cell.group;
+          const inst = g !== -1 && this.groupKinds[g] === "combined" ? byGroup.get(g)! : [{ x, y }];
+          // Enumerate a multi-cell instance exactly once, from its anchor
+          // (min-y then min-x, per the sort above) — every other cell of it
+          // is skipped when the outer scan reaches it.
+          if (inst[0].x !== x || inst[0].y !== y) continue;
+          if (!this.canMoveUp(inst)) continue;
+          this.moveUp(inst);
+          moved = true;
+        }
+      }
+      if (!moved) return;
+    }
+  }
+
+  /** True when every cell of `inst` (sorted by y ascending) may rise one row. */
+  private canMoveUp(inst: { x: number; y: number }[]): boolean {
+    const own = new Set(inst.map((c) => `${c.x}:${c.y}`));
+    for (const c of inst) {
+      if (c.y === 0) return false;
+      if (own.has(`${c.x}:${c.y - 1}`)) continue; // vacated by this same instance
+      if (this.queueGrid[c.x][c.y - 1] !== null) return false;
+    }
     return true;
+  }
+
+  /**
+   * Precondition: canMoveUp(inst). `inst` must be sorted by y ascending — the
+   * front-most cell of a multi-row-same-column instance has to vacate its
+   * slot before the cell behind it writes into that slot.
+   */
+  private moveUp(inst: { x: number; y: number }[]): void {
+    for (const c of inst) {
+      this.queueGrid[c.x][c.y - 1] = this.queueGrid[c.x][c.y];
+      this.queueGrid[c.x][c.y] = null;
+    }
   }
 
   /** Advance the simulation by `dt` seconds. */
@@ -886,7 +1141,7 @@ export class Simulation {
       this.log("won", `All ${this.totalCustomers} customers served`);
       return;
     }
-    const queuesEmpty = this.queues.every((q) => q.length === 0);
+    const queuesEmpty = this.remainingItems === 0;
     const nothingMoving =
       this.cookingCount === 0 &&
       this.flights.length === 0 &&
@@ -908,6 +1163,28 @@ export class Simulation {
     this.events.push({ type, message, atTime: this.time });
     if (this.events.length > 200) this.events.shift();
   }
+}
+
+/**
+ * Expands the authored, dense `level.queues` into the runtime queue grid,
+ * padding every column to the tallest queue's length and stamping each
+ * cell's group index from `level.queueGroups`. Out-of-range or empty group
+ * coordinates are ignored rather than thrown — a malformed string must not
+ * crash Play mode; `data/validate.ts` warns about it instead.
+ */
+function buildQueueGrid(level: LevelConfig): (QueueCell | null)[][] {
+  const height = level.queues.reduce((h, q) => Math.max(h, q.length), 0);
+  const grid: (QueueCell | null)[][] = level.queues.map((lane) =>
+    Array.from({ length: height }, (_, y) => (lane[y] ? { item: lane[y], group: -1 } : null)),
+  );
+  const groups = level.queueGroups ?? [];
+  for (let gi = 0; gi < groups.length; gi++) {
+    for (const { x, y } of groups[gi].cells) {
+      const cell = grid[x]?.[y];
+      if (cell) cell.group = gi;
+    }
+  }
+  return grid;
 }
 
 /** Ids of key colors a level's queue items can carry (for UI legends). */

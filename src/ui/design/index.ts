@@ -5,6 +5,7 @@
 import {
   parseCustomers,
   parseGrid,
+  parseQueueGroups,
   parseQueues,
   serializeCustomers,
   serializeGrid,
@@ -16,7 +17,6 @@ import type {
   GlobalDefs,
   GridCellConfig,
   ParamDef,
-  QueueItem,
 } from "../../core/types.ts";
 import type { LevelData, MapData } from "../../data/mapLoader.ts";
 import { toMapDef } from "../../data/mapLoader.ts";
@@ -28,7 +28,8 @@ import { cellIconEl, ingredientIconEl, statusIconEl } from "../icon.ts";
 import type { Section } from "./section.ts";
 import { createCustomerSection } from "./customerSection.ts";
 import { createGridSection, resizeGridString } from "./gridSection.ts";
-import { createQueueSection } from "./queueSection.ts";
+import { createQueueSection, toCoordGroups, toQueueDraft } from "./queueSection.ts";
+import type { QueueDraft } from "./queueSection.ts";
 import { tableEditor } from "./tableEditor.ts";
 
 export class DesignView {
@@ -40,7 +41,7 @@ export class DesignView {
 
   private customers!: Section<CustomerConfig[]>;
   private grid!: Section<GridCellConfig[]>;
-  private queues!: Section<QueueItem[][]>;
+  private queues!: Section<QueueDraft>;
   private warningsEl = el("div", { class: "warnings" });
 
   // ---------- combined "Write all to sheet" (level bar) ----------
@@ -78,7 +79,9 @@ export class DesignView {
     this.level = next;
     this.customers.reset(parseCustomers(next.customerString));
     this.grid.reset(parseGrid(next.gridString));
-    this.queues.reset(parseQueues(next.queueString));
+    this.queues.reset(
+      toQueueDraft({ queues: parseQueues(next.queueString), groups: parseQueueGroups(next.queueString) }),
+    );
     // A different level's drafts have nothing to do with what was last
     // written to the sheet for the previous level.
     this.levelWriteSnapshot = null;
@@ -127,7 +130,10 @@ export class DesignView {
       map: parsedMap,
       defs: this.defs,
       level: this.level,
-      parse: () => parseQueues(this.level.queueString),
+      parse: () => ({
+        queues: parseQueues(this.level.queueString),
+        groups: parseQueueGroups(this.level.queueString),
+      }),
       currentCustomers: () => this.customers.draft,
       currentGrid: () => this.grid.draft,
       onSaved: saved,
@@ -279,7 +285,7 @@ export class DesignView {
     try {
       const customer = serializeCustomers(this.customers.draft);
       const grid = serializeGrid(this.grid.draft);
-      const queue = serializeQueues(this.queues.draft);
+      const queue = serializeQueues(this.queues.draft.queues, toCoordGroups(this.queues.draft));
       await writeRowToSheet(
         {
           mapIndex: this.map.id,
@@ -335,7 +341,7 @@ export class DesignView {
       snap.unlock === this.level.featureUnlock &&
       snap.customer === serializeCustomers(this.customers.draft) &&
       snap.grid === serializeGrid(this.grid.draft) &&
-      snap.queue === serializeQueues(this.queues.draft);
+      snap.queue === serializeQueues(this.queues.draft.queues, toCoordGroups(this.queues.draft));
     statusEl.textContent = upToDate ? "✓ Level written" : "● Changed since write";
     statusEl.className = `write-status ${upToDate ? "ok" : "stale"}`;
   }

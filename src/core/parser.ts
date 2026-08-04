@@ -7,6 +7,8 @@ import type {
   Dish,
   EffectInstance,
   GridCellConfig,
+  QueueGroup,
+  QueueGroupKind,
   QueueItem,
 } from "./types.ts";
 
@@ -47,11 +49,27 @@ function parseIntStrict(s: string, context: string): number {
 }
 
 // ---------- ingredient queues ----------
-// "0,1#4:5,0,1%0,0,1,0%1,7,1,7,7"
+// "<queueData>[$<combinedSlots>$<linkedSlots>]"
+//   queueData      "0,1#4:5,0,1%0,0,1,0%1,7,1,7,7" — '%' between columns, ','
+//                   between items, "#effectId:param" suffixes (unchanged).
+//   group sections "0-0,1-0;0-2,0-3" — ';' between groups, ',' between cells,
+//                   each cell "<x>-<y>" (x = column, y = row; both
+//                   non-negative, so '-' is an unambiguous separator).
+// The two group sections are omitted ENTIRELY when there are no groups, so
+// every pre-existing string (with no '$' at all) round-trips byte-for-byte —
+// see mapLoader.test.ts's exact round-trip assertion.
+// e.g. "0,1,0%0,0,1%1,7,1$0-0,1-0;0-2,0-3$1-1,2-1"
+
+/** Splits the sectioned string on "$"; a missing section comes back as "". */
+function queueSections(s: string): [string, string, string] {
+  const parts = s.split("$");
+  return [parts[0] ?? "", parts[1] ?? "", parts[2] ?? ""];
+}
 
 export function parseQueues(s: string): QueueItem[][] {
-  if (s.trim() === "") return [];
-  return s.split("%").map((queueStr) =>
+  const [data] = queueSections(s);
+  if (data.trim() === "") return [];
+  return data.split("%").map((queueStr) =>
     queueStr.split(",").map((itemStr) => {
       const { base, effects } = splitEffects(itemStr);
       const id = parseIntStrict(base, itemStr);
@@ -60,10 +78,49 @@ export function parseQueues(s: string): QueueItem[][] {
   );
 }
 
-export function serializeQueues(queues: QueueItem[][]): string {
-  return queues
+/** Combined groups first, then linked — the order serializeQueues re-splits on. */
+export function parseQueueGroups(s: string): QueueGroup[] {
+  const [, combined, linked] = queueSections(s);
+  return [...parseGroupSection(combined, "combined"), ...parseGroupSection(linked, "linked")];
+}
+
+function parseGroupSection(section: string, kind: QueueGroupKind): QueueGroup[] {
+  if (section.trim() === "") return [];
+  return section.split(";").map((groupStr) => ({
+    kind,
+    cells: groupStr.split(",").map((pair) => {
+      const nums = pair.split("-");
+      // Both coordinates are non-negative, so a valid pair is exactly two
+      // non-empty parts. Without this guard, parseIntStrict("") silently
+      // returns 0 (Number("") === 0 IS an integer), so "-1-2" would parse as
+      // {x:0,y:1} and "1-" as {x:1,y:0} instead of throwing.
+      if (nums.length !== 2 || nums[0] === "" || nums[1] === "") {
+        throw new Error(`Invalid queue-group cell "${pair}": expected "<x>-<y>"`);
+      }
+      return { x: parseIntStrict(nums[0], pair), y: parseIntStrict(nums[1], pair) };
+    }),
+  }));
+}
+
+/**
+ * `groups` defaults to [] so every existing call site (which doesn't know
+ * about grouping) still compiles and behaves byte-identically: with no
+ * groups, no "$" is emitted at all — that's what keeps a group-less string's
+ * round-trip exact.
+ */
+export function serializeQueues(queues: QueueItem[][], groups: QueueGroup[] = []): string {
+  const data = queues
     .map((q) => q.map((item) => item.id + serializeEffects(item.effects)).join(","))
     .join("%");
+  if (groups.length === 0) return data;
+  return [data, serializeGroupSection(groups, "combined"), serializeGroupSection(groups, "linked")].join("$");
+}
+
+function serializeGroupSection(groups: QueueGroup[], kind: QueueGroupKind): string {
+  return groups
+    .filter((g) => g.kind === kind)
+    .map((g) => g.cells.map((c) => `${c.x}-${c.y}`).join(","))
+    .join(";");
 }
 
 // ---------- grid ----------

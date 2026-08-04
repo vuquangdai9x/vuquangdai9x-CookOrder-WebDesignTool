@@ -2,7 +2,7 @@
 // fully parsed MapDef model, and back. The JSON string form is also what the
 // CSV export writes.
 
-import { parseCustomers, parseGrid, parseQueues } from "../core/parser.ts";
+import { parseCustomers, parseGrid, parseQueueGroups, parseQueues } from "../core/parser.ts";
 import type { LevelConfig, MapDef } from "../core/types.ts";
 
 export interface LevelData {
@@ -32,6 +32,7 @@ export function toLevelConfig(d: LevelData): LevelConfig {
     shuffleDistance: d.shuffleDistance,
     serveableSlots: d.serveableSlots,
     queues: parseQueues(d.queueString),
+    queueGroups: parseQueueGroups(d.queueString),
     grid: parseGrid(d.gridString),
     customers: parseCustomers(d.customerString),
     outOfSlotPolicy: d.outOfSlotPolicy,

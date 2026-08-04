@@ -16,12 +16,13 @@ import {
 import type { BotBatchResult, BotType } from "../../core/bot.ts";
 import { runBotTrials } from "../../core/bot.ts";
 import { DIRTY_DISH_ID, Simulation } from "../../core/sim.ts";
-import type { CustomerState, Flight } from "../../core/sim.ts";
+import type { CustomerState, Flight, QueueCell } from "../../core/sim.ts";
 import type {
   Id,
   LevelConfig,
   MapDef,
   OutOfSlotPolicy,
+  QueueGroupKind,
   QueueItem,
 } from "../../core/types.ts";
 import { findToolRecipe } from "../../core/types.ts";
@@ -37,6 +38,7 @@ import {
   toolIconEl,
 } from "../icon.ts";
 import { localImageUrl } from "../localImages.ts";
+import { appendLine, createOverlay, railSegments } from "../queueGroupVisuals.ts";
 import { centerOf, EffectsLayer } from "./effectsLayer.ts";
 import type { Point } from "./effectsLayer.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
@@ -53,6 +55,15 @@ type SpeedId = (typeof SPEED_OPTIONS)[number]["id"];
 
 /** Cycled by position so adjacent tools always read as visually distinct. */
 const TOOL_COLORS = ["#3a4a5c", "#4a3a5c", "#3a5c4a", "#5c4a3a", "#5c3a4a", "#3a5c5c"];
+
+/**
+ * Fixed number of top rows each queue lane shows, aligned across every
+ * column (short columns pad with empty cells) — a linked-slot pick needs to
+ * see whether every member has reached row 0, and a combined block needs its
+ * whole visible shape. Must match the `/ 4` divisor in the `--tile` clamp
+ * for `.queue-lanes.play` in style.css.
+ */
+const WINDOW_ROWS = 4;
 
 export class PlayView {
   private root: HTMLElement;
@@ -102,25 +113,30 @@ export class PlayView {
   /** Each customer's randomly-drawn avatar, cached so it doesn't reshuffle on every re-render. */
   private customerAvatarByIndex = new Map<number, string>();
   /**
-   * Where the tile the player just clicked actually was, captured before
-   * `sim.pick()` removes it from the queue and the tier re-renders. Without
+   * Origins of the tiles a group pick just removed, captured before
+   * `sim.pick()` removes them from the queue and the tier re-renders — FIFO,
+   * one per flight the pick is about to launch (sweepers excluded, since they
+   * launch no flight), in the same order the sim dispatches them. Without
    * this, a queue-originating flight had no way to know which of the 5+
    * lanes' `.top` tiles it came from — `flightOrigin` fell back to whichever
    * `.queue-tile.top` happened to be first in the DOM, so the flight always
-   * appeared to launch from lane 1 regardless of which lane was picked.
+   * appeared to launch from lane 1 regardless of which lane was picked. A
+   * single-item pick is just the N=1 case of this same queue.
    */
-  private lastPickOrigin: Point | null = null;
+  private pendingPickOrigins: Point[] = [];
   /** Customer/mystery indices rendered in the customers tier last build, so a
    *  rebuild can tell which card(s) are newly appearing and slide them in
    *  instead of just cutting straight to the finished layout. */
   private lastCustomerIndices = new Set<number>();
   /**
-   * Queue index the player just picked from, consumed by the next queues-tier
-   * rebuild: that lane's remaining tiles animate sliding up into their new
-   * positions (and the newly revealed bottom preview fades in) instead of the
-   * lane just snapping to its post-pick state.
+   * Column -> how many rows it lost, from the pick just made, consumed by the
+   * next queues-tier rebuild: each touched lane's remaining tiles animate
+   * sliding up by that many rows (and the newly revealed bottom row(s) fade
+   * in) instead of the lane just snapping to its post-pick state. A combined
+   * block can vacate more than one row of a column at once (a vertical run
+   * within it), and a single pick can touch several columns at once.
    */
-  private lastPickedLane: number | null = null;
+  private lastPickedLanes = new Map<number, number>();
 
   /**
    * Auto-play bot playtesting panel state — independent of the live game
@@ -201,6 +217,8 @@ export class PlayView {
     this.animating.clear();
     this.celebrated.clear();
     this.pendingExits.clear();
+    this.pendingPickOrigins = [];
+    this.lastPickedLanes = new Map();
     this.renderGeneration++; // orphans any exit-animation callback still pending
     this.renderPage();
   }
@@ -213,7 +231,7 @@ export class PlayView {
     // and iterating the array being spliced mid-for-of skips whichever flight
     // shifts into the just-visited slot. Left unresolved, it lingers into a
     // later call — including the very next pick after switching modes, where
-    // it can wrongly consume that pick's captured origin (see lastPickOrigin)
+    // it can wrongly consume that pick's captured origin (see pendingPickOrigins)
     // and leave the real new flight to fall back to a stale position. This is
     // the root cause of "switch to skip, back to x1, next fly doesn't play".
     for (const flight of [...this.sim.flights]) {
@@ -333,14 +351,14 @@ export class PlayView {
       );
       return slot ? centerOf(slot) : null;
     }
-    // Queue flights start where the picked tile actually was; it's already
-    // gone from the DOM by the time we get here, so the click handler stashed
-    // its position beforehand. Consume it once so a later queue flight
-    // (e.g. a parked raw's own eventual pick) doesn't reuse a stale point.
-    if (this.lastPickOrigin) {
-      const origin = this.lastPickOrigin;
-      this.lastPickOrigin = null;
-      return origin;
+    // Queue flights start where the picked tile(s) actually were; they're
+    // already gone from the DOM by the time we get here, so the click
+    // handler stashed their positions beforehand, one per flight this pick
+    // is launching, in dispatch order. Shift one off per flight so a group
+    // pick's N flights each get their own origin instead of all reusing the
+    // first tile's position.
+    if (this.pendingPickOrigins.length > 0) {
+      return this.pendingPickOrigins.shift()!;
     }
     // Fallback (e.g. a flight created without going through the click handler):
     // best-effort, first visible top tile.
@@ -506,8 +524,20 @@ export class PlayView {
     this.middleKey = middleStructureKey(this.sim);
     this.queuesKey = queuesStructureKey(this.sim);
     this.page.append(this.customersEl, this.middleEl, this.queuesEl);
+    this.refreshQueueGroupOverlay();
     this.syncOverlay();
     this.patchLiveValues();
+  }
+
+  /**
+   * Draws the linked-rope/combined-rail overlay for the queues tier. Must run
+   * only after `this.queuesEl` is actually attached to the document —
+   * getBoundingClientRect() on a still-detached tree returns all zeros, which
+   * is why this isn't done inside queuesTier() itself.
+   */
+  private refreshQueueGroupOverlay(): void {
+    const lanes = this.queuesEl.querySelector<HTMLElement>(".queue-lanes");
+    if (lanes) renderGroupOverlay(lanes, this.sim);
   }
 
   /**
@@ -531,6 +561,7 @@ export class PlayView {
       this.queuesEl.replaceWith(next);
       this.queuesEl = next;
       this.queuesKey = nextQueues;
+      this.refreshQueueGroupOverlay();
       this.animatePickedLaneShift();
     }
 
@@ -553,44 +584,52 @@ export class PlayView {
   }
 
   /**
-   * After a pick rebuilds the queues tier, the picked lane's tiles don't just
-   * snap into place: the picked item is already gone (it left as the flight),
-   * so every remaining tile starts one slot lower — where it visually was a
-   * moment ago — and slides up into its new position. The tile that just
-   * scrolled into the preview window (the new bottom item) additionally fades
-   * in, reading as "added at the bottom" rather than having always been there.
+   * After a pick rebuilds the queues tier, a touched lane's tiles don't just
+   * snap into place: the picked cell(s) are already gone (they left as
+   * flights), so every remaining tile starts however many rows lower —
+   * wherever it visually was a moment ago — and slides up into its new
+   * position. Whichever tile(s) just scrolled into the window (the new
+   * bottom row(s)) additionally fade in, reading as "added at the bottom"
+   * rather than having always been there. A pick can touch several lanes at
+   * once (a combined/linked group spanning columns), and a single lane can
+   * lose more than one row at once (a vertical run within a combined block).
    */
   private animatePickedLaneShift(): void {
-    const lane = this.lastPickedLane;
-    this.lastPickedLane = null;
-    if (lane === null || this.skipMode) return;
+    const perLane = this.lastPickedLanes;
+    this.lastPickedLanes = new Map();
+    if (perLane.size === 0 || this.skipMode) return;
 
-    const laneEl = this.queuesEl.querySelector(`[data-lane="${lane}"]`);
-    if (!laneEl) return; // the pick emptied the queue; the lane is gone entirely
-    const tiles = [...laneEl.querySelectorAll<HTMLElement>(".queue-tile")];
-    if (tiles.length === 0) return;
+    for (const [lane, vacated] of perLane) {
+      const laneEl = this.queuesEl.querySelector(`[data-lane="${lane}"]`);
+      if (!laneEl) continue; // the pick emptied the queue; the lane is gone entirely
+      const tiles = [...laneEl.querySelectorAll<HTMLElement>(".queue-tile")];
+      if (tiles.length === 0) continue;
 
-    // One slot's travel = distance between two adjacent tiles in the new
-    // layout (covers tile height + gap); single-tile lanes fall back to the
-    // tile's own height plus the 0.25rem gap.
-    const step =
-      tiles.length > 1
-        ? tiles[1].getBoundingClientRect().top - tiles[0].getBoundingClientRect().top
-        : tiles[0].getBoundingClientRect().height + 4;
+      // One slot's travel = distance between two adjacent tiles in the new
+      // layout (covers tile height + gap); single-tile lanes fall back to the
+      // tile's own height plus the 0.25rem gap. Scaled by how many rows this
+      // lane actually vacated.
+      const rowHeight =
+        tiles.length > 1
+          ? tiles[1].getBoundingClientRect().top - tiles[0].getBoundingClientRect().top
+          : tiles[0].getBoundingClientRect().height + 4;
+      const step = rowHeight * vacated;
 
-    tiles.forEach((tile, i) => {
-      // Only a full window (top + 2 previews) has a newly revealed tile: the
-      // new 3rd tile was the old 4th item, previously outside the preview
-      // window. With fewer tiles, everything shown was already visible.
-      const revealed = tiles.length === 3 && i === 2;
-      tile.animate(
-        [
-          { transform: `translateY(${step}px)`, opacity: revealed ? 0 : 1 },
-          { transform: "translateY(0)", opacity: 1 },
-        ],
-        { duration: 240, easing: "cubic-bezier(.2,.8,.3,1)", delay: i * 25 },
-      );
-    });
+      tiles.forEach((tile, i) => {
+        // Only a full window has newly revealed tiles: the last `vacated`
+        // rows were previously outside the window. With fewer tiles (the
+        // lane is shorter than the window), everything shown was already
+        // visible.
+        const revealed = tiles.length === WINDOW_ROWS && i >= WINDOW_ROWS - vacated;
+        tile.animate(
+          [
+            { transform: `translateY(${step}px)`, opacity: revealed ? 0 : 1 },
+            { transform: "translateY(0)", opacity: 1 },
+          ],
+          { duration: 240, easing: "cubic-bezier(.2,.8,.3,1)", delay: i * 25 },
+        );
+      });
+    }
   }
 
   /** Every customer/mystery index currently rendered in the customers tier. */
@@ -933,7 +972,15 @@ export class PlayView {
     return wrap;
   }
 
-  /** Bottom tier: lanes; the top tile is the pick button. */
+  /**
+   * Bottom tier: a fixed window of the top WINDOW_ROWS rows, aligned across
+   * every column (short columns show blank filler cells) — that's what gives
+   * a combined block its visible shape and lets the player see how close a
+   * linked chain's members are to the front. Only row 0 is ever clickable:
+   * `sim.pick(x)` always resolves "the instance fronting column x", whether
+   * that's a plain item, a combined block (pickable once any of its cells
+   * reaches row 0), or a linked chain (pickable once every member does).
+   */
   private queuesTier(): HTMLElement {
     const sim = this.sim;
     const needed = sim.neededCookedIds();
@@ -945,52 +992,86 @@ export class PlayView {
     }
 
     const lanes = el("div", { class: "queue-lanes play" });
-    sim.queues.forEach((queue, qi) => {
+    for (let x = 0; x < sim.columnCount; x++) {
       // An emptied queue disappears entirely rather than lingering as a blank
       // lane — the remaining lanes then re-center as a group (see the
       // .queue-lanes.play justify-content:center rule).
-      if (queue.length === 0) return;
-      const check = sim.canPick(qi);
-      const lane = el("div", { class: "queue-lane", "data-lane": String(qi) }, [
+      if (sim.remainingIn(x) === 0) continue;
+      const check = sim.canPick(x);
+      const lane = el("div", { class: "queue-lane", "data-lane": String(x) }, [
         el("div", { class: "lane-head" }, [
-          el("span", {}, [`Queue ${qi + 1}`]),
-          el("small", {}, [`${queue.length}`]),
+          el("span", {}, [`Queue ${x + 1}`]),
+          el("small", {}, [`${sim.remainingIn(x)}`]),
         ]),
       ]);
       const tiles = el("div", { class: "lane-tiles" });
 
-      // queue.length === 0 already returned above, so there's always a top item.
-      const top = queue[0];
-      const tile = this.queueTile(top, {
-        top: true,
-        wanted: wantedRaw.has(top.id),
-        disabled: !check.ok,
-      });
-      tile.title = check.reason ?? "Pick this ingredient";
-      if (check.ok) {
-        tile.addEventListener("click", () => {
-          // Capture before pick() removes this tile from the queue and the
-          // tier re-renders — this is the only moment its real position exists.
-          this.lastPickOrigin = centerOf(tile);
-          this.lastPickedLane = qi;
-          this.sim.pick(qi);
-          this.dispatchFlights();
-          this.playCelebrations();
-          this.syncPage();
+      for (let y = 0; y < WINDOW_ROWS; y++) {
+        const cell: QueueCell | null = sim.queueGrid[x]?.[y] ?? null;
+        if (!cell) {
+          tiles.append(el("div", { class: "queue-tile empty" }));
+          continue;
+        }
+        const isTop = y === 0;
+        const groupKind: QueueGroupKind | undefined =
+          cell.group !== -1 ? sim.groupKinds[cell.group] : undefined;
+        const tile = this.queueTile(cell.item, {
+          top: isTop,
+          preview: !isTop,
+          wanted: wantedRaw.has(cell.item.id),
+          disabled: isTop && !check.ok,
+          group: groupKind,
         });
-      }
-      tiles.append(tile);
-      for (const item of queue.slice(1, 3)) {
-        tiles.append(this.queueTile(item, { preview: true }));
+        tile.dataset.qx = String(x);
+        tile.dataset.qy = String(y);
+        if (isTop) {
+          tile.title = check.reason ?? "Pick this ingredient";
+          if (check.ok) {
+            tile.addEventListener("click", () => this.performPick(x));
+          }
+        }
+        tiles.append(tile);
       }
       lane.append(tiles);
       lanes.append(lane);
-    });
+    }
 
+    // Not rendered here: getBoundingClientRect() on `lanes` would return all
+    // zeros until this section is actually attached to the document, which
+    // only happens after queuesTier() returns. Callers draw it themselves
+    // right after attaching — see refreshQueueGroupOverlay().
     return el("section", { class: "play-section queues-tier" }, [
       el("h2", {}, ["Ingredient queues — click the top tile to pick"]),
       lanes,
     ]);
+  }
+
+  /**
+   * Picks the instance fronting lane x — capturing every flight-bound tile's
+   * screen position first (sweepers excluded, they launch no flight), since
+   * `sim.pick()` removes them from the queue before this frame's flights get
+   * dispatched. See `pendingPickOrigins`/`lastPickedLanes`.
+   */
+  private performPick(x: number): void {
+    const sim = this.sim;
+    const cells = sim.pickTargets(x);
+
+    const perLane = new Map<number, number>();
+    for (const c of cells) perLane.set(c.x, (perLane.get(c.x) ?? 0) + 1);
+    this.lastPickedLanes = perLane;
+
+    this.pendingPickOrigins = cells
+      .filter((c) => sim.queueGrid[c.x][c.y]?.item.kind !== "sweeper")
+      .map((c) => {
+        const tileEl = this.queuesEl.querySelector<HTMLElement>(`[data-qx="${c.x}"][data-qy="${c.y}"]`);
+        return tileEl ? centerOf(tileEl) : null;
+      })
+      .filter((p): p is Point => p !== null);
+
+    sim.pick(x);
+    this.dispatchFlights();
+    this.playCelebrations();
+    this.syncPage();
   }
 
   /**
@@ -1140,7 +1221,14 @@ export class PlayView {
 
   private queueTile(
     item: QueueItem,
-    opts: { top?: boolean; wanted?: boolean; disabled?: boolean; preview?: boolean },
+    opts: {
+      top?: boolean;
+      wanted?: boolean;
+      disabled?: boolean;
+      preview?: boolean;
+      /** Combined-slot cells get a shared tint; linked-slot cells too (their rope is drawn separately). */
+      group?: QueueGroupKind;
+    },
   ): HTMLElement {
     const freeze = item.effects.find((e) => e.effectId === EFFECT_FREEZE);
     const key = item.effects.find((e) => e.effectId === EFFECT_HOLDING_KEY);
@@ -1153,6 +1241,7 @@ export class PlayView {
         opts.disabled ? "disabled" : "",
         freeze ? "frozen" : "",
         item.kind === "sweeper" ? "sweeper" : "",
+        opts.group ? `group-${opts.group}` : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -1190,4 +1279,137 @@ export class PlayView {
       button("⟲ Restart", () => this.restart(), { class: "primary" }),
     ]);
   }
+}
+
+// ---------- queue-group connectors: linked ropes, combined rails ----------
+
+/** Vertical pitch between two adjacent rows in a lane, measured from its own tiles (real or filler alike). */
+function tilePitch(laneEl: HTMLElement): number {
+  const tiles = [...laneEl.querySelectorAll<HTMLElement>(".queue-tile")];
+  if (tiles.length > 1) {
+    return tiles[1].getBoundingClientRect().top - tiles[0].getBoundingClientRect().top;
+  }
+  return tiles.length === 1 ? tiles[0].getBoundingClientRect().height + 4 : 0;
+}
+
+/** Screen-space center of an on-screen (x,y) cell, relative to `host`. */
+function realPoint(lanes: HTMLElement, host: DOMRect, x: number, y: number): Point | null {
+  const t = lanes.querySelector<HTMLElement>(`[data-qx="${x}"][data-qy="${y}"]`);
+  if (!t) return null;
+  const r = t.getBoundingClientRect();
+  return { x: r.left + r.width / 2 - host.left, y: r.top + r.height / 2 - host.top };
+}
+
+/**
+ * A straight-line extrapolation of where an off-window row *would* render in
+ * lane x, continuing at the lane's own row pitch below its last visible row —
+ * this is what lets the rope leave the window at the correct angle instead of
+ * just aiming at some arbitrary point.
+ */
+function virtualPoint(lanes: HTMLElement, host: DOMRect, x: number, y: number): Point | null {
+  const laneEl = lanes.querySelector<HTMLElement>(`[data-lane="${x}"]`);
+  if (!laneEl) return null;
+  const tiles = [...laneEl.querySelectorAll<HTMLElement>(".queue-tile")];
+  if (tiles.length === 0) return null;
+  const last = tiles[tiles.length - 1];
+  const r = last.getBoundingClientRect();
+  const pitch = tilePitch(laneEl);
+  const rowsBeyond = y - (tiles.length - 1);
+  return {
+    x: r.left + r.width / 2 - host.left,
+    y: r.top + r.height / 2 - host.top + rowsBeyond * pitch,
+  };
+}
+
+/** Shortens the segment (x1,y1)-(x2,y2) so its (x2,y2) end lands exactly on the window's bottom edge, preserving the true angle. */
+function clipToBottom(x1: number, y1: number, x2: number, y2: number, maxY: number): Point {
+  if (y2 <= maxY) return { x: x2, y: y2 };
+  const t = (maxY - y1) / (y2 - y1);
+  return { x: x1 + t * (x2 - x1), y: maxY };
+}
+
+/** Adjacent (x,y) cell pairs within the same combined group, both inside the window — checked right/down only so each shared edge is counted once. */
+function combinedAdjacentPairs(sim: Simulation): [Point, Point][] {
+  const pairs: [Point, Point][] = [];
+  for (let x = 0; x < sim.queueGrid.length; x++) {
+    for (let y = 0; y < Math.min(sim.queueGrid[x].length, WINDOW_ROWS); y++) {
+      const cell = sim.queueGrid[x][y];
+      if (!cell || cell.group === -1 || sim.groupKinds[cell.group] !== "combined") continue;
+      const right = sim.queueGrid[x + 1]?.[y];
+      if (right?.group === cell.group) pairs.push([{ x, y }, { x: x + 1, y }]);
+      const down = y + 1 < WINDOW_ROWS ? sim.queueGrid[x][y + 1] : undefined;
+      if (down?.group === cell.group) pairs.push([{ x, y }, { x, y: y + 1 }]);
+    }
+  }
+  return pairs;
+}
+
+/**
+ * Draws linked-slot ropes (dashed) and combined-slot rails (solid double
+ * lines) as one SVG overlay, layered behind the tile frames (see
+ * .queue-link-overlay's z-index in style.css) so only the gap between two
+ * tiles actually shows a line.
+ *
+ * A linked rope connects each consecutive pair of a group's current cells
+ * (sorted front-to-back — the sim itself doesn't preserve an authored chain
+ * order beyond membership, since ordering has no gameplay effect). A partner
+ * outside the visible window still gets a segment drawn toward it, clipped
+ * at the window edge but at the true angle, so the player can judge how many
+ * rows away it is — see virtualPoint()/clipToBottom(). A pair with neither
+ * endpoint on screen draws nothing. A combined rail only connects cells that
+ * are both inside the window — a block extending past it just shows its
+ * visible part, with no off-window extrapolation (unlike a rope, a rail has
+ * no "how far away" question to answer).
+ */
+function renderGroupOverlay(lanes: HTMLElement, sim: Simulation): void {
+  const linkedGroupIndices = new Set<number>();
+  for (const col of sim.queueGrid) {
+    for (const cell of col) {
+      if (cell && cell.group !== -1 && sim.groupKinds[cell.group] === "linked") {
+        linkedGroupIndices.add(cell.group);
+      }
+    }
+  }
+  const combinedPairs = combinedAdjacentPairs(sim);
+  if (linkedGroupIndices.size === 0 && combinedPairs.length === 0) return;
+
+  const host = lanes.getBoundingClientRect();
+  const svg = createOverlay(host);
+
+  for (const gi of linkedGroupIndices) {
+    const cells: Point[] = [];
+    sim.queueGrid.forEach((col, x) => {
+      col.forEach((cell, y) => {
+        if (cell?.group === gi) cells.push({ x, y });
+      });
+    });
+    cells.sort((a, b) => a.y - b.y || a.x - b.x);
+
+    for (let i = 0; i < cells.length - 1; i++) {
+      const a = cells[i];
+      const b = cells[i + 1];
+      const aVisible = a.y < WINDOW_ROWS;
+      const bVisible = b.y < WINDOW_ROWS;
+      if (!aVisible && !bVisible) continue; // neither endpoint is on screen
+
+      const p1 = aVisible ? realPoint(lanes, host, a.x, a.y) : virtualPoint(lanes, host, a.x, a.y);
+      const p2 = bVisible ? realPoint(lanes, host, b.x, b.y) : virtualPoint(lanes, host, b.x, b.y);
+      if (!p1 || !p2) continue;
+
+      const start = aVisible ? p1 : clipToBottom(p2.x, p2.y, p1.x, p1.y, host.height);
+      const end = bVisible ? p2 : clipToBottom(p1.x, p1.y, p2.x, p2.y, host.height);
+      appendLine(svg, start, end, "queue-link-rope");
+    }
+  }
+
+  for (const [a, b] of combinedPairs) {
+    const p1 = realPoint(lanes, host, a.x, a.y);
+    const p2 = realPoint(lanes, host, b.x, b.y);
+    if (!p1 || !p2) continue;
+    for (const [s, e] of railSegments(p1, p2)) {
+      appendLine(svg, s, e, "queue-combine-rail");
+    }
+  }
+
+  lanes.append(svg);
 }

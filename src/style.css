@@ -124,7 +124,8 @@ select {
 .tile-corner .icon,
 .tile-key .icon,
 .cell-corner .icon,
-.piece-row .icon {
+.piece-row .icon,
+.ctx-item .icon {
   width: 1.15rem;
   height: 1.15rem;
   font-size: 0.9rem;
@@ -683,11 +684,23 @@ footer {
  * that resulting width (see .lane-tiles) — flexible in both dimensions from
  * one layout, no manual per-queue math needed.
  */
+/*
+ * A real grid now: one fixed-width column per queue (up to 5 — MAX_COLUMNS
+ * in queueSection.ts), rows aligned top-to-bottom across all of them via
+ * filler `.queue-tile.empty` cells — that's what gives a combined/linked
+ * group a meaningful (x,y) coordinate. `position: relative` anchors the
+ * linked-group rope overlay (see .queue-link-overlay).
+ */
 .queue-lanes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
   align-items: start;
+  /* position + z-index together establish a local stacking context, so the
+     overlay's z-index: -1 only sinks below THESE lanes, not anything further
+     up the page. */
+  position: relative;
+  z-index: 0;
   --tile-zoom: 1;
 }
 
@@ -696,7 +709,10 @@ footer {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.4rem;
-  min-width: 0; /* let the grid track shrink the lane, not the other way round */
+  /* Just wide enough for a tile plus padding — never stretched. */
+  flex: 0 0 auto;
+  width: fit-content;
+  min-width: 0;
 }
 
 .queue-lane.active {
@@ -713,9 +729,10 @@ footer {
   margin-bottom: 0.35rem;
 }
 
+/* One tile per row, top to bottom — row y matches every other column's row y. */
 .lane-tiles {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 0.25rem;
   min-height: calc(var(--tile) * var(--tile-zoom));
 }
@@ -787,16 +804,20 @@ footer {
   filter: saturate(0.7) brightness(1.05) hue-rotate(180deg);
 }
 
-/* Unbroken links draw a bridge to the next linked tile in the lane. */
-.queue-tile.linked::after {
-  content: "";
-  position: absolute;
-  right: -0.3rem;
-  top: 50%;
-  width: 0.3rem;
-  height: 3px;
-  background: var(--accent);
-  transform: translateY(-50%);
+/* Shift-click multi-select, for Combine/Link. */
+.queue-tile.selected {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Combined-slot block: a shared tint reads as "these move as one". */
+.queue-tile.group-combined {
+  background: #3a3a5c;
+}
+
+/* Linked-slot chain: a subtler tint; the rope (queue-link-overlay) does the
+   real "these are chained" signalling. */
+.queue-tile.group-linked {
+  background: #3a4a3a;
 }
 
 .queue-tile.add-tile {
@@ -808,6 +829,39 @@ footer {
 .queue-tile.empty {
   opacity: 0.4;
   cursor: default;
+}
+
+/*
+ * Linked-slot ropes + combined-slot rails: one absolutely positioned overlay
+ * over the whole lanes grid, so a chain can connect any two columns, not
+ * just adjacent tiles. z-index: -1 sinks it below the lanes' own normal-flow
+ * children (the tile frames) — .queue-lanes' `position: relative` plus this
+ * negative z-index is what makes that "behind" relationship hold, per the
+ * standard positioned-descendant-under-static-siblings stacking rule. The
+ * only part of a line actually visible is therefore the small gap between
+ * two tiles; the rest is hidden under their opaque backgrounds.
+ */
+.queue-link-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Linked-slot rope: dashed. */
+.queue-link-rope {
+  stroke: var(--ok);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+/* Combined-slot rail: solid, bold, drawn in pairs (see railSegments()) so
+   adjacent members of a block read as physically welded together. */
+.queue-combine-rail {
+  stroke: #cfd8ff;
+  stroke-width: 3;
 }
 
 .queue-lanes.remove-mode .queue-tile:not(.add-tile) {
@@ -1459,11 +1513,11 @@ td input {
 }
 
 /*
- * Play mode's queue row is horizontal, fixed at 5 columns worth of width (each
- * lane exactly 20%, so 5 queues fill the row with no wrap), and centered — an
- * emptied queue is skipped by queuesTier() entirely rather than rendered as a
- * blank lane, so the remaining lanes re-center as a group instead of leaving
- * a gap where it was.
+ * Play mode's queue row is horizontal and centered; each lane sizes to just
+ * fit a tile plus its padding rather than stretching to share the row (see
+ * .queue-lanes.play .queue-lane) — an emptied queue is skipped by
+ * queuesTier() entirely rather than rendered as a blank lane, so the
+ * remaining lanes re-center as a group instead of leaving a gap where it was.
  */
 .queue-lanes.play {
   display: flex;
@@ -1473,20 +1527,25 @@ td input {
   min-height: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  /* position/z-index for the rope+rail overlay come from the base
+     .queue-lanes rule above, which this selector also matches. */
   /*
    * Tile size is derived from the queues tier's actual height (100cqh — the
    * tier is a size container): whatever remains after the tier's fixed
    * overhead (panel padding + h2 + lane head + inter-tile gaps ≈ 5rem) is
-   * split across the 3 visible items (top + 2 previews), so all three always
-   * fit — when the tier is short, the tiles shrink instead of the previews
-   * being cut off. Capped at 5rem (the 2x reading size) and floored at 2.2rem
-   * (below that the icons stop being recognizable; previews may clip then).
+   * split across the WINDOW_ROWS visible rows (play/index.ts), so all of
+   * them always fit — when the tier is short, the tiles shrink instead of
+   * rows being cut off. Capped at 5rem (the 2x reading size) and floored at
+   * 2.2rem (below that the icons stop being recognizable; rows may clip then).
+   * The "4" here must match WINDOW_ROWS in play/index.ts.
    */
-  --tile: clamp(2.2rem, calc((100cqh - 5rem) / 3), 5rem);
+  --tile: clamp(2.2rem, calc((100cqh - 5rem) / 4), 5rem);
 }
 
 .queue-lanes.play .queue-lane {
-  flex: 0 0 20%;
+  /* Just wide enough for a tile plus padding — never stretched. */
+  flex: 0 0 auto;
+  width: fit-content;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1527,6 +1586,17 @@ td input {
   opacity: 0.6;
   border-style: dashed;
   cursor: default;
+}
+
+/* Combined-slot block: a shared tint reads as "these move and pick as one". */
+.queue-lanes.play .queue-tile.group-combined {
+  background: #3a3a5c;
+}
+
+/* Linked-slot chain: a subtler tint; the rope (queue-link-overlay) is what
+   actually shows which tiles are chained together. */
+.queue-lanes.play .queue-tile.group-linked {
+  background: #3a4a3a;
 }
 
 .cell-main.dirty {

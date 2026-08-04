@@ -2,7 +2,7 @@
 // (non-`.test.ts`) module so both test files can import the same definitions
 // without risking Vitest double-registering a test file.
 
-import { parseCustomers, parseGrid, parseQueues } from "./parser.ts";
+import { parseCustomers, parseGrid, parseQueueGroups, parseQueues } from "./parser.ts";
 import type { LevelConfig, MapDef } from "./types.ts";
 
 /**
@@ -58,6 +58,7 @@ export function level(
     shuffleDistance: 0,
     serveableSlots: 2,
     queues: parseQueues(overrides.queueString),
+    queueGroups: parseQueueGroups(overrides.queueString),
     grid: parseGrid(overrides.gridString),
     customers: parseCustomers(overrides.customerString),
     ...overrides,

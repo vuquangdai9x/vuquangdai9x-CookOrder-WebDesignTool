@@ -272,7 +272,11 @@ async function loadFromSheet(interactive: boolean): Promise<void> {
         featureUnlock: l.featureUnlock,
         serveableSlots: l.serveableSlots,
         shuffleDistance: l.shuffleDistance,
-        queueString: serializeQueues(l.queues),
+        // l.queueGroups must be passed — otherwise every combined/linked
+        // group in the project is silently wiped the next time a sheet
+        // reload rebuilds this string (serializeQueues's group param
+        // defaults to [] for callers that don't know about grouping).
+        queueString: serializeQueues(l.queues, l.queueGroups),
         gridString: serializeGrid(l.grid),
         customerString: serializeCustomers(l.customers),
       })),

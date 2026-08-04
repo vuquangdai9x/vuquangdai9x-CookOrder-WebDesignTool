@@ -47,8 +47,16 @@ export function middleStructureKey(sim: Simulation): string {
 }
 
 export function queuesStructureKey(sim: Simulation): string {
-  const queues = sim.queues
-    .map((q, i) => `${q.length}:${q[0]?.id ?? "x"}:${sim.canPick(i).ok ? 1 : 0}`)
+  // Column occupancy — not just length/front-id — because a combined block
+  // that finally moves can change which cells hold what without changing the
+  // column's item *count* (the items behind it just slide up into the same
+  // total). Encoding id + group per cell also covers a hole appearing (the
+  // block stalled) and any group's shape changing, plus per-column pickability.
+  const queues = sim.queueGrid
+    .map((col, x) => {
+      const cells = col.map((cell) => (cell ? `${cell.item.id}/${cell.group}` : "-")).join(".");
+      return `${cells}:${sim.canPick(x).ok ? 1 : 0}`;
+    })
     .join(",");
   const needed = [...sim.neededCookedIds()].sort((a, b) => a - b).join(".");
   return `${sim.status}|${queues}|${needed}`;

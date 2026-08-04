@@ -1,8 +1,30 @@
 // Level sanity checks surfaced to designers in Design mode.
 
-import { parseCustomers, parseGrid, parseQueues } from "../core/parser.ts";
+import { EFFECT_FREEZE } from "../core/effects.ts";
+import { parseCustomers, parseGrid, parseQueueGroups, parseQueues } from "../core/parser.ts";
+import type { QueueGroup } from "../core/types.ts";
 import { findToolRecipe } from "../core/types.ts";
 import type { MapData } from "./mapLoader.ts";
+
+/** True when every cell of a group forms one 4-connected block. */
+function isFourConnected(cells: { x: number; y: number }[]): boolean {
+  if (cells.length === 0) return true;
+  const key = (x: number, y: number) => `${x}:${y}`;
+  const set = new Set(cells.map((c) => key(c.x, c.y)));
+  const seen = new Set([key(cells[0].x, cells[0].y)]);
+  const queue = [cells[0]];
+  while (queue.length > 0) {
+    const { x, y } = queue.shift()!;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const k = key(x + dx, y + dy);
+      if (set.has(k) && !seen.has(k)) {
+        seen.add(k);
+        queue.push({ x: x + dx, y: y + dy });
+      }
+    }
+  }
+  return seen.size === set.size;
+}
 
 export interface LevelWarning {
   levelName: string;
@@ -17,9 +39,10 @@ export function validateMap(map: MapData): LevelWarning[] {
   for (const level of map.levels) {
     const add = (message: string) => warnings.push({ levelName: level.name, message });
 
-    let queues, grid, customers;
+    let queues, groups: QueueGroup[], grid, customers;
     try {
       queues = parseQueues(level.queueString);
+      groups = parseQueueGroups(level.queueString);
       grid = parseGrid(level.gridString);
       customers = parseCustomers(level.customerString);
     } catch (err) {
@@ -39,6 +62,41 @@ export function validateMap(map: MapData): LevelWarning[] {
       .filter((i) => i.kind === "ingredient" && !rawIds.has(i.id))
       .map((i) => i.id);
     if (unknownRaw.length) add(`Unknown raw ingredient id(s): ${[...new Set(unknownRaw)].join(", ")}`);
+
+    // Combined/linked-slot group integrity.
+    const cellOwner = new Map<string, number>();
+    groups.forEach((g, gi) => {
+      const label = `${g.kind === "combined" ? "Combined" : "Linked"} queue group ${gi + 1}`;
+      for (const { x, y } of g.cells) {
+        if (x < 0 || x >= queues.length || y < 0 || y >= (queues[x]?.length ?? 0)) {
+          add(`${label} references out-of-range cell (${x},${y}).`);
+          continue;
+        }
+        const key = `${x}:${y}`;
+        const owner = cellOwner.get(key);
+        if (owner !== undefined && owner !== gi) {
+          add(`Queue cell (${x},${y}) belongs to more than one group.`);
+        } else {
+          cellOwner.set(key, gi);
+        }
+      }
+      if (g.cells.length < 2) add(`${label} has fewer than 2 cells.`);
+      if (g.kind === "combined" && !isFourConnected(g.cells)) {
+        add(`${label} isn't a single 4-connected block.`);
+      }
+      if (g.kind === "combined") {
+        const frozen = g.cells.some((c) =>
+          queues[c.x]?.[c.y]?.effects.some((e) => e.effectId === EFFECT_FREEZE),
+        );
+        if (frozen) {
+          add(
+            `${label} contains a Freeze effect — the block (and everything ` +
+              "behind it, in its columns) can never move, so picksMade can never " +
+              "reach the thaw threshold. This is an unrecoverable deadlock.",
+          );
+        }
+      }
+    });
 
     const unknownCooked = customers
       .flatMap((c) => c.dishes.flatMap((d) => d.cookedIds))

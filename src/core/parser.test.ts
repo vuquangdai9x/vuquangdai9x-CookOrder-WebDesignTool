@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseCustomers,
   parseGrid,
+  parseQueueGroups,
   parseQueues,
   serializeCustomers,
   serializeGrid,
@@ -27,6 +28,56 @@ describe("queue string", () => {
 
   it("treats negative ids as sweeper objects", () => {
     expect(parseQueues("-1,0")[0][0].kind).toBe("sweeper");
+  });
+});
+
+describe("queue groups", () => {
+  const grouped = "0,1,0%0,0,1%1,7,1$0-0,1-0;0-2,0-3$1-1,2-1";
+
+  it("round-trips a group-bearing string", () => {
+    const queues = parseQueues(grouped);
+    const groups = parseQueueGroups(grouped);
+    expect(serializeQueues(queues, groups)).toBe(grouped);
+  });
+
+  it("parses combined groups (first section) then linked groups (second section)", () => {
+    const groups = parseQueueGroups(grouped);
+    expect(groups).toEqual([
+      { kind: "combined", cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
+      { kind: "combined", cells: [{ x: 0, y: 2 }, { x: 0, y: 3 }] },
+      { kind: "linked", cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }] },
+    ]);
+  });
+
+  it("parses the queue data identically to a group-less string", () => {
+    const plain = "0,1,0%0,0,1%1,7,1";
+    expect(parseQueues(grouped)).toEqual(parseQueues(plain));
+  });
+
+  it("a group-less string round-trips byte-identically (no '$' is ever emitted)", () => {
+    const s = "0,1#4:5,0,1%0,0,1,0%1,7,1,7,7";
+    expect(serializeQueues(parseQueues(s), parseQueueGroups(s))).toBe(s);
+    expect(parseQueueGroups(s)).toEqual([]);
+  });
+
+  it("round-trips one-sided group sections", () => {
+    const combinedOnly = "0,1$0-0,1-0$";
+    expect(serializeQueues(parseQueues(combinedOnly), parseQueueGroups(combinedOnly))).toBe(combinedOnly);
+
+    const linkedOnly = "0,1$$0-0,1-0";
+    expect(serializeQueues(parseQueues(linkedOnly), parseQueueGroups(linkedOnly))).toBe(linkedOnly);
+  });
+
+  it("normalizes present-but-empty group sections away", () => {
+    expect(serializeQueues(parseQueues("0,1$$"), parseQueueGroups("0,1$$"))).toBe("0,1");
+    expect(serializeQueues(parseQueues("0,1$"), parseQueueGroups("0,1$"))).toBe("0,1");
+  });
+
+  it("throws on malformed cell coordinates", () => {
+    expect(() => parseQueueGroups("0,1$-1-2$")).toThrow();
+    expect(() => parseQueueGroups("0,1$1-2-3$")).toThrow();
+    expect(() => parseQueueGroups("0,1$1-$")).toThrow();
+    expect(() => parseQueueGroups("0,1$1$")).toThrow();
   });
 });
 
