@@ -50,7 +50,7 @@ const restored = loadDraft();
 
 /** Working copy the editors mutate; CSV export writes exactly this. */
 let map: MapData = restored?.map ?? structuredClone(MAP1_DATA);
-let mode: Mode = "design";
+let mode: Mode = "play";
 let dataOrigin = restored
   ? restored.migrated
     ? "local draft (levels kept, definitions refreshed)"
