@@ -710,12 +710,12 @@ export class PlayView {
     }
   }
 
-  /** Whether the Save Me offer, rather than the plain failure overlay, should show on this loss. */
+  /** Whether the Save Me offer, rather than the plain failure overlay, should show on this loss. `saveMeCount < 0` means unlimited (same "-1 = no cap" convention as Clean Table's numCleanStack). */
   private canOfferSaveMe(): boolean {
     return (
       this.sim.status === "lost" &&
       !this.saveMeDeclined &&
-      this.sim.saveMeUsed < BOOSTER_PARAMS.saveMeCount
+      (BOOSTER_PARAMS.saveMeCount < 0 || this.sim.saveMeUsed < BOOSTER_PARAMS.saveMeCount)
     );
   }
 

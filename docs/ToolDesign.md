@@ -5,17 +5,35 @@ reference; this doc focuses on what the designer sees and does.
 
 ## Shared shell (both windows)
 
-- Header bar: Map dropdown → Level dropdown (level list depends on chosen map), a loader label,
-  an unsaved-changes indicator (`🔴 Unsaved` badge + `+N / -N` add/remove counters), a primary
-  **Save** button, and a **⋮ kebab menu** for secondary actions (Undo/Redo, Clear All, etc.).
-- On open: fetches dropdown data, auto-detects Map/Level from the active sheet row/selection,
-  then loads that level's data.
-- Switching Map or Level reloads data for the new selection and resets undo history.
-- Undo/Redo: `Ctrl+Z` / `Ctrl+Y` (or Ctrl+Shift+Z), backed by an in-memory history stack pushed
-  on every mutating action (`saveState(actionName, addedDelta, removedDelta)`); the add/remove
-  counters and unsaved badge are derived from `historyIndex !== lastSavedHistoryIndex`.
-- `beforeunload` guard warns if there's an unsaved history position.
-- Save is explicit and async via `google.script.run`; nothing auto-persists to the sheet.
+The tool runs entirely client-side (Vite + TypeScript, no framework, no server) and currently
+wires up a **single map** (Map 1 — burger); Map 2's config exists on disk but has no map picker in
+the UI yet, so there's no Map dropdown.
+
+- Header bar (`main.ts`): a **Design/Play mode toggle**, a data-origin label (`bundled Map 1
+  snapshot` / `local draft` / `live Google Sheet` / an error string, each falling back to local
+  data on failure), a **Sheet ID** text field, and action buttons — **Load from Sheet** (or
+  **Sign in with Google** before the first successful auth), **Export CSV**, **Reset draft** —
+  collapsed behind a **⋮ kebab menu** on narrow windows.
+- **No spreadsheet id is checked into source.** The Sheet ID field starts empty; typing one in is
+  what makes "Load from Sheet" (and the silent startup auth check) do anything at all — with
+  nothing typed in, no Google auth is attempted and the tool just runs on local/bundled data. This
+  is deliberate: only someone who already has their own project's spreadsheet id can pull its live
+  data through this tool.
+- **The app opens in Play mode by default.** Switching Design ↔ Play never re-picks a level — both
+  modes share one "current level" selection that stays in sync in both directions (edit level 1_5
+  in Design, switch to Play, land on 1_5).
+- **Data flow**: reads go through the Sheets API v4 with a per-user OAuth token (Google Identity
+  Services — no backend, no client secret); each user's own Google account access controls what
+  they can read. "Save" (per-section, see below) is a **local, optimistic edit** — it commits into
+  the in-memory map object and persists to `localStorage` as a draft, nothing round-trips to the
+  sheet by itself. Pushing back to the actual sheet is a **separate, explicit** "Write to sheet"
+  action per section/level. **Export CSV** downloads the whole project (every level + every
+  definition table) as CSV files for external use, independent of both of the above.
+- Per-section Undo/Redo backed by an in-memory history stack pushed on every mutating action; the
+  unsaved (`🔴 Unsaved`) badge and add/remove counters are derived from the history position versus
+  the last-saved position. Switching Level resets each section's history; switching *within* the
+  same map keeps everything else.
+- `beforeunload` guard warns if Design mode has any unsaved section.
 - A plain 256px footer sits at the bottom of every page (credit line only — no controls).
 
 ## Page Layout
@@ -28,9 +46,16 @@ level and the order a player experiences it:
 2. **Grid Config** (middle) — the board those orders get served onto.
 3. **Ingredient Queue Reorder** (bottom) — the supply that feeds the grid.
 
-All three sections share the header bar's Map/Level dropdowns, but each keeps its **own**
-Save button, unsaved badge, and undo/redo history stack — switching Map/Level reloads and resets
-all three at once; saving one section does not touch the others' pending edits.
+Two bars sit above the three sections, both scoped to Design mode (not the shared header — see
+Shared shell): a **map settings bar** (grid width/height, dirty-stack height, visible-row window —
+applies to every level in the map) and a **level bar** (the Level picker plus per-level
+weather/tag/unlock/serve-slots fields, `+ Level` / `🗑 Level`, and a **Definitions…** button opening
+an overlay panel with the global effect/cell-type/customer-type tables — boosters are the one
+definition table **not** here; they're static, hand-authored JSON with no in-tool editor, see
+[GDD.md](GDD.md) §2.6). All three sections below share these,
+but each keeps its **own** Save button, unsaved badge, and undo/redo history stack — switching
+Level reloads and resets all three at once; saving one section does not touch the others' pending
+edits.
 
 **Play mode mirrors the same three-tier layout** (Customer / Grid / Queue, top-to-bottom), so a
 designer playtesting a level doesn't have to relearn where things are. The one structural
@@ -51,9 +76,12 @@ orders.
 - Each card shows: its position number, a **wait-time** badge (patience timer; "∞" when 0), a
   **weather-effect** toggle icon (whether bad weather halves this customer's patience), and its
   dish chip rows.
-- Right-click a card → context menu: **Insert Before/After** (blank customer), **Duplicate**,
-  **Mark as Staff** (clears all dishes — a dish-less customer occupies a slot only to clear dirty
-  stacks and needs nothing served), **Remove**.
+- Right-click a card → context menu: **Insert Before/After** (blank customer), **Duplicate**, one
+  **Set type: `<name>`** entry per row of the customer-types definition table (currently Customer
+  and Staff, but this is data-driven — a new customer type is just a new definition row plus a
+  registered behavior, no menu code change needed), and **Remove**. Switching to Staff clears the
+  customer's dishes (a dish-less customer occupies a slot only to clear dirty stacks and needs
+  nothing served); switching away from Staff seeds one blank dish if it had none.
 - Staff cards render visually distinct (muted card style + apron badge) since they never show an
   order and leave immediately.
 - **Per-dish editing**: each dish is a row of cooked-ingredient chips with a trailing "+" chip
@@ -78,24 +106,49 @@ orders.
 
 Purpose: build the ordered sequence of ingredients a player pulls from during a level.
 
-- **Multiple parallel "lanes"** (queues) laid out left-to-right; each lane is an independently
-  sortable grid of ingredient tiles plus a trailing "+" tile to insert.
-  - Drag a lane's header to reorder lanes (`Sortable` on the lanes container).
-  - Drag tiles within/between lanes to reorder or move ingredients (per-lane `Sortable`,
-    shared drag group so items cross lanes).
-  - Right-click a lane's empty area → **Insert Queue Left/Right**, **Clear Queue**, **Remove
-    Queue** (blocked below 1 lane; confirms if non-empty).
+- **Multiple parallel "lanes"** (queues, 1–5) laid out left-to-right as a real dense grid — column
+  = queue index, row = depth (0 = front) — with short lanes padded by filler cells so every column
+  lines up row-for-row. That grid is what gives a combined/linked group a meaningful (x,y)
+  coordinate (see below).
+  - Drag a lane's header to reorder lanes (`Sortable`, `handle: ".lane-head"`).
+  - Drag tiles within/between lanes to reorder or move ingredients (per-lane `Sortable`, shared
+    drag group so items cross lanes).
+  - Right-click a lane's empty area → **Insert Column Left/Right** (disabled at 5), **Clear
+    Queue**, **Remove Column** (disabled at 1 lane; confirms if non-empty).
   - Clicking a lane sets it "active" (highlighted) — new items (Quick Add, generator output)
     default into whichever lane was last interacted with.
-- **Per-tile interaction**:
-  - Right-click a tile → context menu: Insert Before/After (opens a mini ingredient picker),
-    plus per-status toggles (Freeze, Link, HoldingKey, etc.) each with inline param inputs
-    (e.g. Freeze duration, Link "broken" flag, HoldingKey lock-color picker).
-  - Hover shows a small "X" remove button.
-  - Visual encodes: frozen tiles get an icy CSS filter; linked tiles (not broken) draw a
-    connecting "bridge" to the next linked tile in the same lane; HoldingKey shows a
-    color-tinted badge bottom-right using the exact `LockColor` hex; other statuses show a
-    small icon (+ optional param text) top-left.
+- **Multi-select**: click a tile to select only it; shift-click toggles other tiles in/out of the
+  same selection, across lanes. Selection is UI-only state (not an undo step) and drives Combine
+  and Link (below); it clears itself once either action runs.
+- **Combined and linked slots** (see [GDD.md](GDD.md) §2.1.1 for the gameplay rules) — with 2+
+  tiles selected, right-click any of them for two additional menu items:
+  - **Combine**: enabled only when the selection is a single 4-connected block (any shape, any
+    number of columns/rows). Creates a rigid group that moves and is picked as one unit.
+  - **Link**: enabled only when the selection has at most one tile per column and those columns
+    form one unbroken adjacent run (no shared column, no gap). Creates a chain that's pickable
+    only once every member reaches its own column's front row.
+  - Both are disabled if any selected tile already belongs to a group of that kind. Selecting a
+    tile that's already grouped and right-clicking instead offers **Uncombine** / **Break Link**.
+  - Combined blocks get a shared tint; each *separate* combined group additionally gets its own
+    rail color (cycled from a small palette) so two adjacent blocks read apart at a glance. Linked
+    chains get a subtler tint plus a dashed rope drawn between each pair of column-adjacent
+    members — sorted by column, not by current row, since a chain's members can independently sit
+    at different depths. The rope/rail overlay is layered above each lane's own panel background
+    but below the tile frames, so only the gap between two tiles actually shows a line.
+- **Per-tile interaction** (right-click a tile):
+  - **Insert Top** / **Insert Bottom** — opens a thumbnail picker, inserts at the front/back of
+    that tile's own lane (not literally before/after the clicked tile).
+  - Per-status toggles for **Freeze** and **HoldingKey**, each with inline param inputs (Freeze's
+    thaw count, HoldingKey's lock-color picker). A retired **Link** status id from an older design
+    still parses harmlessly in old data but is no longer offered here — grouping is now the
+    Combine/Link actions above, not a per-tile toggle.
+  - **Remove**.
+  - Hover also shows a small "X" remove button as a shortcut for the same action.
+  - Visual encodes: a **frozen** tile (remaining thaw count > 0) gets an icy CSS filter and a
+    corner icon; HoldingKey shows a color-tinted badge bottom-right using the exact key-color hex;
+    other statuses show a small icon (+ optional param text) top-left. (Play mode additionally
+    shows a live "picks left to break the ice" badge and a landing-particle burst on thaw — Design
+    mode has no running sim, so it just shows the static frozen state.)
   - Change-tracking outline, per tile: **green** if it's new since the last save, **yellow** if
     it's the same tile with a different effect. A tile has no removable children of its own, so
     it never shows red — but the **lane** it used to sit in does, if that tile left it (deleted,
@@ -107,29 +160,32 @@ Purpose: build the ordered sequence of ingredients a player pulls from during a 
 - **Quick Add Pool**: slide-up bottom drawer showing every available ingredient thumbnail;
   clicking one appends it to the active lane.
 - **Auto-Generate Queue** (kebab menu, green/highlighted): confirms it will overwrite all lanes,
-  calls the recipe-piece generator server-side, then round-robins the result evenly across the
-  existing lane count so lane lengths stay balanced.
+  runs the recipe-piece generator client-side against the orders' required piece counts, then
+  round-robins the result evenly across the existing lane count so lane lengths stay balanced.
 - **Shuffle Queue**: prompts for a max shuffle distance, jitters each lane's item order locally
-  (does not cross lanes, does not hit the server).
+  (does not cross lanes).
 - **Zoom controls** (+/- buttons or Ctrl+scroll) resize tiles 50%–250%.
 - **Recipe Pieces foldout** (collapsible, above the lanes): shows required vs. current
   ingredient-piece totals and a per-ingredient breakdown (short pieces highlighted red), plus a
   parallel **key/lock** breakdown (HoldingKey color counts vs. the grid's ColorLock
   requirements). Two independent warning badges: "Queue can't complete the level" (pieces or
   keys short) and "Key colors don't match the grid's lock amounts" (softer, shown only when
-  completable but key counts are off). These recompute live as the designer edits, and are also
-  refreshed passively via **Refresh Grid & Recipe Counts** without touching the in-progress queue.
-- **Save Order**: pushes all lanes back to the sheet; clears unsaved flags on both the live
-  queue and the matching undo-history snapshot (so an immediate undo doesn't resurrect the
-  "unsaved" look on already-saved items).
+  completable but key counts are off). These recompute live as the designer edits.
+- **Save Order**: same local, synchronous commit pattern as the other two sections (see Shared
+  shell) — clears unsaved flags on both the live queue and the matching undo-history snapshot (so
+  an immediate undo doesn't resurrect the "unsaved" look on already-saved items). A separate
+  **⇪ Write to sheet** button is what actually pushes this level's data back to the linked
+  spreadsheet.
 
 ## Grid Config window
 
 Purpose: lay out the merge-grid cell types (locked, ingredient-slot, color-lock, etc.) for a
 level.
 
-- Grid rendered as a fixed `cols × rows` CSS grid of cells sized from `config.LEVEL_PATH.MAP_SIZE`.
-  Each cell shows a faint `(x,y)` coordinate, its type icon, and any type-specific decoration:
+- Grid rendered as a fixed `cols × rows` CSS grid of cells sized from the map's own
+  `gridWidth`/`gridHeight` (a per-map setting, editable in the map settings bar — see Shared
+  shell). Each cell shows a faint `(x,y)` coordinate, its type icon, and any type-specific
+  decoration:
   - Ingredient-slot cells (`encode 3`): corner type icon + centered ingredient thumbnail + amount
     badge bottom-right.
   - ColorLock cells (`encode 4`): color swatch behind a centered type icon + lock-amount badge.
@@ -147,13 +203,12 @@ level.
   **yellow** if it had a type and now has a different one, **red** if it had a type and is blank
   again — the cell lost its content, even though visually that leaves it looking empty.
 - Kebab menu: **Clear All** (confirms, resets every cell to empty) and Undo/Redo.
-- **Save Grid** disables the Map/Level dropdowns and the button during the async save (guards
-  against switching level mid-save), serializes cells back to the `#`-joined grid string, then
-  clears all `isChanged` flags and syncs the undo-history snapshot that was actually saved
-  (captured by index before the async call, so a level switch mid-save can't corrupt state).
-- Switching Map re-fetches that map's ingredient pool (for ingredient-slot cells) separately
-  from the grid string itself; switching Level with the same map reuses the cached type/pool
-  definitions and only re-fetches the lightweight grid string for fast level-to-level switching.
+- **Save Grid**: same local, synchronous commit pattern as the other two sections (see Shared
+  shell) — serializes cells back to the `#`-joined grid string, clears change-tracking flags, and
+  syncs the undo-history snapshot that was actually saved. A separate **⇪ Write to sheet** button
+  pushes this level's data back to the linked spreadsheet.
+- Switching Level reuses the same map's cached ingredient pool (for ingredient-slot cells) and
+  only re-parses that level's own grid string.
 - In Play mode this same grid rendering sits in the **left half** of the middle panel, next to the
   Preparing/Cooking pipeline on the right — see Page Layout above.
 
@@ -184,26 +239,52 @@ tool.
   waits on the grid, dimmed, and is pulled into the tool ahead of new picks the moment a slot
   frees).
 - **Movement**: every hand-off animates as a floating item flying between the two places —
-  queue→tool slot, queue→grid, tool→grid, grid→tool (reclaiming a parked raw), grid→customer.
-  The animation is the gate: cooking starts when the ingredient *arrives* in the slot, matching
-  runs when an item *arrives* on the grid, and a dish fills when the piece *arrives* at the
-  customer.
+  queue→tool slot, queue→grid, tool→grid, grid→tool (reclaiming a parked raw), grid→customer, and
+  backpack→customer (Save Me, below). The animation is the gate: cooking starts when the
+  ingredient *arrives* in the slot, matching runs when an item *arrives* on the grid, and a dish
+  fills when the piece *arrives* at the customer.
 - **Completion feedback**: when a customer's whole order is filled, a burst of particles fires
   from their card and the card itself brightens then **shrinks away to nothing** — only once that
   finishes does the next customer (or the new "?" card) take its place, so the two never overlap.
   Customers currently in a serve slot are highlighted; the "?" card is dimmed/dashed.
-- **Bottom — Ingredient queues**: same lane layout as the Design-mode queue window, but each
-  lane's top tile is now a clickable "pick" button (disabled + reason tooltip when blocked by an
-  effect like Freeze); items the currently-active customers need are highlighted.
-- **Config bar folds**: the map/level/speed/tool-full-policy controls stretch full width but stay
+- **Bottom — Ingredient queues**: same grid-of-lanes layout as the Design-mode queue window
+  (including combined/linked-group tints and rope/rail overlay), sized to the map's configured
+  **visible-row window** (`visibleRows`). Normally only each lane's front tile is a clickable
+  "pick" button (disabled + reason tooltip when blocked, e.g. still-frozen); a frozen tile also
+  shows a live bottom-right badge counting down the adjacent picks still needed to break it, and
+  plays a small ice-colored particle burst the instant it thaws. Items the currently-active
+  customers need are highlighted. While the **Ingredient Pick** booster is armed (below), the
+  window temporarily expands and *every* visible tile becomes clickable, not just the front row.
+- **Boosters bar**: four booster buttons (icon, name, remaining-charge badge) rendered as a
+  scrollable strip **below** the three main tiers, not inside them — so it never shrinks the
+  page's fixed-height layout, it's just reachable by scrolling. Shift-up Row, Clean Table, and
+  Auto Complete Dish fire immediately on click; Ingredient Pick instead arms/disarms pick mode
+  (click again, or a queue tile, to resolve it). A charge is only spent on an actual effect. See
+  [GDD.md](GDD.md) §2.6 for what each one does.
+- **Config bar folds**: the level/speed/tool-full-policy controls stretch full width but stay
   visually small and collapse behind a **▾/▸ Config** toggle; the HUD (elapsed time, served count,
-  picks, weather, keys) is live game state, not config, so it never folds away.
+  picks, weather, keys) is live game state, not config, so it never folds away. A separate
+  **▾/▸ Bot** toggle (collapsed by default) reveals a playtesting panel: pick Random or Greedy,
+  set a trial count, and run headless batches of the level against a **fresh Simulation per
+  trial** — entirely independent of the live game on screen — reporting a win/loss tally and
+  flagging a zero-win result as a possible unsolvable/too-hard level. There is no lookahead-search
+  bot; only Random and Greedy strategies.
 - **Speed** is a single option group — ×1 / ×2 / ×3 / **Skip** — where picking one deselects the
   others. Skip runs with **no animation at all**: flights land the instant they are created and
   cooking is fast-forwarded. Pause and Restart sit alongside.
+- **On a loss**, if a Save Me use remains (see below), the overlay offers **Save Me** or **Give
+  Up** instead of going straight to the failure screen.
+- **Save Me**: accepting sweeps the grid's cooked/raw ingredients into a **backpack** (grid cell
+  showing a backpack icon + item-count badge), converting any raw through its own recipe first,
+  with a one-off fly-in animation for each swept item (not a tracked sim "flight" — the state
+  change already committed synchronously, this is purely cosmetic) — then resumes play with every
+  active customer's patience reset. A populated backpack renders on the grid like any other
+  occupied cell and is drained automatically as a serving source, checked **before** the grid.
 - A win/lose overlay appears over the whole layout when the level resolves, with the reason and a
-  Restart button; the three sections stay rendered underneath so the final board state is still
-  visible for review.
+  Restart button — plus, on a win with another level after this one in the map's level list, a
+  **Next Level** button that jumps straight there (same level-selection path the Level picker
+  uses). The three sections stay rendered underneath so the final board state is still visible for
+  review.
 
 ## Common design patterns worth reusing
 

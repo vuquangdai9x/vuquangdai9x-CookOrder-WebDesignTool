@@ -7,7 +7,8 @@
 CookOrder is a queue-management cooking puzzle. The player pulls raw ingredients from a small number of visible queues; each pulled ingredient is automatically prepared and cooked into one or more **cooked ingredients** that land on a limited output grid. Customers arrive with orders composed of cooked ingredients; the game automatically serves them from the grid. The player's entire skill expression is **which queue to pull from, and when** — managing grid space, order demand, and ingredient supply.
 
 - **Win**: serve all N customers of the level.
-- **Lose**: an output (cooked ingredient or dirty dish) has no free grid cell to land in; or the OutOfIngredient event fires with its default handler.
+- **Lose**, one of four reasons: a cooked ingredient has no free grid cell to land in (`grid-overflow`); a dirty dish has no free grid cell to land in (`dirty-overflow`); the queues run dry with orders still outstanding and nothing left in flight — the OutOfIngredient event's default handler (`out-of-ingredient`); or a customer's patience timer expires (`customer-timeout`).
+- **Save Me**: on any loss, the player may be offered one more chance instead of the plain failure screen (see §2.6) — accepting collapses the grid into a backpack and resumes play, so a "loss" isn't always final.
 
 ## 2. Core Loop
 
@@ -21,13 +22,22 @@ customer order needs matched from grid → dish completes → customer pays & le
 
 ### 2.1 Ingredient queues
 
-- The level has **X queues** (initial design: 3).
-- Only the **top item** of each queue can be picked. The **next 2 items** are visible (preview); everything deeper is hidden.
+- The level has **X queues** (initial design: 3), up to 5.
+- Only the **top item** of each queue can be picked (unless the Ingredient Pick booster is armed — see §2.6). The rest of the visible window is preview-only; everything deeper is hidden.
+- **Visible row window** is a per-map setting (`visibleRows`, default **3** = 1 pickable front row + 2 preview rows), not a fixed constant — a designer can widen or narrow how much lookahead a map gives the player.
 - Queue items are typed:
   - **Ingredient** — a raw ingredient id from the map's ingredient set.
   - **Sweeper** — a utility object; picking it skips the cook pipeline and instantly clears the **oldest dirty-dish stack** (the whole stack).
   - *(extensible — future object types may be added)*
-- Queue items may carry **effects** (see §5), e.g. freezed, locked, key-holder.
+- Queue items may carry **effects** (see §5), e.g. Freeze, HoldingKey.
+
+#### 2.1.1 Combined and linked slots
+
+Two neighboring queue items can be grouped so they behave as more than independent single slots — authored in Design mode by multi-selecting cells and choosing Combine or Link (see [ToolDesign.md](ToolDesign.md)). Grouping is geometry over the dense queue grid (column = queue index, row = depth, 0 = front); it's stored separately from the queue contents so the two-string round-trip stays exact even with no groups authored (see §7.1).
+
+- **Combined**: a 4-connected block of cells (any shape, can span several columns and rows) that moves and is picked **as one rigid unit**. If any of its cells can't rise, none of it does — and the plain cells behind it, in every column it occupies, are blocked too, so a stuck block can leave a visible hole in the queue. Picking it from any of its front-row columns dispatches every member at once.
+- **Linked**: a chain of 2+ cells, **one per column**, spanning a single unbroken run of **adjacent** columns (Design mode's Link action refuses any other shape — two cells in the same column, a gap between columns, or more than one cell per column). Unlike Combined, linking **never restricts movement** — each member rises independently at its own pace. The whole chain is pickable only once **every** member has reached its column's front row; then all of them fly together in one pick. The UI draws a rope between each pair of column-adjacent members so the player can see how far apart a chain's members currently are.
+- A hand-authored level string can in principle describe a linked chain that isn't one-per-column/contiguous (the data model itself doesn't enforce it), but Design mode's own authoring tool never produces one — the constraint is a UX guardrail, not a simulation invariant.
 
 ### 2.2 Cooking tools
 
@@ -63,13 +73,35 @@ Every hand-off is a **flight**: the item is shown travelling from one place to t
 
 ### 2.5 Dirty dishes
 
-- Every departing (served) customer returns **one dirty dish** placed on the grid.
-- Dirty dishes **stack** in a single cell up to **N per stack** (per-level config). When a stack is full, the next dirty dish starts a **new stack in the first free cell** (scan order).
-- Dirty stacks **occupy grid cells** and block cooked-ingredient placement. A dirty dish with **no cell to go to → lose**.
+- Every departing (served) customer returns dirty dish(es) placed on the grid: **one per dish that contained a cooked ingredient with a defined dirty-object source** (`DirtyObjectDef.sourceCookedId`, see §4) — e.g. a customer served a burger dish AND a soda dish leaves both a dirty plate and a dirty cup. Maps that don't define any dirty-object types keep the legacy behavior: exactly one generic dirty dish per served customer, regardless of dish count.
+- Dirty dishes **stack by type** in a single cell up to **N per stack** (per-level config, `dirtyStackHeight`). When a type's open stack is full, its next dirty dish starts a **new stack in the first free cell** (scan order); a different type never joins that stack. This includes multiple dishes of the same type left behind by **one** customer in the same instant — they stack together like any other same-type dishes, not one-per-cell.
+- Dirty stacks **occupy grid cells** and block cooked-ingredient placement. A dirty dish with **no cell to go to → lose** (`dirty-overflow`, distinct from a cooked ingredient's `grid-overflow`).
 - Cleaning:
   - **Sweeper** (queue object): instantly clears the oldest stack.
   - **Staff** (special customer type, typeId 1 — see §4/§7.3): occupies a customer slot on arrival, immediately removes up to **X oldest dirty stacks** (the 5th string field), requires no dishes, then leaves.
-- The dirty dish is **abstract** — each map skins it (plate, cup, box, …).
+  - **Clean Table** booster (see §2.6): clears a designer-tunable number of stacks (or all of them) on demand.
+- The dirty dish is **abstract by default** — each map can skin it per type (plate, cup, box, …) via the dirty-objects table, falling back to one generic sentinel image for maps that don't.
+
+### 2.6 Boosters
+
+Four game-wide booster actions, defined once for the whole game (`src/data/config/general/boosters.json`, not per-map, not Design-mode-editable — static JSON). Each level starts with its own **charge count per booster** (`boosterCharges`, default `[3,3,3,3]` when a level doesn't specify its own); a charge is spent only when the booster actually changes something.
+
+| # | Name | Effect |
+|---|---|---|
+| 0 | **Shift-up Row** | Rotates every queue column up one instance: the front item(s) leave, everything behind shifts up, and the displaced item(s) refill at the **back** of their own column. A combined block moves as one unit and keeps its group tag; a linked member moves alone (linking never restricts movement). |
+| 1 | **Ingredient Pick** | Arms a mode that expands the visible window to `numRowPick` rows (default 7) and makes **every** visible slot pickable, not just the front — including picking a combined block or a not-yet-all-front linked chain from any position. A charge is spent only on an actual successful pick; arming and then canceling (or missing) costs nothing. |
+| 2 | **Clean Table** | Clears `numCleanStack` dirty stacks, oldest first; `-1` (the default) clears all of them. |
+| 3 | **Auto Complete Dish** | Finishes one remaining dish of the left-most active customer. For each cooked ingredient the dish still needs, it draws from **backpack → grid → queue**, in that priority order, and the whole dish completes **atomically** — if any single ingredient can't be found anywhere, nothing is taken. A queue-sourced raw that yields more than one piece per pick is only partially consumed per use: it stays visibly in the queue, and a running tally of "parts already taken" is kept, until enough parts have accumulated to match its yield — only then is it actually removed. |
+
+### 2.7 Save Me
+
+On any loss, instead of the plain failure screen, the player may be offered a **Save Me** rescue — as long as at least one use remains (`saveMeCount`, global param; `-1` means unlimited). Accepting:
+
+1. Sweeps every cooked or raw ingredient off the grid into a **backpack**. A raw is converted through its own tool recipe first (so the backpack only ever holds finished cooked ids); a raw with no recipe goes in as-is. Dirty stacks are left untouched.
+2. Resets every active customer's patience timer, so a `customer-timeout` loss can't immediately re-fire on the very next tick.
+3. Returns the run to `playing`.
+
+Declining shows the normal failure overlay instead. Once collapsed, the backpack is a first-class ingredient source: whenever a customer needs a cooked ingredient the backpack holds, it's served from there **before** the grid is even checked (same priority Auto Complete Dish uses) — with its own fly-to-customer animation. The backpack cell is cleared only once every item in it has been drained.
 
 ## 3. Game Structure
 
@@ -90,27 +122,31 @@ All element definitions live in **tables** (Google Sheets-backed; table UI in th
 | Raw ingredients (per map) | id, name, code, price, numSlices, icon fileId |
 | Cooked ingredients (per map) | id, name, icon fileId, `baseId` (optional — another cooked ingredient id required in the dish first, see §2.4) |
 | Cooking tools (per map) | id, name, numSlots, cookingTime, recipes (in → out × amount) |
+| Dirty objects (per map, optional) | id, name, icon fileId, `sourceCookedId` (which cooked ingredient's presence in a dish spawns this type, see §2.5) |
 | Effect/status definitions (global) | id, name, icon, description, param definitions `<name, data-type>` |
 | Grid cell types (global) | id, name, icon, description, param definitions `<name, data-type>` |
 | Customer types (global) | id, name, icon, description, param definitions `<name, data-type>` |
+| Boosters (global, static) | id, name, icon, description, param definitions `<name, data-type>` — plus a `params` block of game-wide tuning (row counts, charge counts, the backpack's icon spec, see §2.6/§2.7). Not sheet-backed and not Design-mode-editable; hand-authored JSON only. |
 
-Effect/cell-type/customer-type **definitions are metadata** (designer-editable); their **behaviors are registered in code** via extensible registries (see §5). The definitions tables mirror the designer's existing Google Sheet schema.
+Effect/cell-type/customer-type **definitions are metadata** (designer-editable); their **behaviors are registered in code** via extensible registries (see §5). The definitions tables mirror the designer's existing Google Sheet schema. Boosters are the one exception — game-wide, not per-map, and their JSON has no linked Sheet source yet.
 
-The config lives as JSON under `src/data/config/`: cross-map tables in **`general/`** (ingredient statuses, cell statuses, customer types, key colours, weather, emotions, meta key-values) and one folder per map named **`map<index>-<id>/`** (`map1-burger/`, `map2-chicken_fried/`) holding that map's `map.json`, `ingredients.json`, `cooked-ingredients.json`, `cooking-tools.json`, `dishes.json` and `levels.json`. Every definition row carries its artwork as a Google Drive **`fileId`** plus an `emoji` fallback.
+The config lives as JSON under `src/data/config/`: cross-map tables in **`general/`** (`ingredient-statuses.json`, `cell-statuses.json`, `customer-types.json`, `key-colors.json`, `weather.json`, `emotions.json`, `tags.json`, `meta.json`, `boosters.json`, `maps.json`) and one folder per map named **`map<index>-<id>/`** (`map1-burger/`, `map2-chicken_fried/`) holding that map's `map.json`, `ingredients.json`, `cooking-tools.json`, `levels.json`, and whichever of `cooked-ingredients.json`, `dishes.json`, `dirty-objects.json`, `customer-avatars.json`, `recipe-parts.json` that map defines (a map missing `cooked-ingredients.json` derives its cooked set from its tools' recipe outputs instead). Every definition row carries its artwork as a Google Drive **`fileId`** plus an `emoji` fallback, with an optional bundled local image tried first. Only Map 1 is currently wired into the running tool; Map 2's config exists on disk but has no map switcher in the UI yet.
 
 ## 5. Effects & Extensibility
 
 Effects can attach to **queue items**, **grid cells**, and **dishes**. Each effect instance = `effectId` + ordered param list (params typed per the definition table).
 
-Built-in behaviors (initial set; all implemented as registry handlers so future maps can add more without touching core sim):
+Built-in behaviors (all implemented as registry handlers so future maps can add more without touching core sim, except Freeze — see below):
 
-| Effect | Attaches to | Behavior (default design) |
+| Effect | Attaches to | Behavior (current design) |
 |---|---|---|
-| Freezed | queue item | Cannot be picked until the player picks `param0` other items. |
-| Locked | queue item | Cannot be picked until a matching key is consumed. |
-| Key-holder | queue item | Picking it unlocks the matching locked cell/item (`param0` = lock id). |
+| Freeze | queue item | Cannot be picked until `param0` picks of an **adjacent** slot (4-connected in the queue grid: same column one row off, or an adjacent column same row) have happened — not just any `param0` picks anywhere. Each frozen item tracks its own remaining count, decremented by every adjacent pick, down to 0. This needs per-item state and the picked cell's coordinates, which the generic effect-registry hook can't carry, so it's special-cased directly in `sim.ts` rather than going through the registry like the others. |
+| Link (retired) | queue item | No-op. Superseded by real combined/linked **queue groups** (§2.1.1), which are data (`QueueGroup`), not a per-item effect. Kept registered only so old authored data carrying this marker still parses harmlessly. |
+| HoldingKey | queue item | Picking it grants one key of `param0` (colorId), which can open a matching ColorLock cell. |
 | Blocked | grid cell | Cell never accepts items. |
-| Locked | grid cell | Cell accepts items only after unlocked by key. |
+| OrderLock | grid cell | Cell accepts items only once `param0` customers have been served. |
+| Ingredient-slot | grid cell | Cell accepts items only once `param1` picks of ingredient `param0` have happened. |
+| ColorLock | grid cell | Cell accepts items only once `param1` keys of color `param0` have been collected. |
 
 Customer-type behaviors use the same registry pattern; built-ins: **normal** (orders dishes) and **staff** (clears X dirty stacks, see §2.5).
 
@@ -118,9 +154,11 @@ Customer-type behaviors use the same registry pattern; built-ins: **normal** (or
 
 The sim raises named events that levels/maps can bind handlers to (extensible):
 
-- **OutOfIngredient** — all queues empty while orders remain unfilled. Default handler: **lose**. Future handlers: random ingredient spawn, etc. (Designers are expected to balance ingredient counts against orders; this is a safety net.)
-- **GridOverflow** — an output had no free cell. Handler: lose.
+- **OutOfIngredient** — all queues empty, nothing in flight or parked, orders remain unfilled, and the backpack (if any) is empty too. Default handler: **lose**. Future handlers: random ingredient spawn, etc. (Designers are expected to balance ingredient counts against orders; this is a safety net.)
+- **GridOverflow** — a finished cooked ingredient had no free cell. Handler: lose.
+- **DirtyOverflow** — a dirty dish had no free cell. Handler: lose.
 - **CustomerTimeout** — a time-limited customer expired.
+- **Saved** — a Save Me rescue was accepted, reversing a loss back to `playing` (see §2.7). The only place `status` ever moves backwards.
 - **CustomerServed**, **LevelWin**, **LevelLose** — for UI/telemetry hooks.
 
 ## 7. Level Data — String Formats
@@ -130,12 +168,18 @@ All three level-config strings are authored/parsed by the tool and must **round-
 ### 7.1 Ingredient queues
 
 ```
-0,1#4:5,0,1%0,0,1,0%1,7,1,7,7
+0,1,0%0,0,1%1,7,1,7,7$0-0,1-0;0-2,0-3$1-1,2-1
 ```
 
-- `%` separates queues; `,` separates items within a queue (listed top-first).
+- `%` separates queues (columns); `,` separates items within a queue, listed front-first (row 0 first).
 - Each item: `itemId` + optional effects (`1#4:5` = item 1 with effect 4, param 5).
-- Sweepers and other non-ingredient objects use reserved ids in the queue-item id space (mapping defined in the map's object table).
+- Sweepers and other non-ingredient objects use reserved ids in the queue-item id space (`SWEEPER_ID = -1`; mapping defined in the map's object table).
+- **Combined/linked groups** (§2.1.1) are an optional trailer, `$<combinedSlots>$<linkedSlots>`, on the same string:
+  - Each section lists groups separated by `;`, and each group lists its member cells separated by `,`.
+  - A cell is `<x>-<y>` — `x` = column (queue index), `y` = row (0 = front); both are always non-negative, so `-` is an unambiguous separator.
+  - Combined groups come first, then linked. Either (or both) sections may be empty.
+  - **Both `$` sections are omitted entirely when there are no groups at all** — a group-less queue string has no trailing `$` and round-trips byte-for-byte identical to a string authored before grouping existed.
+  - Example above: two combined blocks (`0-0,1-0` and `0-2,0-3`) and one linked chain (`1-1,2-1`).
 
 ### 7.2 Grid config
 
@@ -162,7 +206,8 @@ All three level-config strings are authored/parsed by the tool and must **round-
 
 ## 8. The Tool: Modes
 
-- **Design mode**: table editors for all definition tables (§4); level editor with grid painter, queue editor, and customer/order editor that read/write the string formats (§7); map & level management.
-- **Play mode**: full playable simulation of a selected level with speed controls (x1/x2/x3/skip), restart, and win/lose reporting. Cosmetic extras (e.g. rearranging grid items) don't affect sim outcome.
-- Runs entirely in the browser, no server. No player-progress persistence.
-- **Data source**: the design Google Sheet (`1wayrsZlHCTtuMGD1Qft2Fmaeb19b-ULfO2F6abTlAEA`) is linked **read-only**; the tool imports its legacy formats and converts them (see [SHEET_STRUCTURE.md](SHEET_STRUCTURE.md)). **Saving exports CSV files** for download instead of writing back to the sheet. A bundled Map 1 snapshot ships with the tool for offline use.
+- **Design mode**: table editors for all definition tables (§4); level editor with grid painter, queue editor (incl. combined/linked-slot authoring, §2.1.1), and customer/order editor that read/write the string formats (§7); level add/remove; per-map settings (grid size, dirty-stack height, visible-row window).
+- **Play mode**: full playable simulation of a selected level with speed controls (x1/x2/x3/skip), pause/restart, the boosters panel and Save Me flow (§2.6/§2.7), an in-tool auto-play bot for quick win-rate checks (Random/Greedy strategies — no lookahead search), and a win/lose overlay with a **Next Level** shortcut on a win (when a following level exists). Cosmetic extras (e.g. rearranging grid items) don't affect sim outcome.
+- **The app opens in Play mode by default.** Switching modes never re-picks a level — Design and Play mode share one "current level" selection, kept in sync in both directions.
+- Runs entirely in the browser, no server. No player-progress persistence (a level's *edits* persist locally via `localStorage`, not a player's play-through state).
+- **Data source**: reads live level data from a **Google Sheet** the user themselves points it at, via the Sheets API v4 with a per-user OAuth token (Google Identity Services) — there is no spreadsheet id baked into the tool's source; a "Sheet ID" field in the header starts empty and only reads/writes whatever id is pasted in, so live data is only ever available to someone who already has their project's own id. With nothing pasted in, no Google auth is attempted at all. **Writing** pushes individual sections/levels back to that same sheet, in addition to (not instead of) exporting the whole project as CSV for download. A bundled Map 1 snapshot ships with the tool so it's usable offline / with no sheet configured — see [SHEET_STRUCTURE.md](SHEET_STRUCTURE.md) for the sheet's own legacy format and how it's converted.

@@ -1469,16 +1469,18 @@ export class Simulation {
   /**
    * Save Me: rescues a lost run, up to `maxUses` times total across the run
    * (the caller passes BOOSTER_PARAMS.saveMeCount — sim.ts stays free of any
-   * dependency on the data-loading layer). Sweeps every cooked/raw ingredient
-   * off the grid into a backpack cell (a raw is converted through its tool
-   * recipe first, so the backpack only ever holds cooked ids) and resets
-   * every active customer's patience, so a customer-timeout loss doesn't
-   * immediately re-fire on the very next tick. Dirty stacks are left alone.
-   * Returns false (no-op) if the sim isn't currently lost, or maxUses is
-   * already spent.
+   * dependency on the data-loading layer). `maxUses < 0` means unlimited —
+   * the same "-1 = no cap" convention Clean Table's numCleanStack uses.
+   * Sweeps every cooked/raw ingredient off the grid into a backpack cell (a
+   * raw is converted through its tool recipe first, so the backpack only
+   * ever holds cooked ids) and resets every active customer's patience, so a
+   * customer-timeout loss doesn't immediately re-fire on the very next tick.
+   * Dirty stacks are left alone. Returns false (no-op) if the sim isn't
+   * currently lost, or maxUses is already spent.
    */
   saveMe(maxUses: number): boolean {
-    if (this.status !== "lost" || this.saveMeUsed >= maxUses) return false;
+    if (this.status !== "lost") return false;
+    if (maxUses >= 0 && this.saveMeUsed >= maxUses) return false;
 
     const items: Id[] = [];
     let firstClearedCell = -1;

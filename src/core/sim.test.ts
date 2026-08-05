@@ -1150,6 +1150,21 @@ describe("boosters", () => {
     expect(sim.saveMe(1)).toBe(false); // saveMeUsed(1) already meets maxUses(1)
   });
 
+  it("saveMe(-1) is unlimited — never refuses on exhaustion, no matter how many times it's used", () => {
+    const sim = new Simulation(
+      testMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;0.1" }),
+    );
+    for (let i = 0; i < 5; i++) {
+      for (const c of sim.active) c.timeLeft = 0.001;
+      sim.tick(1);
+      expect(sim.status).toBe("lost");
+      expect(sim.saveMe(-1)).toBe(true);
+      expect(sim.status).toBe("playing");
+    }
+    expect(sim.saveMeUsed).toBe(5); // still tracked, just never checked against a cap
+  });
+
   it("autoServe prefers a backpack item over an identical item still on the grid", () => {
     const sim = new Simulation(
       testMap,

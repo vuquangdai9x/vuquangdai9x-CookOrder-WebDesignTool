@@ -30,7 +30,7 @@
     },
     {
       "id": 3,
-      "name": "Auto Complete",
+      "name": "Auto Complete Dish",
       "emoji": "✨",
       "fileId": "",
       "localImage": "",
@@ -41,7 +41,7 @@
   "params": {
     "numRowPick": 7,
     "numCleanStack": -1,
-    "saveMeCount": 10,
+    "saveMeCount": -1,
     "backpack": { "name": "Backpack", "emoji": "🎒", "fileId": "", "localImage": "" }
   }
 }
