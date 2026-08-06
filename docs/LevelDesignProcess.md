@@ -14,7 +14,7 @@ Map Constants represent the immutable physics of a given Map. They remain consta
 * **Dirty Dish Stack Limit ($N_{stack}$):** The maximum height of dirty dishes that can pile up in a single grid cell before spilling over (e.g., 3 dishes).
 
 
-* **Queue Preview Depth ($V_{prev}$):** The sensory interface limitation defining the number of upcoming items visible to the player (e.g., 2 upcoming items previewed, plus 1 interactive top item = 3 visible items total).
+* **Queue Preview Depth ($V_{prev}$):** The sensory interface limitation defining the number of upcoming items visible to the player. This is a **per-map configuration value** (`visibleRows` in the map's config, default 3), not a hardcoded constant — 1 interactive top item plus $V_{prev}-1$ previewed items. A designer can widen or narrow it per map, which directly shifts how much planning-ahead the CLI model should assume.
 
 
 
@@ -59,8 +59,9 @@ This layer maps the level's intended emotional pacing, player capacity limits, a
     $$CLI_{peak}=C_{player}-\frac{\ln\left(\frac{P(Win)}{1-P(Win)}\right)}{\lambda}$$
     *   **Level Queue Count ($N_{queues}$):** Number of active ingredient queues in the level, configured dynamically between 3 and 5.[1]
     *   **Active Mechanic Toggles:** Configures allowed level-specific status effects and rules [1]:
-        *   *Grid Statuses:* Blocked, Locked.[1]
-        *   *Queue Statuses:* Freezed, Locked, Key-holder.[1]
+        *   *Grid Statuses:* Blocked, OrderLock, IngredientSlot, ColorLock.[1]
+        *   *Queue Item Statuses:* Freeze (thaws from ADJACENT picks only — see Layer 3), Key-holder. (A "Locked" queue-item status does not exist in the engine — locking is a grid-cell concept, opened by keys picked up from queue items.)
+        *   *Queue-level Grouping* (separate from item statuses): Combined slots (a rigid block that moves/is picked as one unit) and Linked slots (a chain, one cell per adjacent column, pickable only once every member reaches the front). Both are optional per-level design levers with no effect on any single item's status.
 *   **Dynamic Parameters (Bezier Curves):**
     *   **Tension Curve $T(t)$:** Progression pacing across normalized level time $t \in [0.0, 1.0]$, scaling tension from $[0.0, 10.0]$.[4]
     *   **Cognitive Load Index $CLI(t)$:** Target cognitive load curve over time, derived from $T(t)$ such that $CLI(t_{climax}) \approx CLI_{peak}$.
@@ -100,8 +101,8 @@ Define the starting requirements of the level and toggle active systems:
 3.  **Active Map Constants:** Retrieve parameters for Map 1 ($W \times H = 10$, $N_{stack} = 3$, $V_{prev} = 3$).[1]
 4.  **Level Settings:**
     *   $N_{queues} = 3$ active queues.[1]
-    *   *Grid:* Enable `Blocked` and `Locked` cells.[1]
-    *   *Queue:* Enable `Freezed` and `Key-holder` items. Disable `Locked` items.[1]
+    *   *Grid:* Enable `Blocked` and `OrderLock` cells.[1]
+    *   *Queue:* Enable `Freeze` and `Key-holder` items. Grouping (Combined/Linked slots) off for this pass.[1]
 
 ### Step 2: Temporal to Spatial Volume Translation
 1.  Set the desired playtime: $T_{target} = 120$ seconds (2 minutes).
@@ -130,10 +131,10 @@ Heuristically scale $A_{eff}(t)$ to match the $CLI(t)$ tension profile:
 *   **Resolution ($t > 0.85$):** $A_{eff} \ge 8$ cells. Grid cleared completely.[1]
 
 ### Step 5: Engineer Input Impedances & Catharsis Points
-1.  **Input Friction:** Place a `Freezed:2` status effect on a vital ingredient at the head of Queue 3 during peak climax. The player must expend 2 active picks on other queues before retrieving this bottleneck item.[1]
+1.  **Input Friction:** Place a `Freeze:2` status effect on a vital ingredient at the head of Queue 3 during peak climax, positioned so Queue 2 or Queue 4 (an **adjacent** column) is something the player is naturally picking during this window — the thaw count only decrements from picks in a 4-connected neighbor slot (same column one row back, or an adjacent column same row), not from picks anywhere in the level. A Freeze with no realistically-adjacent traffic never thaws.[1]
 2.  **Catharsis Design:** 
     *   Anchor Customer 4 as a `Staff` cleaner (`0;0;`). Arrival instantly wipes up to 2 dirty dish stacks.[1]
-    *   Hide a `Sweeper` utility item (`10`) in Queue 1 at depth 4 to give the player active spatial recovery options.[1]
+    *   Hide a `Sweeper` utility item (id `-1`) in Queue 1 at depth 4 to give the player active spatial recovery options.[1]
 
 ### Step 6: Generate Physical Configuration Strings
 Compile all properties into parsed engine strings.[1]
