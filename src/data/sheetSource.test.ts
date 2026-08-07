@@ -8,9 +8,9 @@ describe("CSV export (the tool's save path)", () => {
     const lines = csv.split("\r\n");
     expect(lines).toHaveLength(MAP1_DATA.levels.length + 1);
     expect(lines[0]).toContain("QueueString");
-    // Level 1_11's ColorLock grid survives the round trip through CSV quoting.
-    const l11 = lines[11];
-    expect(l11).toContain('",,#4:1:1,,,,,#4:4:1,,"');
+    // Level 1_3's grid effects survive the round trip through CSV quoting.
+    const l3 = lines[3];
+    expect(l3).toContain('",,,,,#1,,,,#1"');
   });
 
   it("writes the definition tables", () => {

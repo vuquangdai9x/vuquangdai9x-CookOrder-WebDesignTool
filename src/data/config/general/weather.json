@@ -1,9 +1,10 @@
 {
-  "_source": "ConfigTables!E3:F7",
+  "_source": "GlobalDefinitions.tsv weather table (Index|ID|Status|IconFileId|Emoji). fileId/emoji are enrichment only — nothing currently reads them.",
   "weather": [
-    { "id": "Normal", "status": "None" },
-    { "id": "Rainy", "status": "Wet" },
-    { "id": "Sunny", "status": "Hot" },
-    { "id": "Freeze", "status": "Cold" }
+    { "id": "Normal", "status": "None", "fileId": "1cQ91h8UbXhcQVr2op5vKjJ6EhR0pRLtN", "emoji": "☁" },
+    { "id": "Rainy", "status": "Wet", "fileId": "15U0Zra50n8bGVX6vEVemMJpO8bvMyb5f", "emoji": "🌧" },
+    { "id": "Sunny", "status": "Hot", "fileId": "1Qegb7IaPj3H7Fh0P2eTXe0IlxfuvfWA_", "emoji": "☀" },
+    { "id": "Freeze", "status": "Cold", "fileId": "17poWeOsdOfRZp3097tTQ7PBin6wVDASe", "emoji": "🌨" },
+    { "id": "Stormy", "status": "Blowing", "fileId": "1FiyeTH9XK9mB7dV33IPGsEsPIZUy7YZo", "emoji": "⛈" }
   ]
 }

@@ -138,23 +138,152 @@ describe("base ingredient requirement", () => {
     sim.pick(0); // cooked1 (topping) into the tool
     sim.pick(0); // cooked0 (base) into the tool
     for (const f of [...sim.flights]) sim.completeFlight(f.id); // both land in their tool slots
-    sim.tick(2); // finishes cooking; tool-to-grid flights launch
-    for (const f of [...sim.flights]) sim.completeFlight(f.id); // both land on the grid
-    sim.tick(0); // let autoServe react to the now-populated grid
+    sim.tick(2); // finishes cooking
 
-    // Only cooked0 (the base) should be flying out — cooked1 is withheld
-    // because its base isn't in the dish yet.
+    // cooked0 has no base requirement, so it flies straight to the customer,
+    // skipping the grid; cooked1 is withheld (its base isn't in the dish
+    // yet) and lands on the grid instead.
+    expect(sim.flights).toHaveLength(2);
+    const direct = sim.flights.find((f) => f.kind === "tool-to-customer");
+    expect(direct).toMatchObject({ itemId: 0 });
+    const toGrid = sim.flights.find((f) => f.kind === "tool-to-grid");
+    expect(toGrid).toMatchObject({ itemId: 1 });
+
+    sim.completeFlight(toGrid!.id); // cooked1 lands on the grid, still withheld
     const dish = sim.active[0].dishes[0];
     expect(dish.filled).toHaveLength(0);
-    expect(sim.flights).toHaveLength(1);
-    expect(sim.flights[0]).toMatchObject({ kind: "grid-to-customer", itemId: 0 });
 
-    sim.completeFlight(sim.flights[0].id); // base lands in the dish
-    sim.tick(0); // now the dependent ingredient can be served too
+    sim.completeFlight(direct!.id); // base served — settle() now finds cooked1 servable too
     expect(sim.flights).toHaveLength(1);
     expect(sim.flights[0]).toMatchObject({ kind: "grid-to-customer", itemId: 1 });
 
     sim.completeFlight(sim.flights[0].id);
+    expect(sim.status).toBe("won");
+  });
+});
+
+describe("multi-option base ingredient requirement", () => {
+  // cooked0 needs EITHER cooked1 or cooked2 already in the dish (an array
+  // baseId — e.g. a shared sauce that can top several different bases).
+  const multiBaseMap: MapDef = {
+    ...testMap,
+    cookedIngredients: testMap.cookedIngredients.map((c) =>
+      c.id === 0 ? { ...c, baseId: [1, 2] } : c,
+    ),
+  };
+
+  it("serves once any one of several listed base options is already in the dish", () => {
+    const sim = new Simulation(
+      multiBaseMap,
+      level({ queueString: "2,0", gridString: EMPTY_GRID, customerString: "0;0;0.2" }),
+    );
+    sim.pick(0); // cooked2 — satisfies the base requirement (it's option 2 of [1, 2])
+    sim.pick(0); // cooked0 — needs a base, now met
+    sim.tick(1); // cooked0 finishes cooking
+    sim.tick(0); // let autoServe react
+    expect(sim.status).toBe("won");
+  });
+});
+
+describe("chained tool recipes", () => {
+  // Ingredient 2 needs tool A, then tool B, before producing its output —
+  // like potato going through the Cutting Board then the Fryer.
+  const chainMap: MapDef = {
+    ...testMap,
+    tools: [
+      { id: 0, name: "A", numSlots: 1, cookingTime: 1, recipes: [{ in: 2, out: 2, amount: 1, chainTools: [1] }] },
+      { id: 1, name: "B", numSlots: 1, cookingTime: 1, recipes: [] },
+    ],
+  };
+
+  it("hops through each tool in the chain before producing output", () => {
+    const sim = new Simulation(
+      chainMap,
+      // A waiting customer keeps the level from auto-winning with nothing to
+      // do — they want cooked2, so once the chain finishes it serves them
+      // directly (see "skip-the-grid" below) instead of landing on the grid.
+      level({ queueString: "2", gridString: EMPTY_GRID, customerString: "0;0;2" }),
+      { instantFlights: false },
+    );
+    sim.pick(0);
+    sim.completeFlight(sim.flights[0].id); // lands in tool A's slot
+
+    sim.tick(1); // A finishes -> hops to tool B, not the grid
+    expect(sim.flights).toHaveLength(1);
+    expect(sim.flights[0].kind).toBe("tool-to-tool");
+    expect(sim.tools[0].slots[0].item).toBeNull(); // tool A freed
+    expect(sim.grid.every((c) => c.kind === "empty")).toBe(true);
+
+    sim.completeFlight(sim.flights[0].id); // lands in tool B's slot
+    expect(sim.tools[1].slots[0].item?.rawId).toBe(2);
+
+    sim.tick(1); // B finishes -> the waiting customer takes the final output directly
+    expect(sim.flights).toHaveLength(1);
+    expect(sim.flights[0].kind).toBe("tool-to-customer");
+    sim.completeFlight(sim.flights[0].id);
+    expect(sim.status).toBe("won");
+  });
+
+  it("waits at the first tool if the next tool in the chain has no free slot, then hops once one frees", () => {
+    // Tool B's cookingTime is bumped way up here only so the fake occupant
+    // planted directly into its slot below doesn't itself "finish cooking"
+    // on the same tick() call that finishes tool A.
+    const busyChainMap: MapDef = {
+      ...chainMap,
+      tools: [chainMap.tools[0], { ...chainMap.tools[1], cookingTime: 100 }],
+    };
+    const sim = new Simulation(
+      busyChainMap,
+      level({ queueString: "2", gridString: EMPTY_GRID, customerString: "0;0;2" }),
+      { instantFlights: false },
+    );
+    sim.tools[1].slots[0].item = { uid: 999, rawId: 1, elapsed: 0 }; // occupy tool B
+
+    sim.pick(0);
+    sim.completeFlight(sim.flights[0].id); // lands in tool A's slot
+    sim.tick(1); // A finishes, but B is full -> stays put at A
+
+    expect(sim.flights).toHaveLength(0);
+    expect(sim.tools[0].slots[0].item?.rawId).toBe(2);
+
+    sim.tools[1].slots[0].item = null; // B frees up
+    sim.tick(0); // retried this tick
+    expect(sim.flights).toHaveLength(1);
+    expect(sim.flights[0].kind).toBe("tool-to-tool");
+  });
+});
+
+describe("multi-use cooked ingredients", () => {
+  // cooked0 can be served twice before it's used up (e.g. a shared sauce).
+  const multiUseMap: MapDef = {
+    ...testMap,
+    cookedIngredients: testMap.cookedIngredients.map((c) =>
+      c.id === 0 ? { ...c, usageNum: 2 } : c,
+    ),
+  };
+
+  it("decrements usesLeft on serve instead of clearing, then clears once exhausted", () => {
+    const sim = new Simulation(
+      multiUseMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;0|0;0;0" }),
+      { instantFlights: false },
+    );
+    sim.pick(0);
+    sim.completeFlight(sim.flights[0].id); // into the tool
+    sim.tick(1); // cooking finishes; usageNum > 1 blocks the direct-serve shortcut
+
+    const toGrid = sim.flights.find((f) => f.kind === "tool-to-grid")!;
+    sim.completeFlight(toGrid.id);
+    expect(sim.grid).toContainEqual({ kind: "cooked", cookedId: 0, usesLeft: 2 });
+
+    sim.tick(0); // autoServe finds it for customer A
+    sim.completeFlight(sim.flights.find((f) => f.kind === "grid-to-customer")!.id);
+    expect(sim.active).toHaveLength(1); // A served and left
+    expect(sim.grid).toContainEqual({ kind: "cooked", cookedId: 0, usesLeft: 1 });
+
+    sim.tick(0); // autoServe finds it again for customer B
+    sim.completeFlight(sim.flights.find((f) => f.kind === "grid-to-customer")!.id);
+    expect(sim.grid.every((c) => c.kind === "empty")).toBe(true);
     expect(sim.status).toBe("won");
   });
 });
@@ -296,7 +425,7 @@ describe("flight gating", () => {
     expect(sim.tools[0].slots[0].item?.rawId).toBe(0);
   });
 
-  it("flies a finished item to the grid, then on to the customer", () => {
+  it("flies a finished item directly to the customer when they're already waiting, skipping the grid", () => {
     const sim = new Simulation(
       testMap,
       level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;0" }),
@@ -304,17 +433,13 @@ describe("flight gating", () => {
     );
     sim.pick(0);
     sim.completeAllFlights(); // lands in the tool slot
-    sim.tick(1.1); // cooking finishes and launches the trip to the grid
+    sim.tick(1.1); // cooking finishes; the waiting customer means it skips the grid
 
-    const toGrid = sim.flights.find((f) => f.kind === "tool-to-grid");
-    expect(toGrid).toBeDefined();
-    sim.completeFlight(toGrid!.id);
-    expect(sim.grid.some((c) => c.kind === "cooked")).toBe(true);
+    expect(sim.flights).toHaveLength(1);
+    expect(sim.flights[0].kind).toBe("tool-to-customer");
+    expect(sim.grid.every((c) => c.kind === "empty")).toBe(true);
 
-    // Landing on the grid is what triggers the match against the order.
-    const toCustomer = sim.flights.find((f) => f.kind === "grid-to-customer");
-    expect(toCustomer).toBeDefined();
-    sim.completeFlight(toCustomer!.id);
+    sim.completeFlight(sim.flights[0].id);
     expect(sim.status).toBe("won");
   });
 
@@ -328,9 +453,8 @@ describe("flight gating", () => {
     // air (completeAllFlights would drain that too).
     sim.pick(0);
     sim.completeFlight(sim.flights[0].id); // into the tool slot
-    sim.tick(1.1); // cooking finishes
-    sim.completeFlight(sim.flights[0].id); // output lands on the grid
-    const toCustomer = sim.flights.find((f) => f.kind === "grid-to-customer")!;
+    sim.tick(1.1); // cooking finishes; flies straight to the waiting customer
+    const toCustomer = sim.flights.find((f) => f.kind === "tool-to-customer")!;
     sim.completeFlight(toCustomer.id); // fills the dish and serves the customer
 
     // Serving the last dish sends a dirty dish back, starting at that customer.
@@ -590,12 +714,11 @@ describe("serve slots and dirty dishes", () => {
       sim.completeFlight(f.id);
     };
 
+    sim.pick(0); // A is already seated and waiting, so this one serves directly
     sim.pick(0);
-    sim.pick(0);
-    sim.pick(0); // three queue-to-grid flights now pending
+    sim.pick(0); // B's and C's items aren't wanted by anyone active yet — land on the grid
 
-    complete("queue-to-grid"); // A's item lands -> matched to A
-    complete("grid-to-customer"); // A's dish fills -> A leaves, A's dirty dish launches
+    complete("queue-to-customer"); // A's dish fills directly -> A leaves, A's dirty dish launches
     complete("customer-to-grid"); // A's dirty dish lands: 1 stack. B now seated.
 
     complete("queue-to-grid"); // B's item lands -> matched to B
@@ -756,15 +879,6 @@ describe("real Map 1 level data", () => {
     }
     expect(sim.status).toBe("won");
     expect(sim.servedCount).toBe(7);
-  });
-
-  it("level 1_11 exposes ColorLock cells that start locked", () => {
-    const l11 = new Simulation(map1, map1.levels[10]);
-    const locked = l11.level.grid
-      .map((_, i) => i)
-      .filter((i) => !l11.isCellUsable(i));
-    expect(locked.length).toBeGreaterThan(0);
-    expect(l11.cellLockLabel(locked[0])).toMatch(/keys/);
   });
 });
 

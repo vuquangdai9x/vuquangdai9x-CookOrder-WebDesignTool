@@ -1,7 +1,8 @@
 {
-  "_note": "Level Tag values actually present in the imported sheet data (Level_overall_config's dedicated 'Level Tag' column, distinct from the free-text Difficulty_purpose column). Only \"\" and \"Hard\" appear across Map 1's 15 levels; extend this list as new tags show up in the sheet.",
+  "_note": "Level Tag values from Level_overall_config's 'Level Tag' column, cross-referenced with GlobalDefinitions.tsv's difficulty table (Index|Type|RewardWin|IconFileId|Emoji) for rewardWin/fileId/emoji enrichment (unused by current code, kept for reference). \"\", \"Hard\", and \"Super Hard\" all appear across Map 1's 15 levels.",
   "tags": [
     { "id": "", "name": "None" },
-    { "id": "Hard", "name": "Hard" }
+    { "id": "Hard", "name": "Hard", "rewardWin": 80, "fileId": "1U57XTD4Ujyw3oFlkpzffvGHKLWmAUsWf", "emoji": "💀" },
+    { "id": "Super Hard", "name": "Super Hard", "rewardWin": 100, "fileId": "11FFLCyKfSc0K3oSnaOlD-AKGtH86NgDy", "emoji": "☠" }
   ]
 }

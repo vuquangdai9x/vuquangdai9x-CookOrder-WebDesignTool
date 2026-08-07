@@ -1,41 +1,111 @@
 {
-  "_source": "Hand-authored — no sheet source yet. Applies game-wide, not per-map.",
+  "_source": "Booster_config.tsv — economy fields (code/lvUnlock/free/price/maxAds) added from the sheet; id/order kept stable since sim.ts and boosterCharges index into this array positionally.",
   "boosters": [
     {
       "id": 0,
+      "code": "shift_up_row",
       "name": "Shift-up Row",
       "emoji": "⏫",
       "fileId": "",
       "localImage": "",
       "description": "Rotate every queue column up one instance; the displaced front item(s) refill from the bottom of their own column.",
-      "paramDefs": []
+      "paramDefs": [],
+      "lvUnlock": 12,
+      "free": 0,
+      "price": 600,
+      "maxAds": 99
     },
     {
       "id": 1,
+      "code": "ingredient_pick",
       "name": "Ingredient Pick",
       "emoji": "🎯",
       "fileId": "",
       "localImage": "",
       "description": "Reveal more rows and pick any one slot, not just the front row — including a combined or linked instance.",
-      "paramDefs": [{ "name": "numRowPick", "dataType": "int" }]
+      "paramDefs": [{ "name": "numRowPick", "dataType": "int" }],
+      "lvUnlock": 12,
+      "free": 0,
+      "price": 600,
+      "maxAds": 99
     },
     {
       "id": 2,
+      "code": "clean_dirty",
       "name": "Clean Table",
       "emoji": "🧽",
       "fileId": "",
       "localImage": "",
       "description": "Clear dirty stacks from the grid. numCleanStack = -1 clears all of them.",
-      "paramDefs": [{ "name": "numCleanStack", "dataType": "int" }]
+      "paramDefs": [{ "name": "numCleanStack", "dataType": "int" }],
+      "lvUnlock": 6,
+      "free": 0,
+      "price": 600,
+      "maxAds": 99
     },
     {
       "id": 3,
+      "code": "auto_make_dish",
       "name": "Auto Complete Dish",
       "emoji": "✨",
       "fileId": "",
       "localImage": "",
       "description": "Finish one dish of the left-most customer, drawing from the backpack first, then the grid, then the queues.",
-      "paramDefs": []
+      "paramDefs": [],
+      "lvUnlock": 4,
+      "free": 0,
+      "price": 900,
+      "maxAds": 99
+    },
+    {
+      "id": 4,
+      "code": "refill_wait_time",
+      "name": "Refill Customer Time",
+      "emoji": "⏳",
+      "fileId": "",
+      "localImage": "",
+      "description": "Refill the wait time of every active customer back to full.",
+      "paramDefs": [],
+      "lvUnlock": 12,
+      "free": 0,
+      "price": 600,
+      "maxAds": 99
+    },
+    {
+      "id": 5,
+      "code": "more_grid_slot",
+      "name": "More Grid Slot",
+      "emoji": "➕",
+      "fileId": "",
+      "localImage": "",
+      "description": "Add one more column to the grid.",
+      "paramDefs": [],
+      "lvUnlock": 0,
+      "free": 0,
+      "price": 1200,
+      "maxAds": 99
+    }
+  ],
+  "saveMeVariants": [
+    {
+      "id": 0,
+      "code": "saveme_out_slot",
+      "name": "SaveMe - Out Of Slot",
+      "description": "Save Me when the grid is full — sweep everything into a backpack (raws auto-cook), placed in the top-right slot; the backpack is checked before the grid when matching.",
+      "lvUnlock": 0,
+      "free": 1,
+      "price": 1000,
+      "maxAds": 99
+    },
+    {
+      "id": 1,
+      "code": "saveme_out_time",
+      "name": "SaveMe - Out Of Time",
+      "description": "Save Me when a customer runs out of patience — refill their wait time back to 100%.",
+      "lvUnlock": 0,
+      "free": 1,
+      "price": 1000,
+      "maxAds": 99
     }
   ],
   "params": {

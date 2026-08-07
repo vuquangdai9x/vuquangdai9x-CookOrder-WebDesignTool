@@ -1,0 +1,12 @@
+{
+  "_note": "Sub-tables from the Global Definition sheet tab that don't correspond to any existing config table. Kept for reference; not currently wired into the runtime types or Design mode (nothing in the sim or UI needs them yet).",
+  "customerPetTypes": {
+    "_source": "GlobalDefinitions.tsv Id|Type|Emoji table",
+    "_note": "Cosmetic customer avatar category (distinct from customer-types.json's behavioral Customer/Staff typeId).",
+    "types": [
+      { "id": 0, "name": "Normal", "emoji": "🐱" },
+      { "id": 1, "name": "Shipper", "emoji": "🚴" },
+      { "id": 2, "name": "Boss", "emoji": "🐯" }
+    ]
+  }
+}

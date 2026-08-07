@@ -1,14 +1,21 @@
 {
-  "_note": "What lands on the grid and fills customer dishes. Ids mirror the raw ingredient ids for this map, which is why the dish strings in levels.json use the same numbers. Icons are reused from the raw thumbnails — the sheet has no separate cooked artwork. baseId: another cooked ingredient id that must already be in the dish before this one can be served to it (toppings need the bun there first; ice needs the cup there first).",
+  "_note": "What lands on the grid and fills customer dishes. Ids mirror the raw ingredient ids for this map, which is why the dish strings in levels.json use the same numbers. Icons are reused from the raw thumbnails — the sheet has no separate cooked artwork. baseId: another cooked ingredient id (or any one of several, e.g. a sauce shared across several fried bases) that must already be in the dish before this one can be served to it (toppings need the bun there first; ice needs the cup there first). usageNum > 1: this ingredient can be served that many times before it's used up (e.g. a shared sauce) — see Simulation.consumeCookedCell. Ids 9-15 (chick_wing/thigh/nugget, potato, chili_bowl, cheese_sauce, chive) are merged in from map2's MapDefinitions.tsv section to exercise chained-tool processing and multi-use serving.",
   "cookedIngredients": [
     { "id": 0, "name": "Sliced Bun", "emoji": "🍞", "fileId": "1MLtLe69Gn6D-EQ4DAXmEr0R1h3gY7s2M", "localImage": "Map1-burger/ingredients/bun-sliced.png" },
     { "id": 1, "name": "Cooked Patty", "emoji": "🥩", "fileId": "1ANuBhLfhZOvzKsASxUZJt98aGED20NRZ", "localImage": "Map1-burger/ingredients/patty-cooked.png", "baseId": 0 },
     { "id": 2, "name": "Tomato Slice", "emoji": "🍅", "fileId": "1NK6RYawOXQo7CPVj9oQcuEa65L09DSM6", "localImage": "Map1-burger/ingredients/tomato-sliced.png", "baseId": 0 },
     { "id": 3, "name": "Lettuce Cut", "emoji": "🥬", "fileId": "1DVvrnHUJjEFpcnbgj9ku1ue02tdTn8t2", "localImage": "Map1-burger/ingredients/lettuce_sliced.png", "baseId": 0 },
-    { "id": 4, "name": "Onion Slice", "emoji": "🧅", "fileId": "1jGiMJnIAyw3JyOjPvg8RKuqrmZI0JjDa", "localImage": "Map1-burger/ingredients/onion-sliced.png" },
+    { "id": 4, "name": "Onion Slice", "emoji": "🧅", "fileId": "1jGiMJnIAyw3JyOjPvg8RKuqrmZI0JjDa", "localImage": "Map1-burger/ingredients/onion-sliced.png", "baseId": 0 },
     { "id": 5, "name": "Cheese Slice", "emoji": "🧀", "fileId": "1RjP8ZeVgFfF6-kFF1kbzJFE-xThmw3oo", "localImage": "Map1-burger/ingredients/cheese_sliced.png", "baseId": 0 },
     { "id": 6, "name": "Fried Egg", "emoji": "🍳", "fileId": "1JnHUAXkpkmLaTr2SxuOsxkpj7dt3OYiu", "localImage": "Map1-burger/ingredients/egg_cooked.png", "baseId": 0 },
     { "id": 7, "name": "Soda Cup", "emoji": "🥤", "fileId": "1LyYrqYSDVXHxH5fzw-LdlCTpo3O0_g89", "localImage": "Map1-burger/ingredients/cup_soda.png" },
-    { "id": 8, "name": "Ice", "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-", "localImage": "Map1-burger/ingredients/ice.png", "baseId": 7 }
+    { "id": 8, "name": "Ice", "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-", "localImage": "Map1-burger/ingredients/ice.png", "baseId": 7 },
+    { "id": 9, "name": "Fried Wing", "emoji": "🍗", "fileId": "1dRe9fBKfuQRViBSg0SfQxa4Qre3x3Bcq" },
+    { "id": 10, "name": "Fried Thigh", "emoji": "🍗", "fileId": "1c2VvNjtaDs-qnmjFcizsbcM2iOW95rpP" },
+    { "id": 11, "name": "Fried Nugget", "emoji": "🍗", "fileId": "1PopdIAFQBajruABuKpszncz9h8zLrMrK" },
+    { "id": 12, "name": "Fried Potato", "emoji": "🍟", "fileId": "1Phv1xEMqb4JdbD-z0QKSLYbwhD9wGK3M" },
+    { "id": 13, "name": "Chili Bowl", "emoji": "🌶️", "fileId": "1LdW4uLvhm-aYPvYUpcjMVaRPVmxcMgET", "baseId": [9, 10, 11, 12], "usageNum": 2 },
+    { "id": 14, "name": "Cheese Sauce", "emoji": "🧀", "fileId": "1a30eBQP7yg99wslODcVtjfUZo3qLIJkn", "baseId": [9, 10, 11, 12], "usageNum": 3 },
+    { "id": 15, "name": "Chive Sliced", "emoji": "🌿", "fileId": "1MXhAwr3KufWjtnvbKBiDbpeEsckWyK05", "baseId": [9, 10, 11, 12] }
   ]
 }

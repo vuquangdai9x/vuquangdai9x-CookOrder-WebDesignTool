@@ -25,18 +25,20 @@
   },
   "rewards": {
     "_source": "ConfigTables!A19:B21 and A33:B37",
-    "winByDifficulty": { "Normal": 50, "Hard": 80 },
-    "rwWinByDifficulty": [50, 80],
+    "winByDifficulty": { "Normal": 50, "Hard": 80, "Super Hard": 100 },
+    "rwWinByDifficulty": [50, 80, 100],
     "lvShowBonusAds": 3,
     "bonusMuls": [120, 150, 200],
     "bonus": 200
   },
   "features": {
-    "_source": "ConfigTables!A40:B44",
+    "_source": "ConfigTables!A40:B46",
     "mergeTop": 1,
     "upgradeTool": 1,
-    "dirtyPlate": 0,
-    "autoStack": 1
+    "dirtyPlate": 1,
+    "autoStack": 1,
+    "dirtyStack": 5,
+    "rawIng": 0
   },
   "home": {
     "_source": "ConfigTables!A58:B60",

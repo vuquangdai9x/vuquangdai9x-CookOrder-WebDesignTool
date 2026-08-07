@@ -26,6 +26,23 @@ import type {
   QueueItem,
 } from "../../core/types.ts";
 import { findToolRecipe } from "../../core/types.ts";
+
+/**
+ * Flight kinds that land on (and fill) a customer's dish chip: the two
+ * grid/backpack-sourced kinds, plus the two direct-serve kinds that skip the
+ * grid entirely (a freshly cooked or picked item flying straight to a
+ * customer already waiting for it — see GDD.md §2.2.1). All four need the
+ * same specific-chip targeting and arrival flash, not just a generic
+ * card-center landing.
+ */
+function fillsDishChip(kind: Flight["kind"]): boolean {
+  return (
+    kind === "grid-to-customer" ||
+    kind === "backpack-to-customer" ||
+    kind === "tool-to-customer" ||
+    kind === "queue-to-customer"
+  );
+}
 import { BOOSTER_PARAMS, GLOBAL_DEFS, KEY_COLORS } from "../../data/configLoader.ts";
 import { button, clear, el } from "../dom.ts";
 import {
@@ -71,6 +88,8 @@ export class PlayView {
   private rafId = 0;
   private lastFrame = 0;
   private page!: HTMLElement;
+  /** Ambient background weather effect (rain/snow/sun rays), built once per level load from level.weather. */
+  private weatherEl!: HTMLElement;
   private onSelectLevel: (levelId: number) => void;
   private fx: EffectsLayer;
   /** The map/level/speed/policy group in the toolbar; foldable to save space. */
@@ -92,6 +111,8 @@ export class PlayView {
   private queuesEl!: HTMLElement;
   private overlayEl: HTMLElement | null = null;
   private timerEls = new Map<number, HTMLElement>();
+  /** Countdown progress bar fill, per timed customer — see patchLiveValues(). */
+  private timerBarEls = new Map<number, HTMLElement>();
   private barEls = new Map<string, HTMLElement>();
   /** Flights already handed to the animation layer, so we never double-animate. */
   private animating = new Set<number>();
@@ -264,7 +285,7 @@ export class PlayView {
       // card (same data-customer index as the real one); hold the flight
       // rather than fly an ingredient onto it. Retried every frame, so it
       // goes the moment the reveal lands.
-      if (flight.kind === "grid-to-customer" || flight.kind === "backpack-to-customer") {
+      if (fillsDishChip(flight.kind)) {
         const card = this.page.querySelector(`[data-customer="${flight.toCustomer!.index}"]`);
         if (card?.classList.contains("mystery")) continue;
       }
@@ -298,15 +319,14 @@ export class PlayView {
           : cookedIconEl(flight.itemId, 96);
       const payload = el("div", { class: `fx-item${isDirty ? " dirty" : ""}` }, [icon]);
 
-      // The exact chip a grid-/backpack-to-customer flight is landing on,
-      // captured now (flightTarget already resolved it) — needed so the
-      // arrival flash can be applied to *that* element once the flight lands.
-      const targetChip =
-        flight.kind === "grid-to-customer" || flight.kind === "backpack-to-customer"
-          ? this.page.querySelector<HTMLElement>(
-              `[data-customer="${flight.toCustomer!.index}"] [data-dish-ingredient="${flight.itemId}"]:not(.filled)`,
-            )
-          : null;
+      // The exact chip a dish-filling flight is landing on, captured now
+      // (flightTarget already resolved it) — needed so the arrival flash can
+      // be applied to *that* element once the flight lands.
+      const targetChip = fillsDishChip(flight.kind)
+        ? this.page.querySelector<HTMLElement>(
+            `[data-customer="${flight.toCustomer!.index}"] [data-dish-ingredient="${flight.itemId}"]:not(.filled)`,
+          )
+        : null;
 
       // The sim only clears the source cell once this flight lands (see
       // Simulation.completeFlight), but visually the item should leave the
@@ -342,7 +362,7 @@ export class PlayView {
   ): Promise<void> {
     if (this.skipMode) return Promise.resolve();
 
-    if ((flight.kind === "grid-to-customer" || flight.kind === "backpack-to-customer") && targetChip) {
+    if (fillsDishChip(flight.kind) && targetChip) {
       this.fx.burst(at, 8);
       targetChip.classList.add("arrival-flash");
       // Flash while still unfilled, *then* let completeFlight dim it — a
@@ -400,7 +420,7 @@ export class PlayView {
     if (flight.toCustomer) {
       const card = this.page.querySelector(`[data-customer="${flight.toCustomer.index}"]`);
       if (!card) return null;
-      if (flight.kind === "grid-to-customer" || flight.kind === "backpack-to-customer") {
+      if (fillsDishChip(flight.kind)) {
         // Aim at the specific unfilled chip this item satisfies, not just the
         // card in general — that's what lets the arrival flash/burst land
         // exactly on "the matching ingredient position".
@@ -420,11 +440,61 @@ export class PlayView {
     clear(this.root);
     this.page = el("div", { class: "play-page" });
     this.boostersEl = this.boostersBar();
-    // A sibling of .play-page, not a child: the page's height/tiers are fixed
-    // (see .play-page in style.css), so a 4th child inside it would shrink
-    // the existing three tiers instead of the player just scrolling further.
-    this.root.append(this.toolbar(), this.page, this.boostersEl);
+    this.weatherEl = this.weatherLayer();
+    // Weather is appended first (behind everything, position:fixed so it
+    // takes no layout space) and the boosters bar is a sibling of .play-page,
+    // not a child: the page's height/tiers are fixed (see .play-page in
+    // style.css), so a 4th child inside it would shrink the existing three
+    // tiers instead of the player just scrolling further.
+    this.root.append(this.weatherEl, this.toolbar(), this.page, this.boostersEl);
     this.renderPage();
+  }
+
+  /**
+   * Full-viewport ambient background effect matching the level's weather —
+   * Rainy: falling rain streaks (Stormy: the same, at 2x density), Freeze:
+   * falling snow, Sunny: diagonal light rays. Normal gets no effect. Pure CSS
+   * keyframe loops (see style.css), so this costs nothing per animation
+   * frame and doesn't compete with the sim's own rAF loop. Kept faint
+   * (see .weather-drop/.weather-flake opacity in style.css) so it reads as
+   * ambience, not something competing with the board for attention.
+   */
+  private weatherLayer(): HTMLElement {
+    const layer = el("div", { class: "weather-layer" });
+    const weather = this.level.weather;
+    if (weather === "Rainy" || weather === "Stormy") {
+      layer.classList.add("weather-rain");
+      this.appendRain(layer, weather === "Stormy" ? 80 : 40);
+    } else if (weather === "Freeze") {
+      layer.classList.add("weather-snow");
+      for (let i = 0; i < 30; i++) {
+        const flake = el("div", { class: "weather-flake" });
+        flake.style.left = `${Math.random() * 100}%`;
+        flake.style.animationDelay = `-${(Math.random() * 6).toFixed(2)}s`;
+        flake.style.animationDuration = `${(4 + Math.random() * 3).toFixed(2)}s`;
+        flake.style.opacity = `${(0.15 + Math.random() * 0.25).toFixed(2)}`;
+        layer.append(flake);
+      }
+    } else if (weather === "Sunny") {
+      layer.classList.add("weather-sun");
+      for (let i = 0; i < 5; i++) {
+        const ray = el("div", { class: "weather-ray" });
+        ray.style.left = `${i * 22 - 10}%`;
+        ray.style.animationDelay = `-${(i * 0.9).toFixed(2)}s`;
+        layer.append(ray);
+      }
+    }
+    return layer;
+  }
+
+  private appendRain(layer: HTMLElement, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const drop = el("div", { class: "weather-drop" });
+      drop.style.left = `${Math.random() * 100}%`;
+      drop.style.animationDelay = `-${(Math.random() * 1).toFixed(2)}s`;
+      drop.style.animationDuration = `${(0.5 + Math.random() * 0.4).toFixed(2)}s`;
+      layer.append(drop);
+    }
   }
 
   private toolbar(): HTMLElement {
@@ -538,6 +608,7 @@ export class PlayView {
   /** Full build — used on mount/restart, when every tier needs a fresh element. */
   private renderPage(): void {
     this.timerEls.clear();
+    this.timerBarEls.clear();
     this.barEls.clear();
     clear(this.page);
     this.customersEl = this.customersTier();
@@ -589,6 +660,7 @@ export class PlayView {
       const nextCustomers = customersStructureKey(this.sim);
       if (nextCustomers !== this.customersKey) {
         this.timerEls.clear(); // only customerCard() populates this
+        this.timerBarEls.clear();
         const previousIndices = this.lastCustomerIndices;
         const next = this.customersTier();
         this.customersEl.replaceWith(next);
@@ -725,6 +797,8 @@ export class PlayView {
     for (const c of this.sim.active) {
       const node = this.timerEls.get(c.index);
       if (node) node.textContent = this.timerText(c);
+      const fill = this.timerBarEls.get(c.index);
+      if (fill) this.setWaitProgress(fill, c);
     }
     for (const tool of this.sim.tools) {
       tool.slots.forEach((slot, i) => {
@@ -773,6 +847,26 @@ export class PlayView {
     return c.timeLeft === Infinity
       ? "∞"
       : `${Math.max(0, c.timeLeft).toFixed(0)}s${c.config.weatherEff ? " 🌧" : ""}`;
+  }
+
+  /**
+   * A timed customer's full patience duration — mirrors Simulation's private
+   * customerTime() (waitTime, halved when weatherEff and the level's weather
+   * isn't Normal) — needed here only to turn the live timeLeft into a 0-100%
+   * countdown-bar width; the sim itself never needs this after construction.
+   */
+  private fullWaitTime(c: CustomerState): number {
+    const bad = this.level.weather !== "Normal";
+    return c.config.weatherEff === 1 && bad ? c.config.waitTime / 2 : c.config.waitTime;
+  }
+
+  /** Sizes and colors a customer's countdown-bar fill from their live timeLeft. */
+  private setWaitProgress(fill: HTMLElement, c: CustomerState): void {
+    const full = this.fullWaitTime(c);
+    const pct = full > 0 ? Math.max(0, Math.min(100, (c.timeLeft / full) * 100)) : 0;
+    fill.style.width = `${pct}%`;
+    fill.classList.toggle("low", pct <= 33);
+    fill.classList.toggle("mid", pct > 33 && pct <= 66);
   }
 
   private renderHud(): void {
@@ -834,6 +928,12 @@ export class PlayView {
       "data-customer": String(c.index),
     });
     this.appendAvatar(card, c.index);
+    if (servable && !c.isStaff && c.timeLeft !== Infinity) {
+      const fill = el("div", { class: "wait-progress-fill" });
+      card.append(el("div", { class: "wait-progress" }, [fill]));
+      this.timerBarEls.set(c.index, fill);
+      this.setWaitProgress(fill, c);
+    }
     const content = el("div", { class: "customer-content" });
     const timer = el("span", { class: "wait-badge" }, [this.timerText(c)]);
     if (servable) this.timerEls.set(c.index, timer);
@@ -956,6 +1056,9 @@ export class PlayView {
         cell.append(el("small", { class: "cell-badge" }, [lock]));
       } else if (content.kind === "cooked") {
         cell.append(el("span", { class: "cell-main" }, [cookedIconEl(content.cookedId, 96)]));
+        if (content.usesLeft && content.usesLeft > 1) {
+          cell.append(el("small", { class: "cell-badge uses-left" }, [`×${content.usesLeft}`]));
+        }
       } else if (content.kind === "raw") {
         // Parked raw waiting for a tool slot — dimmed so it reads as unfinished.
         cell.append(el("span", { class: "cell-main parked" }, [ingredientIconEl(content.rawId, 96)]));
@@ -979,6 +1082,21 @@ export class PlayView {
     return grid;
   }
 
+  /**
+   * Raw ingredient ids this level's queues actually contain — used to grey
+   * out tools that no ingredient in this level will ever need (e.g. Fryer
+   * and Flour, which have no recipes yet at all).
+   */
+  private usedRawIds(): Set<Id> {
+    const ids = new Set<Id>();
+    for (const lane of this.level.queues) {
+      for (const item of lane) {
+        if (item.kind === "ingredient") ids.add(item.id);
+      }
+    }
+    return ids;
+  }
+
   /** Only the tools this map actually defines are drawn, each with its slots. */
   private toolsEl(): HTMLElement {
     const wrap = el("div", { class: "tools" });
@@ -986,7 +1104,9 @@ export class PlayView {
       wrap.append(el("small", { class: "muted" }, ["This map defines no cooking tools."]));
       return wrap;
     }
+    const usedRawIds = this.usedRawIds();
     this.sim.tools.forEach((tool, toolIndex) => {
+      const unused = !tool.def.recipes.some((r) => usedRawIds.has(r.in));
       const slots = el("div", { class: "tool-slots" });
       tool.slots.forEach((slot, i) => {
         const bar = el("div", { class: "bar" });
@@ -1004,8 +1124,10 @@ export class PlayView {
       // Compact: name + slot/time detail live in the tooltip, not on screen —
       // this row is meant to take as little vertical space as possible.
       const toolEl = el("div", {
-        class: "tool",
-        title: `${tool.def.name} — ${tool.def.numSlots} slot(s) · ${tool.def.cookingTime}s`,
+        class: `tool${unused ? " unused" : ""}`,
+        title:
+          `${tool.def.name} — ${tool.def.numSlots} slot(s) · ${tool.def.cookingTime}s` +
+          (unused ? " — no ingredient in this level needs it" : ""),
       }, [
         el("div", { class: "tool-head" }, [
           toolIconEl(tool.def, 64),

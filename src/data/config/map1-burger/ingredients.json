@@ -1,5 +1,5 @@
 {
-  "_source": "ConfigTables!O3:T12 (ids/prices/codes) and O15:R24 (thumbnails, numSlices)",
+  "_source": "ConfigTables!O3:T12 (ids/prices/codes) and O15:R24 (thumbnails, numSlices). Ids 9-15 are merged in from MapDefinitions.tsv's Map1_burger raw-ingredients table to exercise chained-tool processing (potato) and multi-use cooked ingredients (chili_bowl/cheese_sauce) — see cooked-ingredients.json and cooking-tools.json.",
   "_note": "Cook times and raw→cooked mapping live in cooking-tools.json — a tool defines what it turns each ingredient into and how long it takes.",
   "ingredients": [
     { "id": 0, "name": "Bun", "code": "burger_bun_raw", "price": 4, "numSlices": 1, "emoji": "🍞", "fileId": "1MLtLe69Gn6D-EQ4DAXmEr0R1h3gY7s2M", "localImage": "Map1-burger/ingredients/burger_bun_raw.png" },
@@ -10,6 +10,13 @@
     { "id": 5, "name": "Cheese", "code": "cheese", "price": 6, "numSlices": 2, "emoji": "🧀", "fileId": "1RjP8ZeVgFfF6-kFF1kbzJFE-xThmw3oo", "localImage": "Map1-burger/ingredients/cheese.png" },
     { "id": 6, "name": "Egg", "code": "egg", "price": 7, "numSlices": 1, "emoji": "🥚", "fileId": "1JnHUAXkpkmLaTr2SxuOsxkpj7dt3OYiu", "localImage": "Map1-burger/ingredients/egg.png" },
     { "id": 7, "name": "Soda", "code": "cup", "price": 8, "numSlices": 1, "emoji": "🥤", "fileId": "1LyYrqYSDVXHxH5fzw-LdlCTpo3O0_g89", "localImage": "Map1-burger/ingredients/cup.png" },
-    { "id": 8, "name": "Ice", "code": "ice", "price": 2, "numSlices": 1, "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-", "localImage": "Map1-burger/ingredients/ice.png" }
+    { "id": 8, "name": "Ice", "code": "ice", "price": 2, "numSlices": 1, "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-", "localImage": "Map1-burger/ingredients/ice.png" },
+    { "id": 9, "name": "Chicken Wing", "code": "chick_wing", "price": 20, "numSlices": 1, "emoji": "🍗", "fileId": "1E8n_7IIKLvq-6KRqieyru7RkXcM8UbOF" },
+    { "id": 10, "name": "Chicken Thigh", "code": "chick_thigh", "price": 24, "numSlices": 1, "emoji": "🍗", "fileId": "1DeF5iGKL5fTxtl-VMPuFgOAx9fjdSLnj" },
+    { "id": 11, "name": "Chicken Nugget", "code": "chick_nugget", "price": 28, "numSlices": 1, "emoji": "🍗", "fileId": "1kZ981g73mobTBIE3tmGh13XuaFA67cA9" },
+    { "id": 12, "name": "Potato", "code": "potato", "price": 14, "numSlices": 2, "emoji": "🥔", "fileId": "1vbvr2gl7UYvvPCs7XAcPG9pGfmXSFjIA" },
+    { "id": 13, "name": "Chili Bowl", "code": "chili_bowl", "price": 0, "numSlices": 1, "emoji": "🌶️", "fileId": "1LdW4uLvhm-aYPvYUpcjMVaRPVmxcMgET" },
+    { "id": 14, "name": "Cheese Sauce", "code": "cheese_sauce", "price": 8, "numSlices": 1, "emoji": "🧀", "fileId": "1a30eBQP7yg99wslODcVtjfUZo3qLIJkn" },
+    { "id": 15, "name": "Chive", "code": "chive", "price": 8, "numSlices": 2, "emoji": "🌿", "fileId": "1DoWBhFaXiCQ0GrAShwCg_3saEzazKBaH" }
   ]
 }

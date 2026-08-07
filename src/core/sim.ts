@@ -38,7 +38,18 @@ export type LoseReason =
 /** One occupied tool slot. */
 export interface ToolSlotState {
   /** null when the slot is free. */
-  item: { uid: number; rawId: Id; elapsed: number } | null;
+  item: {
+    uid: number;
+    rawId: Id;
+    elapsed: number;
+    /**
+     * Set only for a multi-step recipe (see ToolRecipe.chainTools) — carries
+     * the still-remaining tool ids to hop through and the final output,
+     * decided once at the first tool and threaded through every hop since
+     * later tools in the chain don't own a recipe entry for this raw id.
+     */
+    chain?: { remaining: Id[]; out: Id; amount: number };
+  } | null;
 }
 
 export interface ToolState {
@@ -48,8 +59,12 @@ export interface ToolState {
 
 export type CellContent =
   | { kind: "empty" }
-  /** A finished ingredient waiting to be served. */
-  | { kind: "cooked"; cookedId: Id }
+  /**
+   * A finished ingredient waiting to be served. `usesLeft` is only set for a
+   * multi-use ingredient (CookedIngredientDef.usageNum > 1, e.g. a shared
+   * sauce) — absent means the normal single-use case.
+   */
+  | { kind: "cooked"; cookedId: Id; usesLeft?: number }
   /** A raw ingredient parked because its tool was full (park-on-grid policy). */
   | { kind: "raw"; rawId: Id }
   /** dirtyId indexes MapDef.dirtyObjects; stacks of different types never mix. */
@@ -103,7 +118,13 @@ export type FlightKind =
   | "queue-to-grid"
   | "tool-to-grid"
   | "grid-to-tool"
+  /** A chained-recipe hop from one tool straight to the next (see ToolRecipe.chainTools) — never touches the grid. */
+  | "tool-to-tool"
   | "grid-to-customer"
+  /** A cooked item served straight out of the tool it just finished at — the customer was already waiting, so it never lands on the grid. */
+  | "tool-to-customer"
+  /** A no-tool-needed pick served straight from the queue — the customer was already waiting, so it never lands on the grid. */
+  | "queue-to-customer"
   /** The dirty dish a departing customer leaves behind. */
   | "customer-to-grid"
   /** One dirty stack flying into a staff customer as they clear it. */
@@ -132,6 +153,8 @@ export interface Flight {
   raw?: boolean;
   /** customer-to-grid / dirty-to-staff only: which MapDef.dirtyObjects entry this is. */
   dirtyId?: Id;
+  /** tool-to-tool only: the chain state to install on the destination slot's item — see ToolSlotState.item.chain. */
+  chain?: { remaining: Id[]; out: Id; amount: number };
 }
 
 export interface SimEvent {
@@ -638,9 +661,19 @@ export class Simulation {
     this.log("pick", `Picked ${def?.name ?? item.id}`);
     if (d.kind === "tool") {
       this.launch({ kind: "queue-to-tool", itemId: item.id, toTool: { toolId: d.toolId, slot: d.slot } });
-    } else {
-      this.launch({ kind: "queue-to-grid", itemId: item.id, toCell: d.cell, raw: d.raw });
+      return;
     }
+    if (!d.raw) {
+      // No tool needed — if a customer is already waiting for it, skip the
+      // grid landing entirely and serve it straight from the queue.
+      const target = this.findServeTarget(item.id);
+      if (target) {
+        this.releaseCell(d.cell);
+        this.launch({ kind: "queue-to-customer", itemId: item.id, toCustomer: target });
+        return;
+      }
+    }
+    this.launch({ kind: "queue-to-grid", itemId: item.id, toCell: d.cell, raw: d.raw });
   }
 
   /**
@@ -789,12 +822,24 @@ export class Simulation {
 
     switch (flight.kind) {
       case "queue-to-tool":
-      case "grid-to-tool": {
+      case "grid-to-tool":
+      case "tool-to-tool": {
         const { toolId, slot } = flight.toTool!;
         this.releaseSlot(toolId, slot);
         const tool = this.tools.find((t) => t.def.id === toolId);
         if (tool) {
-          tool.slots[slot].item = { uid: this.nextUid++, rawId: flight.itemId, elapsed: 0 };
+          // tool-to-tool carries its chain state forward explicitly (a later
+          // hop's tool doesn't own a recipe entry for this raw id); the first
+          // hop looks it up fresh from the destination tool's own recipes.
+          const chain =
+            flight.chain ??
+            (() => {
+              const recipe = tool.def.recipes.find((r) => r.in === flight.itemId);
+              return recipe?.chainTools?.length
+                ? { remaining: recipe.chainTools, out: recipe.out, amount: recipe.amount }
+                : undefined;
+            })();
+          tool.slots[slot].item = { uid: this.nextUid++, rawId: flight.itemId, elapsed: 0, chain };
         }
         if (flight.fromCell !== undefined) {
           // reclaimParkedRaws() reserved this cell when it launched the
@@ -811,13 +856,13 @@ export class Simulation {
         this.releaseCell(cell);
         this.grid[cell] = flight.raw
           ? { kind: "raw", rawId: flight.itemId }
-          : { kind: "cooked", cookedId: flight.itemId };
+          : { kind: "cooked", cookedId: flight.itemId, usesLeft: this.initialUsesLeft(flight.itemId) };
         break;
       }
       case "tool-to-grid": {
         const cell = flight.toCell!;
         this.releaseCell(cell);
-        this.grid[cell] = { kind: "cooked", cookedId: flight.itemId };
+        this.grid[cell] = { kind: "cooked", cookedId: flight.itemId, usesLeft: this.initialUsesLeft(flight.itemId) };
         const def = this.map.cookedIngredients.find((c) => c.id === flight.itemId);
         this.log("cooked", `${def?.name ?? flight.itemId} ready`);
         break;
@@ -853,8 +898,14 @@ export class Simulation {
         const { index, dish } = flight.toCustomer!;
         if (flight.fromCell !== undefined) {
           this.releaseCell(flight.fromCell);
-          this.grid[flight.fromCell] = { kind: "empty" };
+          this.consumeCookedCell(flight.fromCell);
         }
+        this.fillDish(index, dish, flight.itemId);
+        break;
+      }
+      case "tool-to-customer":
+      case "queue-to-customer": {
+        const { index, dish } = flight.toCustomer!;
         this.fillDish(index, dish, flight.itemId);
         break;
       }
@@ -1019,7 +1070,7 @@ export class Simulation {
           if (content.items.length === 0) this.grid[step.cell] = { kind: "empty" };
         }
       } else if (step.source === "grid") {
-        this.grid[step.cell] = { kind: "empty" };
+        this.consumeCookedCell(step.cell);
       } else if (step.amount <= 1) {
         this.queueGrid[step.x][step.y] = null;
       } else {
@@ -1108,6 +1159,22 @@ export class Simulation {
     this.reservedCells.delete(cell);
   }
 
+  /** A fresh cooked instance's uses-left — undefined for the normal single-use case (usageNum absent or 1). */
+  private initialUsesLeft(cookedId: Id): number | undefined {
+    const n = this.map.cookedIngredients.find((c) => c.id === cookedId)?.usageNum;
+    return n && n > 1 ? n : undefined;
+  }
+
+  /** Serves one use of a cooked grid cell — decrements usesLeft if the ingredient is multi-use, otherwise clears the cell like before. */
+  private consumeCookedCell(cell: number): void {
+    const content = this.grid[cell];
+    if (content.kind === "cooked" && content.usesLeft && content.usesLeft > 1) {
+      this.grid[cell] = { kind: "cooked", cookedId: content.cookedId, usesLeft: content.usesLeft - 1 };
+    } else {
+      this.grid[cell] = { kind: "empty" };
+    }
+  }
+
   private customerTime(c: CustomerConfig): number {
     if (c.waitTime <= 0) return Infinity;
     const bad = this.level?.weather && this.level.weather !== "Normal";
@@ -1121,11 +1188,43 @@ export class Simulation {
         slot.item.elapsed += dt;
         if (slot.item.elapsed < tool.def.cookingTime) return;
 
+        // Multi-step recipe (e.g. potato: Cutting Board, then Fryer) — hop to
+        // the next tool instead of producing output, waiting for a free slot
+        // there if needed (retried every tick until one opens up).
+        const chain = slot.item.chain;
+        if (chain && chain.remaining.length > 0) {
+          const nextToolId = chain.remaining[0];
+          const nextSlot = this.freeSlot(nextToolId);
+          if (nextSlot === -1) return;
+          this.reserveSlot(nextToolId, nextSlot);
+          this.launch({
+            kind: "tool-to-tool",
+            itemId: slot.item.rawId,
+            fromTool: { toolId: tool.def.id, slot: slotIndex },
+            toTool: { toolId: nextToolId, slot: nextSlot },
+            chain: { remaining: chain.remaining.slice(1), out: chain.out, amount: chain.amount },
+          });
+          slot.item = null;
+          return;
+        }
+
         const recipe = tool.def.recipes.find((r) => r.in === slot.item!.rawId);
-        const outId = recipe?.out ?? slot.item.rawId;
-        const amount = recipe?.amount ?? 1;
-        // The slot empties as the output leaves; each unit flies separately.
+        const outId = chain?.out ?? recipe?.out ?? slot.item.rawId;
+        const amount = chain?.amount ?? recipe?.amount ?? 1;
+        // The slot empties as the output leaves; each unit flies separately —
+        // straight to a customer already waiting for it when there is one,
+        // skipping the grid entirely; otherwise it lands on the grid as usual.
         for (let n = 0; n < amount; n++) {
+          const target = this.findServeTarget(outId);
+          if (target) {
+            this.launch({
+              kind: "tool-to-customer",
+              itemId: outId,
+              fromTool: { toolId: tool.def.id, slot: slotIndex },
+              toCustomer: target,
+            });
+            continue;
+          }
           const cell = this.reserveCell();
           if (cell === -1) {
             this.lose("grid-overflow", "No free grid cell for a cooked ingredient");
@@ -1169,27 +1268,66 @@ export class Simulation {
   }
 
   /** Launches backpack/grid → customer flights for cooked items that match an order (FCFS, backpack checked before the grid). */
+  /** How many flights that fill a dish are already carrying `cookedId` toward it — backpack, grid, or a direct tool/queue serve all count, so none of those paths double-book the same need. */
+  private inFlightToDish(customerIndex: number, dishIndex: number, cookedId: Id): number {
+    return this.flights.filter(
+      (f) =>
+        (f.kind === "grid-to-customer" ||
+          f.kind === "backpack-to-customer" ||
+          f.kind === "tool-to-customer" ||
+          f.kind === "queue-to-customer") &&
+        f.toCustomer?.index === customerIndex &&
+        f.toCustomer.dish === dishIndex &&
+        f.itemId === cookedId,
+    ).length;
+  }
+
+  /** True when `dish` can accept `cookedId` right now — its baseId requirement (a single id, or any one of several) is already filled, or it has none. */
+  private baseRequirementMet(cookedId: Id, dish: DishState): boolean {
+    const baseId = this.map.cookedIngredients.find((c) => c.id === cookedId)?.baseId;
+    if (baseId === undefined) return true;
+    const options = Array.isArray(baseId) ? baseId : [baseId];
+    return options.some((b) => dish.filled.includes(b));
+  }
+
+  /**
+   * Finds an active customer/dish that wants a freshly produced `cookedId`
+   * right now and isn't already covered by an in-flight serve — used to skip
+   * landing a single-use item on the grid when someone's already waiting for
+   * it. A multi-use ingredient (CookedIngredientDef.usageNum > 1) always
+   * lands on the grid instead, so its remaining uses aren't thrown away on
+   * one direct serve.
+   */
+  private findServeTarget(cookedId: Id): { index: number; dish: number } | null {
+    const usageNum = this.map.cookedIngredients.find((c) => c.id === cookedId)?.usageNum ?? 1;
+    if (usageNum > 1) return null;
+    for (const customer of this.active) {
+      for (let dishIndex = 0; dishIndex < customer.dishes.length; dishIndex++) {
+        const dish = customer.dishes[dishIndex];
+        if (!dish.remaining.includes(cookedId)) continue;
+        if (!this.baseRequirementMet(cookedId, dish)) continue;
+        const wanted = dish.remaining.filter((id) => id === cookedId).length;
+        if (this.inFlightToDish(customer.index, dishIndex, cookedId) >= wanted) continue;
+        return { index: customer.index, dish: dishIndex };
+      }
+    }
+    return null;
+  }
+
   private autoServe(): void {
     for (const customer of this.active) {
       customer.dishes.forEach((dish, dishIndex) => {
         for (const needed of [...dish.remaining]) {
           // Don't double-book: an item already flying to this dish counts,
-          // whether it's coming from the backpack or the grid.
-          const inFlight = this.flights.filter(
-            (f) =>
-              (f.kind === "grid-to-customer" || f.kind === "backpack-to-customer") &&
-              f.toCustomer?.index === customer.index &&
-              f.toCustomer.dish === dishIndex &&
-              f.itemId === needed,
-          ).length;
+          // whether it's coming from the backpack, the grid, or straight off
+          // a tool/queue via the direct-serve path.
           const wanted = dish.remaining.filter((id) => id === needed).length;
-          if (inFlight >= wanted) continue;
+          if (this.inFlightToDish(customer.index, dishIndex, needed) >= wanted) continue;
 
           // Some cooked ingredients can't be served until their "base" is
           // already in this dish (toppings need the bun there first, ice
           // needs the cup there first) — see CookedIngredientDef.baseId.
-          const baseId = this.map.cookedIngredients.find((c) => c.id === needed)?.baseId;
-          if (baseId !== undefined && !dish.filled.includes(baseId)) continue;
+          if (!this.baseRequirementMet(needed, dish)) continue;
 
           // The Save Me backpack is checked before the grid — see saveMe().
           const backpackCell = this.grid.findIndex(
@@ -1488,7 +1626,10 @@ export class Simulation {
       const cell = this.grid[i];
       if (cell.kind !== "cooked" && cell.kind !== "raw") continue;
       if (cell.kind === "cooked") {
-        items.push(cell.cookedId);
+        // A multi-use ingredient's remaining uses become that many separate
+        // backpack entries — the backpack has no per-item "uses left" concept
+        // of its own, so N copies is how N remaining uses survive the sweep.
+        for (let n = 0; n < (cell.usesLeft ?? 1); n++) items.push(cell.cookedId);
       } else {
         const match = findToolRecipe(this.map.tools, cell.rawId);
         if (match) for (let n = 0; n < match.recipe.amount; n++) items.push(match.recipe.out);

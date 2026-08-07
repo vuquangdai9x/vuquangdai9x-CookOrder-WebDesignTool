@@ -1,11 +1,11 @@
 {
   "_source": "ConfigTables!A3:C5",
   "maps": [
-    { "index": 1, 
-      "id": "burger", 
-      "name": "Burger", 
-      "numLevels": 40, 
-      "folder": "map1-burger" 
+    { "index": 1,
+      "id": "burger",
+      "name": "Burger",
+      "numLevels": 25,
+      "folder": "map1-burger"
     }
   ]
 }

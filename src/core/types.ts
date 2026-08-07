@@ -54,12 +54,20 @@ export interface CookedIngredientDef {
   /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
   localImage?: string;
   /**
-   * Another cooked ingredient id that must already be in a dish before this
-   * one can be served to it (e.g. Ice needs a Soda Cup already there; burger
-   * toppings need a Sliced Bun already there). Undefined = no requirement —
-   * this ingredient can serve on its own, or *is* a base.
+   * Another cooked ingredient id (or any one of several) that must already be
+   * in a dish before this one can be served to it (e.g. Ice needs a Soda Cup
+   * already there; burger toppings need a Sliced Bun already there; a sauce
+   * shared across several fried-chicken bases needs any one of them there
+   * first). Undefined = no requirement — this ingredient can serve on its
+   * own, or *is* a base.
    */
-  baseId?: Id;
+  baseId?: Id | Id[];
+  /**
+   * How many times a single instance of this ingredient can be served before
+   * it's consumed (e.g. a sauce that tops several dishes). Absent/1 = normal
+   * single-use.
+   */
+  usageNum?: number;
 }
 
 /**
@@ -84,6 +92,12 @@ export interface ToolRecipe {
   in: Id;
   out: Id;
   amount: number;
+  /**
+   * Additional tool ids to visit, in order, after this one, before `out` is
+   * produced (e.g. potato: Cutting Board, then Fryer, then 2 pieces out).
+   * Absent/empty = single-step, the common case.
+   */
+  chainTools?: Id[];
 }
 
 /**
