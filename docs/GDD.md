@@ -41,18 +41,22 @@ Two neighboring queue items can be grouped so they behave as more than independe
 
 ### 2.2 Cooking tools
 
-- Each map defines its **cooking tools** (`cooking-tools.json`). A tool has an integer id, name, **number of slots**, a **cooking time**, and a list of **recipes** mapping one raw ingredient to what comes out and **how many pieces** (e.g. the Chopping Board turns 1 tomato into 2 tomato slices).
-- Picking an ingredient sends it to the tool that has a recipe for it. **An ingredient with no recipe in any tool needs no processing** and goes straight to the grid (Map 1: Ice).
+- Each map defines its **cooking tools** (`cooking-tools.json`). A tool has an integer id, name, **number of slots**, a **cooking time**, and a list of **recipes** mapping one raw ingredient to what comes out and **how many pieces** (e.g. the Cutting Board turns 1 tomato into 2 tomato slices).
+- Picking an ingredient sends it to the tool that has a recipe for it. **An ingredient with no recipe in any tool needs no processing** and goes straight to the grid (Map 1: Ice, Chili Bowl, Cheese Sauce).
+- A recipe may be a **chain**: `chainTools` lists further tool ids the ingredient hops through, in order, after the first one, before its final output is produced (e.g. Map 1's Potato: Cutting Board, then Fryer, then 2 pieces). Each hop still takes that tool's own `cookingTime`; if the next tool in the chain has no free slot, the item just waits at its current tool and retries every tick until one opens up — it never spills onto the grid mid-chain.
 - A tool processes as many ingredients at once as it has slots. **When every slot is busy**, behaviour follows a per-level toggle:
   - **Block the pick** (default) — the queue tile cannot be picked until a slot frees.
   - **Park raw on the grid** — the raw ingredient goes to the grid and waits; the moment a slot opens, parked raws are checked **first** and moved into the tool ahead of any new pick.
+- **A tool with no ingredient in the current level's queues is greyed out** in Play mode's tool bar (not clickable-relevant, purely informational) — see [ToolDesign.md](ToolDesign.md).
 - **Speed** is a single option group: **×1 / ×2 / ×3 / Skip**. Skip resolves everything instantly with no animation.
 
-Map 1 tools: **Soda Machine** (1 slot, 2s — cup → soda), **Chopping Board** (1 slot, 1s — bun → 1 sliced bun; tomato, lettuce, onion, cheese → 2 pieces each), **Pan** (2 slots, 3s — patty → cooked patty, egg → fried egg).
+Map 1 tools: **Griddle** (2 slots, 3s — patty → cooked patty, egg → fried egg), **Coca Machine** (1 slot, 2s — cup → soda), **Cutting Board** (1 slot, 1s — bun → 1 sliced bun; tomato, lettuce, onion, cheese, chive → 2 pieces each; potato → chains to the Fryer, see above), **Fryer** (1 slot, 1s — chicken wing/thigh/nugget → 1 piece each; also potato's second chain step), **Flour** (1 slot, 1s, no recipes yet).
 
 ### 2.2.1 Movement and timing
 
-Every hand-off is a **flight**: the item is shown travelling from one place to the next, and **the next logic step only runs when it lands**. Arriving in a tool slot is what starts cooking; arriving on the grid is what triggers order matching; arriving at a customer is what fills the dish. The flights are queue→tool, queue→grid, tool→grid, grid→tool (a parked raw being reclaimed) and grid→customer.
+Every hand-off is a **flight**: the item is shown travelling from one place to the next, and **the next logic step only runs when it lands**. Arriving in a tool slot is what starts cooking; arriving on the grid is what triggers order matching; arriving at a customer is what fills the dish. The flights are queue→tool, queue→grid, tool→grid, tool→tool (a chained recipe's mid-hop, §2.2), grid→tool (a parked raw being reclaimed), grid→customer, and backpack→customer (Save Me, §2.7).
+
+**Skip-the-grid direct serving**: before a freshly finished tool output (or a no-tool-needed queue pick) lands on the grid, the sim checks whether an active customer's dish already wants it right now (their base requirement met, not already covered by another in-flight serve). If so, it flies **straight to that customer** (`tool-to-customer` / `queue-to-customer`) instead of landing on the grid at all. A **multi-use** ingredient (`usageNum > 1`, see §2.4) always lands on the grid instead, so the rest of its uses aren't thrown away on a single direct serve.
 
 ### 2.3 Output grid
 
@@ -67,7 +71,8 @@ Every hand-off is a **flight**: the item is shown travelling from one place to t
 - There are **1–2 concurrent serveable slots** (per-level config). Customers beyond the serveable slots may already **show their order** (so the player can plan) but **cannot be served** until a slot frees up.
 - Each customer orders **one or more dishes**; each dish is an **ad-hoc list of cooked ingredient ids** (dishes are not predefined entities — the order string fully defines them). Dishes may carry effects.
 - **Serving is automatic**: whenever a needed cooked ingredient is present on the grid, the system moves it to the customer's dish. Priority between concurrent customers: first-come-first-served (earlier customer slot fills first).
-- Some cooked ingredients require a **base** already in the same dish before they can be served (a stacking rule): Map 1's burger toppings (Cooked Patty, Tomato Slice, Lettuce Cut, Cheese Slice, Fried Egg) need the Sliced Bun there first, and Ice needs the Soda Cup there first. This is per-dish, not per-customer — each dish must independently have its base served before its dependents follow. A dish that orders a dependent without also ordering its base can never complete, so designers must always pair them in the order string. See `baseId` in §4.
+- Some cooked ingredients require a **base** already in the same dish before they can be served (a stacking rule): Map 1's burger toppings (Cooked Patty, Tomato Slice, Lettuce Cut, Cheese Slice, Fried Egg) need the Sliced Bun there first, and Ice needs the Soda Cup there first. `baseId` can also list **several** ids, in which case the requirement is met by **any one** of them (e.g. Chili Bowl/Cheese Sauce/Chive need any one of the four fried chicken/potato bases already in the dish, not all four). This is per-dish, not per-customer — each dish must independently have its base served before its dependents follow. A dish that orders a dependent without also ordering (at least one of) its base(s) can never complete, so designers must always pair them in the order string. See `baseId` in §4.
+- Some cooked ingredients are **multi-use** (`usageNum` in §4, e.g. a shared sauce): a single instance on the grid can be served that many times before it's consumed, showing a remaining-uses badge in Play mode instead of disappearing after the first serve.
 - When all dishes of a customer are complete, the customer **pays and leaves**, freeing the slot.
 - Some (rare) customers have a **time limit**; failing it is a per-level designer decision (default: customer leaves unserved — configurable behavior, see events §6).
 
@@ -84,7 +89,7 @@ Every hand-off is a **flight**: the item is shown travelling from one place to t
 
 ### 2.6 Boosters
 
-Four game-wide booster actions, defined once for the whole game (`src/data/config/general/boosters.json`, not per-map, not Design-mode-editable — static JSON). Each level starts with its own **charge count per booster** (`boosterCharges`, default `[3,3,3,3]` when a level doesn't specify its own); a charge is spent only when the booster actually changes something.
+Six game-wide booster actions, defined once for the whole game (`src/data/config/general/boosters.json`, not per-map, not Design-mode-editable — static JSON). Each level starts with its own **charge count per booster** (`boosterCharges`, default `[3,3,3,3]` — 4 entries, ids 4–5 always start at 0 charges, see below — when a level doesn't specify its own); a charge is spent only when the booster actually changes something.
 
 | # | Name | Effect |
 |---|---|---|
@@ -92,6 +97,10 @@ Four game-wide booster actions, defined once for the whole game (`src/data/confi
 | 1 | **Ingredient Pick** | Arms a mode that expands the visible window to `numRowPick` rows (default 7) and makes **every** visible slot pickable, not just the front — including picking a combined block or a not-yet-all-front linked chain from any position. A charge is spent only on an actual successful pick; arming and then canceling (or missing) costs nothing. |
 | 2 | **Clean Table** | Clears `numCleanStack` dirty stacks, oldest first; `-1` (the default) clears all of them. |
 | 3 | **Auto Complete Dish** | Finishes one remaining dish of the left-most active customer. For each cooked ingredient the dish still needs, it draws from **backpack → grid → queue**, in that priority order, and the whole dish completes **atomically** — if any single ingredient can't be found anywhere, nothing is taken. A queue-sourced raw that yields more than one piece per pick is only partially consumed per use: it stays visibly in the queue, and a running tally of "parts already taken" is kept, until enough parts have accumulated to match its yield — only then is it actually removed. |
+| 4 | **Refill Customer Time** | Defined (name/icon/economy fields) but **not yet wired into the sim** — `boosterCharges` never grants it any charges, so its button always renders disabled. Placeholder from the sheet's Booster_config tab. |
+| 5 | **More Grid Slot** | Same as above — defined, always 0 charges, no sim behavior yet. |
+
+Each booster row also carries **economy fields** from the sheet (`code`, `lvUnlock`, `free`, `price`, `maxAds`) — reference data only; this level-design tool has no IAP/currency system, so nothing reads them. `boosters.json` also has a `saveMeVariants` array (the sheet's two Save Me trigger conditions — out-of-slot, out-of-time — each with the same economy fields) that isn't wired into the sim's single unified `saveMe()` either; see §2.7.
 
 ### 2.7 Save Me
 
@@ -120,17 +129,17 @@ All element definitions live in **tables** (Google Sheets-backed; table UI in th
 | Table | Columns (minimum) |
 |---|---|
 | Raw ingredients (per map) | id, name, code, price, numSlices, icon fileId |
-| Cooked ingredients (per map) | id, name, icon fileId, `baseId` (optional — another cooked ingredient id required in the dish first, see §2.4) |
-| Cooking tools (per map) | id, name, numSlots, cookingTime, recipes (in → out × amount) |
+| Cooked ingredients (per map) | id, name, icon fileId, `baseId` (optional — another cooked ingredient id, or any one of several, required in the dish first, see §2.4), `usageNum` (optional, > 1 = can be served that many times before it's consumed, see §2.4) |
+| Cooking tools (per map) | id, name, numSlots, cookingTime, recipes (in → out × amount, each optionally carrying `chainTools` — further tool ids to hop through first, see §2.2) |
 | Dirty objects (per map, optional) | id, name, icon fileId, `sourceCookedId` (which cooked ingredient's presence in a dish spawns this type, see §2.5) |
 | Effect/status definitions (global) | id, name, icon, description, param definitions `<name, data-type>` |
 | Grid cell types (global) | id, name, icon, description, param definitions `<name, data-type>` |
 | Customer types (global) | id, name, icon, description, param definitions `<name, data-type>` |
-| Boosters (global, static) | id, name, icon, description, param definitions `<name, data-type>` — plus a `params` block of game-wide tuning (row counts, charge counts, the backpack's icon spec, see §2.6/§2.7). Not sheet-backed and not Design-mode-editable; hand-authored JSON only. |
+| Boosters (global, static) | id, name, icon, description, param definitions `<name, data-type>`, plus sheet economy fields (`code`, `lvUnlock`, `free`, `price`, `maxAds` — reference only, unused by the sim) — plus a `params` block of game-wide tuning (row counts, charge counts, the backpack's icon spec, see §2.6/§2.7) and a `saveMeVariants` array (also reference only). Not sheet-live-synced and not Design-mode-editable; hand-authored/imported JSON only. |
 
-Effect/cell-type/customer-type **definitions are metadata** (designer-editable); their **behaviors are registered in code** via extensible registries (see §5). The definitions tables mirror the designer's existing Google Sheet schema. Boosters are the one exception — game-wide, not per-map, and their JSON has no linked Sheet source yet.
+Effect/cell-type/customer-type **definitions are metadata** (designer-editable); their **behaviors are registered in code** via extensible registries (see §5). The definitions tables mirror the designer's existing Google Sheet schema. Boosters are the one exception — game-wide, not per-map, imported from the sheet's `Booster_config` tab but not kept live-synced or Design-mode-editable.
 
-The config lives as JSON under `src/data/config/`: cross-map tables in **`general/`** (`ingredient-statuses.json`, `cell-statuses.json`, `customer-types.json`, `key-colors.json`, `weather.json`, `emotions.json`, `tags.json`, `meta.json`, `boosters.json`, `maps.json`) and one folder per map named **`map<index>-<id>/`** (`map1-burger/`, `map2-chicken_fried/`) holding that map's `map.json`, `ingredients.json`, `cooking-tools.json`, `levels.json`, and whichever of `cooked-ingredients.json`, `dishes.json`, `dirty-objects.json`, `customer-avatars.json`, `recipe-parts.json` that map defines (a map missing `cooked-ingredients.json` derives its cooked set from its tools' recipe outputs instead). Every definition row carries its artwork as a Google Drive **`fileId`** plus an `emoji` fallback, with an optional bundled local image tried first. Only Map 1 is currently wired into the running tool; Map 2's config exists on disk but has no map switcher in the UI yet.
+The config lives as JSON under `src/data/config/`: cross-map tables in **`general/`** (`ingredient-statuses.json`, `cell-statuses.json`, `customer-types.json`, `key-colors.json`, `weather.json`, `emotions.json`, `tags.json`, `meta.json`, `boosters.json`, `maps.json`, `misc-definitions.json`) and one folder per map named **`map<index>-<id>/`** (`map1-burger/`, `map2-chicken_fried/`) holding that map's `map.json`, `ingredients.json`, `cooking-tools.json`, `levels.json`, and whichever of `cooked-ingredients.json`, `dishes.json`, `dirty-objects.json`, `customer-avatars.json`, `recipe-parts.json`, `misc.json` that map defines (a map missing `cooked-ingredients.json` derives its cooked set from its tools' recipe outputs instead). `misc-definitions.json`/`misc.json` hold sheet sub-tables that don't correspond to any other config file (kept for reference, not wired into any runtime type — same treatment as `dishes.json`). Every definition row carries its artwork as a Google Drive **`fileId`** plus an `emoji` fallback, with an optional bundled local image tried first. Only Map 1 is currently wired into the running tool; Map 2's config exists on disk but has no map switcher in the UI yet. Map 1's raw/cooked ingredient tables include ids 9–15, merged in from Map 2's sheet section to exercise chained recipes and multi-use serving (§2.2/§2.4) — not yet referenced by any level's queue/order data.
 
 ## 5. Effects & Extensibility
 

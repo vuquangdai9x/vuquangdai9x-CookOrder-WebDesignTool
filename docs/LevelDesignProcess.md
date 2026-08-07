@@ -82,7 +82,7 @@ Determines input rates and spatial congestion using the Level’s queue paramete
 *   **Static Parameters:** $V_{prev}$ (Map constant), $N_{queues}$ (Level configuration).
 *   **Dynamic Parameters (Bezier Curves):**
     *   **Recipe Complexity $REC(t)$:** The average number of manual steps/cooking transformations per order at time $t$.[1]
-    *   **Tool Congestion $TC(t)$:** The density of occupied slots in cooking tools (Pan, Chopping Board), directly scaling grid parking $P_{parked}(t)$ when the parking toggle is enabled.[1]
+    *   **Tool Congestion $TC(t)$:** The density of occupied slots in cooking tools (Map 1: Griddle, Coca Machine, Cutting Board, Fryer), directly scaling grid parking $P_{parked}(t)$ when the parking toggle is enabled.[1]
     *   **Queue Obstruction Frequency $F_{queue}(t)$:** The density of `Freezed` or `Locked` states on active queues to disrupt player routing.[1]
 
 ### Layer 4: Physical Compilation

@@ -2,7 +2,7 @@
 
 Companion to [GDD.md](GDD.md) and [SHEET_STRUCTURE.md](SHEET_STRUCTURE.md). Stack: **Vite + TypeScript + vanilla DOM** (no framework, no canvas — the game is discrete UI elements; DOM gives free hit-testing, easy table UIs, and inspectability for designers). Tests: **Vitest**. Static build; runs fully in browser, no server.
 
-**Status: Phases 1–5 complete, plus the ToolDesign layout rework (Phase 7), the cooking-tool/animation model (Phase 8), and a UX polish pass (Phase 9).** 72 tests green. Remaining work is Map 2's level import, blocked on its recipe encoding.
+**Status: Phases 1–5 complete, plus the ToolDesign layout rework (Phase 7), the cooking-tool/animation model (Phase 8), a UX polish pass (Phase 9), and a sheet re-sync + sim engine extension pass (Phase 10).** 126 tests green. Remaining work is full Map 2 level import, still blocked on its recipe encoding (Phase 10 merged a handful of Map 2 *ingredients* into Map 1 to exercise new mechanics, which is a separate thing from importing Map 2's own levels).
 
 ## Architecture principles
 
@@ -113,8 +113,47 @@ Verified in-browser against real Map 1 data: the three tools render with their r
 - Live-parse ConfigTables / Ingredient_config so definitions follow the sheet without code edits (currently a static copy under `src/data/config/`).
 - CSV export column review with the designer.
 
+## Phase 10 — Sheet re-sync + sim engine extension ✅
+
+The designer moved to a **new** source spreadsheet (tabs: Global Definition, Booster_config,
+MapDefinition, MapLevelProgress — see [SHEET_STRUCTURE.md](SHEET_STRUCTURE.md), fully rewritten
+this phase) with Map 1 the only "data-ready" map; Map 2/3 sections were read for structural
+reference only, per the same blocked-import reasoning as Phase 6.
+
+- **Re-synced every general/ and map1-burger/ config file** against the new sheet: `boosters.json`
+  gained 2 new boosters + sheet economy fields + `saveMeVariants`; `weather.json`/`tags.json` grew
+  new rows (Stormy, Hard/Super Hard with reward/icon data); `meta.json`'s reward/feature blocks
+  updated; `maps.json`/`map.json`'s `numLevels` corrected to the sheet's planned total (25, vs. 15
+  actually authored); `cooking-tools.json`'s 3 existing tools renamed (fileId-confirmed
+  rename/reorder, not new stations) plus 2 new tools added; a data-entry bug (Onion Slice missing
+  its `baseId`) fixed; `levels.json` rebuilt from `MapLevelProgress` (customer strings reformatted
+  from the sheet's 6-field layout down to the canonical 4 — the 2 extra fields have no engine
+  equivalent and were dropped by designer decision — weather/tag reassigned, queue strings taken
+  as-is, grid-lock data preserved since the sheet's Grid column was empty). New `misc-definitions.json`
+  / `misc.json` preserve sheet sub-tables that don't map to any existing config file.
+- **New sim engine capabilities**, exercised by merging 7 of Map 2's ingredients (chicken
+  wing/thigh/nugget, potato, chili bowl, cheese sauce, chive) into Map 1's ingredient tables (not
+  yet placed in any level's queue/order data):
+  - **Chained tool recipes** (`ToolRecipe.chainTools`) — an ingredient can hop through several
+    tools in sequence before producing output (potato: Cutting Board → Fryer). New `tool-to-tool`
+    flight kind; a full chain hop waits at its current tool if the next one is busy.
+  - **Multi-option `baseId`** (`Id | Id[]`) — a topping can require *any one* of several bases
+    already in the dish, not just a single fixed one.
+  - **Multi-use cooked ingredients** (`usageNum`) — a grid instance can be served several times
+    before it's consumed, with a uses-left badge in Play mode instead of clearing after one serve.
+  - **Skip-the-grid direct serving** — a freshly finished tool output or no-tool-needed queue pick
+    flies straight to an already-waiting customer (`tool-to-customer` / `queue-to-customer`),
+    bypassing the grid entirely, unless the ingredient is multi-use (which always lands on the
+    grid so its extra uses aren't wasted on one serve).
+  - **Play mode**: tools with no ingredient in the current level's queues render greyed out.
+- See [GDD.md](GDD.md) §2.2/§2.2.1/§2.4/§2.6 and [ToolDesign.md](ToolDesign.md) for the
+  gameplay/UI-facing writeups, and `sim.test.ts`'s "chained tool recipes" / "multi-option base
+  ingredient requirement" / "multi-use cooked ingredients" describe blocks for the engine tests.
+
 ## Verification
 
-- `npm run typecheck` and `npm test` (35 tests).
+- `npm run typecheck` and `npm test` — 126 tests green as of Phase 10 (this list of manual checks
+  predates Phases 7–9 and was never fully retrofitted for them; see each phase's own "Verified
+  in-browser" note above for what was actually checked at the time).
 - `npm run dev`, then in the browser: Design mode round-trips level 1_11's ColorLock grid and key-holder queue items and converts pasted legacy strings; Play mode wins level 1_1 (7/7), shows Freeze as a disabled item with "Frozen until 5 picks (now 1)", and opens 1_11's red ColorLock once the red key is picked; "⟳ Load from Sheet" reports "live Google Sheet" and matches the bundled snapshot.
 - Note: the rAF play loop pauses when the browser tab isn't compositing (standard browser behavior); use Skip to advance in that situation.

@@ -233,16 +233,25 @@ tool.
   items, parked raws, dirty stacks, lock progress — instead of edit state); cooking tools render
   below it as a **compact horizontal strip** — icon + name only, slot count and cook time move
   into the tooltip — sized to content rather than sharing a side-by-side column, since a left/right
-  split would leave too little width for either half at portrait size.
+  split would leave too little width for either half at portrait size. A tool **no ingredient in
+  the current level needs** (none of its recipes' inputs appear anywhere in the level's queues —
+  e.g. a placeholder tool like Flour, or a tool whose ingredients this particular level just
+  doesn't use) renders **greyed out** (dimmed + desaturated), with the tooltip noting why; it's
+  purely informational, tools were never clickable to begin with.
+  - A **cooked ingredient** on the grid that's **multi-use** (`usageNum > 1` — a shared sauce that
+    can serve several dishes before it's used up) shows a small `×N` "uses left" badge top-right
+    on its cell, decrementing each time it's served instead of disappearing after the first.
 - **When a tool is full**, a dropdown in the toolbar picks the behaviour: *Block the pick* (the
   queue tile is disabled with a reason tooltip) or *Park raw on the grid* (the raw ingredient
   waits on the grid, dimmed, and is pulled into the tool ahead of new picks the moment a slot
   frees).
 - **Movement**: every hand-off animates as a floating item flying between the two places —
-  queue→tool slot, queue→grid, tool→grid, grid→tool (reclaiming a parked raw), grid→customer, and
-  backpack→customer (Save Me, below). The animation is the gate: cooking starts when the
-  ingredient *arrives* in the slot, matching runs when an item *arrives* on the grid, and a dish
-  fills when the piece *arrives* at the customer.
+  queue→tool slot, queue→grid, tool→grid, tool→tool (a chained recipe's mid-hop, e.g. Potato:
+  Cutting Board → Fryer), grid→tool (reclaiming a parked raw), grid→customer, queue→customer and
+  tool→customer (a direct serve that skips the grid entirely because a customer is already
+  waiting — see [GDD.md](GDD.md) §2.2.1), and backpack→customer (Save Me, below). The animation is
+  the gate: cooking starts when the ingredient *arrives* in the slot, matching runs when an item
+  *arrives* on the grid, and a dish fills when the piece *arrives* at the customer.
 - **Completion feedback**: when a customer's whole order is filled, a burst of particles fires
   from their card and the card itself brightens then **shrinks away to nothing** — only once that
   finishes does the next customer (or the new "?" card) take its place, so the two never overlap.

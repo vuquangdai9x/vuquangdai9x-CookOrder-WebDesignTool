@@ -1,88 +1,112 @@
 # Google Sheet Structure
 
-Linked sheet: `1wayrsZlHCTtuMGD1Qft2Fmaeb19b-ULfO2F6abTlAEA` (read-only for this tool; **saving exports CSV downloads instead of writing back**). Fetched as CSV per tab via `export?format=csv&gid=…`, proxied through the Vite dev server (`/gsheet/*`) to avoid CORS.
+Linked sheet: **the user's own spreadsheet id** — none is checked into source or docs (see
+[ToolDesign.md](ToolDesign.md)'s Shared shell section: the Sheet ID field starts empty, and only
+someone who already has their project's own id can pull its live data through this tool).
+
+Reads go through the **Sheets API v4** with a per-user OAuth token (Google Identity Services) — not
+a CSV export proxy. **Writing is supported**: per-section and per-level "⇪ Write to sheet" actions
+push individual rows back to the linked sheet (`src/data/sheetWrite.ts`, column mapping in
+`config/general/sheet-write-columns.json`), in addition to (not instead of) the CSV export button.
+A bundled Map 1 snapshot ships with the tool so it's usable offline / with no sheet configured.
 
 ## Tabs
 
-| Tab | gid | Used by tool | Content |
-|---|---|---|---|
-| Tổng quan / Mục đích / Home / Flow | 0 / 1619950431 / 1648676294 / 430191651 | no | Overview & purpose notes (Vietnamese) |
-| RemoteConfig-Maps | 1355692925 | no | Remote-config blob |
-| **ConfigTables** | 709436862 | defs (static copy) | Multi-block layout: maps index, weather, emotions, ingredient encodes, dish recipes, **ingredient statuses**, **grid cell statuses**, key colors, misc key-value configs |
-| Gameplay | 575122880 | reference | Gameplay rules prose (Vietnamese) |
-| Upgrade / Journey / Design vs Demo | — | no | Meta-game design |
-| System_Config | 2020840180 | no | Feature unlock levels |
-| Ingredient_config | 675328923 | defs (static copy) | Per-map raw ingredients: id code, name, price, mechanic, action counts, cook times, burn |
-| Tool_config / Tool_config_1 | 1757733674 / 2117207559 | no | Kitchen tool upgrade tables (knife/pan/fryer…) |
-| **Level_overall_config** | 1529635743 | yes | Per-level design metrics + the encoded **LvConfig/MapConfig** strings |
-| **TOOL_Level_ingredient_queue** | 266021364 | yes | Per-level **ingredient queue** strings |
-| **Level_Scenario_Map1_burger** | 804770440 | yes | Map 1 customer scenarios + encoded **customer** strings |
-| **Level_Scenario_Map2_chicken_fried** | 722547124 | yes | Same for Map 2 |
-| Booster_config / Restaurant_config / Staff_config | — | no | Boosters, restaurant levels, staff |
-| Draft | 1491509214 | no | Scratch |
+| Tab | Content | Used by tool |
+|---|---|---|
+| **Global Definition** | Multi-block layout: maps index, weather, emotions, ingredient/grid-cell/customer statuses, key colors, a dish-combo reference table, a customer/pet-type table (cosmetic, unused by the sim), and the loose key/value blocks (hearts, serveTray, saveMe, rewards, features, home) | yes |
+| **Booster_config** | Two tables: the booster actions (`ID\|Title\|Details\|LvUnlock\|Free\|Price\|MaxAds\|DataList\|DataValueList`) and the Save Me variants (out-of-slot, out-of-time), same column shape | yes |
+| **MapDefinition** | Per-map sections, each starting at a row whose first cell names the map (e.g. `Map1_burger`, `Map2_donut`) — holds that map's tools/upgrade-cost table, dirty-objects table, cooked-ingredients table, raw-ingredients/recipes table (`Tool-Required` can be a comma list for a multi-step recipe, e.g. `2,3`), a level-pack/IAP-cost table, and a pet/customer-decoration table | Map 1's section only — Map 2/3 are still in progress and not data-ready, so their sections are read for structural reference but not imported |
+| **MapLevelProgress** | One row per level (`Map\|Level\|ID\|Title\|Weather\|Tag\|Customers\|Grid\|Queues\|concat-data\|Note\|E-TimePlay\|E-WinRate\|R-TimePlay\|R-WinRate`) — the actual authored level content. Only rows with populated `Customers`/`Queues` are "data-ready" | yes, Map 1 rows 1–15 only (16–25 exist as placeholders with empty data) |
 
-## Key definition tables (from ConfigTables)
+## Key definition tables
 
-**Ingredient encodes — Map 1 (burger)**: 0 Bun, 1 Patty, 2 Tomato, 3 Lettuce, 4 Onion, 5 Cheese, 6 Egg, 7 Soda(cup), 8 Ice. Dish recipes are digit-runs of these encodes (`10` = Patty+Bun burger, `102` = tomato burger, `78` = ice soda).
+**Raw ingredients — Map 1 (burger)**: ids 0–8 are the original burger set (Bun, Patty, Tomato,
+Lettuce, Onion, Cheese, Egg, Soda, Ice). Ids 9–15 (Chicken Wing, Chicken Thigh, Chicken Nugget,
+Potato, Chili Bowl, Cheese Sauce, Chive) were merged in from Map 2's `MapDefinition` section to
+exercise chained-tool processing and multi-use serving in the sim — see "Chained recipes and
+multi-use ingredients" below. They aren't referenced by any level's queue/order data yet.
 
-**Ingredient statuses**: 0 None, 1 Freeze, 2 Link, 3 HoldingKey.
-**Grid cell statuses**: 0 Normal, 1 Blocked, 2 OrderLock (until X orders done), 3 IngredientSlot, 4 ColorLock (serve X key-holding ingredients of matching color).
+**Ingredient statuses**: 0 None, 1 Freeze, 2 Link (retired), 3 HoldingKey.
+**Grid cell statuses**: 0 Normal, 1 Blocked, 2 OrderLock, 3 IngredientSlot, 4 ColorLock.
 **Key colors**: 0 None, 1 Red, 2 Yellow, 3 Green, 4 Blue, 5 Purple.
-
-**Cell type 3 (IngredientSlot)** takes params `[ingredientId, amount]` per `docs/ToolDesign.md` — the cell is keyed to one specific ingredient and opens once that many of *that* ingredient have been used. (The sheet's older wording described an "until X ingredients used" any-ingredient counter; the tool follows ToolDesign. No level in the sheet currently uses type 3, so nothing needed migrating.)
+**Weather**: Normal, Rainy, Sunny, Freeze, Stormy (added this pass) — each row now also carries a
+`fileId`/`emoji`, enrichment only, nothing reads them yet.
+**Level tags**: `""` (None), Hard, Super Hard (added this pass, with `rewardWin`/`fileId`/`emoji`
+enrichment from the Global Definition difficulty table).
 
 ### Icons
 
-The definition tables carry their icons as `=IMAGE("https://drive.google.com/uc?export=view&id=…")` formulas, which the CSV export drops. The file ids were recovered from the sheet's `.xlsx` export (`xl/worksheets/sheet4.xml`) and now sit as a **`fileId` field on each definition row** in the config tree. The UI renders them via `https://drive.google.com/thumbnail?id=<fileId>&sz=w<size>`, which serves cross-origin (unlike `uc?export=view`); the `emoji` field on the same row is the fallback if an image fails to load. See [src/ui/icon.ts](../src/ui/icon.ts).
+Definition rows carry their icon as a `fileId` (Google Drive) field plus an `emoji` fallback, with
+an optional bundled local image tried first. See [src/ui/icon.ts](../src/ui/icon.ts).
 
-Map 2's thumbnail cells are `#ERROR!` in the sheet, so its `fileId`s are blank and it falls back to emoji.
+### Where each block landed
 
-### Where each ConfigTables block landed
-
-| Block (columns) | Destination |
+| Block | Destination |
 |---|---|
-| Maps index (A–C) | `general/maps.json` |
-| Weather (E–F) | `general/weather.json` |
-| Emotions (H–M rows 3–7) | `general/emotions.json` |
-| Ingredient statuses (H–K rows 10–14) | `general/ingredient-statuses.json` |
-| Grid cell statuses (H–K rows 19–24) | `general/cell-statuses.json` |
-| Key colours (H–J rows 28–34) | `general/key-colors.json` |
-| Key/value blocks down column A (hearts, serve tray, save-me, rewards, feature flags, home) | `general/meta.json` |
-| Map 1 ingredients + thumbnails (O–T) | `map1-burger/ingredients.json` |
-| Map 1 dish recipes (V–W) | `map1-burger/dishes.json` |
-| Map 2 pieces / sizes / modifiers / recipes (Y–AM) | `map2-chicken_fried/recipe-parts.json` |
-| Map 2 ingredients + thumbnails (Y–AB rows 17–25) | `map2-chicken_fried/ingredients.json` |
+| Maps index | `general/maps.json` |
+| Weather | `general/weather.json` |
+| Level-tag / difficulty table | `general/tags.json` |
+| Ingredient statuses | `general/ingredient-statuses.json` |
+| Grid cell statuses | `general/cell-statuses.json` |
+| Key colours | `general/key-colors.json` |
+| Key/value blocks (hearts, serveTray, saveMe, rewards, features, home) | `general/meta.json` |
+| Booster actions + Save Me variants | `general/boosters.json` |
+| Customer/pet-type table, dish-combo table (already matched `dishes.json` — no changes needed) | `general/misc-definitions.json` (unmatched tables only — kept for reference, not wired into any type or Design-mode editor) |
+| Map 1 tools table | `map1-burger/cooking-tools.json` |
+| Map 1 dirty-objects table | `map1-burger/dirty-objects.json` |
+| Map 1 raw-ingredients/recipes table | `map1-burger/ingredients.json` + `cooking-tools.json` (recipes) |
+| Map 1 cooked-ingredients table | `map1-burger/cooked-ingredients.json` |
+| Map 1's level-pack/IAP-cost table, pet/customer-decoration table | `map1-burger/misc.json` (unmatched tables — reference only) |
+| `MapLevelProgress` rows (Map 1 only) | `map1-burger/levels.json` |
 
-Cook times and the raw→cooked mapping are **no longer per-ingredient**: they moved into each map's `cooking-tools.json`, since a tool now defines what it converts, how long it takes and how many pieces it yields.
+Cook times and the raw→cooked mapping live in each map's `cooking-tools.json`, not per-ingredient —
+a tool defines what it converts, how long it takes, and how many pieces it yields.
 
-## Legacy encoded strings (as stored in the sheet)
+## Chained recipes and multi-use ingredients
 
-The big per-map blobs sit in the **first level row** of each map; the tool reads the last non-empty cell of that row:
+Two mechanics were added specifically to exercise sheet features that didn't previously have an
+engine equivalent — see [GDD.md](GDD.md) §2.2 and §2.4 for the gameplay rules:
 
-- `Level_overall_config` → **MapConfig**: levels joined by `|`, each level an **LvConfig**:
-  `count;weather;tag;featureUnlock;star1,star2,star3;tools;waitTimeScale;gridString`
-  → *StarScores, the blank tools field, and WaitTimeScale are legacy and dropped by the tool* (per designer). Grid cells are `,`-separated, each cell `typeId#param#param` (e.g. `4#1#1` = ColorLock red ×1), blank = normal.
-- `TOOL_Level_ingredient_queue` → **Each Map** column: levels joined by `|`, each `queueString;shuffleDistance;`. Queue format matches the tool's canonical one: queues `%`-separated, items `,`-separated, `itemId#statusId:param` (e.g. `2#1:5` = Tomato frozen for 5 picks, `6#3:1` = Egg holding a red key).
-- `Level_Scenario_Map*` → **FINAL** cell on the header row: levels joined by `~`, customers by `|`, each customer
-  `delay;waitTime;completePrev;weatherEff;vip;recipes`
-  → *delay, completePrev, and vip are legacy and dropped by the tool* (per designer). Recipes: dishes `,`-separated, each dish a digit-run of ingredient encodes + optional `#effect`.
+- **Chained (multi-step) recipes**: the raw-ingredients table's `Tool-Required` column can list more
+  than one tool id, comma-separated (e.g. Potato: `2,3` = Cutting Board, then Fryer, before its
+  2-piece output). This is `ToolRecipe.chainTools` in the data model.
+- **Multi-use cooked ingredients**: the cooked-ingredients table's `UsageNum` column, when > 1,
+  means a single instance can be served that many times before it's consumed (e.g. Cheese Sauce,
+  `UsageNum: 3`, shared across three dishes before it's used up). This is `CookedIngredientDef.usageNum`.
+- The same table's `RequiredBase` column can list **several** ids (e.g. `9,10,11,12`), meaning the
+  ingredient can serve once **any one** of them is already in the dish — not all of them. This is
+  `CookedIngredientDef.baseId: Id | Id[]`.
 
-## Canonical formats used by this tool (after conversion)
+## Customer-string field count (sheet vs. canonical)
 
-- **Queue string**: unchanged from sheet — `0,1#1:5,0%1,7,7`.
-- **Grid string**: cells `,`-separated, each cell `#typeId:param:param` (legacy `4#1#1` → `#4:1:1`), blank = normal.
-- **Customer string**: customers `|`-separated, each `waitTime;weatherEff;dishes`; dish ids `.`-separated (`1.0.2`), legacy digit-runs still parse.
-- **Level fields kept**: weather, levelTag, featureUnlock, shuffleDistance, grid 5×2, queue/grid/customer strings.
+`MapLevelProgress`'s `Customers` column uses 6 `;`-separated fields per customer —
+`avatarVariant;waitTime;unknownFlag;weatherEff;unknownFlag2;dishes` — two more than the tool's
+canonical 4-field format (`typeId;waitTime;weatherEff;dishes`, see [GDD.md](GDD.md) §7.3). The two
+extra fields (a per-customer cosmetic avatar/pet variant id, and an unexplained 0/1 flag with no
+current meaning) don't correspond to anything in `CustomerConfig` — designer decision was to drop
+them on import rather than guess at their purpose or extend the type for unknown fields, so
+`levels.json` only carries `waitTime`/`weatherEff`/`dishes` from this column, with `typeId` always
+defaulting to `0` (Customer). Grid/Queue columns import unchanged — their `#effectId:param` grammar
+already matches the canonical format exactly.
 
-Conversion code: [src/data/legacyConvert.ts](../src/data/legacyConvert.ts). Live loading: [src/data/sheetSource.ts](../src/data/sheetSource.ts). Bundled Map 1 snapshot: [src/data/map1_burger.json](../src/data/map1_burger.json).
+## Tool renaming
 
-## Map 2 recipe encoding — open question
-
-Map 1 dish recipes are plain digit-runs of ingredient encodes (`102` = Patty+Bun+Tomato). **Map 2 is different**: its scenario recipes are composite ids such as `20012`, `30201`, `703`, `2001`, which appear to encode *piece + modifier(s) + size* using the ConfigTables blocks (pieces: Thigh 0, Wing 1, Breast 2, Nugget 3, Potato 4, Onion 5, Coke 6, Sprite 7; modifiers: Chilly 0, Chives 1, CheeseSauce 2, Ice 3; sizes: Medium 0, Large 1). The digit-count varies (`20`, `200`, `2001`, `20012`), so the field layout is ambiguous. **Map 2 import is deferred until the designer confirms the decoding rule** — guessing would silently produce wrong orders.
+Map 1's cooking tools were renamed to match `MapDefinition`'s tools table — **Griddle** (was Pan),
+**Coca Machine** (was Soda Machine), **Cutting Board** (unchanged) — confirmed by identical
+`fileId`s between the old and new names, i.e. this is a rename/reorder, not new stations. Two new
+tools, **Fryer** and **Flour**, were added from the same table; Flour has no recipes yet (map1
+doesn't use it), and Fryer now processes the merged chicken ingredients (§ above).
 
 ## Data quirks noticed
 
-- Level 12 (map 1): LvConfig says 16 customers but the scenario string has 15.
-- Levels 12, 14, 15 (map 1) have empty ingredient queues in the sheet (not yet authored).
-- Scenario level 3 has one customer with an empty waitTime field (`0;;0;…`) — treated as 0.
-- Win condition in the sheet/Gameplay tab is star-score based; the tool intentionally uses the simplified "serve all customers" rule (designer decision).
+- `MapLevelProgress` levels 16–25 (map 1) and all of map 2/3 have empty `Customers`/`Queues` — not
+  yet authored; only Map 1 levels 1–15 were imported.
+- Scenario level 1_3 has one customer with an empty `waitTime` field (`0;;0;0;0;…`) — treated as 0.
+- `MapDefinition`'s summary row states Map 1's planned total as 25 levels; only 1–15 have real data
+  today (`map.json`'s `numLevels: 25` reflects the planned total, not the currently-authored count).
+- Grid-lock data (the `Grid` column) is empty for every `MapLevelProgress` row in this export — the
+  existing hand-authored lock data in `levels.json` (levels with `#`-effect grid cells) was left
+  untouched rather than being blanked out by an empty sheet column.
+- Win condition in the sheet is star-score based; the tool intentionally uses the simplified "serve
+  all customers" rule (designer decision, carried over from the previous sheet).
