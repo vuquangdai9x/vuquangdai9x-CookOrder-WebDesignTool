@@ -12,6 +12,7 @@ import { GLOBAL_DEFS, MAP1_DATA } from "./data/configLoader.ts";
 import {
   exportProjectCsv,
   GoogleSheetApiSource,
+  importLevelsCsv,
   SHEET_ID,
   SheetAuthRequiredError,
   SheetPermissionError,
@@ -157,7 +158,11 @@ async function render(): Promise<void> {
           }),
       button("⬇ Export CSV", () => exportProjectCsv([map]), {
         class: "full-btn",
-        title: "Download levels + definitions as CSV",
+        title: "Download this map's level data as CSV",
+      }),
+      button("⬆ Import CSV", () => importCsvFile(), {
+        class: "full-btn",
+        title: "Replace this map's levels from a levels CSV file",
       }),
       button("♻ Reset draft", () => resetDraft(), {
         class: "full-btn",
@@ -174,6 +179,7 @@ async function render(): Promise<void> {
               onSelect: () => void loadFromSheet(true),
             },
             { label: "⬇ Export CSV", onSelect: () => exportProjectCsv([map]) },
+            { label: "⬆ Import CSV", onSelect: () => importCsvFile() },
             { label: "♻ Reset draft", danger: true, separator: true, onSelect: () => resetDraft() },
           ],
           { title: "Data" },
@@ -245,6 +251,40 @@ function sheetIdField(): HTMLElement {
     "Sheet ID",
     input,
   ]);
+}
+
+/**
+ * Replaces the working map's levels from a levels CSV file (the format
+ * levelsCsv()/exportProjectCsv() write) — a file picker + FileReader round
+ * trip since the browser has no filesystem access otherwise. Only the level
+ * list changes; map-level fields (grid size, ingredients, tools) are untouched
+ * since the CSV no longer carries definitions.
+ */
+function importCsvFile(): void {
+  if (designView?.isDirty) {
+    if (!confirm("Unsaved changes will be overwritten. Import CSV?")) return;
+  }
+  const input = el("input", { type: "file", accept: ".csv,text/csv" }) as HTMLInputElement;
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const levels = importLevelsCsv(String(reader.result));
+        if (levels.length === 0) throw new Error("CSV has no level rows");
+        map = { ...map, levels };
+        currentLevelId = map.levels[0].id;
+        dataOrigin = `imported CSV (${file.name})`;
+        saveDraft();
+        void render();
+      } catch (err) {
+        alert(`Could not import CSV: ${(err as Error).message}`);
+      }
+    };
+    reader.readAsText(file);
+  });
+  input.click();
 }
 
 function resetDraft(): void {

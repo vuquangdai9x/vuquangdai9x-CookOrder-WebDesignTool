@@ -144,6 +144,37 @@ describe("play view structure key", () => {
     expect(playStructureKey(sim)).not.toBe(inFlight);
   });
 
+  it("changes when a multi-use cooked ingredient's uses-left decrements from a serve", () => {
+    // Regression test: a multi-use ingredient (e.g. a shared sauce) keeps the
+    // same cookedId across a serve that only decrements usesLeft — the key
+    // must still change, or the grid tier never rebuilds to show the updated
+    // uses-left badge (the cell's icon was already stripped when the flight
+    // launched — see dispatchFlights in ui/play/index.ts).
+    const multiUseMap: MapDef = {
+      ...testMap,
+      cookedIngredients: testMap.cookedIngredients.map((c) =>
+        c.id === 0 ? { ...c, usageNum: 2 } : c,
+      ),
+    };
+    const sim = new Simulation(
+      multiUseMap,
+      level({ queueString: "0", gridString: EMPTY_GRID, customerString: "0;0;0" }),
+      { instantFlights: false },
+    );
+    sim.pick(0);
+    sim.completeFlight(sim.flights[0].id); // lands in the tool slot
+    sim.tick(10); // finishes cooking -> tool-to-grid (usageNum > 1 blocks the direct-serve shortcut)
+    const toGrid = sim.flights.find((f) => f.kind === "tool-to-grid")!;
+    sim.completeFlight(toGrid.id); // lands on the grid with usesLeft:2
+    expect(sim.grid.some((c) => c.kind === "cooked" && c.usesLeft === 2)).toBe(true);
+    const beforeServe = playStructureKey(sim);
+
+    const toCustomer = sim.flights.find((f) => f.kind === "grid-to-customer")!;
+    sim.completeFlight(toCustomer.id); // serves once; usesLeft decrements, the cell itself stays
+    expect(sim.grid.some((c) => c.kind === "cooked" && c.usesLeft === 1)).toBe(true);
+    expect(playStructureKey(sim)).not.toBe(beforeServe);
+  });
+
   it("is stable on a real Map 1 level across a long idle stretch", () => {
     const map1 = toMapDef(MAP1_DATA);
     const sim = new Simulation(map1, map1.levels[0]);

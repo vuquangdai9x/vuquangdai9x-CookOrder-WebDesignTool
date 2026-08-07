@@ -1846,7 +1846,8 @@ td input {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 25;
+  z-index: 35;
+  isolation: isolate;
 }
 
 .fx-flier {

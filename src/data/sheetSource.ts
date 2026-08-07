@@ -196,47 +196,21 @@ function toCsv(rows: (string | number)[][]): string {
   return rows.map((r) => r.map(csvEscape).join(",")).join("\r\n");
 }
 
+/** Column order for the levels CSV — shared by export and import so the two stay in sync. */
+const LEVELS_CSV_HEADER = [
+  "Level_ID", "Name", "Weather", "LevelTag", "FeatureUnlock", "ShuffleDistance",
+  "ServeableSlots", "QueueString", "GridString", "CustomerString",
+  "OutOfSlotPolicy", "BoosterCharges",
+];
+
+/** Level data only: metadata, customer, grid and queue strings — no map/ingredient/tool definitions. */
 export function levelsCsv(map: MapData): string {
-  const header = [
-    "Level_ID", "Name", "Weather", "LevelTag", "FeatureUnlock", "ShuffleDistance",
-    "ServeableSlots", "QueueString", "GridString", "CustomerString",
-  ];
   const rows = map.levels.map((l) => [
     l.id, l.name, l.weather, l.levelTag, l.featureUnlock, l.shuffleDistance,
     l.serveableSlots, l.queueString, l.gridString, l.customerString,
+    l.outOfSlotPolicy ?? "", (l.boosterCharges ?? []).join("|"),
   ]);
-  return toCsv([header, ...rows]);
-}
-
-export function definitionsCsv(map: MapData): string {
-  const rows: (string | number)[][] = [
-    ["-- Map --"],
-    ["GridWidth", "GridHeight", "DirtyStackHeight"],
-    [map.gridWidth, map.gridHeight, map.dirtyStackHeight],
-    [],
-    ["-- Raw Ingredients --"],
-  ];
-  rows.push(["ID", "Name", "Code", "Price", "NumSlices"]);
-  for (const r of map.rawIngredients) {
-    rows.push([r.id, r.name, r.code, r.price, r.numSlices]);
-  }
-  rows.push([], ["-- Cooked Ingredients --"], ["ID", "Name"]);
-  for (const c of map.cookedIngredients) rows.push([c.id, c.name]);
-  rows.push(
-    [],
-    ["-- Cooking Tools --"],
-    ["ID", "Name", "NumSlots", "CookingTime", "Recipes (in>out x amount)"],
-  );
-  for (const t of map.tools) {
-    rows.push([
-      t.id,
-      t.name,
-      t.numSlots,
-      t.cookingTime,
-      t.recipes.map((r) => `${r.in}>${r.out}x${r.amount}`).join("; "),
-    ]);
-  }
-  return toCsv(rows);
+  return toCsv([LEVELS_CSV_HEADER, ...rows]);
 }
 
 function downloadFile(name: string, content: string): void {
@@ -248,10 +222,111 @@ function downloadFile(name: string, content: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** Save = download one levels CSV and one definitions CSV per map. */
+/** Save = download one levels CSV per map. */
 export function exportProjectCsv(maps: MapData[]): void {
   for (const map of maps) {
     downloadFile(`map${map.id}_${map.name}_levels.csv`, levelsCsv(map));
-    downloadFile(`map${map.id}_${map.name}_definitions.csv`, definitionsCsv(map));
   }
+}
+
+// ---------- loading: CSV import ----------
+
+/**
+ * Minimal RFC4180 CSV parser: handles quoted fields with embedded commas,
+ * escaped quotes (""), and both \r\n and \n line endings. Needed because
+ * csvEscape() quotes GridString/CustomerString whenever they contain a comma.
+ */
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      field += c;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (c === ",") {
+      row.push(field);
+      field = "";
+      i++;
+      continue;
+    }
+    if (c === "\r") {
+      i++;
+      continue;
+    }
+    if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      i++;
+      continue;
+    }
+    field += c;
+    i++;
+  }
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** Reverses levelsCsv() — parses a levels CSV (with or without the header row) back into LevelData[]. */
+export function importLevelsCsv(text: string): LevelData[] {
+  const allRows = parseCsv(text).filter((r) => r.some((cell) => cell.trim() !== ""));
+  if (allRows.length === 0) throw new Error("CSV has no rows");
+  const rows = allRows[0][0] === LEVELS_CSV_HEADER[0] ? allRows.slice(1) : allRows;
+
+  return rows.map((r, i) => {
+    const [
+      id, name, weather, levelTag, featureUnlock, shuffleDistance,
+      serveableSlots, queueString, gridString, customerString,
+      outOfSlotPolicy, boosterCharges,
+    ] = r;
+    if (!id || Number.isNaN(Number(id))) {
+      throw new Error(`Row ${i + 1}: invalid Level_ID "${id ?? ""}"`);
+    }
+    const level: LevelData = {
+      id: Number(id),
+      name: name ?? "",
+      weather: weather ?? "",
+      levelTag: levelTag ?? "",
+      featureUnlock: featureUnlock ?? "",
+      shuffleDistance: Number(shuffleDistance) || 0,
+      serveableSlots: Number(serveableSlots) || 0,
+      queueString: queueString ?? "",
+      gridString: gridString ?? "",
+      customerString: customerString ?? "",
+    };
+    if (outOfSlotPolicy === "block-pick" || outOfSlotPolicy === "park-on-grid") {
+      level.outOfSlotPolicy = outOfSlotPolicy;
+    }
+    if (boosterCharges) {
+      const charges = boosterCharges.split("|").map(Number);
+      if (charges.every((n) => !Number.isNaN(n))) level.boosterCharges = charges;
+    }
+    return level;
+  });
 }

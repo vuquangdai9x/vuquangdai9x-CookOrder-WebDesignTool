@@ -31,7 +31,15 @@ export function middleStructureKey(sim: Simulation): string {
     .map((cell, i) => {
       const lock = sim.cellLockLabel(i);
       if (lock) return `L${lock}`;
-      if (cell.kind === "cooked") return `c${cell.cookedId}`;
+      // usesLeft must be part of the key: a multi-use ingredient (e.g. a
+      // shared sauce) keeps the same cookedId across a serve that only
+      // decrements its remaining uses, but the cell's .cell-main was still
+      // stripped at flight-launch time (see dispatchFlights) — without a key
+      // change here, the grid tier never rebuilds to put it back, leaving
+      // the cell looking permanently empty even though it's still servable.
+      if (cell.kind === "cooked") {
+        return `c${cell.cookedId}${cell.usesLeft !== undefined ? `x${cell.usesLeft}` : ""}`;
+      }
       if (cell.kind === "raw") return `r${cell.rawId}`;
       if (cell.kind === "dirty") return `d${cell.dirtyId}:${cell.count}`;
       if (cell.kind === "backpack") return `b${cell.items.join(".")}`;
