@@ -884,9 +884,11 @@ describe("real Map 1 level data", () => {
 
 describe("tool-less raw ingredient with a cookedId override", () => {
   // Raw id 2 in testMap has no tool recipe (goes straight to grid). Give it
-  // a cookedId override pointing at a DIFFERENT cooked id, mirroring map1's
-  // chili_bowl/cheese_sauce (renumbered on the cooked side, but the raw id
-  // stayed put) — see RawIngredientDef.cookedId / Simulation.noToolCookedId.
+  // a cookedId override pointing at a DIFFERENT cooked id — no real map
+  // currently needs this (map1's chili_bowl/cheese_sauce went back to a 1:1
+  // raw/cooked mirror once ingredients.json's raw ids were corrected to
+  // match), but the mechanism itself (RawIngredientDef.cookedId /
+  // Simulation.noToolCookedId) stays in place for whenever it's needed again.
   const overriddenMap: MapDef = {
     ...testMap,
     rawIngredients: testMap.rawIngredients.map((r) => (r.id === 2 ? { ...r, cookedId: 3 } : r)),

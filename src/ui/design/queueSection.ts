@@ -21,7 +21,15 @@ import type {
 import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { writeRowToSheet } from "../../data/sheetWrite.ts";
-import { importField, numberField, pickerGrid, showContextMenu, swatchRow } from "../contextMenu.ts";
+import {
+  closeContextMenu,
+  importField,
+  numberField,
+  pickerGrid,
+  showContextContent,
+  showContextMenu,
+  swatchRow,
+} from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { ingredientIconEl, statusIconEl } from "../icon.ts";
@@ -405,10 +413,10 @@ function laneEl(
   addTile.addEventListener("click", (e) => {
     e.stopPropagation();
     ui.activeLane = laneIndex;
-    showContextMenu(e, [ingredientPickerItem(deps, (id) => {
+    showContextContent(e, ingredientPickerGrid(deps, (id) => {
       lane.push(tagNew({ kind: id < 0 ? "sweeper" : "ingredient", id, effects: [] }));
       section.commit("Add ingredient", 1);
-    })], { title: `Queue ${laneIndex + 1}` });
+    }), { title: `Queue ${laneIndex + 1}` });
   });
   tiles.append(addTile);
 
@@ -639,28 +647,24 @@ function renderGroupOverlay(lanes: HTMLElement, draft: QueueDraft): void {
 
 // ---------- menus ----------
 
-function ingredientPickerItem(
+function ingredientPickerGrid(
   deps: QueueSectionDeps,
   onPick: (id: number) => void,
-): MenuItem {
-  return {
-    label: "Pick ingredient",
-    expand: (close) =>
-      pickerGrid(
-        [
-          ...deps.map.rawIngredients.map((r) => ({
-            id: r.id,
-            label: r.name,
-            icon: ingredientIconEl(r.id, 64),
-          })),
-          { id: SWEEPER_ID, label: "Sweeper", icon: el("span", {}, ["🧹"]) },
-        ],
-        (id) => {
-          onPick(id);
-          close();
-        },
-      ),
-  };
+): HTMLElement {
+  return pickerGrid(
+    [
+      ...deps.map.rawIngredients.map((r) => ({
+        id: r.id,
+        label: r.name,
+        icon: ingredientIconEl(r.id, 64),
+      })),
+      { id: SWEEPER_ID, label: "Sweeper", icon: el("span", {}, ["🧹"]) },
+    ],
+    (id) => {
+      onPick(id);
+      closeContextMenu();
+    },
+  );
 }
 
 function laneMenu(

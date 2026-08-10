@@ -1,6 +1,6 @@
 {
-  "_source": "ConfigTables!O3:T12 (ids/prices/codes) and O15:R24 (thumbnails, numSlices). Ids 9-15 are merged in from MapDefinitions.tsv's Map1_burger raw-ingredients table to exercise chained-tool processing (potato) and multi-use cooked ingredients (chili_bowl/cheese_sauce) — see cooked-ingredients.json and cooking-tools.json.",
-  "_note": "Cook times and raw→cooked mapping live in cooking-tools.json — a tool defines what it turns each ingredient into and how long it takes. Raw ids 13 (Chili Bowl) and 14 (Cheese Sauce) have no tool at all, and their cooked-side ids no longer match their raw ids (cooked-ingredients.json was renumbered to match MapDefinitions.csv's Map1_burger recipe_piece table) — cookedId on each row is what carries them over, see RawIngredientDef.cookedId.",
+  "_source": "ConfigTables!O3:T12 (ids/prices/codes) and O15:R24 (thumbnails, numSlices) for ids 0-8. Ids 9-16 come from MapDefinitions.csv's Map1_burger ingredient_process table (corrected 2026-08 — chicken_breast_raw inserted at 9, shifting wing/thigh/nugget/potato/chili_bowl/chive/cheese_sauce up). Codes for ids 10-12 match the CSV's ID column exactly as of the 2026-08 reimport (chicken_wing_raw/chicken_thigh_raw/chicken_nugget_raw, previously the shorter chick_wing/chick_thigh/chick_nugget).",
+  "_note": "Raw ids now mirror cooked ids 1:1 for every item (no RawIngredientDef.cookedId overrides needed) — see cooked-ingredients.json. As of the 2026-08 reimport, the raw ingredient_process table's own OutIndex for chive/cheese_sauce (15/16) now agrees with recipe_piece — the earlier cross-table contradiction is resolved. chicken_breast_raw still has no Price in the source (only the ingredient_process table has price data for ids 0-8; the cooked recipe_piece table carries its own separate Price column for ids 9-16, not captured here) — price defaults to 0 until real data exists. levels.json's queueString raw ids were remapped from the old numbering (9=wing..15=chive, no chick_breast_raw) to this one — see levels.json's own note.",
   "ingredients": [
     { "id": 0, "name": "Bun", "code": "burger_bun_raw", "price": 4, "numSlices": 1, "emoji": "🍞", "fileId": "1MLtLe69Gn6D-EQ4DAXmEr0R1h3gY7s2M", "localImage": "Map1-burger/ingredients/burger_bun_raw.png" },
     { "id": 1, "name": "Patty", "code": "beef_patty_raw", "price": 10, "numSlices": 1, "emoji": "🥩", "fileId": "1ANuBhLfhZOvzKsASxUZJt98aGED20NRZ", "localImage": "Map1-burger/ingredients/beef_patty_raw.png" },
@@ -11,12 +11,13 @@
     { "id": 6, "name": "Egg", "code": "egg", "price": 7, "numSlices": 1, "emoji": "🥚", "fileId": "1JnHUAXkpkmLaTr2SxuOsxkpj7dt3OYiu", "localImage": "Map1-burger/ingredients/egg.png" },
     { "id": 7, "name": "Soda", "code": "cup", "price": 8, "numSlices": 1, "emoji": "🥤", "fileId": "1LyYrqYSDVXHxH5fzw-LdlCTpo3O0_g89", "localImage": "Map1-burger/ingredients/cup.png" },
     { "id": 8, "name": "Ice", "code": "ice", "price": 2, "numSlices": 1, "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-", "localImage": "Map1-burger/ingredients/ice.png" },
-    { "id": 9, "name": "Chicken Wing", "code": "chick_wing", "price": 20, "numSlices": 1, "emoji": "🍗", "fileId": "1E8n_7IIKLvq-6KRqieyru7RkXcM8UbOF" },
-    { "id": 10, "name": "Chicken Thigh", "code": "chick_thigh", "price": 24, "numSlices": 1, "emoji": "🍗", "fileId": "1DeF5iGKL5fTxtl-VMPuFgOAx9fjdSLnj" },
-    { "id": 11, "name": "Chicken Nugget", "code": "chick_nugget", "price": 28, "numSlices": 1, "emoji": "🍗", "fileId": "1kZ981g73mobTBIE3tmGh13XuaFA67cA9" },
-    { "id": 12, "name": "Potato", "code": "potato", "price": 14, "numSlices": 2, "emoji": "🥔", "fileId": "1vbvr2gl7UYvvPCs7XAcPG9pGfmXSFjIA" },
-    { "id": 13, "name": "Chili Bowl", "code": "chili_bowl", "price": 0, "numSlices": 1, "emoji": "🌶️", "fileId": "1LdW4uLvhm-aYPvYUpcjMVaRPVmxcMgET", "cookedId": 14 },
-    { "id": 14, "name": "Cheese Sauce", "code": "cheese_sauce", "price": 8, "numSlices": 1, "emoji": "🧀", "fileId": "1a30eBQP7yg99wslODcVtjfUZo3qLIJkn", "cookedId": 16 },
-    { "id": 15, "name": "Chive", "code": "chive", "price": 8, "numSlices": 2, "emoji": "🌿", "fileId": "1DoWBhFaXiCQ0GrAShwCg_3saEzazKBaH" }
+    { "id": 9, "name": "Chicken Breast", "code": "chicken_breast_raw", "price": 0, "numSlices": 1, "emoji": "🍗", "fileId": "1iF-Tny5niCG3dgOF5aJ5OrHddUWUCIl6", "localImage": "Map1-burger/ingredients/chicken_breast_raw.png" },
+    { "id": 10, "name": "Chicken Wing", "code": "chicken_wing_raw", "price": 20, "numSlices": 1, "emoji": "🍗", "fileId": "1E8n_7IIKLvq-6KRqieyru7RkXcM8UbOF", "localImage": "Map1-burger/ingredients/chick_wing_raw.png" },
+    { "id": 11, "name": "Chicken Thigh", "code": "chicken_thigh_raw", "price": 24, "numSlices": 1, "emoji": "🍗", "fileId": "1DeF5iGKL5fTxtl-VMPuFgOAx9fjdSLnj", "localImage": "Map1-burger/ingredients/chick_thigh_raw.png" },
+    { "id": 12, "name": "Chicken Nugget", "code": "chicken_nugget_raw", "price": 28, "numSlices": 1, "emoji": "🍗", "fileId": "1kZ981g73mobTBIE3tmGh13XuaFA67cA9", "localImage": "Map1-burger/ingredients/chick_nugget_raw.png" },
+    { "id": 13, "name": "Potato", "code": "potato", "price": 14, "numSlices": 2, "emoji": "🥔", "fileId": "1vbvr2gl7UYvvPCs7XAcPG9pGfmXSFjIA", "localImage": "Map1-burger/ingredients/potato.png" },
+    { "id": 14, "name": "Chili Bowl", "code": "chili_bowl", "price": 0, "numSlices": 1, "emoji": "🌶️", "fileId": "1LdW4uLvhm-aYPvYUpcjMVaRPVmxcMgET", "localImage": "Map1-burger/ingredients/chili_bowl.png" },
+    { "id": 15, "name": "Chive", "code": "chive", "price": 8, "numSlices": 2, "emoji": "🌿", "fileId": "1DoWBhFaXiCQ0GrAShwCg_3saEzazKBaH", "localImage": "Map1-burger/ingredients/chive.png" },
+    { "id": 16, "name": "Cheese Sauce", "code": "cheese_sauce", "price": 8, "numSlices": 1, "emoji": "🧀", "fileId": "1a30eBQP7yg99wslODcVtjfUZo3qLIJkn", "localImage": "Map1-burger/ingredients/cheese_sauce.png" }
   ]
 }

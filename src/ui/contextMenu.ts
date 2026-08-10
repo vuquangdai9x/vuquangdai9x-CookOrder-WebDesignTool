@@ -38,17 +38,35 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeContextMenu();
 });
 
-export function showContextMenu(
-  event: MouseEvent,
-  items: MenuItem[],
-  opts: { title?: string } = {},
-): void {
+/** Builds the menu shell (title + positioning), opens it, and returns the body to fill in. */
+function openMenuShell(event: MouseEvent, opts: { title?: string }): HTMLElement {
   event.preventDefault();
   event.stopPropagation();
   closeContextMenu();
 
   const menu = el("div", { class: "ctx-menu" });
   if (opts.title) menu.append(el("div", { class: "ctx-title" }, [opts.title]));
+
+  document.body.append(menu);
+  openMenu = menu;
+  return menu;
+}
+
+/** Positions the (now fully populated) menu so it stays inside the viewport. */
+function positionMenu(menu: HTMLElement, event: MouseEvent): void {
+  const rect = menu.getBoundingClientRect();
+  const x = Math.min(event.clientX, window.innerWidth - rect.width - 8);
+  const y = Math.min(event.clientY, window.innerHeight - rect.height - 8);
+  menu.style.left = `${Math.max(4, x)}px`;
+  menu.style.top = `${Math.max(4, y)}px`;
+}
+
+export function showContextMenu(
+  event: MouseEvent,
+  items: MenuItem[],
+  opts: { title?: string } = {},
+): void {
+  const menu = openMenuShell(event, opts);
 
   for (const item of items) {
     if (item.separator) menu.append(el("div", { class: "ctx-sep" }));
@@ -81,15 +99,23 @@ export function showContextMenu(
     menu.append(row);
   }
 
-  document.body.append(menu);
-  openMenu = menu;
+  positionMenu(menu, event);
+}
 
-  // Keep the menu inside the viewport.
-  const rect = menu.getBoundingClientRect();
-  const x = Math.min(event.clientX, window.innerWidth - rect.width - 8);
-  const y = Math.min(event.clientY, window.innerHeight - rect.height - 8);
-  menu.style.left = `${Math.max(4, x)}px`;
-  menu.style.top = `${Math.max(4, y)}px`;
+/**
+ * Opens the menu shell with `content` shown directly underneath the title —
+ * no intermediate label to click through first. Used for single-purpose
+ * popups (an ingredient picker grid) where wrapping it in a labeled MenuItem
+ * would just add an extra click for no benefit.
+ */
+export function showContextContent(
+  event: MouseEvent,
+  content: HTMLElement,
+  opts: { title?: string } = {},
+): void {
+  const menu = openMenuShell(event, opts);
+  menu.append(content);
+  positionMenu(menu, event);
 }
 
 /** Number input row for an inline sub-editor. */

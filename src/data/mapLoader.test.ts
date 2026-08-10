@@ -6,7 +6,7 @@ import { toMapDef } from "./mapLoader.ts";
 describe("bundled Map 1 (burger) snapshot", () => {
   it("has 25 levels (1-6 real sheet data, 7-25 design-level-skill generated)", () => {
     expect(MAP1_DATA.levels).toHaveLength(25);
-    expect(MAP1_DATA.rawIngredients).toHaveLength(16); // 0-8 burger ids + 9-15 merged in from map2
+    expect(MAP1_DATA.rawIngredients).toHaveLength(17); // 0-8 burger ids + 9-16 merged in from map2 (chick_breast_raw added 2026-08)
   });
 
   it("every level parses and round-trips through the canonical parsers", () => {
@@ -32,17 +32,32 @@ describe("bundled Map 1 (burger) snapshot", () => {
     }
   });
 
-  it("carries the new GDD-sync fields (upgradeCosts, levelEconomy, tool-less cookedId overrides)", () => {
+  it("carries the new GDD-sync fields (upgradeCosts, levelEconomy)", () => {
     const griddle = MAP1_DATA.tools.find((t) => t.name === "Griddle")!;
     expect(griddle.upgradeCosts).toEqual([0, 2, 2]);
-    expect(MAP1_DATA.levelEconomy).toHaveLength(5);
-    expect(MAP1_DATA.levelEconomy?.[0]).toEqual({ level: 1, cost: 0, rewardHardCurrency: 50, coinBoost: 100 });
-    // chili_bowl/cheese_sauce were renumbered on the cooked side but kept
-    // their raw id — this override is what keeps a tool-less pick correct.
-    const chiliBowlRaw = MAP1_DATA.rawIngredients.find((r) => r.code === "chili_bowl")!;
-    expect(chiliBowlRaw.cookedId).toBe(14);
-    const cheeseSauceRaw = MAP1_DATA.rawIngredients.find((r) => r.code === "cheese_sauce")!;
-    expect(cheeseSauceRaw.cookedId).toBe(16);
+    expect(MAP1_DATA.levelEconomy).toHaveLength(4);
+    expect(MAP1_DATA.levelEconomy?.[0]).toEqual({ level: 1, cost: 100, rewardHardCurrency: 50, coinBoost: 100 });
+  });
+
+  it("raw ingredient ids 9-16 mirror their cooked ids 1:1 (chicken_breast_raw inserted at 9, corrected 2026-08)", () => {
+    // No RawIngredientDef.cookedId overrides needed anymore — every raw id
+    // in this range now equals its own cooked id, including the two
+    // tool-less items (chili_bowl, cheese_sauce).
+    const byCode: Record<string, number> = {
+      chicken_breast_raw: 9,
+      chicken_wing_raw: 10,
+      chicken_thigh_raw: 11,
+      chicken_nugget_raw: 12,
+      potato: 13,
+      chili_bowl: 14,
+      chive: 15,
+      cheese_sauce: 16,
+    };
+    for (const [code, id] of Object.entries(byCode)) {
+      const raw = MAP1_DATA.rawIngredients.find((r) => r.code === code);
+      expect(raw?.id, `raw ingredient "${code}"`).toBe(id);
+      expect(raw?.cookedId, `raw ingredient "${code}" should have no cookedId override`).toBeUndefined();
+    }
   });
 
   it("dirty_chick_box resolves its multi-source names to real cooked ids", () => {

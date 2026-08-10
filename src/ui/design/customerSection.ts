@@ -8,10 +8,10 @@ import { parseCustomers, serializeCustomers } from "../../core/parser.ts";
 import type { CustomerConfig, ElementDef, GlobalDefs, MapDef } from "../../core/types.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { writeRowToSheet } from "../../data/sheetWrite.ts";
-import { addPickerGrid, importField, showContextMenu } from "../contextMenu.ts";
+import { addPickerGrid, importField, showContextContent, showContextMenu } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
-import { customerTypeIconEl, ingredientIconEl } from "../icon.ts";
+import { cookedIconEl, customerTypeIconEl } from "../icon.ts";
 import { changeClass, cidOf, tagAllNew, tagNew } from "./changeTracking.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
 import { Section } from "./section.ts";
@@ -251,7 +251,7 @@ function customerCard(
       ]);
 
       dish.cookedIds.forEach((cookedId, ci) => {
-        const chip = el("span", { class: "chip icon-chip dish-chip" }, [ingredientIconEl(cookedId, 64)]);
+        const chip = el("span", { class: "chip icon-chip dish-chip" }, [cookedIconEl(cookedId, 64)]);
         chip.title = deps.map.cookedIngredients.find((c) => c.id === cookedId)?.name ?? "";
         chip.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -272,27 +272,21 @@ function customerCard(
         (e) => {
           const counts = new Map<number, number>();
           for (const id of dish.cookedIds) counts.set(id, (counts.get(id) ?? 0) + 1);
-          showContextMenu(
+          showContextContent(
             e,
-            [
-              {
-                label: "Add ingredient",
-                expand: () =>
-                  addPickerGrid(
-                    deps.map.cookedIngredients.map((c) => ({
-                      id: c.id,
-                      label: c.name,
-                      icon: ingredientIconEl(c.id, 64),
-                      limit: c.limit,
-                    })),
-                    counts,
-                    (id) => {
-                      dish.cookedIds.push(id);
-                      section.commit("Add ingredient to dish", 1, 0);
-                    },
-                  ),
+            addPickerGrid(
+              deps.map.cookedIngredients.map((c) => ({
+                id: c.id,
+                label: c.name,
+                icon: cookedIconEl(c.id, 64),
+                limit: c.limit,
+              })),
+              counts,
+              (id) => {
+                dish.cookedIds.push(id);
+                section.commit("Add ingredient to dish", 1, 0);
               },
-            ],
+            ),
             { title: `Dish ${di + 1}` },
           );
         },
