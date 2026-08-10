@@ -37,6 +37,7 @@ import { appendLine, createOverlay, railColor, railSegments } from "../queueGrou
 import type { Point } from "../queueGroupVisuals.ts";
 import { changeClass, cidOf, leafStatus, tagAllNew, tagNew } from "./changeTracking.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
+import { computeIngredientAssignment } from "./ingredientAssignment.ts";
 import { Section } from "./section.ts";
 
 const MIN_COLUMNS = 1;
@@ -80,6 +81,8 @@ interface QueueUiState {
   drawerOpen: boolean;
   /** Shift-click multi-select for Combine/Link — UI-only, not an undo step. */
   selection: Set<string>;
+  /** "Auto-calculate assigned ingredient" — see ingredientAssignment.ts. View-only, never saved. */
+  autoAssign: boolean;
 }
 
 /** Tags every lane (container identity) and every item within it (leaf identity). */
@@ -194,6 +197,7 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
     foldoutOpen: true,
     drawerOpen: false,
     selection: new Set(),
+    autoAssign: false,
   };
 
   const section: Section<QueueDraft> = new Section<QueueDraft>({
@@ -296,12 +300,19 @@ function renderBody(
   const lanes = el("div", { class: `queue-lanes${ui.removeMode ? " remove-mode" : ""}` });
   lanes.style.setProperty("--tile-zoom", String(ui.zoom));
 
+  // Recomputed fresh on every render, so it's automatically current whenever
+  // this section (or the customers section, via onCommit's refreshQueueReadout)
+  // re-renders after a dish/queue edit — see ingredientAssignment.ts.
+  const assignment = ui.autoAssign
+    ? computeIngredientAssignment(deps.map, deps.currentCustomers(), draft.queues)
+    : null;
+
   // Compared against once per render — reordering/adding/removing during a
   // render doesn't shift this baseline out from under the diff.
   const savedQueues = section.savedState.queues;
   const maxRows = draft.queues.reduce((h, q) => Math.max(h, q.length), 0);
   draft.queues.forEach((lane, laneIndex) => {
-    lanes.append(laneEl(section, deps, ui, draft, lane, laneIndex, savedQueues, maxRows));
+    lanes.append(laneEl(section, deps, ui, draft, lane, laneIndex, savedQueues, maxRows, assignment));
   });
 
   // Lane reordering: drag a lane by its header.
@@ -343,7 +354,18 @@ function renderBody(
 const clampZoom = (z: number) => Math.min(2.5, Math.max(0.5, Math.round(z * 10) / 10));
 
 function toolbar(section: Section<QueueDraft>, ui: QueueUiState): HTMLElement {
+  const autoAssignCheckbox = el("input", { type: "checkbox" }) as HTMLInputElement;
+  autoAssignCheckbox.checked = ui.autoAssign;
+  autoAssignCheckbox.addEventListener("change", () => {
+    ui.autoAssign = autoAssignCheckbox.checked;
+    section.render();
+  });
+
   return el("div", { class: "queue-toolbar" }, [
+    el("label", { class: "auto-assign-toggle", title: "Design-view only — colors tiles by which customer they're headed for, never saved" }, [
+      autoAssignCheckbox,
+      "Auto-calculate assigned ingredient",
+    ]),
     el("span", { class: "spacer" }),
     button("−", () => {
       ui.zoom = clampZoom(ui.zoom - 0.1);
@@ -386,6 +408,7 @@ function laneEl(
   laneIndex: number,
   savedQueues: QueueItem[][],
   maxRows: number,
+  assignment: Map<string, string> | null,
 ): HTMLElement {
   const node = el("div", {
     class: `queue-lane${ui.activeLane === laneIndex ? " active" : ""} ${changeClass(laneStatus(lane, savedQueues))}`,
@@ -406,7 +429,7 @@ function laneEl(
 
   const tiles = el("div", { class: "lane-tiles" });
   lane.forEach((item, itemIndex) => {
-    tiles.append(tileEl(section, deps, ui, draft, lane, item, itemIndex, savedQueues));
+    tiles.append(tileEl(section, deps, ui, draft, lane, item, itemIndex, savedQueues, assignment));
   });
 
   const addTile = el("div", { class: "queue-tile add-tile" }, ["＋"]);
@@ -467,12 +490,14 @@ function tileEl(
   item: QueueItem,
   itemIndex: number,
   savedQueues: QueueItem[][],
+  assignment: Map<string, string> | null,
 ): HTMLElement {
   const freeze = item.effects.find((e) => e.effectId === EFFECT_FREEZE);
   const key = item.effects.find((e) => e.effectId === EFFECT_HOLDING_KEY);
   const cid = cidOf(item);
   const group = cid ? draft.groups.find((g) => g.cids.includes(cid)) : undefined;
   const selected = !!cid && ui.selection.has(cid);
+  const autoColor = cid ? assignment?.get(cid) : undefined;
 
   const tile = el("div", {
     class: [
@@ -481,12 +506,14 @@ function tileEl(
       item.kind === "sweeper" ? "sweeper" : "",
       selected ? "selected" : "",
       group ? `group-${group.kind}` : "",
+      autoColor ? "auto-color" : "",
       changeClass(tileStatus(item, savedQueues)),
     ]
       .filter(Boolean)
       .join(" "),
   });
   if (cid) tile.dataset.cid = cid;
+  if (autoColor) tile.style.setProperty("--auto-color", autoColor);
 
   tile.append(
     item.kind === "sweeper"

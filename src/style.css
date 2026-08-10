@@ -270,6 +270,78 @@ footer {
   font-size: 0.85rem;
 }
 
+.toggle-group {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.toggle-group .small-btn.active {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: var(--accent);
+}
+
+/* ---------- layout modes (Current / Split — see DesignView.renderLayout) ---------- */
+
+.design-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.design-split {
+  display: flex;
+  gap: 0.6rem;
+  height: calc(100vh - 15rem);
+  min-height: 24rem;
+}
+
+.design-split-left {
+  flex: 1 1 50%;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Customer list goes vertical (one per row, full width) instead of the
+   Current layout's horizontal scrolling row of cards. */
+.design-split-left .customer-cards {
+  flex-direction: column;
+  align-items: stretch;
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.design-split-left .customer-card {
+  width: 100%;
+  min-width: 0;
+}
+
+.design-split-right {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  overflow: hidden;
+}
+
+/* Grid sizes to its content and never scrolls — its cells are already
+   fluid (1fr tracks + aspect-ratio squares, see .grid/.cell), so a narrower
+   column just shrinks them instead of overflowing. */
+.design-split-right-top {
+  flex: 0 0 auto;
+}
+
+/* Queue keeps its normal behavior (own zoom + horizontal scroll for many
+   lanes) — this just gives it whatever vertical room is left. */
+.design-split-right-bottom {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .warnings {
   border: 1px solid var(--bad);
   border-radius: 6px;
@@ -739,6 +811,15 @@ footer {
   margin-bottom: 0.5rem;
 }
 
+.auto-assign-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
 .zoom-label {
   font-size: 0.75rem;
   color: var(--muted);
@@ -903,6 +984,14 @@ footer {
    real "these are chained" signalling. */
 .queue-tile.group-linked {
   background: #3a4a3a;
+}
+
+/* "Auto-calculate assigned ingredient" (see ingredientAssignment.ts) — a
+   per-customer color wash + ring, set via --auto-color. Comes after
+   .frozen/.group-* so it visually wins when the designer has it toggled on. */
+.queue-tile.auto-color {
+  background: color-mix(in srgb, var(--auto-color) 38%, var(--panel));
+  box-shadow: inset 0 0 0 2px var(--auto-color);
 }
 
 .queue-tile.add-tile {
@@ -2234,5 +2323,164 @@ td input {
   font-size: 0.75rem;
   color: var(--muted);
   min-width: 1rem;
+}
+
+/* ---------- Auto Generate (customer section) ---------- */
+
+.auto-generate-panel {
+  max-width: 42rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.auto-generate-panel h3 {
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+
+.auto-generate-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.dish-count-wrap {
+  width: 100%;
+}
+
+.dish-count-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.dish-count-item {
+  position: relative;
+  width: 2.6rem;
+  height: 2.6rem;
+  flex: none;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.dish-count-item input {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  text-align: center;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.dish-count-item.staff {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.dish-count-item.staff input {
+  color: var(--accent);
+}
+
+.dish-count-item.add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: pointer;
+  border-style: dashed;
+  font-size: 1.2rem;
+}
+
+.dish-count-item.add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dish-count-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: none;
+  padding: 0 0.25rem;
+  font-size: 0.6rem;
+  line-height: 1.3;
+  border-radius: 999px;
+}
+
+.dish-count-item:hover .dish-count-remove {
+  display: block;
+}
+
+.ingredient-toggle-grid {
+  max-width: none;
+}
+
+.ctx-pick.toggle-off {
+  opacity: 0.3;
+}
+
+.curve-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.curve-svg {
+  width: 100%;
+  max-width: 32rem;
+  height: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  touch-action: none;
+}
+
+.curve-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.curve-border {
+  fill: none;
+  stroke: #6a6c74;
+  stroke-width: 1;
+}
+
+.curve-path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.curve-point {
+  fill: var(--accent);
+  stroke: #1a1a1a;
+  stroke-width: 1;
+  cursor: grab;
+}
+
+.curve-tangent-line {
+  stroke: #6aa7e0;
+  stroke-width: 1;
+}
+
+.curve-tangent-handle {
+  fill: #6aa7e0;
+  cursor: grab;
+}
+
+.curve-range-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 

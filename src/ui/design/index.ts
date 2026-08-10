@@ -27,10 +27,12 @@ import { button, el } from "../dom.ts";
 import { cellIconEl, ingredientIconEl, statusIconEl } from "../icon.ts";
 import type { Section } from "./section.ts";
 import { createCustomerSection } from "./customerSection.ts";
-import { createGridSection, resizeGridString } from "./gridSection.ts";
+import { createGridSection } from "./gridSection.ts";
 import { createQueueSection, toCoordGroups, toQueueDraft } from "./queueSection.ts";
 import type { QueueDraft } from "./queueSection.ts";
 import { tableEditor } from "./tableEditor.ts";
+
+type LayoutMode = "stack" | "split";
 
 export class DesignView {
   private root: HTMLElement;
@@ -45,6 +47,7 @@ export class DesignView {
   private grid!: Section<GridCellConfig[]>;
   private queues!: Section<QueueDraft>;
   private warningsEl = el("div", { class: "warnings" });
+  private layoutMode: LayoutMode = "stack";
 
   // ---------- combined "Write all to sheet" (level bar) ----------
   private levelWriteStatusEl: HTMLElement | null = null;
@@ -151,49 +154,78 @@ export class DesignView {
       onCommit: refreshLevelWrite,
     });
 
-    this.root.replaceChildren(
-      this.mapSettingsBar(),
-      this.levelBar(),
-      this.warningsEl,
-      // Customer on top, grid in the middle, queues on the bottom.
-      this.customers.element,
-      this.grid.element,
-      this.queues.element,
-    );
+    this.renderLayout();
     this.refreshWarnings();
   }
 
   /**
-   * Grid Cols/Rows and dirty-stack height are fixed per map, not per level —
-   * one edit here applies to every level at once (see docs request: "no need
-   * to config for each level").
+   * Rebuilds just the root's wrapper structure around the three (already
+   * existing) sections' `.element` nodes — switching `layoutMode` calls this
+   * directly, without going through `build()`, so it never recreates the
+   * sections themselves (which would discard any unsaved draft edits).
+   */
+  private renderLayout(): void {
+    this.root.replaceChildren(
+      this.mapSettingsBar(),
+      this.levelBar(),
+      this.warningsEl,
+      this.layoutMode === "split" ? this.splitLayout() : this.stackLayout(),
+    );
+  }
+
+  private setLayoutMode(mode: LayoutMode): void {
+    if (this.layoutMode === mode) return;
+    this.layoutMode = mode;
+    this.renderLayout();
+  }
+
+  /** Current layout: Customer on top, grid in the middle, queues on the bottom, one column. */
+  private stackLayout(): HTMLElement {
+    return el("div", { class: "design-stack" }, [
+      this.customers.element,
+      this.grid.element,
+      this.queues.element,
+    ]);
+  }
+
+  /**
+   * Split layout: Customer list fills the left half (vertical, scrollable —
+   * see .design-split-left's CSS, which flips .customer-cards from a row to
+   * a column). The right half stacks Grid on top (sized to its content, no
+   * scroll — the grid's own 1fr-track cells already shrink to fit a narrower
+   * column) and Queue on the bottom, taking whatever's left.
+   */
+  private splitLayout(): HTMLElement {
+    return el("div", { class: "design-split" }, [
+      el("div", { class: "design-split-left" }, [this.customers.element]),
+      el("div", { class: "design-split-right" }, [
+        el("div", { class: "design-split-right-top" }, [this.grid.element]),
+        el("div", { class: "design-split-right-bottom" }, [this.queues.element]),
+      ]),
+    ]);
+  }
+
+  private layoutToggle(): HTMLElement {
+    return el("div", { class: "layout-toggle field small" }, [
+      "Layout",
+      el("div", { class: "toggle-group" }, [
+        button("Current", () => this.setLayoutMode("stack"), {
+          class: `small-btn${this.layoutMode === "stack" ? " active" : ""}`,
+        }),
+        button("Split", () => this.setLayoutMode("split"), {
+          class: `small-btn${this.layoutMode === "split" ? " active" : ""}`,
+          title: "Customers left (vertical list) — grid + queue stacked right",
+        }),
+      ]),
+    ]);
+  }
+
+  /**
+   * Dirty-stack height is fixed per map, not per level — one edit here
+   * applies to every level at once. Grid Cols/Rows and Visible rows moved to
+   * JSON-only config (map.json) — no UI control for them here anymore.
    */
   private mapSettingsBar(): HTMLElement {
-    const dimField = (
-      label: string,
-      value: number,
-      apply: (v: number) => void,
-    ) => {
-      const input = el("input", {
-        type: "number",
-        value: String(value),
-        min: "1",
-      }) as HTMLInputElement;
-      input.addEventListener("change", () => {
-        apply(Math.max(1, Number(input.value) || 1));
-        for (const level of this.map.levels) {
-          level.gridString = resizeGridString(
-            level.gridString,
-            this.map.gridWidth,
-            this.map.gridHeight,
-          );
-        }
-        this.onChange();
-        this.build(); // grid section must re-parse every level's resized string
-      });
-      return el("label", { class: "field small" }, [label, input]);
-    };
-
     const stackInput = el("input", {
       type: "number",
       value: String(this.map.dirtyStackHeight),
@@ -204,23 +236,9 @@ export class DesignView {
       this.onChange();
     });
 
-    const visibleRowsInput = el("input", {
-      type: "number",
-      value: String(this.map.visibleRows),
-      min: "1",
-    }) as HTMLInputElement;
-    visibleRowsInput.title = "Queue rows Play mode shows: 1 interactable front row + the rest as preview.";
-    visibleRowsInput.addEventListener("change", () => {
-      this.map.visibleRows = Math.max(1, Number(visibleRowsInput.value) || 1);
-      this.onChange();
-    });
-
     return el("div", { class: "level-bar map-settings" }, [
       el("strong", { class: "map-settings-label" }, [`Map: ${this.map.name}`]),
-      dimField("Grid Cols", this.map.gridWidth, (v) => (this.map.gridWidth = v)),
-      dimField("Grid Rows", this.map.gridHeight, (v) => (this.map.gridHeight = v)),
       el("label", { class: "field small" }, ["Dirty stack", stackInput]),
-      el("label", { class: "field small" }, ["Visible rows", visibleRowsInput]),
       el("small", { class: "muted" }, ["Applies to every level in this map"]),
     ]);
   }
@@ -282,6 +300,7 @@ export class DesignView {
 
     return el("div", { class: "level-bar" }, [
       el("label", { class: "field small" }, ["Level", picker]),
+      this.layoutToggle(),
       selectField("Weather", WEATHER.map((w) => ({ id: w.id, name: w.id })), this.level.weather, (v) => (this.level.weather = v)),
       selectField("Tag", TAGS, this.level.levelTag, (v) => (this.level.levelTag = v)),
       metaField("Unlock", this.level.featureUnlock, "text", (v) => (this.level.featureUnlock = v)),
