@@ -10,7 +10,15 @@ import type { GlobalDefs, GridCellConfig, MapDef } from "../../core/types.ts";
 import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { writeRowToSheet } from "../../data/sheetWrite.ts";
-import { importField, numberField, pickerGrid, showContextMenu, swatchRow } from "../contextMenu.ts";
+import {
+  closeContextMenu,
+  importField,
+  numberField,
+  pickerGrid,
+  showContextContent,
+  showContextMenu,
+  swatchRow,
+} from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { cellIconEl, ingredientIconEl } from "../icon.ts";
@@ -192,7 +200,33 @@ function cellEl(
   const open = (e: MouseEvent) =>
     showContextMenu(e, cellMenu(section, deps, draft, index), { title: `Cell ${x},${y}` });
   node.addEventListener("click", open);
-  node.addEventListener("contextmenu", open);
+  // Right-clicking a cell that's already an ingredient slot jumps straight to
+  // swapping its ingredient — the full cell-type menu (left-click) is still
+  // there for changing the cell's type itself.
+  node.addEventListener("contextmenu", (e) => {
+    if (effect?.effectId === CELL_INGREDIENT_SLOT) {
+      const [ingredientId = 0, amount = 1] = effect.params;
+      showContextContent(
+        e,
+        pickerGrid(
+          deps.map.rawIngredients.map((r) => ({
+            id: r.id,
+            label: r.name,
+            icon: ingredientIconEl(r.id, 64),
+          })),
+          (id) => {
+            draft[index] = { effects: [{ effectId: CELL_INGREDIENT_SLOT, params: [id, amount] }] };
+            section.commit("Swap cell ingredient");
+            closeContextMenu();
+          },
+          ingredientId,
+        ),
+        { title: `Cell ${x},${y} — swap ingredient` },
+      );
+      return;
+    }
+    open(e);
+  });
   return node;
 }
 

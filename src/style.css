@@ -581,6 +581,22 @@ footer {
   color: var(--muted);
 }
 
+.dish-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.dish-chip {
+  cursor: grab;
+}
+
+.dish-chip.sortable-drag,
+.dish-chip.sortable-chosen {
+  cursor: grabbing;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -1167,6 +1183,17 @@ footer {
   flex-wrap: wrap;
   gap: 0.2rem;
   max-width: 13rem;
+}
+
+.ctx-swap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.35rem;
+}
+
+.ctx-swap-remove {
+  align-self: stretch;
 }
 
 .ctx-pick {

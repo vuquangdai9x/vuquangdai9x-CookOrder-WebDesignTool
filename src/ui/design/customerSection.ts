@@ -8,7 +8,13 @@ import { parseCustomers, serializeCustomers } from "../../core/parser.ts";
 import type { CustomerConfig, ElementDef, GlobalDefs, MapDef } from "../../core/types.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { writeRowToSheet } from "../../data/sheetWrite.ts";
-import { addPickerGrid, importField, showContextContent, showContextMenu } from "../contextMenu.ts";
+import {
+  addPickerGrid,
+  closeContextMenu,
+  importField,
+  showContextContent,
+  showContextMenu,
+} from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { cookedIconEl, customerTypeIconEl } from "../icon.ts";
@@ -249,6 +255,7 @@ function customerCard(
       const dishRow = el("div", { class: "dish-row" }, [
         el("span", { class: "dish-label" }, [`D${di + 1}`]),
       ]);
+      const chipsRow = el("div", { class: "dish-chips" });
 
       dish.cookedIds.forEach((cookedId, ci) => {
         const chip = el("span", { class: "chip icon-chip dish-chip" }, [cookedIconEl(cookedId, 64)]);
@@ -256,17 +263,48 @@ function customerCard(
         chip.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          dish.cookedIds.splice(ci, 1);
-          section.commit("Remove ingredient from dish", 0, 1);
+          // This slot's own current ingredient doesn't count against its own
+          // Limit — it's being replaced, not added alongside itself.
+          const counts = new Map<number, number>();
+          for (const id of dish.cookedIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+          counts.set(cookedId, Math.max(0, (counts.get(cookedId) ?? 1) - 1));
+
+          const wrap = el("div", { class: "ctx-swap" });
+          wrap.append(
+            addPickerGrid(
+              deps.map.cookedIngredients.map((c) => ({
+                id: c.id,
+                label: c.name,
+                icon: cookedIconEl(c.id, 64),
+                limit: c.limit,
+              })),
+              counts,
+              (id) => {
+                dish.cookedIds[ci] = id;
+                section.commit("Swap dish ingredient");
+                closeContextMenu();
+              },
+            ),
+            button(
+              "Remove",
+              () => {
+                dish.cookedIds.splice(ci, 1);
+                section.commit("Remove ingredient from dish", 0, 1);
+                closeContextMenu();
+              },
+              { class: "danger ctx-swap-remove" },
+            ),
+          );
+          showContextContent(e, wrap, { title: `Swap: ${chip.title}` });
         });
-        dishRow.append(chip);
+        chipsRow.append(chip);
       });
 
-      // The picker only ever adds (right-click an existing chip to remove).
-      // It stays open across clicks instead of closing after each pick — the
-      // menu's own click-outside/Escape handling is what closes it. Each
-      // ingredient stops being pickable once its configured Limit copies are
-      // already in this dish (absent/0 = no limit).
+      // The picker only ever adds (right-click an existing chip to swap or
+      // remove instead). It stays open across clicks instead of closing
+      // after each pick — the menu's own click-outside/Escape handling is
+      // what closes it. Each ingredient stops being pickable once its
+      // configured Limit copies are already in this dish (absent/0 = no limit).
       const addChip = button(
         "＋",
         (e) => {
@@ -292,7 +330,24 @@ function customerCard(
         },
         { class: "chip add-chip" },
       );
-      dishRow.append(addChip);
+      chipsRow.append(addChip);
+
+      // Chips reorder within their dish by drag (addChip stays put — it's
+      // excluded from `draggable`, so it's never a valid drop target itself,
+      // only the fixed trailing element).
+      Sortable.create(chipsRow, {
+        animation: 150,
+        draggable: ".dish-chip",
+        onEnd: (evt) => {
+          if (evt.oldIndex === undefined || evt.newIndex === undefined) return;
+          if (evt.oldIndex === evt.newIndex) return;
+          const [moved] = dish.cookedIds.splice(evt.oldIndex, 1);
+          dish.cookedIds.splice(Math.min(evt.newIndex, dish.cookedIds.length), 0, moved);
+          section.commit("Reorder dish ingredients");
+        },
+      });
+
+      dishRow.append(chipsRow);
 
       // Dish effects come from a separate, not-yet-defined table (distinct
       // from ingredient statuses) — nothing to show or offer here for now.
