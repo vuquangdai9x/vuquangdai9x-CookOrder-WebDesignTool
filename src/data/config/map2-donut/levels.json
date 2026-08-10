@@ -1,0 +1,4 @@
+{
+  "_note": "Empty on purpose. RemoteConfigData.csv's donut lv_1..lv_25 rows are all blank ('~~') and MapDefinitions.csv has no level-scenario data for this map yet — only definitions (tools/ingredients/dirty-objects) have been authored so far.",
+  "levels": []
+}

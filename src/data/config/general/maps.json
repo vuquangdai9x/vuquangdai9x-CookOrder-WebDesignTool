@@ -1,11 +1,24 @@
 {
-  "_source": "ConfigTables!A3:C5",
+  "_source": "ConfigTables!A3:C5; rows 2-3 (donut/sushi) added from MapDefinitions.csv's All_maps table.",
   "maps": [
     { "index": 1,
       "id": "burger",
       "name": "Burger",
       "numLevels": 25,
       "folder": "map1-burger"
+    },
+    { "index": 2,
+      "id": "donut",
+      "name": "Donut",
+      "numLevels": 25,
+      "folder": "map2-donut"
+    },
+    { "index": 3,
+      "id": "sushi",
+      "name": "Sushi",
+      "numLevels": 25,
+      "folder": null,
+      "_note": "No MapDefinitions.csv section exists for sushi yet — registry entry only, no config folder."
     }
   ]
 }

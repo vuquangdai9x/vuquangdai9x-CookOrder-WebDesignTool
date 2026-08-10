@@ -25,7 +25,7 @@ import type {
   QueueGroupKind,
   QueueItem,
 } from "../../core/types.ts";
-import { findToolRecipe } from "../../core/types.ts";
+import { resolveCookedId } from "../../core/types.ts";
 
 /**
  * Flight kinds that land on (and fill) a customer's dish chip: the two
@@ -1164,8 +1164,7 @@ export class PlayView {
     // An ingredient is "wanted" when its tool output (or itself) is on an order.
     const wantedRaw = new Set<number>();
     for (const raw of this.map.rawIngredients) {
-      const match = findToolRecipe(this.map.tools, raw.id);
-      if (needed.has(match ? match.recipe.out : raw.id)) wantedRaw.add(raw.id);
+      if (needed.has(resolveCookedId(this.map.tools, this.map.rawIngredients, raw.id))) wantedRaw.add(raw.id);
     }
 
     const windowRows = this.windowRows;

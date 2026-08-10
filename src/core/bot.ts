@@ -3,7 +3,7 @@
 // synchronously) through to a win or loss, so many trials can run quickly.
 // See docs/GDD.md and PlayView's "Auto-play bot" panel (src/ui/play/index.ts).
 
-import { findToolRecipe } from "./types.ts";
+import { resolveCookedId } from "./types.ts";
 import type { Id, LevelConfig, MapDef } from "./types.ts";
 import { Simulation } from "./sim.ts";
 import type { SimStatus } from "./sim.ts";
@@ -106,16 +106,14 @@ function wantedRawIds(sim: Simulation, map: MapDef): Set<Id> {
   const needed = sim.neededCookedIds();
   const wanted = new Set<Id>();
   for (const raw of map.rawIngredients) {
-    const match = findToolRecipe(map.tools, raw.id);
-    if (needed.has(match ? match.recipe.out : raw.id)) wanted.add(raw.id);
+    if (needed.has(resolveCookedId(map.tools, map.rawIngredients, raw.id))) wanted.add(raw.id);
   }
   return wanted;
 }
 
 /** Cooked id a raw ingredient eventually becomes (itself, if it needs no cooking). */
 function producedCookedId(map: MapDef, rawId: Id): Id {
-  const match = findToolRecipe(map.tools, rawId);
-  return match ? match.recipe.out : rawId;
+  return resolveCookedId(map.tools, map.rawIngredients, rawId);
 }
 
 function chooseGreedy(map: MapDef) {

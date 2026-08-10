@@ -2,12 +2,17 @@
 // (see config/general/sheet-write-columns.json for its column layout) via the
 // Sheets API v4, using the same OAuth token flow as sheetSource.ts's reads
 // (googleAuth.ts). Each write appends a new row rather than editing one in
-// place — this tab is a write log, not a live-edited table, and the Sheets
-// API "update" call isn't available to us here.
+// place — this tab is a write log, not a live-edited table.
+//
+// updateRemoteConfigValue() below is different: it writes IN PLACE, into a
+// single cell of the SAME spreadsheet sheetSource.ts reads from (the user's
+// own Sheet ID, not the fixed WebTool-Write one) — that's what the Remote
+// Data tab's "Apply" button needs, since it's editing a live key/value row
+// Unity's RemoteConfigDefaultSetterCakeOrder.cs also reads.
 
 import sheetColumns from "./config/general/sheet-write-columns.json";
 import { requestAccessTokenInteractive } from "./googleAuth.ts";
-import { SheetAuthRequiredError, SheetPermissionError } from "./sheetSource.ts";
+import { REMOTE_CONFIG_TAB, SheetAuthRequiredError, SheetPermissionError } from "./sheetSource.ts";
 
 const { spreadsheetId, sheetName, columns } = sheetColumns;
 
@@ -54,6 +59,32 @@ export async function writeRowToSheet(
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ values: [row] }),
+  });
+  if (res.status === 401) throw new SheetAuthRequiredError("access token expired or invalid");
+  if (res.status === 403) throw new SheetPermissionError("this Google account can't write to the sheet");
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Sheet write failed: ${res.status}${detail ? ` — ${detail}` : ""}`);
+  }
+}
+
+/**
+ * Writes one value cell (column E) of the RemoteConfigData tab in place, at
+ * the given 1-indexed row — the row a matching fetchRemoteConfigRows() read
+ * came from. Requires an interactive token: this is always triggered from a
+ * button click, so popping the consent screen here (if needed) is safe.
+ */
+export async function updateRemoteConfigValue(sheetId: string, row: number, value: string): Promise<void> {
+  const token = await requestAccessTokenInteractive();
+
+  const range = encodeURIComponent(`${REMOTE_CONFIG_TAB}!E${row}`);
+  const url =
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}` +
+    `?valueInputOption=USER_ENTERED`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ values: [[value]] }),
   });
   if (res.status === 401) throw new SheetAuthRequiredError("access token expired or invalid");
   if (res.status === 403) throw new SheetPermissionError("this Google account can't write to the sheet");

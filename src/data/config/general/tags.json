@@ -1,7 +1,7 @@
 {
   "_note": "Level Tag values from Level_overall_config's 'Level Tag' column, cross-referenced with GlobalDefinitions.tsv's difficulty table (Index|Type|RewardWin|IconFileId|Emoji) for rewardWin/fileId/emoji enrichment (unused by current code, kept for reference). \"\", \"Hard\", and \"Super Hard\" all appear across Map 1's 15 levels.",
   "tags": [
-    { "id": "", "name": "None" },
+    { "id": "", "name": "None", "rewardWin": 50 },
     { "id": "Hard", "name": "Hard", "rewardWin": 80, "fileId": "1U57XTD4Ujyw3oFlkpzffvGHKLWmAUsWf", "emoji": "💀" },
     { "id": "Super Hard", "name": "Super Hard", "rewardWin": 100, "fileId": "11FFLCyKfSc0K3oSnaOlD-AKGtH86NgDy", "emoji": "☠" }
   ]

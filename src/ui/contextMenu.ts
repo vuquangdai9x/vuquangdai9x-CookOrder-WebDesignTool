@@ -2,7 +2,7 @@
 // Used by the grid cells, queue tiles/lanes, and customer cards.
 // See docs/ToolDesign.md.
 
-import { el } from "./dom.ts";
+import { button, el } from "./dom.ts";
 
 export interface MenuItem {
   label: string;
@@ -127,35 +127,73 @@ export function pickerGrid(
 }
 
 /**
- * Multi-select toggle grid: clicking an entry adds/removes its id from
- * `selectedIds` in place and re-renders the active states — it does NOT close
- * the menu (the caller passes this as a MenuItem's `expand`, and the menu's
- * existing click-outside/Escape handling is what closes it, matching "keep
- * the window open, toggle on/off, click outside to close"). Each id can only
- * be selected once, so re-clicking a selected entry removes it rather than
- * adding a duplicate.
+ * Add-only picker grid: clicking an entry always adds it (never removes) via
+ * `onPick`, up to that entry's `limit` (absent/0 = unlimited), after which it
+ * disables itself. Doesn't close the menu (the caller passes this as a
+ * MenuItem's `expand`; the menu's own click-outside/Escape handling is what
+ * closes it). `currentCounts` seeds each entry's starting count — how many
+ * copies are already present wherever the picked ids end up.
  */
-export function toggleGrid(
-  entries: { id: number; label: string; icon: HTMLElement }[],
-  selectedIds: number[],
-  onToggle: (id: number, nowSelected: boolean) => void,
+export function addPickerGrid(
+  entries: { id: number; label: string; icon: HTMLElement; limit?: number }[],
+  currentCounts: Map<number, number>,
+  onPick: (id: number) => void,
 ): HTMLElement {
   const grid = el("div", { class: "ctx-picker" });
+  const counts = new Map(currentCounts);
+
   for (const entry of entries) {
-    const cell = el("button", {
-      class: `ctx-pick${selectedIds.includes(entry.id) ? " active" : ""}`,
-      title: entry.label,
-    });
+    const limit = entry.limit ?? 0;
+    const cell = el("button", { class: "ctx-pick", title: entry.label }) as HTMLButtonElement;
     cell.append(entry.icon);
+
+    const atLimit = () => limit > 0 && (counts.get(entry.id) ?? 0) >= limit;
+    const refresh = () => {
+      cell.classList.toggle("disabled", atLimit());
+      cell.disabled = atLimit();
+    };
+    refresh();
+
     cell.addEventListener("click", (e) => {
       e.stopPropagation();
-      const nowSelected = !cell.classList.contains("active");
-      cell.classList.toggle("active", nowSelected);
-      onToggle(entry.id, nowSelected);
+      if (atLimit()) return;
+      counts.set(entry.id, (counts.get(entry.id) ?? 0) + 1);
+      onPick(entry.id);
+      refresh();
     });
     grid.append(cell);
   }
   return grid;
+}
+
+/**
+ * Paste-and-import editor for an inline sub-editor: a multi-line textarea
+ * plus an "Import" button. `onImport` gets the trimmed text and is expected
+ * to parse it and throw a plain Error with a useful message on bad input —
+ * this catches that, alerts it, and leaves the menu open so the designer can
+ * fix the pasted text and retry rather than losing it.
+ */
+export function importField(placeholder: string, onImport: (text: string) => void): HTMLElement {
+  const textarea = el("textarea", {
+    class: "ctx-import-textarea",
+    placeholder,
+    rows: "4",
+  }) as HTMLTextAreaElement;
+  textarea.addEventListener("click", (e) => e.stopPropagation());
+  textarea.addEventListener("keydown", (e) => e.stopPropagation());
+
+  const importBtn = button("Import", (e) => {
+    e.stopPropagation();
+    const text = textarea.value.trim();
+    if (!text) return;
+    try {
+      onImport(text);
+    } catch (err) {
+      alert(`Could not import: ${(err as Error).message}`);
+    }
+  }, {});
+
+  return el("div", { class: "ctx-import" }, [textarea, importBtn]);
 }
 
 /** Colour swatch row (used by ColorLock cells and HoldingKey statuses). */

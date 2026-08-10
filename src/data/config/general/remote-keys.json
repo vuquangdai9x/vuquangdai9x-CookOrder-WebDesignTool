@@ -1,0 +1,33 @@
+{
+  "_source": "RemoteConfigData.csv rows 1-108 (the 'Map,Lv,Category,Key,Value,Length,Schema' table, matching RemoteConfigDefaultSetterCakeOrder.cs's GetRemoteKeyForMapConfig()/GetRemoteKeyForMapLevelDesign() key format exactly). Everything in the CSV from row ~219 onward is a stale, #REF!-riddled duplicate block using an unrelated key scheme and is NOT represented here.",
+  "_note": "Per-map category/level keys aren't listed literally — the Remote Data tab derives them as map_config_{mapId}_{category} and map_config_{mapId}_lv_{n} (n = 1..numLevels), the same formulas the C# script uses, from the compact lists below.",
+  "global": [
+    { "category": "global", "key": "mechanic_features" },
+    { "category": "global", "key": "reward_config" },
+    { "category": "global", "key": "heart_config" },
+    { "category": "global", "key": "stack_config" },
+    { "category": "global", "key": "ingame_heart_config" },
+    { "category": "global", "key": "progress_scenario" },
+    { "category": "global", "key": "serve_slot_config" },
+    { "category": "booster-saveme", "key": "booster_config" },
+    { "category": "booster-saveme", "key": "save_me_config" },
+    { "category": "maps", "key": "map_metadata_config" }
+  ],
+  "maps": [
+    {
+      "mapId": "burger",
+      "categories": ["tool", "dirty_object", "recipe_piece", "ingredient_process", "upgrade_building", "customer", "lv_metadata"],
+      "numLevels": 25
+    },
+    {
+      "mapId": "donut",
+      "categories": ["tool", "dirty_object", "recipe_piece", "ingredient_process", "upgrade_building", "customer", "lv_all"],
+      "numLevels": 25
+    },
+    {
+      "mapId": "sushi",
+      "categories": ["tool", "dirty_object", "recipe_piece", "ingredient_process", "upgrade_building", "customer", "lv_all"],
+      "numLevels": 25
+    }
+  ]
+}

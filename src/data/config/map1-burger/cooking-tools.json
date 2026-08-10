@@ -1,6 +1,6 @@
 {
   "_source": "MapDefinitions.tsv Map1_burger tools table (Index|ToolID|IconFileId). fileIds match the prior Soda Machine/Chopping Board/Pan icons exactly, confirming this is a rename+reorder, not new stations: griddle=Pan, coca_machine=Soda Machine, cutting_board=Chopping Board. Fryer now has recipes too — see below.",
-  "_note": "Cooking stations. A tool holds numSlots ingredients at once; each takes cookingTime seconds. recipes maps a raw ingredient id to what comes out and how many. An ingredient with no tool recipe (Ice, Chili Bowl, Cheese Sauce) needs no processing and goes straight to the grid. chainTools on a recipe means the item hops through those tool ids next, in order, before the final out/amount is produced (e.g. Potato: Cutting Board, then Fryer).",
+  "_note": "Cooking stations. A tool holds numSlots ingredients at once; each takes cookingTime seconds. recipes maps a raw ingredient id to what comes out and how many — `in` and `out` are NOT always the same id here (chicken items and potato cook into a higher cooked id after cooked-ingredients.json was renumbered to match MapDefinitions.csv). An ingredient with no tool recipe (Ice, Chili Bowl, Cheese Sauce) needs no processing and goes straight to the grid as its raw ingredient's `cookedId` (see ingredients.json). chainTools on a recipe means the item hops through those tool ids next, in order, before the final out/amount is produced (e.g. Potato: Cutting Board, then Fryer). upgradeCosts is per-level coin cost from the GDD's tool upgrade table; not yet wired into any gameplay or UI.",
   "tools": [
     {
       "id": 0,
@@ -13,7 +13,8 @@
       "recipes": [
         { "in": 1, "out": 1, "amount": 1 },
         { "in": 6, "out": 6, "amount": 1 }
-      ]
+      ],
+      "upgradeCosts": [0, 2, 2]
     },
     {
       "id": 1,
@@ -23,7 +24,8 @@
       "localImage": "Map1-burger/tools/Asset_Tool_SodaMachine.png",
       "numSlots": 1,
       "cookingTime": 2,
-      "recipes": [{ "in": 7, "out": 7, "amount": 1 }]
+      "recipes": [{ "in": 7, "out": 7, "amount": 1 }],
+      "upgradeCosts": [0, 1, 1]
     },
     {
       "id": 2,
@@ -40,8 +42,9 @@
         { "in": 4, "out": 4, "amount": 2 },
         { "in": 5, "out": 5, "amount": 2 },
         { "in": 15, "out": 15, "amount": 2 },
-        { "in": 12, "out": 12, "amount": 2, "chainTools": [3] }
-      ]
+        { "in": 12, "out": 13, "amount": 2, "chainTools": [3] }
+      ],
+      "upgradeCosts": [0, 1, 1]
     },
     {
       "id": 3,
@@ -52,10 +55,11 @@
       "numSlots": 1,
       "cookingTime": 1,
       "recipes": [
-        { "in": 9, "out": 9, "amount": 1 },
-        { "in": 10, "out": 10, "amount": 1 },
-        { "in": 11, "out": 11, "amount": 1 }
-      ]
+        { "in": 9, "out": 10, "amount": 1 },
+        { "in": 10, "out": 11, "amount": 1 },
+        { "in": 11, "out": 12, "amount": 1 }
+      ],
+      "upgradeCosts": [0, 1, 1]
     },
     {
       "id": 4,
@@ -65,7 +69,8 @@
       "localImage": "",
       "numSlots": 1,
       "cookingTime": 1,
-      "recipes": []
+      "recipes": [],
+      "upgradeCosts": [0, 1, 1]
     }
   ]
 }

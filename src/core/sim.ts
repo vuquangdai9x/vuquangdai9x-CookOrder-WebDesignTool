@@ -664,16 +664,31 @@ export class Simulation {
       return;
     }
     if (!d.raw) {
-      // No tool needed — if a customer is already waiting for it, skip the
+      // No tool needed — this raw item already IS its cooked form (see
+      // noToolCookedId). If a customer is already waiting for it, skip the
       // grid landing entirely and serve it straight from the queue.
-      const target = this.findServeTarget(item.id);
+      const cookedId = this.noToolCookedId(item.id);
+      const target = this.findServeTarget(cookedId);
       if (target) {
         this.releaseCell(d.cell);
-        this.launch({ kind: "queue-to-customer", itemId: item.id, toCustomer: target });
+        this.launch({ kind: "queue-to-customer", itemId: cookedId, toCustomer: target });
         return;
       }
+      this.launch({ kind: "queue-to-grid", itemId: cookedId, toCell: d.cell, raw: false });
+      return;
     }
-    this.launch({ kind: "queue-to-grid", itemId: item.id, toCell: d.cell, raw: d.raw });
+    this.launch({ kind: "queue-to-grid", itemId: item.id, toCell: d.cell, raw: true });
+  }
+
+  /**
+   * Resolves what a tool-less raw ingredient's grid/dish identity actually
+   * is. Normally a raw id with no tool recipe just IS its own cooked id (the
+   * long-standing convention this map's ids were built around); `cookedId`
+   * on the RawIngredientDef overrides that for the rare case where the
+   * cooked side was renumbered independently of the raw side.
+   */
+  private noToolCookedId(rawId: Id): Id {
+    return this.map.rawIngredients.find((r) => r.id === rawId)?.cookedId ?? rawId;
   }
 
   /**
@@ -1049,7 +1064,7 @@ export class Simulation {
           const cell = this.queueGrid[x][y];
           if (!cell || cell.item.kind !== "ingredient") continue;
           const match = findToolRecipe(this.map.tools, cell.item.id);
-          const producedId = match ? match.recipe.out : cell.item.id;
+          const producedId = match ? match.recipe.out : this.noToolCookedId(cell.item.id);
           if (producedId !== cookedId) continue;
           found = { x, y, amount: match?.recipe.amount ?? 1 };
           break;
@@ -1423,7 +1438,8 @@ export class Simulation {
     const ids: Id[] = [];
     for (const dish of customer.dishes) {
       for (const def of this.map.dirtyObjects) {
-        if (dish.filled.includes(def.sourceCookedId)) ids.push(def.id);
+        const sources = Array.isArray(def.sourceCookedId) ? def.sourceCookedId : [def.sourceCookedId];
+        if (sources.some((id) => dish.filled.includes(id))) ids.push(def.id);
       }
     }
     return ids;
@@ -1633,7 +1649,7 @@ export class Simulation {
       } else {
         const match = findToolRecipe(this.map.tools, cell.rawId);
         if (match) for (let n = 0; n < match.recipe.amount; n++) items.push(match.recipe.out);
-        else items.push(cell.rawId);
+        else items.push(this.noToolCookedId(cell.rawId));
       }
       this.grid[i] = { kind: "empty" };
       if (firstClearedCell === -1) firstClearedCell = i;

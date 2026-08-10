@@ -1,0 +1,26 @@
+{
+  "_source": "MapDefinitions.csv Map2_donut's ingredient_process table. Every raw id here maps 1:1 to the same cooked id (no RawIngredientDef.cookedId overrides needed, unlike map1's chili_bowl/cheese_sauce) — see cooked-ingredients.json.",
+  "_note": "The CSV has no Price column for this table (map1's raw prices come from a different, older sheet source that has no map2 equivalent) — price is 0 for every row here until real pricing data exists.",
+  "ingredients": [
+    { "id": 0, "name": "Donut", "code": "donut", "price": 0, "numSlices": 1, "emoji": "🍩", "fileId": "" },
+    { "id": 1, "name": "Donut Bar", "code": "donut_bar", "price": 0, "numSlices": 1, "emoji": "🍩", "fileId": "" },
+    { "id": 2, "name": "Donut 8", "code": "donut_8", "price": 0, "numSlices": 1, "emoji": "🍩", "fileId": "" },
+    { "id": 3, "name": "Chocolate Glaze", "code": "chocolate_glaze", "price": 0, "numSlices": 1, "emoji": "🍫", "fileId": "" },
+    { "id": 4, "name": "Strawberry Glaze", "code": "strawberry_glaze", "price": 0, "numSlices": 1, "emoji": "🍓", "fileId": "" },
+    { "id": 5, "name": "Vanilla Glaze", "code": "vanilla_glaze", "price": 0, "numSlices": 1, "emoji": "🍦", "fileId": "" },
+    { "id": 6, "name": "Blue Glaze", "code": "blue_glaze", "price": 0, "numSlices": 1, "emoji": "🔵", "fileId": "" },
+    { "id": 7, "name": "Cool Cup", "code": "cup_cool", "price": 0, "numSlices": 1, "emoji": "🥤", "fileId": "1LyYrqYSDVXHxH5fzw-LdlCTpo3O0_g89" },
+    { "id": 8, "name": "Hot Cup", "code": "cup_hot", "price": 0, "numSlices": 1, "emoji": "☕", "fileId": "" },
+    { "id": 9, "name": "Coffee Bean", "code": "coffee_bean", "price": 0, "numSlices": 1, "emoji": "☕", "fileId": "" },
+    { "id": 10, "name": "Milk", "code": "milk", "price": 0, "numSlices": 1, "emoji": "🥛", "fileId": "" },
+    { "id": 11, "name": "Ice", "code": "ice", "price": 0, "numSlices": 1, "emoji": "🧊", "fileId": "1it3qzg7TXkK8qDoQOmHtxbWMirCZEVT-" },
+    { "id": 12, "name": "Cupcake", "code": "cupcake", "price": 0, "numSlices": 1, "emoji": "🧁", "fileId": "" },
+    { "id": 13, "name": "Whipping Cream", "code": "whipping_cream", "price": 0, "numSlices": 1, "emoji": "🍦", "fileId": "" },
+    { "id": 14, "name": "Whipping Choco", "code": "whipping_choco", "price": 0, "numSlices": 1, "emoji": "🍫", "fileId": "" },
+    { "id": 15, "name": "Sprinkles", "code": "sprinkles", "price": 0, "numSlices": 1, "emoji": "✨", "fileId": "" },
+    { "id": 16, "name": "Blueberry", "code": "blueberry", "price": 0, "numSlices": 1, "emoji": "🫐", "fileId": "" },
+    { "id": 17, "name": "Strawberry", "code": "strawberry", "price": 0, "numSlices": 2, "emoji": "🍓", "fileId": "" },
+    { "id": 18, "name": "Kiwi", "code": "kiwi", "price": 0, "numSlices": 2, "emoji": "🥝", "fileId": "" },
+    { "id": 19, "name": "Pineapple", "code": "pineapple", "price": 0, "numSlices": 3, "emoji": "🍍", "fileId": "" }
+  ]
+}

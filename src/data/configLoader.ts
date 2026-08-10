@@ -12,6 +12,7 @@ import type {
   DirtyObjectDef,
   ElementDef,
   GlobalDefs,
+  LevelEconomyEntry,
   ParamDef,
 } from "../core/types.ts";
 import type { LevelData, MapData } from "./mapLoader.ts";
@@ -24,6 +25,7 @@ import ingredientStatusesJson from "./config/general/ingredient-statuses.json";
 import keyColorsJson from "./config/general/key-colors.json";
 import mapsJson from "./config/general/maps.json";
 import metaJson from "./config/general/meta.json";
+import remoteKeysJson from "./config/general/remote-keys.json";
 import tagsJson from "./config/general/tags.json";
 import weatherJson from "./config/general/weather.json";
 
@@ -34,11 +36,15 @@ import map1LevelsJson from "./config/map1-burger/levels.json";
 import map1ToolsJson from "./config/map1-burger/cooking-tools.json";
 import map1DirtyJson from "./config/map1-burger/dirty-objects.json";
 import map1AvatarsJson from "./config/map1-burger/customer-avatars.json";
+import map1LevelEconomyJson from "./config/map1-burger/level-economy.json";
 
-import map2Json from "./config/map2-chicken_fried/map.json";
-import map2IngredientsJson from "./config/map2-chicken_fried/ingredients.json";
-import map2LevelsJson from "./config/map2-chicken_fried/levels.json";
-import map2ToolsJson from "./config/map2-chicken_fried/cooking-tools.json";
+import map2Json from "./config/map2-donut/map.json";
+import map2CookedJson from "./config/map2-donut/cooked-ingredients.json";
+import map2IngredientsJson from "./config/map2-donut/ingredients.json";
+import map2LevelsJson from "./config/map2-donut/levels.json";
+import map2ToolsJson from "./config/map2-donut/cooking-tools.json";
+import map2DirtyJson from "./config/map2-donut/dirty-objects.json";
+import map2LevelEconomyJson from "./config/map2-donut/level-economy.json";
 
 // ---------- shared row shapes ----------
 
@@ -61,6 +67,7 @@ interface IngredientRow {
   emoji: string;
   fileId: string;
   localImage?: string;
+  cookedId?: number;
 }
 
 interface CookedRow {
@@ -69,14 +76,16 @@ interface CookedRow {
   emoji: string;
   fileId: string;
   localImage?: string;
-  baseId?: number;
+  baseId?: number | number[];
+  usageNum?: number;
+  limit?: number;
 }
 
 interface DirtyRow {
   id: number;
   name: string;
-  /** Name of the cooked ingredient whose presence in a dish spawns this object. */
-  source: string;
+  /** Name of the cooked ingredient (or any one of several) whose presence in a dish spawns this object. */
+  source: string | string[];
   emoji: string;
   fileId: string;
   localImage?: string;
@@ -100,6 +109,8 @@ export const TAGS = tagsJson.tags;
 export const EMOTIONS = emotionsJson.emotions;
 export const META = metaJson;
 export const MAP_INDEX = mapsJson.maps;
+/** Which remote-config keys exist and how they're grouped — see the Remote Data tab (ui/remote/index.ts). */
+export const REMOTE_KEYS = remoteKeysJson;
 
 export const GLOBAL_DEFS: GlobalDefs = {
   effects: (ingredientStatusesJson.statuses as StatusRow[]).map(toElementDef),
@@ -134,6 +145,7 @@ function buildMap(
   levels: LevelData[],
   dirty: DirtyRow[] = [],
   customerAvatars: string[] = [],
+  levelEconomy: LevelEconomyEntry[] = [],
 ): MapData {
   return {
     id: meta.index,
@@ -154,6 +166,7 @@ function buildMap(
       code: r.code,
       price: r.price,
       numSlices: r.numSlices,
+      cookedId: r.cookedId,
     })),
     cookedIngredients: cooked.map((c) => ({
       id: c.id,
@@ -162,29 +175,26 @@ function buildMap(
       fileId: c.fileId,
       localImage: c.localImage,
       baseId: c.baseId,
+      usageNum: c.usageNum,
+      limit: c.limit,
     })),
-    dirtyObjects: dirty.map(
-      (d): DirtyObjectDef => ({
+    dirtyObjects: dirty.map((d): DirtyObjectDef => {
+      const names = Array.isArray(d.source) ? d.source : [d.source];
+      const ids = names.map((name) => cooked.find((c) => c.name === name)?.id ?? -1);
+      return {
         id: d.id,
         name: d.name,
         icon: d.emoji,
         fileId: d.fileId,
         localImage: d.localImage,
-        sourceCookedId: cooked.find((c) => c.name === d.source)?.id ?? -1,
-      }),
-    ),
+        sourceCookedId: ids.length === 1 ? ids[0] : ids,
+      };
+    }),
     customerAvatars,
     tools,
     levels,
+    ...(levelEconomy.length > 0 ? { levelEconomy } : {}),
   };
-}
-
-/** Cooked rows are derived for maps that don't declare their own yet. */
-function cookedFromTools(ingredients: IngredientRow[], tools: CookingToolDef[]): CookedRow[] {
-  const outIds = new Set(tools.flatMap((t) => t.recipes.map((r) => r.out)));
-  return ingredients
-    .filter((i) => outIds.has(i.id))
-    .map((i) => ({ id: i.id, name: i.name, emoji: i.emoji, fileId: i.fileId }));
 }
 
 export const MAP1_DATA: MapData = buildMap(
@@ -195,17 +205,18 @@ export const MAP1_DATA: MapData = buildMap(
   map1LevelsJson.levels as LevelData[],
   map1DirtyJson.cookedIngredients as DirtyRow[],
   map1AvatarsJson.avatars as string[],
+  map1LevelEconomyJson.levelEconomy as LevelEconomyEntry[],
 );
 
 export const MAP2_DATA: MapData = buildMap(
   map2Json,
   map2IngredientsJson.ingredients as IngredientRow[],
-  cookedFromTools(
-    map2IngredientsJson.ingredients as IngredientRow[],
-    map2ToolsJson.tools as CookingToolDef[],
-  ),
+  map2CookedJson.cookedIngredients as CookedRow[],
   map2ToolsJson.tools as CookingToolDef[],
   map2LevelsJson.levels as LevelData[],
+  map2DirtyJson.cookedIngredients as DirtyRow[],
+  [],
+  map2LevelEconomyJson.levelEconomy as LevelEconomyEntry[],
 );
 
 /** Maps that actually have level data to open in the tool. */

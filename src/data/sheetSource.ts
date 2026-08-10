@@ -152,6 +152,36 @@ function lastNonEmpty(row: string[]): string {
   return "";
 }
 
+/** Tab the C# RemoteConfigDefaultSetterCakeOrder.cs script reads/writes (key col D, value col E). */
+export const REMOTE_CONFIG_TAB = "RemoteConfigData";
+
+export interface RemoteConfigRow {
+  key: string;
+  value: string;
+  /** 1-indexed sheet row — needed to write this row's value cell back in place. */
+  row: number;
+}
+
+/**
+ * Reads every Key/Value pair from the RemoteConfigData tab (columns D/E,
+ * matching the C# script's default `_keyColumnLetter`/`_valueColumnLetter`),
+ * keyed by row number so a later write targets the exact cell it was read
+ * from rather than a row index that could have shifted.
+ */
+export async function fetchRemoteConfigRows(
+  sheetId: string,
+  token: string,
+): Promise<Map<string, RemoteConfigRow>> {
+  const rows = await fetchTabValues(REMOTE_CONFIG_TAB, token, sheetId);
+  const byKey = new Map<string, RemoteConfigRow>();
+  rows.forEach((cells, i) => {
+    const key = (cells[3] ?? "").trim();
+    if (!key || key === "Key") return; // skip blanks and the header row
+    byKey.set(key, { key, value: cells[4] ?? "", row: i + 1 });
+  });
+  return byKey;
+}
+
 /**
  * Linked Google Sheet, read-only, via the Sheets API v4 + a per-user OAuth
  * token. Definition tables stay static for now (see data/configLoader.ts).

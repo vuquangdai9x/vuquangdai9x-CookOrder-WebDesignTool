@@ -44,6 +44,14 @@ export interface RawIngredientDef {
   price: number;
   /** How many pieces one raw unit yields when processed (sheet: NumSlices). */
   numSlices: number;
+  /**
+   * Cooked ingredient id this raw item becomes when it needs no tool at all
+   * (findToolRecipe finds nothing) and that id differs from its own raw id —
+   * e.g. map1's chili_bowl/cheese_sauce were renumbered on the cooked side
+   * but kept their original raw id. Absent/equal-to-own-id is the normal
+   * case: a tool-less raw ingredient just IS its own cooked form.
+   */
+  cookedId?: Id;
 }
 
 export interface CookedIngredientDef {
@@ -68,14 +76,21 @@ export interface CookedIngredientDef {
    * single-use.
    */
   usageNum?: number;
+  /**
+   * Max copies of this ingredient one dish's order can call for (e.g. a bun
+   * or a soda cup only ever appears once; a patty can repeat). Absent/0 = no
+   * limit. Enforced by the Design mode dish editor when adding ingredients.
+   */
+  limit?: number;
 }
 
 /**
  * What a served customer leaves behind on the grid instead of the generic
  * dirty dish — e.g. a burger dish leaves a Dirty Plate, a soda dish leaves a
- * Dirty Cup. `sourceCookedId` is the cooked ingredient whose presence in a
- * dish spawns this object (resolved from the config's "source" name at load
- * time — see data/configLoader.ts).
+ * Dirty Cup. `sourceCookedId` is the cooked ingredient (or any one of
+ * several, e.g. a fried-chicken box triggered by any of the fried bases)
+ * whose presence in a dish spawns this object (resolved from the config's
+ * "source" name(s) at load time — see data/configLoader.ts).
  */
 export interface DirtyObjectDef {
   id: Id;
@@ -84,7 +99,7 @@ export interface DirtyObjectDef {
   fileId?: string;
   /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
   localImage?: string;
-  sourceCookedId: Id;
+  sourceCookedId: Id | Id[];
 }
 
 /** What a tool turns one raw ingredient into, and how many come out. */
@@ -115,6 +130,20 @@ export interface CookingToolDef {
   numSlots: number;
   cookingTime: number;
   recipes: ToolRecipe[];
+  /**
+   * Coin cost to upgrade this tool from level N to N+1, indexed from level 1
+   * (upgradeCosts[0] = cost of the lvl1->lvl2 upgrade). Data captured from
+   * the GDD's per-tool upgrade table; not yet wired into any gameplay or UI.
+   */
+  upgradeCosts?: number[];
+}
+
+/** One row of a map's per-level economy table (cost to unlock, reward on win). */
+export interface LevelEconomyEntry {
+  level: number;
+  cost: number;
+  rewardHardCurrency: number;
+  coinBoost: number;
 }
 
 export interface MapDef {
@@ -151,6 +180,8 @@ export interface MapDef {
    */
   disabledRawIds: Id[];
   disabledCookedIds: Id[];
+  /** Per-level unlock cost / win reward table from the GDD; not yet wired into any gameplay or UI. */
+  levelEconomy?: LevelEconomyEntry[];
 }
 
 /** Finds the tool (and its recipe) that processes a raw ingredient, if any. */
@@ -163,6 +194,22 @@ export function findToolRecipe(
     if (recipe) return { tool, recipe };
   }
   return null;
+}
+
+/**
+ * What a raw ingredient's cooked identity actually is: a tool recipe's
+ * output if it has one, otherwise its own RawIngredientDef.cookedId override
+ * (or its own id — the common case where raw and cooked ids are the same,
+ * which every id in this codebase was originally built around).
+ */
+export function resolveCookedId(
+  tools: CookingToolDef[],
+  rawIngredients: RawIngredientDef[],
+  rawId: Id,
+): Id {
+  const match = findToolRecipe(tools, rawId);
+  if (match) return match.recipe.out;
+  return rawIngredients.find((r) => r.id === rawId)?.cookedId ?? rawId;
 }
 
 // ---------- Level config ----------

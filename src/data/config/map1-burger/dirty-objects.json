@@ -1,7 +1,8 @@
 {
-  "_note": "Created when customer done. \"source\" is a cooked ingredient's name — a customer's dish that contains it spawns this dirty object instead of the generic dirty dish when they leave. Image (fileId) is preloaded and used instead of the emoji, which is only the fallback. MapDefinitions.tsv's Map1_burger dirty-objects table also lists a 3rd entry, dirty_chick_box, but its source ingredient ids (9-12) don't exist in map1's 9-ingredient set (they're map2/chicken ids) — omitted here.",
+  "_note": "Created when customer done. \"source\" is a cooked ingredient's name (or any one of several) — a customer's dish that contains it spawns this dirty object instead of the generic dirty dish when they leave. Image (fileId) is preloaded and used instead of the emoji, which is only the fallback. dirty_chick_box (MapDefinitions.csv's Map1_burger dirty-objects table) was previously omitted because its source ids (9-12) didn't exist in map1's ingredient set yet — they do now (chick_wing/thigh/nugget/potato were merged in this session), so it's added below, sourced from all 4 fried-chicken items (cooked ids 10-13 after the recipe_piece renumber).",
   "cookedIngredients": [
     { "id": 0, "name": "Dirty Plate", "source": "Sliced Bun", "emoji": "🍽", "fileId": "1WqirGMGMpxKI8NlvwSUN9lJiO8k9ID34", "localImage": "Map1-burger/map1-burger-dirty-plate.png" },
-    { "id": 1, "name": "Dirty Cup", "source": "Soda Cup", "emoji": "🥤", "fileId": "1qvWAVqMv0qrMWa0jTGPeJ4zMVZTWAp1k", "localImage": "Map1-burger/mpa1-burger-dirty-cup.png" }
+    { "id": 1, "name": "Dirty Cup", "source": "Soda Cup", "emoji": "🥤", "fileId": "1qvWAVqMv0qrMWa0jTGPeJ4zMVZTWAp1k", "localImage": "Map1-burger/mpa1-burger-dirty-cup.png" },
+    { "id": 2, "name": "Dirty Chick Box", "source": ["Fried Wing", "Fried Thigh", "Fried Nugget", "Fried Potato"], "emoji": "🍱", "fileId": "1DRgGjWYznwhgow9rlsy9-s7LP09XHOMq" }
   ]
 }

@@ -10,7 +10,7 @@ import type { GlobalDefs, GridCellConfig, MapDef } from "../../core/types.ts";
 import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { writeRowToSheet } from "../../data/sheetWrite.ts";
-import { numberField, pickerGrid, showContextMenu, swatchRow } from "../contextMenu.ts";
+import { importField, numberField, pickerGrid, showContextMenu, swatchRow } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { cellIconEl, ingredientIconEl } from "../icon.ts";
@@ -54,6 +54,21 @@ export function createGridSection(deps: GridSectionDeps): Section<GridCellConfig
         ),
     },
     menuItems: (draft) => [
+      {
+        label: "Import from string…",
+        expand: (close) =>
+          importField(",,#4:1:1,,,,,#3,,", (text) => {
+            const parsed = parseGrid(text);
+            const want = deps.map.gridWidth * deps.map.gridHeight;
+            if (parsed.length !== want) {
+              throw new Error(`Expected ${want} cells (${deps.map.gridWidth}×${deps.map.gridHeight}), got ${parsed.length}`);
+            }
+            draft.length = 0;
+            draft.push(...parsed);
+            section.commit("Import grid from string");
+            close();
+          }),
+      },
       {
         label: "Clear All",
         danger: true,

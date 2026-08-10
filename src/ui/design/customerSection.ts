@@ -4,11 +4,11 @@
 
 import Sortable from "sortablejs";
 import { CUSTOMER_STAFF } from "../../core/effects.ts";
-import { serializeCustomers } from "../../core/parser.ts";
+import { parseCustomers, serializeCustomers } from "../../core/parser.ts";
 import type { CustomerConfig, ElementDef, GlobalDefs, MapDef } from "../../core/types.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { writeRowToSheet } from "../../data/sheetWrite.ts";
-import { showContextMenu, toggleGrid } from "../contextMenu.ts";
+import { addPickerGrid, importField, showContextMenu } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { customerTypeIconEl, ingredientIconEl } from "../icon.ts";
@@ -105,6 +105,19 @@ export function createCustomerSection(deps: CustomerSectionDeps): Section<Custom
         ),
     },
     menuItems: (draft) => [
+      {
+        label: "Import from string…",
+        expand: (close) =>
+          importField("typeId;waitTime;weatherEff;dishes|...", (text) => {
+            const parsed = tagAllNew(parseCustomers(text));
+            const added = parsed.length;
+            const removed = draft.length;
+            draft.length = 0;
+            draft.push(...parsed);
+            section.commit("Import customers from string", added, removed);
+            close();
+          }),
+      },
       {
         label: "Clear All",
         danger: true,
@@ -249,44 +262,40 @@ function customerCard(
         dishRow.append(chip);
       });
 
-      // A dish is a multiple-choice set: each cooked ingredient can only be in
-      // it once. The picker stays open across clicks (toggling membership)
-      // instead of closing after each pick — the menu's own click-outside/
-      // Escape handling is what closes it.
+      // The picker only ever adds (right-click an existing chip to remove).
+      // It stays open across clicks instead of closing after each pick — the
+      // menu's own click-outside/Escape handling is what closes it. Each
+      // ingredient stops being pickable once its configured Limit copies are
+      // already in this dish (absent/0 = no limit).
       const addChip = button(
         "＋",
-        (e) =>
+        (e) => {
+          const counts = new Map<number, number>();
+          for (const id of dish.cookedIds) counts.set(id, (counts.get(id) ?? 0) + 1);
           showContextMenu(
             e,
             [
               {
-                label: "Toggle ingredients",
+                label: "Add ingredient",
                 expand: () =>
-                  toggleGrid(
+                  addPickerGrid(
                     deps.map.cookedIngredients.map((c) => ({
                       id: c.id,
                       label: c.name,
                       icon: ingredientIconEl(c.id, 64),
+                      limit: c.limit,
                     })),
-                    dish.cookedIds,
-                    (id, nowSelected) => {
-                      if (nowSelected) {
-                        dish.cookedIds.push(id);
-                      } else {
-                        const at = dish.cookedIds.indexOf(id);
-                        if (at !== -1) dish.cookedIds.splice(at, 1);
-                      }
-                      section.commit(
-                        nowSelected ? "Add ingredient to dish" : "Remove ingredient from dish",
-                        nowSelected ? 1 : 0,
-                        nowSelected ? 0 : 1,
-                      );
+                    counts,
+                    (id) => {
+                      dish.cookedIds.push(id);
+                      section.commit("Add ingredient to dish", 1, 0);
                     },
                   ),
               },
             ],
             { title: `Dish ${di + 1}` },
-          ),
+          );
+        },
         { class: "chip add-chip" },
       );
       dishRow.append(addChip);

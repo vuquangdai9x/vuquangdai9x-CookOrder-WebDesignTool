@@ -19,6 +19,7 @@ import {
 } from "./data/sheetSource.ts";
 import { DesignView } from "./ui/design/index.ts";
 import { PlayView } from "./ui/play/index.ts";
+import { RemoteDataView } from "./ui/remote/index.ts";
 import { showContextMenu } from "./ui/contextMenu.ts";
 import { button, el } from "./ui/dom.ts";
 import { setIconMap } from "./ui/icon.ts";
@@ -26,7 +27,7 @@ import { preloadMapWithOverlay } from "./ui/preloadOverlay.ts";
 import { hideBlockingOverlay, showBlockingOverlay } from "./ui/loadingOverlay.ts";
 import { showSheetPermissionDialog } from "./ui/sheetPermissionDialog.ts";
 
-type Mode = "design" | "play";
+type Mode = "design" | "play" | "remote";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const DRAFT_KEY = "cookorder-draft-map";
@@ -138,6 +139,9 @@ async function render(): Promise<void> {
       button("Play", () => switchMode("play"), {
         class: mode === "play" ? "active" : "",
       }),
+      button("Remote Data", () => switchMode("remote"), {
+        class: mode === "remote" ? "active" : "",
+      }),
     ]),
     el("div", { class: "data-actions" }, [
       el("span", { class: "data-origin" }, [
@@ -198,6 +202,11 @@ async function render(): Promise<void> {
       designView = new DesignView(main, map, GLOBAL_DEFS, saveDraft, currentLevelId, (id) => {
         currentLevelId = id;
       });
+    } else if (mode === "remote") {
+      new RemoteDataView(main, map, () => sheetIdInput, () => {
+        saveDraft();
+        void render();
+      });
     } else {
       const parsed = toMapDef(map);
       const rawLevel = parsed.levels.find((l) => l.id === currentLevelId) ?? parsed.levels[0];
@@ -217,7 +226,9 @@ async function render(): Promise<void> {
     console.error(err);
     main.replaceChildren(
       el("div", { class: "warnings" }, [
-        el("strong", {}, [`${mode === "design" ? "Design" : "Play"} mode failed to load`]),
+        el("strong", {}, [
+          `${mode === "design" ? "Design" : mode === "remote" ? "Remote Data" : "Play"} mode failed to load`,
+        ]),
         el("p", {}, [(err as Error).message]),
         el("p", {}, [
           "This usually means the saved draft no longer matches the current data schema.",

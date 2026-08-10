@@ -882,6 +882,38 @@ describe("real Map 1 level data", () => {
   });
 });
 
+describe("tool-less raw ingredient with a cookedId override", () => {
+  // Raw id 2 in testMap has no tool recipe (goes straight to grid). Give it
+  // a cookedId override pointing at a DIFFERENT cooked id, mirroring map1's
+  // chili_bowl/cheese_sauce (renumbered on the cooked side, but the raw id
+  // stayed put) — see RawIngredientDef.cookedId / Simulation.noToolCookedId.
+  const overriddenMap: MapDef = {
+    ...testMap,
+    rawIngredients: testMap.rawIngredients.map((r) => (r.id === 2 ? { ...r, cookedId: 3 } : r)),
+  };
+
+  it("lands on the grid as the overridden cooked id, not the raw id", () => {
+    const sim = new Simulation(
+      overriddenMap,
+      level({ queueString: "2", gridString: EMPTY_GRID, customerString: "0;0;0" }),
+    );
+    sim.pick(0);
+    sim.completeAllFlights();
+    expect(sim.grid.some((c) => c.kind === "cooked" && c.cookedId === 3)).toBe(true);
+    expect(sim.grid.some((c) => c.kind === "cooked" && c.cookedId === 2)).toBe(false);
+  });
+
+  it("serves straight from the queue (direct-serve shortcut) as the overridden cooked id", () => {
+    const sim = new Simulation(
+      overriddenMap,
+      level({ queueString: "2", gridString: EMPTY_GRID, customerString: "0;0;0;3" }),
+    );
+    sim.pick(0);
+    sim.completeAllFlights();
+    expect(sim.status).toBe("won");
+  });
+});
+
 describe("queue groups", () => {
   it("has no groups when the level defines none (regression)", () => {
     const sim = new Simulation(

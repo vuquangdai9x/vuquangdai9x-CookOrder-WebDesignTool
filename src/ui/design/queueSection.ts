@@ -8,7 +8,7 @@
 
 import Sortable from "sortablejs";
 import { CELL_COLOR_LOCK, EFFECT_FREEZE, EFFECT_HOLDING_KEY, EFFECT_LINK } from "../../core/effects.ts";
-import { serializeQueues, SWEEPER_ID } from "../../core/parser.ts";
+import { parseQueueGroups, parseQueues, serializeQueues, SWEEPER_ID } from "../../core/parser.ts";
 import type {
   CustomerConfig,
   GlobalDefs,
@@ -21,7 +21,7 @@ import type {
 import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { writeRowToSheet } from "../../data/sheetWrite.ts";
-import { numberField, pickerGrid, showContextMenu, swatchRow } from "../contextMenu.ts";
+import { importField, numberField, pickerGrid, showContextMenu, swatchRow } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { ingredientIconEl, statusIconEl } from "../icon.ts";
@@ -235,6 +235,17 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
           ui.removedSnapshot = ui.removeMode ? structuredClone(draft.queues) : null;
           section.render();
         },
+      },
+      {
+        label: "Import from string…",
+        expand: (close) =>
+          importField("0,1%1,0$0-0,1-0", (text) => {
+            const next = toQueueDraft({ queues: parseQueues(text), groups: parseQueueGroups(text) });
+            draft.queues = next.queues;
+            draft.groups = next.groups;
+            section.commit("Import queues from string");
+            close();
+          }),
       },
       {
         label: "Auto-Generate Queue",
