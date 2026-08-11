@@ -23,9 +23,11 @@
 // maps and individual levels fold out (collapsed by default); fold state is
 // module-level so it survives switching to Design/Play and back.
 
-import type { LevelSheetRow } from "../../data/sheetSource.ts";
+import type { LevelSheetRow, RemoteSheetColumns } from "../../data/sheetSource.ts";
 import {
+  columnLetter,
   fetchLevelProgressRows,
+  letterToColumn,
   REMOTE_LEVEL_FIELDS,
   REMOTE_SHEET_COLUMNS,
   REMOTE_SHEET_DEFAULT_TAB,
@@ -73,10 +75,14 @@ type FieldKey = (typeof REMOTE_LEVEL_FIELDS)[number]["key"];
  * it correctly.
  */
 let rowsCache: { cacheKey: string; rows: Map<string, LevelSheetRow> } | null = null;
-/** Same reasoning: fold state and the tab-name override outlive this view's own lifetime. */
+/** Same reasoning: fold state and the tab/column overrides outlive this view's own lifetime. */
 const openGroups = new Set<string>();
 const openLevels = new Set<string>();
 let tabName = REMOTE_SHEET_DEFAULT_TAB;
+/** Which column (0-based) each of the 7 fields is read from/written to — starts at the JSON defaults, editable per-field from the page header (letters, e.g. "D"). */
+const columnOverrides: RemoteSheetColumns = { ...REMOTE_SHEET_COLUMNS };
+/** 1-indexed sheet row data starts at — the real MapLevelProgress sheet has 3 title/category/header rows before level 1's row. */
+let startRow = 4;
 
 /**
  * Character-level diff of `newStr` against `oldStr` via an LCS backtrack —
@@ -177,7 +183,7 @@ export class RemoteDataView {
   }
 
   private cacheKeyNow(): string {
-    return `${this.getSheetId()}::${tabName}`;
+    return `${this.getSheetId()}::${tabName}::${startRow}::${JSON.stringify(columnOverrides)}`;
   }
 
   /** The cache, but only if it's actually for the currently-configured sheet+tab — otherwise `null` (not stale data). */
@@ -199,7 +205,7 @@ export class RemoteDataView {
     const key = this.cacheKeyNow();
     const result = await this.withToken(async () => {
       const token = await requestAccessTokenInteractive();
-      return fetchLevelProgressRows(sheetId, token, tabName);
+      return fetchLevelProgressRows(sheetId, token, tabName, columnOverrides, startRow);
     });
     if (result === null) return null;
     rowsCache = { cacheKey: key, rows: result };
@@ -225,18 +231,46 @@ export class RemoteDataView {
       tabName = tabNameInput.value.trim() || REMOTE_SHEET_DEFAULT_TAB;
       tabNameInput.value = tabName;
     });
+    const startRowInput = el("input", {
+      type: "number",
+      min: "1",
+      value: String(startRow),
+      class: "sheet-id-input column-letter-input",
+    }) as HTMLInputElement;
+    startRowInput.addEventListener("change", () => {
+      startRow = Math.max(1, Number(startRowInput.value) || 1);
+      startRowInput.value = String(startRow);
+    });
+
+    // One column-letter override per field, defaulting to remote-sheet-columns.json's
+    // values — lets a designer point at the real sheet's actual layout without a code change.
+    const columnFields = REMOTE_LEVEL_FIELDS.map((f) => {
+      const input = el("input", {
+        type: "text",
+        value: columnLetter(columnOverrides[f.key]),
+        class: "sheet-id-input column-letter-input",
+      }) as HTMLInputElement;
+      input.addEventListener("change", () => {
+        const col = letterToColumn(input.value);
+        if (col >= 0) columnOverrides[f.key] = col;
+        input.value = columnLetter(columnOverrides[f.key]); // normalize case / revert if invalid
+      });
+      return el("label", { class: "field small" }, [f.label, input]);
+    });
 
     page.append(
       el("div", { class: "remote-page-actions" }, [
         el("h2", {}, ["Remote Data"]),
         el("p", { class: "remote-hint" }, [
-          "One row per level, one column per field — see config/general/remote-sheet-columns.json for the exact tab/column layout. Only ",
+          "One row per level, one column per field — column letters and the start row below default from remote-sheet-columns.json but are editable here if the real sheet's layout differs. Only ",
           this.map.name,
           "'s levels have live tool data to compare against. Hover a field to apply just that one; each map and level folds out on click.",
         ]),
         el("div", { class: "remote-sheet-config" }, [
           el("label", { class: "field small" }, ["Sheet ID", sheetIdInput]),
           el("label", { class: "field small" }, ["Sheet (tab) name", tabNameInput]),
+          el("label", { class: "field small" }, ["Start row", startRowInput]),
+          ...columnFields,
         ]),
         el("div", { class: "remote-buttons" }, [
           button("⬇ Load All from sheet", () => void this.runAll("load"), { class: "full-btn" }),
@@ -485,7 +519,7 @@ export class RemoteDataView {
     }
     const updates: CellUpdate[] = REMOTE_LEVEL_FIELDS.map((f) => ({
       row: row.rowNumber,
-      col: REMOTE_SHEET_COLUMNS[f.key],
+      col: columnOverrides[f.key],
       value: this.toolField(entry, f.key) ?? "",
     }));
     const ok = await this.withToken(() => batchUpdateCells(sheetId, tabName, updates));
@@ -529,7 +563,7 @@ export class RemoteDataView {
       return;
     }
     const ok = await this.withToken(() =>
-      batchUpdateCells(sheetId, tabName, [{ row: row.rowNumber, col: REMOTE_SHEET_COLUMNS[fieldKey], value }]),
+      batchUpdateCells(sheetId, tabName, [{ row: row.rowNumber, col: columnOverrides[fieldKey], value }]),
     );
     if (ok === null) {
       setStatus?.("error", "apply failed");
@@ -587,7 +621,7 @@ export class RemoteDataView {
       const row = rows.get(e.key);
       if (!row) continue;
       for (const f of REMOTE_LEVEL_FIELDS) {
-        updates.push({ row: row.rowNumber, col: REMOTE_SHEET_COLUMNS[f.key], value: this.toolField(e, f.key) ?? "" });
+        updates.push({ row: row.rowNumber, col: columnOverrides[f.key], value: this.toolField(e, f.key) ?? "" });
       }
       touched.push({ entry: e, row });
     }

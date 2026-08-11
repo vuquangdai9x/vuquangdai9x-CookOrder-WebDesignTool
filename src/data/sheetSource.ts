@@ -201,6 +201,15 @@ export function columnLetter(index: number): string {
   return s;
 }
 
+/** Inverse of columnLetter: spreadsheet letter(s) -> 0-based column index. Non-letter input (or empty) returns -1. */
+export function letterToColumn(letters: string): number {
+  const trimmed = letters.trim().toUpperCase();
+  if (!/^[A-Z]+$/.test(trimmed)) return -1;
+  let n = 0;
+  for (const ch of trimmed) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+
 export interface LevelSheetRow {
   /** 1-indexed sheet row — needed to write this row's cells back in place. */
   rowNumber: number;
@@ -222,19 +231,24 @@ function resolveMapId(cell: string): string | null {
  * same `map_config_{mapId}_lv_{n}` convention used throughout the Remote Data
  * tab — so every subsequent read (a single row's Load, a field's Apply, a
  * whole-level Apply) can look up the already-fetched Map instead of hitting
- * the network again. A row whose Level column doesn't parse to a positive
- * integer, or whose Map column doesn't match a known map, is skipped (covers
- * the header row and any stray/blank rows).
+ * the network again. `startRow` (1-indexed) skips the sheet's title/category/
+ * header rows outright — the real MapLevelProgress sheet has 3 of them before
+ * data starts at row 4. Any row whose Level column still doesn't parse to a
+ * positive integer, or whose Map column doesn't match a known map, is also
+ * skipped (covers stray/blank rows below `startRow`).
  */
 export async function fetchLevelProgressRows(
   sheetId: string,
   token: string,
   tabName: string,
   columns: RemoteSheetColumns = REMOTE_SHEET_COLUMNS,
+  startRow = 1,
 ): Promise<Map<string, LevelSheetRow>> {
   const rows = await fetchTabValues(tabName, token, sheetId);
   const byKey = new Map<string, LevelSheetRow>();
   rows.forEach((cells, i) => {
+    const rowNumber = i + 1;
+    if (rowNumber < startRow) return;
     const level = Number((cells[columns.level] ?? "").trim());
     if (!Number.isInteger(level) || level <= 0) return;
     const mapId = resolveMapId(cells[columns.map] ?? "");
@@ -245,7 +259,7 @@ export async function fetchLevelProgressRows(
       if (k === "map" || k === "level") continue;
       fields[k] = cells[columns[k]] ?? "";
     }
-    byKey.set(key, { rowNumber: i + 1, fields });
+    byKey.set(key, { rowNumber, fields });
   });
   return byKey;
 }

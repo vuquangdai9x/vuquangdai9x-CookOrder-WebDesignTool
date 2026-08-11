@@ -2221,6 +2221,14 @@ td input {
   gap: 0.75rem;
 }
 
+/* Per-field column-letter overrides + the start-row field — much narrower
+   than the Sheet ID/tab name boxes since they only ever hold a couple of characters. */
+.column-letter-input {
+  width: 3.2rem;
+  text-transform: uppercase;
+  text-align: center;
+}
+
 .foldout-caret {
   flex: none;
   display: inline-flex;

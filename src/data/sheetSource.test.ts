@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAP1_DATA } from "./configLoader.ts";
-import { importLevelsCsv, levelsCsv, parseCsv } from "./sheetSource.ts";
+import { columnLetter, importLevelsCsv, letterToColumn, levelsCsv, parseCsv } from "./sheetSource.ts";
 
 describe("CSV export (level data only — no map/ingredient/tool definitions)", () => {
   it("writes one levels row per level with the canonical strings intact", () => {
@@ -76,5 +76,25 @@ describe("CSV import", () => {
 
   it("throws on an empty file", () => {
     expect(() => importLevelsCsv("")).toThrow();
+  });
+});
+
+describe("columnLetter / letterToColumn", () => {
+  it("round-trips single and multi-letter columns", () => {
+    for (const [index, letter] of [[0, "A"], [3, "D"], [17, "R"], [25, "Z"], [26, "AA"], [51, "AZ"]] as const) {
+      expect(columnLetter(index)).toBe(letter);
+      expect(letterToColumn(letter)).toBe(index);
+    }
+  });
+
+  it("letterToColumn is case-insensitive and tolerates surrounding whitespace", () => {
+    expect(letterToColumn(" d ")).toBe(3);
+    expect(letterToColumn("r")).toBe(17);
+  });
+
+  it("letterToColumn returns -1 for non-letter or empty input", () => {
+    expect(letterToColumn("")).toBe(-1);
+    expect(letterToColumn("1")).toBe(-1);
+    expect(letterToColumn("D1")).toBe(-1);
   });
 });

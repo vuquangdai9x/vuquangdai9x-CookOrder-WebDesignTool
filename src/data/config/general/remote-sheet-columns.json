@@ -1,16 +1,16 @@
 {
-  "_source": "docs/SHEET_STRUCTURE.md's documented MapLevelProgress column order (Map|Level|ID|Title|Weather|Tag|Customers|Grid|Queues|concat-data|Note|E-TimePlay|E-WinRate|R-TimePlay|R-WinRate, columns A-O) plus 4 new columns (P-S) appended after the existing ones for the Auto Generate record fields added to LevelData — nothing existing is shifted.",
-  "_note": "Column indexes are 0-based (0=A, 1=B, ...). Edit this file (no code change needed) if the real sheet's columns differ — the Remote Data tab reads this at load time.",
+  "_source": "The real MapLevelProgress sheet's header row (CookOrder GDD New - MapLevelProgress.csv): Map,Level,ID,Ingredient Weights,Customer Dishes Sequence,Complexity Curve,Shuffle Curve,Design Note,Weather,Tag,Num Customers,Num Dishes,Num Ingredients,New Object Ids,Tut Id,Customers,Grid,Queues,... — columns A-R.",
+  "_note": "Column indexes are 0-based (0=A, 1=B, ...). These are just the starting defaults — the Remote Data tab also lets a designer override each of the 7 field columns from its own UI (letters, e.g. 'D'), in case the real sheet's layout ever shifts; this file only supplies the initial values shown there.",
   "tabName": "MapLevelProgress",
   "columns": {
     "map": 0,
     "level": 1,
-    "customerString": 6,
-    "gridString": 7,
-    "queueString": 8,
-    "ingredientWeights": 15,
-    "customerDishesSequence": 16,
-    "complexityCurve": 17,
-    "shuffleCurve": 18
+    "ingredientWeights": 3,
+    "customerDishesSequence": 4,
+    "complexityCurve": 5,
+    "shuffleCurve": 6,
+    "customerString": 15,
+    "gridString": 16,
+    "queueString": 17
   }
 }
