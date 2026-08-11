@@ -28,8 +28,8 @@ import { cellIconEl, ingredientIconEl, statusIconEl } from "../icon.ts";
 import type { Section } from "./section.ts";
 import { createCustomerSection } from "./customerSection.ts";
 import { createGridSection } from "./gridSection.ts";
-import { createQueueSection, toCoordGroups, toQueueDraft } from "./queueSection.ts";
-import type { QueueDraft } from "./queueSection.ts";
+import { createQueueSection, startQueueAutoGenerate, toCoordGroups, toQueueDraft } from "./queueSection.ts";
+import type { QueueDraft, QueueSectionDeps } from "./queueSection.ts";
 import { tableEditor } from "./tableEditor.ts";
 
 type LayoutMode = "stack" | "split";
@@ -46,6 +46,8 @@ export class DesignView {
   private customers!: Section<CustomerConfig[]>;
   private grid!: Section<GridCellConfig[]>;
   private queues!: Section<QueueDraft>;
+  /** Kept around so the customer section's post-Auto-Generate chain (see build()) can reopen the queue's own Auto Generate dialog against current deps. */
+  private queueDeps!: QueueSectionDeps;
   private warningsEl = el("div", { class: "warnings" });
   private layoutMode: LayoutMode = "stack";
 
@@ -118,6 +120,20 @@ export class DesignView {
     const refreshQueueReadout = () => this.queues?.render();
     const refreshLevelWrite = () => this.refreshLevelWriteStatus();
 
+    this.queueDeps = {
+      map: parsedMap,
+      defs: this.defs,
+      level: this.level,
+      parse: () => ({
+        queues: parseQueues(this.level.queueString),
+        groups: parseQueueGroups(this.level.queueString),
+      }),
+      currentCustomers: () => this.customers.draft,
+      currentGrid: () => this.grid.draft,
+      onSaved: saved,
+      onCommit: refreshLevelWrite,
+    };
+
     this.customers = createCustomerSection({
       map: parsedMap,
       defs: this.defs,
@@ -128,6 +144,11 @@ export class DesignView {
         refreshQueueReadout();
         refreshLevelWrite();
       },
+      // Chains straight into the queue's own Auto Generate dialog (skipping
+      // its redundant "overwrite every lane?" confirm — the dialog's own
+      // Cancel button already covers changing your mind) so regenerating
+      // customers doesn't leave the queue out of sync by default.
+      onGenerated: () => startQueueAutoGenerate(this.queues, this.queueDeps, true),
     });
     this.grid = createGridSection({
       map: parsedMap,
@@ -140,19 +161,7 @@ export class DesignView {
         refreshLevelWrite();
       },
     });
-    this.queues = createQueueSection({
-      map: parsedMap,
-      defs: this.defs,
-      level: this.level,
-      parse: () => ({
-        queues: parseQueues(this.level.queueString),
-        groups: parseQueueGroups(this.level.queueString),
-      }),
-      currentCustomers: () => this.customers.draft,
-      currentGrid: () => this.grid.draft,
-      onSaved: saved,
-      onCommit: refreshLevelWrite,
-    });
+    this.queues = createQueueSection(this.queueDeps);
 
     this.renderLayout();
     this.refreshWarnings();

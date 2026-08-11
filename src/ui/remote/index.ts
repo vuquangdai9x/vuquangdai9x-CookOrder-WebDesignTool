@@ -1,30 +1,42 @@
 // "Remote Data" mode: a side-by-side sheet/tool diff view for level data,
-// backed by the same Google Sheet tab Unity's
-// RemoteConfigDefaultSetterCakeOrder.cs reads (RemoteConfigData, columns
-// D/E — see data/sheetSource.ts's REMOTE_CONFIG_TAB). Global config blocks
-// and per-map definition tables (tool/recipe_piece/etc.) are NOT shown here
-// — this tab is scoped to level content only (map_config_{map}_lv_{n}).
+// backed by a "MapLevelProgress"-style tab — one row per level, one column
+// per field (see data/config/general/remote-sheet-columns.json for the exact
+// tab name + column layout, and data/sheetSource.ts's fetchLevelProgressRows
+// for how a row is matched to a map/level). Global config blocks and
+// per-map definition tables (tool/recipe_piece/etc.) are NOT shown here —
+// this tab is scoped to level content only.
 //
-// Each level's sheet cell is a single "~"-joined string covering 7 fields, in
-// this fixed order — see FIELDS below: the four design-time Auto Generate
-// records (ingredientWeights/customerDishesSequence/complexityCurve/
-// shuffleCurve, added alongside the Customer/Queue section "level params
-// bar") followed by the three canonical customer/grid/queue strings that
-// were always here. Each level renders as two columns — sheet data (left)
-// and tool data (right) — one read-only field per FIELDS entry, each with
-// its own hover-revealed Apply button that pushes just that one field across
-// (sheet field -> tool, or tool field -> sheet, preserving the other 6
-// fields on whichever side is being written to).
+// Every read hits the network at most once per explicit "Load" — the whole
+// tab is fetched in a single request and cached (module-level, so it survives
+// this view being torn down and rebuilt on every mode switch), and every
+// other action (a field's Apply, a level's Apply, "Apply All") reads from
+// that cache instead of re-fetching. Writes for one action (a level's 7
+// fields, or every level in "Apply All") go out as a single batched request
+// — see data/sheetWrite.ts's batchUpdateCells — so a bulk action never turns
+// into one HTTP request per cell. This is what keeps the tab from tripping
+// the Sheets API's per-minute rate limit ("Too Many Requests").
+//
+// Each level renders as two columns — sheet data (left) and tool data
+// (right) — one read-only field per REMOTE_LEVEL_FIELDS entry, each with its
+// own hover-revealed Apply button that pushes just that one field across.
+// Whole-level "Apply Sheet"/"Apply Tool" buttons push all 7 at once. Both
+// maps and individual levels fold out (collapsed by default); fold state is
+// module-level so it survives switching to Design/Play and back.
 
-import { REMOTE_KEYS } from "../../data/configLoader.ts";
-import type { LevelData, MapData } from "../../data/mapLoader.ts";
-import { requestAccessTokenInteractive } from "../../data/googleAuth.ts";
+import type { LevelSheetRow } from "../../data/sheetSource.ts";
 import {
-  fetchRemoteConfigRows,
+  fetchLevelProgressRows,
+  REMOTE_LEVEL_FIELDS,
+  REMOTE_SHEET_COLUMNS,
+  REMOTE_SHEET_DEFAULT_TAB,
   SheetAuthRequiredError,
   SheetPermissionError,
 } from "../../data/sheetSource.ts";
-import { updateRemoteConfigValue } from "../../data/sheetWrite.ts";
+import { REMOTE_KEYS } from "../../data/configLoader.ts";
+import type { LevelData, MapData } from "../../data/mapLoader.ts";
+import { requestAccessTokenInteractive } from "../../data/googleAuth.ts";
+import { batchUpdateCells } from "../../data/sheetWrite.ts";
+import type { CellUpdate } from "../../data/sheetWrite.ts";
 import { showSheetPermissionDialog } from "../sheetPermissionDialog.ts";
 import { button, el } from "../dom.ts";
 
@@ -51,36 +63,20 @@ function buildGroups(): Group[] {
 }
 
 type RowStatus = "idle" | "loading" | "error";
+type FieldKey = (typeof REMOTE_LEVEL_FIELDS)[number]["key"];
 
-/** One "~"-joined slot in a level's combined sheet value, in on-sheet order. */
-interface FieldSpec {
-  label: string;
-  key: keyof Pick<
-    LevelData,
-    "ingredientWeights" | "customerDishesSequence" | "complexityCurve" | "shuffleCurve" | "customerString" | "gridString" | "queueString"
-  >;
-}
-
-const FIELDS: FieldSpec[] = [
-  { label: "Ingredient Weights", key: "ingredientWeights" },
-  { label: "Customer Dishes Sequence", key: "customerDishesSequence" },
-  { label: "Complexity Curve", key: "complexityCurve" },
-  { label: "Shuffle Curve", key: "shuffleCurve" },
-  { label: "Customers", key: "customerString" },
-  { label: "Grid", key: "gridString" },
-  { label: "Queues", key: "queueString" },
-];
-
-/** Splits a combined "~"-joined value into exactly FIELDS.length parts, padding with "" if short. */
-function splitFields(value: string): string[] {
-  const parts = value.split("~");
-  while (parts.length < FIELDS.length) parts.push("");
-  return parts;
-}
-
-function joinFields(parts: string[]): string {
-  return parts.join("~");
-}
+/**
+ * Module-level so it survives RemoteDataView being recreated on every
+ * main.ts render() (mode switch, sheet reload, etc.) — the whole reason we
+ * cache is to avoid a fresh fetch per action; losing it on every tab switch
+ * would defeat that. Keyed by sheetId+tabName so switching either invalidates
+ * it correctly.
+ */
+let rowsCache: { cacheKey: string; rows: Map<string, LevelSheetRow> } | null = null;
+/** Same reasoning: fold state and the tab-name override outlive this view's own lifetime. */
+const openGroups = new Set<string>();
+const openLevels = new Set<string>();
+let tabName = REMOTE_SHEET_DEFAULT_TAB;
 
 /**
  * Character-level diff of `newStr` against `oldStr` via an LCS backtrack —
@@ -134,20 +130,29 @@ export class RemoteDataView {
   private root: HTMLElement;
   private map: MapData;
   private getSheetId: () => string;
+  private setSheetId: (id: string) => void;
   private onLevelChanged: () => void;
+  private onOpenInDesign: (levelId: number) => void;
   private groups: Group[];
-  /** Last full combined value fetched from the sheet per key — undefined until a Load runs once. */
-  private sheetValueByKey = new Map<string, string>();
   private refreshRowByKey = new Map<string, () => void>();
   private setRowStatusByKey = new Map<string, (status: RowStatus, error?: string) => void>();
   private groupStatusByTitle = new Map<string, HTMLElement>();
   private pageStatusEl!: HTMLElement;
 
-  constructor(root: HTMLElement, map: MapData, getSheetId: () => string, onLevelChanged: () => void) {
+  constructor(
+    root: HTMLElement,
+    map: MapData,
+    getSheetId: () => string,
+    setSheetId: (id: string) => void,
+    onLevelChanged: () => void,
+    onOpenInDesign: (levelId: number) => void,
+  ) {
     this.root = root;
     this.map = map;
     this.getSheetId = getSheetId;
+    this.setSheetId = setSheetId;
     this.onLevelChanged = onLevelChanged;
+    this.onOpenInDesign = onOpenInDesign;
     this.groups = buildGroups();
     this.build();
   }
@@ -160,33 +165,78 @@ export class RemoteDataView {
     return this.map.levels.find((l) => l.id === entry.levelIndex);
   }
 
-  /** The live tool-side combined value, or null when this map/level isn't the one currently loaded. */
-  private toolValue(entry: LevelEntry): string | null {
+  private toolField(entry: LevelEntry, key: FieldKey): string | null {
     if (!this.isLive(entry)) return null;
-    const level = this.level(entry)!;
-    return joinFields(FIELDS.map((f) => level[f.key] ?? ""));
+    return (this.level(entry) as unknown as Record<string, string>)[key] ?? "";
   }
 
-  private applyToolValue(entry: LevelEntry, value: string): void {
+  private setToolField(entry: LevelEntry, key: FieldKey, value: string): void {
     const level = this.level(entry);
     if (!level) return;
-    const parts = splitFields(value);
-    FIELDS.forEach((f, i) => {
-      (level as unknown as Record<string, string>)[f.key] = parts[i] ?? "";
+    (level as unknown as Record<string, string>)[key] = value;
+  }
+
+  private cacheKeyNow(): string {
+    return `${this.getSheetId()}::${tabName}`;
+  }
+
+  /** The cache, but only if it's actually for the currently-configured sheet+tab — otherwise `null` (not stale data). */
+  private currentRows(): Map<string, LevelSheetRow> | null {
+    return rowsCache && rowsCache.cacheKey === this.cacheKeyNow() ? rowsCache.rows : null;
+  }
+
+  /** Reuses the cache unless `forceRefresh` — the single choke point every read goes through, so a fetch only ever happens once per explicit reload. */
+  private async ensureRows(forceRefresh: boolean): Promise<Map<string, LevelSheetRow> | null> {
+    if (!forceRefresh) {
+      const cached = this.currentRows();
+      if (cached) return cached;
+    }
+    const sheetId = this.getSheetId();
+    if (!sheetId.trim()) {
+      alert("Paste a spreadsheet ID first.");
+      return null;
+    }
+    const key = this.cacheKeyNow();
+    const result = await this.withToken(async () => {
+      const token = await requestAccessTokenInteractive();
+      return fetchLevelProgressRows(sheetId, token, tabName);
     });
+    if (result === null) return null;
+    rowsCache = { cacheKey: key, rows: result };
+    return result;
   }
 
   private build(): void {
     const page = el("div", { class: "remote-page" });
 
     this.pageStatusEl = el("span", { class: "remote-status" }, []);
+    const sheetIdInput = el("input", {
+      type: "text",
+      value: this.getSheetId(),
+      placeholder: "Paste a spreadsheet ID…",
+      class: "sheet-id-input",
+    }) as HTMLInputElement;
+    sheetIdInput.addEventListener("change", () => {
+      this.setSheetId(sheetIdInput.value.trim());
+      sheetIdInput.value = this.getSheetId();
+    });
+    const tabNameInput = el("input", { type: "text", value: tabName, class: "sheet-id-input" }) as HTMLInputElement;
+    tabNameInput.addEventListener("change", () => {
+      tabName = tabNameInput.value.trim() || REMOTE_SHEET_DEFAULT_TAB;
+      tabNameInput.value = tabName;
+    });
+
     page.append(
       el("div", { class: "remote-page-actions" }, [
         el("h2", {}, ["Remote Data"]),
         el("p", { class: "remote-hint" }, [
-          "Level data, diffed against the \"RemoteConfigData\" tab of the linked Google Sheet — the same tab Unity's RemoteConfigDefaultSetterCakeOrder.cs reads. Only ",
+          "One row per level, one column per field — see config/general/remote-sheet-columns.json for the exact tab/column layout. Only ",
           this.map.name,
-          "'s levels have live tool data to compare against; other maps can still be loaded from the sheet for reference. Hover a field to apply just that one.",
+          "'s levels have live tool data to compare against. Hover a field to apply just that one; each map and level folds out on click.",
+        ]),
+        el("div", { class: "remote-sheet-config" }, [
+          el("label", { class: "field small" }, ["Sheet ID", sheetIdInput]),
+          el("label", { class: "field small" }, ["Sheet (tab) name", tabNameInput]),
         ]),
         el("div", { class: "remote-buttons" }, [
           button("⬇ Load All from sheet", () => void this.runAll("load"), { class: "full-btn" }),
@@ -204,14 +254,34 @@ export class RemoteDataView {
   private groupEl(group: Group): HTMLElement {
     const statusEl = el("span", { class: "remote-status" }, []);
     this.groupStatusByTitle.set(group.title, statusEl);
-    const header = el("div", { class: "remote-group-header" }, [
+
+    const open = openGroups.has(group.title);
+    const rows = el("div", { class: "remote-rows" }, group.entries.map((entry) => this.rowEl(entry)));
+    rows.style.display = open ? "" : "none";
+
+    const caret = el("span", { class: "foldout-caret" }, [open ? "▾" : "▸"]);
+    const toggle = () => {
+      const next = !openGroups.has(group.title);
+      if (next) openGroups.add(group.title);
+      else openGroups.delete(group.title);
+      caret.textContent = next ? "▾" : "▸";
+      rows.style.display = next ? "" : "none";
+    };
+
+    const header = el("div", { class: "remote-group-header foldable-header" }, [
+      caret,
       el("h3", {}, [group.title]),
       button("⬇ Load All", () => void this.runAll("load", group), {}),
       button("→ Apply sheet data", () => void this.runAll("sheet-to-tool", group), {}),
       button("← Apply tool data", () => void this.runAll("tool-to-sheet", group), {}),
       statusEl,
     ]);
-    const rows = el("div", { class: "remote-rows" }, group.entries.map((entry) => this.rowEl(entry)));
+    // The header itself toggles the fold — except clicks on one of its own
+    // action buttons, which must reach their own handler instead.
+    header.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("button")) return;
+      toggle();
+    });
     return el("div", { class: "remote-group" }, [header, rows]);
   }
 
@@ -219,66 +289,104 @@ export class RemoteDataView {
     const live = this.isLive(entry);
     const statusEl = el("span", { class: "remote-status" }, []);
 
-    const loadBtn = button("⬇ Load", () => void this.loadFromSheet(entry), {
+    const loadBtn = button("⬇ Load", () => void this.loadRow(entry), {
       class: "small-btn",
-      title: "Fetch this level's combined value from the sheet",
+      title: "Re-fetch the whole sheet and refresh this level (and every other open one)",
     });
+    const openBtn = button("✏ Open in Design", () => this.onOpenInDesign(entry.levelIndex), {
+      class: "small-btn",
+      title: "Switch to Design mode and select this level",
+    }) as HTMLButtonElement;
+    openBtn.disabled = !live;
+    const applySheetBtn = button("→ Apply Sheet", () => void this.applyLevelSheetToTool(entry), {
+      class: "small-btn",
+      title: "Apply every sheet field to this level's live draft",
+    }) as HTMLButtonElement;
+    const applyToolBtn = button("← Apply Tool", () => void this.applyLevelToolToSheet(entry), {
+      class: "small-btn",
+      title: "Write every field from this level's live draft to the sheet, in one request",
+    }) as HTMLButtonElement;
 
-    const sheetFields = FIELDS.map((f, i) => this.fieldEl(f, "sheet", () => this.applyFieldSheetToTool(entry, i)));
-    const toolFields = FIELDS.map((f, i) => this.fieldEl(f, "tool", () => void this.applyFieldToolToSheet(entry, i)));
+    const sheetFields = REMOTE_LEVEL_FIELDS.map((f) => this.fieldEl(f.label, "sheet", () => this.applyFieldSheetToTool(entry, f.key)));
+    const toolFields = REMOTE_LEVEL_FIELDS.map((f) => this.fieldEl(f.label, "tool", () => void this.applyFieldToolToSheet(entry, f.key)));
 
     const refresh = () => {
-      const sheetVal = this.sheetValueByKey.get(entry.key);
-      const toolVal = this.toolValue(entry);
-      const sheetParts = sheetVal !== undefined ? splitFields(sheetVal) : null;
-      const toolParts = toolVal !== null ? splitFields(toolVal) : null;
+      const row = this.currentRows()?.get(entry.key) ?? null;
 
-      FIELDS.forEach((_, i) => {
+      REMOTE_LEVEL_FIELDS.forEach((f, i) => {
         const sf = sheetFields[i];
-        sf.box.classList.toggle("remote-box-empty", sheetParts === null);
-        sf.box.textContent = sheetParts ? sheetParts[i] || "(empty)" : "(not loaded)";
-        sf.applyBtn.disabled = sheetParts === null || !live;
+        sf.box.classList.toggle("remote-box-empty", row === null);
+        sf.box.textContent = row ? row.fields[f.key] || "(empty)" : "(not loaded)";
+        sf.applyBtn.disabled = row === null || !live;
 
         const tf = toolFields[i];
+        const toolVal = this.toolField(entry, f.key);
         tf.box.classList.remove("remote-box-empty", "remote-box-diff");
-        if (toolParts === null) {
+        if (toolVal === null) {
           tf.box.classList.add("remote-box-empty");
           tf.box.textContent = "(not this map)";
-        } else if (sheetParts === null || sheetParts[i] === toolParts[i]) {
-          tf.box.textContent = toolParts[i] || "(empty)";
         } else {
-          tf.box.classList.add("remote-box-diff");
-          tf.box.replaceChildren(
-            ...diffChars(sheetParts[i], toolParts[i]).map((seg) =>
-              seg.changed ? el("span", { class: "remote-diff-changed" }, [seg.text]) : seg.text,
-            ),
-          );
+          const sheetVal = row?.fields[f.key];
+          if (sheetVal === undefined || sheetVal === toolVal) {
+            tf.box.textContent = toolVal || "(empty)";
+          } else {
+            tf.box.classList.add("remote-box-diff");
+            tf.box.replaceChildren(
+              ...diffChars(sheetVal, toolVal).map((seg) =>
+                seg.changed ? el("span", { class: "remote-diff-changed" }, [seg.text]) : seg.text,
+              ),
+            );
+          }
         }
-        tf.applyBtn.disabled = toolParts === null;
+        tf.applyBtn.disabled = toolVal === null;
       });
+
+      applySheetBtn.disabled = !live;
+      applyToolBtn.disabled = !live;
     };
     refresh();
     this.refreshRowByKey.set(entry.key, refresh);
 
-    const row = el("div", { class: `remote-row${live ? " live" : ""}` }, [
-      el("div", { class: "remote-row-label" }, [
-        el("code", {}, [entry.key]),
-        live ? el("span", { class: "remote-live-badge" }, ["live level"]) : "",
-        el("span", { class: "spacer" }, []),
-        loadBtn,
-        statusEl,
+    const open = openLevels.has(entry.key);
+    const body = el("div", { class: "remote-row-columns" }, [
+      el("div", { class: "remote-col" }, [
+        el("div", { class: "remote-col-label" }, ["Sheet data"]),
+        ...sheetFields.map((f) => f.element),
       ]),
-      el("div", { class: "remote-row-columns" }, [
-        el("div", { class: "remote-col" }, [
-          el("div", { class: "remote-col-label" }, ["Sheet data"]),
-          ...sheetFields.map((f) => f.element),
-        ]),
-        el("div", { class: "remote-col" }, [
-          el("div", { class: "remote-col-label" }, ["Tool data"]),
-          ...toolFields.map((f) => f.element),
-        ]),
+      el("div", { class: "remote-col" }, [
+        el("div", { class: "remote-col-label" }, ["Tool data"]),
+        ...toolFields.map((f) => f.element),
       ]),
     ]);
+    body.style.display = open ? "" : "none";
+
+    const caret = el("span", { class: "foldout-caret" }, [open ? "▾" : "▸"]);
+    const toggle = () => {
+      const next = !openLevels.has(entry.key);
+      if (next) openLevels.add(entry.key);
+      else openLevels.delete(entry.key);
+      caret.textContent = next ? "▾" : "▸";
+      body.style.display = next ? "" : "none";
+    };
+
+    const rowLabel = el("div", { class: "remote-row-label foldable-header" }, [
+      caret,
+      el("code", {}, [entry.key]),
+      live ? el("span", { class: "remote-live-badge" }, ["live level"]) : "",
+      el("span", { class: "spacer" }, []),
+      openBtn,
+      loadBtn,
+      applySheetBtn,
+      applyToolBtn,
+      statusEl,
+    ]);
+    // Same click-anywhere-but-a-button toggle as the group header — see groupEl.
+    rowLabel.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("button")) return;
+      toggle();
+    });
+
+    const row = el("div", { class: `remote-row${live ? " live" : ""}` }, [rowLabel, body]);
 
     this.setRowStatusByKey.set(entry.key, (status, error) => {
       statusEl.textContent = status === "loading" ? "…" : status === "error" ? "⚠" : "";
@@ -286,6 +394,8 @@ export class RemoteDataView {
       row.classList.toggle("remote-row-error", status === "error");
       const busy = status === "loading";
       loadBtn.disabled = busy;
+      applySheetBtn.disabled = busy || !live;
+      applyToolBtn.disabled = busy || !live;
       if (!busy) refresh(); // re-derive field content + correct enabled/disabled from live state
     });
 
@@ -294,17 +404,17 @@ export class RemoteDataView {
 
   /** One field row (label + read-only box + hover-revealed Apply button) for either column. */
   private fieldEl(
-    field: FieldSpec,
+    label: string,
     side: "sheet" | "tool",
     onApply: () => void,
   ): { element: HTMLElement; box: HTMLElement; applyBtn: HTMLButtonElement } {
     const box = el("div", { class: "remote-box" }, []);
     const applyBtn = button("Apply", onApply, {
       class: "small-btn remote-field-apply",
-      title: side === "sheet" ? `Apply this sheet value to the tool (${field.label})` : `Apply this tool value to the sheet (${field.label})`,
+      title: side === "sheet" ? `Apply this sheet value to the tool (${label})` : `Apply this tool value to the sheet (${label})`,
     }) as HTMLButtonElement;
     const element = el("div", { class: "remote-field" }, [
-      el("div", { class: "remote-field-label" }, [field.label]),
+      el("div", { class: "remote-field-label" }, [label]),
       el("div", { class: "remote-field-content" }, [box, applyBtn]),
     ]);
     return { element, box, applyBtn };
@@ -325,122 +435,175 @@ export class RemoteDataView {
     }
   }
 
-  private async loadFromSheet(entry: LevelEntry): Promise<void> {
-    const sheetId = this.getSheetId();
-    if (!sheetId.trim()) {
-      alert("Paste a spreadsheet ID into the Sheet ID field first.");
-      return;
-    }
+  private async loadRow(entry: LevelEntry): Promise<void> {
     const setStatus = this.setRowStatusByKey.get(entry.key);
     setStatus?.("loading");
-    const result = await this.withToken(async () => {
-      const token = await requestAccessTokenInteractive();
-      const rows = await fetchRemoteConfigRows(sheetId, token);
-      const row = rows.get(entry.key);
-      if (!row) throw new Error(`Key "${entry.key}" not found in the sheet`);
-      return row.value;
-    });
-    if (result === null) {
+    const rows = await this.ensureRows(true);
+    if (rows === null) {
       setStatus?.("error", "load failed");
       return;
     }
-    this.sheetValueByKey.set(entry.key, result);
     setStatus?.("idle");
+    // The refresh happened for every currently-open row via setStatus above
+    // only for THIS row — the fetch refreshed the whole cache, so bring
+    // every other rendered row's display up to date too.
+    for (const refresh of this.refreshRowByKey.values()) refresh();
   }
 
-  /** Applies every field from the sheet's last-loaded value onto the tool's live level. */
-  private applySheetToTool(entry: LevelEntry): void {
-    const sheetVal = this.sheetValueByKey.get(entry.key);
-    if (sheetVal === undefined || !this.isLive(entry)) return;
-    this.applyToolValue(entry, sheetVal);
+  /** Pushes every field from the sheet onto the tool's live level — no network (reads the cache). */
+  private applyLevelSheetToTool(entry: LevelEntry): void {
+    if (!this.isLive(entry)) return;
+    const row = this.currentRows()?.get(entry.key);
+    if (!row) {
+      alert("Load the sheet first.");
+      return;
+    }
+    for (const f of REMOTE_LEVEL_FIELDS) this.setToolField(entry, f.key, row.fields[f.key] ?? "");
     this.onLevelChanged();
     this.refreshRowByKey.get(entry.key)?.();
   }
 
-  /** Applies every field from the tool's live level onto the sheet, in one write. */
-  private async applyToolToSheet(entry: LevelEntry): Promise<void> {
+  /** Pushes every field from the tool's live level onto the sheet, in one batched request. */
+  private async applyLevelToolToSheet(entry: LevelEntry): Promise<void> {
     const sheetId = this.getSheetId();
     if (!sheetId.trim()) {
       alert("Paste a spreadsheet ID into the Sheet ID field first.");
       return;
     }
-    const toolVal = this.toolValue(entry);
-    if (toolVal === null) return;
+    if (!this.isLive(entry)) return;
     const setStatus = this.setRowStatusByKey.get(entry.key);
     setStatus?.("loading");
-    const ok = await this.withToken(async () => {
-      const token = await requestAccessTokenInteractive();
-      const rows = await fetchRemoteConfigRows(sheetId, token);
-      const row = rows.get(entry.key);
-      if (!row) throw new Error(`Key "${entry.key}" not found in the sheet`);
-      await updateRemoteConfigValue(sheetId, row.row, toolVal);
-    });
+    const rows = await this.ensureRows(false);
+    if (rows === null) {
+      setStatus?.("error", "apply failed");
+      return;
+    }
+    const row = rows.get(entry.key);
+    if (!row) {
+      setStatus?.("error", "no sheet row for this level yet");
+      return;
+    }
+    const updates: CellUpdate[] = REMOTE_LEVEL_FIELDS.map((f) => ({
+      row: row.rowNumber,
+      col: REMOTE_SHEET_COLUMNS[f.key],
+      value: this.toolField(entry, f.key) ?? "",
+    }));
+    const ok = await this.withToken(() => batchUpdateCells(sheetId, tabName, updates));
     if (ok === null) {
       setStatus?.("error", "apply failed");
       return;
     }
-    // The sheet now equals what we just pushed — reflect that without a re-fetch.
-    this.sheetValueByKey.set(entry.key, toolVal);
+    for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.toolField(entry, f.key) ?? "";
     setStatus?.("idle");
   }
 
-  /** Pushes one sheet field onto the tool's corresponding LevelData property, leaving the other 6 untouched. */
-  private applyFieldSheetToTool(entry: LevelEntry, fieldIndex: number): void {
-    const sheetVal = this.sheetValueByKey.get(entry.key);
-    const level = this.level(entry);
-    if (sheetVal === undefined || !this.isLive(entry) || !level) return;
-    const parts = splitFields(sheetVal);
-    (level as unknown as Record<string, string>)[FIELDS[fieldIndex].key] = parts[fieldIndex] ?? "";
+  /** Pushes one sheet field onto the tool's corresponding LevelData property — no network (reads the cache). */
+  private applyFieldSheetToTool(entry: LevelEntry, fieldKey: FieldKey): void {
+    if (!this.isLive(entry)) return;
+    const row = this.currentRows()?.get(entry.key);
+    if (!row) return;
+    this.setToolField(entry, fieldKey, row.fields[fieldKey] ?? "");
     this.onLevelChanged();
     this.refreshRowByKey.get(entry.key)?.();
   }
 
-  /**
-   * Pushes one tool field onto the sheet, splicing it into a freshly-fetched
-   * copy of the sheet's current combined value so the other 6 fields on the
-   * sheet side are preserved rather than overwritten.
-   */
-  private async applyFieldToolToSheet(entry: LevelEntry, fieldIndex: number): Promise<void> {
+  /** Pushes one tool field onto the sheet — a single-cell batched write. */
+  private async applyFieldToolToSheet(entry: LevelEntry, fieldKey: FieldKey): Promise<void> {
     const sheetId = this.getSheetId();
     if (!sheetId.trim()) {
       alert("Paste a spreadsheet ID into the Sheet ID field first.");
       return;
     }
-    const toolVal = this.toolValue(entry);
-    if (toolVal === null) return;
-    const toolParts = splitFields(toolVal);
+    const value = this.toolField(entry, fieldKey);
+    if (value === null) return;
     const setStatus = this.setRowStatusByKey.get(entry.key);
     setStatus?.("loading");
-    const ok = await this.withToken(async () => {
-      const token = await requestAccessTokenInteractive();
-      const rows = await fetchRemoteConfigRows(sheetId, token);
-      const row = rows.get(entry.key);
-      if (!row) throw new Error(`Key "${entry.key}" not found in the sheet`);
-      const sheetParts = splitFields(row.value);
-      sheetParts[fieldIndex] = toolParts[fieldIndex];
-      const newValue = joinFields(sheetParts);
-      await updateRemoteConfigValue(sheetId, row.row, newValue);
-      this.sheetValueByKey.set(entry.key, newValue);
-    });
+    const rows = await this.ensureRows(false);
+    if (rows === null) {
+      setStatus?.("error", "apply failed");
+      return;
+    }
+    const row = rows.get(entry.key);
+    if (!row) {
+      setStatus?.("error", "no sheet row for this level yet");
+      return;
+    }
+    const ok = await this.withToken(() =>
+      batchUpdateCells(sheetId, tabName, [{ row: row.rowNumber, col: REMOTE_SHEET_COLUMNS[fieldKey], value }]),
+    );
     if (ok === null) {
       setStatus?.("error", "apply failed");
       return;
     }
+    row.fields[fieldKey] = value;
     setStatus?.("idle");
   }
 
   private async runAll(action: "load" | "sheet-to-tool" | "tool-to-sheet", group?: Group): Promise<void> {
     const entries = group ? group.entries : this.groups.flatMap((g) => g.entries);
     const statusEl = group ? this.groupStatusByTitle.get(group.title) : this.pageStatusEl;
-    const label = action === "load" ? "Loading" : action === "sheet-to-tool" ? "Applying sheet data" : "Applying tool data";
-    for (let i = 0; i < entries.length; i++) {
-      if (statusEl) statusEl.textContent = `${label} ${i + 1}/${entries.length}…`;
-      // Sequential: no batch cell-update on the Sheets API here, and each
-      // call re-fetches row numbers fresh so a stale index can't misfire.
-      if (action === "load") await this.loadFromSheet(entries[i]);
-      else if (action === "sheet-to-tool") this.applySheetToTool(entries[i]);
-      else await this.applyToolToSheet(entries[i]);
+    if (statusEl) statusEl.textContent = "Working…";
+
+    if (action === "load") {
+      const rows = await this.ensureRows(true);
+      if (statusEl) statusEl.textContent = rows === null ? "Load failed" : "Done (1 request)";
+      for (const refresh of this.refreshRowByKey.values()) refresh();
+      return;
     }
-    if (statusEl) statusEl.textContent = "Done";
+
+    const rows = await this.ensureRows(false);
+    if (rows === null) {
+      if (statusEl) statusEl.textContent = "Load failed";
+      return;
+    }
+
+    if (action === "sheet-to-tool") {
+      let applied = 0;
+      for (const e of entries) {
+        if (!this.isLive(e)) continue;
+        const row = rows.get(e.key);
+        if (!row) continue;
+        for (const f of REMOTE_LEVEL_FIELDS) this.setToolField(e, f.key, row.fields[f.key] ?? "");
+        applied++;
+      }
+      if (applied > 0) this.onLevelChanged();
+      for (const e of entries) this.refreshRowByKey.get(e.key)?.();
+      if (statusEl) statusEl.textContent = `Applied ${applied} level(s)`;
+      return;
+    }
+
+    // tool-to-sheet: gather every changed cell across every live entry, then
+    // write them all in exactly one request.
+    const sheetId = this.getSheetId();
+    if (!sheetId.trim()) {
+      alert("Paste a spreadsheet ID into the Sheet ID field first.");
+      if (statusEl) statusEl.textContent = "";
+      return;
+    }
+    const updates: CellUpdate[] = [];
+    const touched: { entry: LevelEntry; row: LevelSheetRow }[] = [];
+    for (const e of entries) {
+      if (!this.isLive(e)) continue;
+      const row = rows.get(e.key);
+      if (!row) continue;
+      for (const f of REMOTE_LEVEL_FIELDS) {
+        updates.push({ row: row.rowNumber, col: REMOTE_SHEET_COLUMNS[f.key], value: this.toolField(e, f.key) ?? "" });
+      }
+      touched.push({ entry: e, row });
+    }
+    if (updates.length === 0) {
+      if (statusEl) statusEl.textContent = "Nothing to apply";
+      return;
+    }
+    const ok = await this.withToken(() => batchUpdateCells(sheetId, tabName, updates));
+    if (ok === null) {
+      if (statusEl) statusEl.textContent = "Apply failed";
+      return;
+    }
+    for (const { entry, row } of touched) {
+      for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.toolField(entry, f.key) ?? "";
+    }
+    for (const e of entries) this.refreshRowByKey.get(e.key)?.();
+    if (statusEl) statusEl.textContent = `Applied ${touched.length} level(s) in 1 request`;
   }
 }

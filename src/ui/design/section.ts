@@ -124,9 +124,32 @@ export class Section<T> {
     this.opts.onCommit?.();
   }
 
+  /**
+   * `renderBody` rebuilds its content from scratch every call — a fresh DOM
+   * subtree, so any scrollable element inside it (e.g. the customer card
+   * row) is a brand-new node starting at scroll offset 0. Editing one field
+   * deep in a long, already-scrolled list would otherwise silently snap the
+   * view back to the start on every keystroke. A section opts in per element
+   * by tagging it `data-scroll-key="some-stable-name"`; this captures each
+   * tagged element's scroll offset before the rebuild and restores it onto
+   * whichever new element carries the same key afterward.
+   */
   render(): void {
+    const scrollPositions = new Map<string, { left: number; top: number }>();
+    this.body.querySelectorAll<HTMLElement>("[data-scroll-key]").forEach((el) => {
+      scrollPositions.set(el.dataset.scrollKey!, { left: el.scrollLeft, top: el.scrollTop });
+    });
+
     this.body.replaceChildren();
     this.opts.renderBody(this.draft, this.body);
+
+    this.body.querySelectorAll<HTMLElement>("[data-scroll-key]").forEach((el) => {
+      const pos = scrollPositions.get(el.dataset.scrollKey!);
+      if (!pos) return;
+      el.scrollLeft = pos.left;
+      el.scrollTop = pos.top;
+    });
+
     this.refreshHeader();
     if (this.stringEl && this.opts.stringPreview) {
       this.stringEl.textContent = this.opts.stringPreview(this.draft) || "(empty)";

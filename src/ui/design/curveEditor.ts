@@ -293,6 +293,36 @@ export interface CurvePreset {
 
 const CURVE_PRESETS_KEY = "cookorder-curve-presets";
 
+/**
+ * Built-in shapes, always available (no saving required) — defined purely in
+ * normalized 0..1 keyframe space so picking one applies the SHAPE while
+ * keeping whatever min/max range the current dialog already has (e.g.
+ * "Constant (Max)" means "flat at this curve's own max", not a hardcoded
+ * value). See createCurveWithPresets's change handler for how that merge
+ * happens; contrast with a saved CurvePreset, which restores its own range
+ * too since the user chose that range when they saved it.
+ */
+export interface BuiltInCurvePreset {
+  name: string;
+  keyframes: CurveKeyframe[];
+}
+
+export const BUILT_IN_CURVE_PRESETS: BuiltInCurvePreset[] = [
+  { name: "Linear", keyframes: [{ x: 0, y: 0, tangent: 1 }, { x: 1, y: 1, tangent: 1 }] },
+  { name: "Ease In Out Sine", keyframes: [{ x: 0, y: 0, tangent: 0 }, { x: 1, y: 1, tangent: 0 }] },
+  { name: "Ease In Sine", keyframes: [{ x: 0, y: 0, tangent: 0 }, { x: 1, y: 1, tangent: 2 }] },
+  { name: "Ease Out Quad", keyframes: [{ x: 0, y: 0, tangent: 2 }, { x: 1, y: 1, tangent: 0 }] },
+  { name: "Constant (Max)", keyframes: [{ x: 0, y: 1, tangent: 0 }, { x: 1, y: 1, tangent: 0 }] },
+  {
+    name: "Parabola",
+    keyframes: [{ x: 0, y: 0, tangent: 2 }, { x: 0.5, y: 1, tangent: 0 }, { x: 1, y: 0, tangent: -2 }],
+  },
+  {
+    name: "Upside-Down Parabola",
+    keyframes: [{ x: 0, y: 1, tangent: -2 }, { x: 0.5, y: 0, tangent: 0 }, { x: 1, y: 1, tangent: 2 }],
+  },
+];
+
 export function loadCurvePresets(): CurvePreset[] {
   try {
     const raw = localStorage.getItem(CURVE_PRESETS_KEY);
@@ -336,29 +366,57 @@ export function createCurveWithPresets(initial: CurveState, onChange: (next: Cur
   };
   mount(curveState);
 
+  // Option values are namespaced ("builtin:"/"saved:") so a saved preset can
+  // never collide with a built-in one of the same name.
   const presetSelect = el("select", { class: "curve-preset-select" }) as HTMLSelectElement;
-  const refreshOptions = (selectName?: string) => {
+  const refreshOptions = (selectValue?: string) => {
     presetSelect.replaceChildren(
-      el("option", { value: "" }, ["— Load a saved curve —"]),
-      ...presets.map((p) => el("option", { value: p.name }, [p.name])),
+      el("option", { value: "" }, ["— Load a curve —"]),
+      el(
+        "optgroup",
+        { label: "Presets" },
+        BUILT_IN_CURVE_PRESETS.map((p) => el("option", { value: `builtin:${p.name}` }, [p.name])),
+      ),
+      ...(presets.length
+        ? [
+            el(
+              "optgroup",
+              { label: "Saved" },
+              presets.map((p) => el("option", { value: `saved:${p.name}` }, [p.name])),
+            ),
+          ]
+        : []),
     );
-    if (selectName) presetSelect.value = selectName;
+    if (selectValue) presetSelect.value = selectValue;
   };
   refreshOptions();
   presetSelect.addEventListener("change", () => {
-    const preset = presets.find((p) => p.name === presetSelect.value);
-    if (!preset) return;
-    curveState = structuredClone(preset.curve);
+    const [ns, ...rest] = presetSelect.value.split(":");
+    const name = rest.join(":");
+    if (ns === "builtin") {
+      const preset = BUILT_IN_CURVE_PRESETS.find((p) => p.name === name);
+      if (!preset) return;
+      // Shape only — keeps whatever min/max range this dialog is already using.
+      curveState = { range: curveState.range, keyframes: structuredClone(preset.keyframes) };
+    } else if (ns === "saved") {
+      const preset = presets.find((p) => p.name === name);
+      if (!preset) return;
+      curveState = structuredClone(preset.curve);
+    } else {
+      return;
+    }
     onChange(curveState);
     mount(curveState);
   });
 
   const presetRow = el("div", { class: "curve-preset-row" }, [
-    el("label", { class: "field small" }, ["Saved curves", presetSelect]),
+    el("label", { class: "field small" }, ["Curves", presetSelect]),
     button(
       "Save As…",
       () => {
-        const name = prompt("Name this curve", presetSelect.value || "")?.trim();
+        const [ns, ...rest] = presetSelect.value.split(":");
+        const defaultName = ns === "saved" ? rest.join(":") : "";
+        const name = prompt("Name this curve", defaultName)?.trim();
         if (!name) return;
         const existingIndex = presets.findIndex((p) => p.name === name);
         if (existingIndex !== -1 && !confirm(`Overwrite the saved curve "${name}"?`)) return;
@@ -366,15 +424,15 @@ export function createCurveWithPresets(initial: CurveState, onChange: (next: Cur
         if (existingIndex !== -1) presets[existingIndex] = entry;
         else presets.push(entry);
         saveCurvePresets(presets);
-        refreshOptions(name);
+        refreshOptions(`saved:${name}`);
       },
       { class: "small-btn", title: "Save the current curve shape under a name for reuse" },
     ),
     button(
       "Delete",
       () => {
-        const name = presetSelect.value;
-        if (!name) return;
+        if (!presetSelect.value.startsWith("saved:")) return; // built-in presets can't be deleted
+        const name = presetSelect.value.slice("saved:".length);
         if (!confirm(`Delete the saved curve "${name}"?`)) return;
         presets = presets.filter((p) => p.name !== name);
         saveCurvePresets(presets);

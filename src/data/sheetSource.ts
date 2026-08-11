@@ -15,12 +15,13 @@ import {
 } from "./legacyConvert.ts";
 import type { LevelData, MapData } from "./mapLoader.ts";
 import { toMapDef } from "./mapLoader.ts";
-import { GLOBAL_DEFS, MAP1_DATA } from "./configLoader.ts";
+import { GLOBAL_DEFS, MAP1_DATA, MAP_INDEX } from "./configLoader.ts";
 import {
   clearStoredToken,
   getAccessTokenSilent,
   requestAccessTokenInteractive,
 } from "./googleAuth.ts";
+import remoteSheetColumnsJson from "./config/general/remote-sheet-columns.json";
 
 /**
  * No default on purpose: the actual spreadsheet id is project-private, so it
@@ -152,32 +153,99 @@ function lastNonEmpty(row: string[]): string {
   return "";
 }
 
-/** Tab the C# RemoteConfigDefaultSetterCakeOrder.cs script reads/writes (key col D, value col E). */
-export const REMOTE_CONFIG_TAB = "RemoteConfigData";
+// ---------- Remote Data tab: MapLevelProgress-style, one row per level ----------
+// The Remote Data tab (ui/remote/index.ts) reads/writes a per-map-per-level
+// sheet with one row per level and a named column per field — matching the
+// real "MapLevelProgress" tab's shape (Map|Level|ID|Title|Weather|Tag|
+// Customers|Grid|Queues|... — see docs/SHEET_STRUCTURE.md) rather than the
+// key/value RemoteConfigData tab Unity's runtime script reads (a separate,
+// unrelated concern). Column positions are data, not code — see
+// config/general/remote-sheet-columns.json; edit that file if the real
+// sheet's layout differs.
 
-export interface RemoteConfigRow {
-  key: string;
-  value: string;
-  /** 1-indexed sheet row — needed to write this row's value cell back in place. */
-  row: number;
+export interface RemoteSheetColumns {
+  map: number;
+  level: number;
+  customerString: number;
+  gridString: number;
+  queueString: number;
+  ingredientWeights: number;
+  customerDishesSequence: number;
+  complexityCurve: number;
+  shuffleCurve: number;
+}
+
+export const REMOTE_SHEET_COLUMNS: RemoteSheetColumns = remoteSheetColumnsJson.columns;
+export const REMOTE_SHEET_DEFAULT_TAB: string = remoteSheetColumnsJson.tabName;
+
+/** Field keys carried in one level's row, in the fixed on-sheet column order the Remote Data tab renders them in. */
+export const REMOTE_LEVEL_FIELDS: { label: string; key: keyof RemoteSheetColumns }[] = [
+  { label: "Ingredient Weights", key: "ingredientWeights" },
+  { label: "Customer Dishes Sequence", key: "customerDishesSequence" },
+  { label: "Complexity Curve", key: "complexityCurve" },
+  { label: "Shuffle Curve", key: "shuffleCurve" },
+  { label: "Customers", key: "customerString" },
+  { label: "Grid", key: "gridString" },
+  { label: "Queues", key: "queueString" },
+];
+
+/** 0-based column index -> spreadsheet letter ("A", "Z", "AA", ...). */
+export function columnLetter(index: number): string {
+  let n = index + 1;
+  let s = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+export interface LevelSheetRow {
+  /** 1-indexed sheet row — needed to write this row's cells back in place. */
+  rowNumber: number;
+  fields: Partial<Record<keyof RemoteSheetColumns, string>>;
+}
+
+/** Matches a row's "Map" column cell against a known map by id (case-insensitive) or 1-based index. */
+function resolveMapId(cell: string): string | null {
+  const trimmed = cell.trim();
+  if (!trimmed) return null;
+  const byId = MAP_INDEX.find((m) => m.id.toLowerCase() === trimmed.toLowerCase());
+  if (byId) return byId.id;
+  const byIndex = MAP_INDEX.find((m) => String(m.index) === trimmed);
+  return byIndex?.id ?? null;
 }
 
 /**
- * Reads every Key/Value pair from the RemoteConfigData tab (columns D/E,
- * matching the C# script's default `_keyColumnLetter`/`_valueColumnLetter`),
- * keyed by row number so a later write targets the exact cell it was read
- * from rather than a row index that could have shifted.
+ * Reads every level row from the configured tab in ONE request, keyed by the
+ * same `map_config_{mapId}_lv_{n}` convention used throughout the Remote Data
+ * tab — so every subsequent read (a single row's Load, a field's Apply, a
+ * whole-level Apply) can look up the already-fetched Map instead of hitting
+ * the network again. A row whose Level column doesn't parse to a positive
+ * integer, or whose Map column doesn't match a known map, is skipped (covers
+ * the header row and any stray/blank rows).
  */
-export async function fetchRemoteConfigRows(
+export async function fetchLevelProgressRows(
   sheetId: string,
   token: string,
-): Promise<Map<string, RemoteConfigRow>> {
-  const rows = await fetchTabValues(REMOTE_CONFIG_TAB, token, sheetId);
-  const byKey = new Map<string, RemoteConfigRow>();
+  tabName: string,
+  columns: RemoteSheetColumns = REMOTE_SHEET_COLUMNS,
+): Promise<Map<string, LevelSheetRow>> {
+  const rows = await fetchTabValues(tabName, token, sheetId);
+  const byKey = new Map<string, LevelSheetRow>();
   rows.forEach((cells, i) => {
-    const key = (cells[3] ?? "").trim();
-    if (!key || key === "Key") return; // skip blanks and the header row
-    byKey.set(key, { key, value: cells[4] ?? "", row: i + 1 });
+    const level = Number((cells[columns.level] ?? "").trim());
+    if (!Number.isInteger(level) || level <= 0) return;
+    const mapId = resolveMapId(cells[columns.map] ?? "");
+    if (!mapId) return;
+    const key = `map_config_${mapId}_lv_${level}`;
+    const fields: LevelSheetRow["fields"] = {};
+    for (const k of Object.keys(columns) as (keyof RemoteSheetColumns)[]) {
+      if (k === "map" || k === "level") continue;
+      fields[k] = cells[columns[k]] ?? "";
+    }
+    byKey.set(key, { rowNumber: i + 1, fields });
   });
   return byKey;
 }

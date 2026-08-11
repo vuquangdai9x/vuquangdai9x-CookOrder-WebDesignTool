@@ -4,7 +4,7 @@ import { testMap } from "../../core/testFixtures.ts";
 import type { CookedIngredientDef, MapDef } from "../../core/types.ts";
 import { defaultCurve } from "./curveEditor.ts";
 import type { CurveState } from "./curveEditor.ts";
-import { generateCustomers } from "./autoGenerate.ts";
+import { autoDishCount, generateCustomers, parseDishCountSequence } from "./autoGenerate.ts";
 
 // A fixture with real base/topping relationships, unlike testMap (whose
 // cookedIngredients are all baseId-less): bun(0) has 2 followers (multi),
@@ -52,15 +52,43 @@ describe("generateCustomers", () => {
     expect(result[1].dishes).toHaveLength(2);
   });
 
-  it("turns a 0 dish-count into a Staff customer with no dishes", () => {
+  it("turns a -1 dish-count into a Staff customer with no dishes", () => {
     const result = generateCustomers(fixtureMap, {
-      dishCounts: [0],
+      dishCounts: [-1],
       ingredientWeights: allWeights,
       curve: flatCurve(3),
       random: () => 0,
     });
     expect(result[0].typeId).toBe(CUSTOMER_STAFF);
     expect(result[0].dishes).toEqual([]);
+  });
+
+  it("a 0 (Auto) dish-count is not Staff — it generates a real order", () => {
+    const result = generateCustomers(fixtureMap, {
+      dishCounts: [0],
+      ingredientWeights: allWeights,
+      curve: flatCurve(3),
+      random: () => 0,
+    });
+    expect(result[0].typeId).not.toBe(CUSTOMER_STAFF);
+    expect(result[0].dishes.length).toBeGreaterThan(0);
+  });
+
+  it("Auto derives the dish count from the curve's target, not a fixed number", () => {
+    // A low-target curve should produce fewer dishes than a high-target one.
+    const low = generateCustomers(fixtureMap, {
+      dishCounts: [0],
+      ingredientWeights: allWeights,
+      curve: flatCurve(1),
+      random: () => 0,
+    });
+    const high = generateCustomers(fixtureMap, {
+      dishCounts: [0],
+      ingredientWeights: allWeights,
+      curve: flatCurve(15),
+      random: () => 0,
+    });
+    expect(low[0].dishes.length).toBeLessThan(high[0].dishes.length);
   });
 
   it("a 1-slot dish always gets a weak (capacity<=2) base — Cup, the only one allowed here", () => {
@@ -197,5 +225,108 @@ describe("generateCustomers", () => {
         expect(dish.cookedIds.length).toBeLessThanOrEqual(3);
       }
     }
+  });
+});
+
+describe("topUpPieceAlignment (via generateCustomers)", () => {
+  // Only Cup(3)/Ice(4) allowed, and Ice's recipe now yields 2 pieces per raw
+  // pickup — isolates the pad-to-even-total behavior from every other rule.
+  const cupIceWeights = new Map([[3, 100], [4, 100]]);
+  const iceYieldsTwoMap: MapDef = {
+    ...fixtureMap,
+    tools: [
+      {
+        id: 0,
+        name: "Test Tool",
+        numSlots: 8,
+        cookingTime: 1,
+        recipes: [{ in: 4, out: 4, amount: 2 }],
+      },
+    ],
+  };
+
+  it("pads a topping's total count up to a multiple of its recipe yield", () => {
+    // customer 0 -> curve target 1 -> a 1-slot [Cup] dish (no Ice yet, room to pad).
+    // customer 1 -> curve target 2 -> a 2-slot [Cup, Ice] dish.
+    // Total Ice = 1 (odd) before padding; amount=2 means it must come out even.
+    const curve: CurveState = {
+      range: { minX: 0, maxX: 1, minY: 1, maxY: 2 },
+      keyframes: [{ x: 0, y: 0, tangent: 0 }, { x: 1, y: 1, tangent: 0 }],
+    };
+    const result = generateCustomers(iceYieldsTwoMap, {
+      dishCounts: [1, 1],
+      ingredientWeights: cupIceWeights,
+      curve,
+      random: () => 0,
+    });
+    const iceCount = result
+      .flatMap((c) => c.dishes)
+      .flatMap((d) => d.cookedIds)
+      .filter((id) => id === 4).length;
+    expect(iceCount).toBeGreaterThan(0);
+    expect(iceCount % 2).toBe(0);
+  });
+
+  it("leaves an already-aligned total unchanged", () => {
+    const result = generateCustomers(iceYieldsTwoMap, {
+      dishCounts: [1, 1],
+      ingredientWeights: cupIceWeights,
+      curve: flatCurve(2), // every customer's one dish is [Cup, Ice] -> Ice count already 2
+      random: () => 0,
+    });
+    const iceCount = result
+      .flatMap((c) => c.dishes)
+      .flatMap((d) => d.cookedIds)
+      .filter((id) => id === 4).length;
+    expect(iceCount).toBe(2);
+  });
+
+  it("never repeats an ingredient within one dish, even after padding", () => {
+    const curve: CurveState = {
+      range: { minX: 0, maxX: 1, minY: 1, maxY: 2 },
+      keyframes: [{ x: 0, y: 0, tangent: 0 }, { x: 1, y: 1, tangent: 0 }],
+    };
+    const result = generateCustomers(iceYieldsTwoMap, {
+      dishCounts: [1, 1],
+      ingredientWeights: cupIceWeights,
+      curve,
+      random: () => 0,
+    });
+    for (const customer of result) {
+      for (const dish of customer.dishes) {
+        expect(new Set(dish.cookedIds).size).toBe(dish.cookedIds.length);
+      }
+    }
+  });
+});
+
+describe("autoDishCount", () => {
+  it("picks more dishes for a bigger target", () => {
+    expect(autoDishCount(15, 5)).toBeGreaterThan(autoDishCount(1, 5));
+  });
+
+  it("never returns fewer than 1 dish, even for a zero/negative target", () => {
+    expect(autoDishCount(0, 5)).toBe(1);
+    expect(autoDishCount(-3, 5)).toBe(1);
+  });
+
+  it("aims for dishes around the middle of the 1..maxSlots range", () => {
+    // maxSlots=5 -> avg dish size 3 -> a target of 9 should land on ~3 dishes.
+    expect(autoDishCount(9, 5)).toBe(3);
+  });
+});
+
+describe("parseDishCountSequence", () => {
+  it("parses ; separated counts, including -1 (Staff) and 0 (Auto)", () => {
+    expect(parseDishCountSequence("3;-1;0;2")).toEqual([3, -1, 0, 2]);
+  });
+
+  it("clamps below -1 up to -1 and non-numeric tokens to 0", () => {
+    expect(parseDishCountSequence("-5;garbage")).toEqual([-1, 0]);
+  });
+
+  it("returns an empty array for blank input", () => {
+    expect(parseDishCountSequence("")).toEqual([]);
+    expect(parseDishCountSequence("   ")).toEqual([]);
   });
 });

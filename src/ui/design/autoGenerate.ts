@@ -12,7 +12,12 @@ import { evaluateCurve } from "./curveEditor.ts";
 export const DEFAULT_MAX_DISH_SLOTS = 5;
 
 export interface GenerateOptions {
-  /** One entry per customer to create, in order. 0 = a Staff customer (no dishes). */
+  /**
+   * One entry per customer to create, in order. -1 = a Staff customer (no
+   * dishes). 0 = Auto — the dish count is derived from the complexity
+   * curve's target for that customer instead of being fixed (see
+   * `autoDishCount`). Any positive value is an explicit dish count.
+   */
   dishCounts: number[];
   /** Cooked ingredient id -> selection weight (0-100). 0/absent = excluded entirely. */
   ingredientWeights: Map<Id, number>;
@@ -22,10 +27,21 @@ export interface GenerateOptions {
   random?: () => number;
 }
 
-/** "3;1;2" -> [3,1,2] (dish count per customer). Non-numeric tokens fall back to 0. */
+/** "3;1;-1" -> [3,1,-1] (dish count per customer; -1 = Staff, 0 = Auto). Non-numeric tokens fall back to 0 (Auto). */
 export function parseDishCountSequence(s: string): number[] {
   if (!s || !s.trim()) return [];
-  return s.split(";").map((t) => Math.max(0, Number(t) || 0));
+  return s.split(";").map((t) => Math.max(-1, Number(t) || 0));
+}
+
+/**
+ * Chooses a dish count for an "Auto" (0) customer from the curve's target
+ * total ingredient count — aiming for dishes around the middle of the
+ * possible 1..maxSlots range, so a big target becomes several
+ * medium-sized dishes rather than one dish or `target` tiny ones.
+ */
+export function autoDishCount(target: number, maxSlots: number): number {
+  const avgDishSize = (1 + maxSlots) / 2;
+  return Math.max(1, Math.round(target / avgDishSize));
 }
 
 export function serializeDishCountSequence(counts: number[]): string {
@@ -52,6 +68,60 @@ function followersOf(toppings: CookedIngredientDef[], baseId: Id): CookedIngredi
   });
 }
 
+function requiresBase(topping: CookedIngredientDef, baseId: Id): boolean {
+  const req = topping.baseId;
+  return Array.isArray(req) ? req.includes(baseId) : req === baseId;
+}
+
+/**
+ * Best-effort pass so a later Auto-Generate Queue run can cover every dish
+ * with zero leftover pieces: a tool recipe can yield several pieces per raw
+ * pickup (1 tomato → 2 slices), so if the total demand for a topping isn't a
+ * clean multiple of its yield, the last pickup would produce a piece nobody
+ * ordered — dead weight sitting on the table at the end of the level. This
+ * tops the total up to the next multiple by adding the topping into other
+ * dishes that already have a compatible base, room for one more ingredient,
+ * and don't already contain it (so no dish repeats an ingredient). Bases
+ * aren't touched — a base is one per dish, so "adding one more" would mean
+ * inventing a whole new dish, out of scope for a best-effort nudge. If there's
+ * nowhere left to add one, the remainder is simply left as-is.
+ */
+function topUpPieceAlignment(map: MapDef, customers: CustomerConfig[], maxSlots: number): void {
+  const yieldByCooked = new Map<Id, number>();
+  for (const tool of map.tools) {
+    for (const recipe of tool.recipes) yieldByCooked.set(recipe.out, recipe.amount);
+  }
+
+  const totals = new Map<Id, number>();
+  for (const c of customers) {
+    for (const d of c.dishes) {
+      for (const id of d.cookedIds) totals.set(id, (totals.get(id) ?? 0) + 1);
+    }
+  }
+
+  for (const [cookedId, total] of totals) {
+    const amount = yieldByCooked.get(cookedId) ?? 1;
+    if (amount <= 1) continue;
+    const remainder = total % amount;
+    if (remainder === 0) continue;
+    const topping = map.cookedIngredients.find((c) => c.id === cookedId);
+    if (!topping || topping.baseId === undefined) continue; // bases are out of scope — see above
+
+    let need = amount - remainder;
+    for (const c of customers) {
+      if (need <= 0) break;
+      for (const d of c.dishes) {
+        if (need <= 0) break;
+        if (d.cookedIds.length === 0 || d.cookedIds.length >= maxSlots) continue;
+        if (d.cookedIds.includes(cookedId)) continue;
+        if (!requiresBase(topping, d.cookedIds[0])) continue;
+        d.cookedIds.push(cookedId);
+        need--;
+      }
+    }
+  }
+}
+
 /**
  * Generates a full customer sequence.
  *
@@ -75,6 +145,11 @@ function followersOf(toppings: CookedIngredientDef[], baseId: Id): CookedIngredi
  * remaining slots fill with random distinct followers of it (fewer than
  * requested if it doesn't have enough distinct followers — this is a random
  * approximation of the curve, not an exact fit).
+ *
+ * After every customer is built, `topUpPieceAlignment` makes a best-effort
+ * pass to round each topping's total demand up to a clean multiple of its
+ * tool recipe's yield, so a later Auto-Generate Queue run has no leftover
+ * pieces on the table at the end of the level.
  */
 export function generateCustomers(map: MapDef, opts: GenerateOptions): CustomerConfig[] {
   const rand = opts.random ?? Math.random;
@@ -124,14 +199,15 @@ export function generateCustomers(map: MapDef, opts: GenerateOptions): CustomerC
 
   const customers: CustomerConfig[] = [];
   for (let i = 0; i < n; i++) {
-    const dishCount = opts.dishCounts[i];
-    if (dishCount <= 0) {
+    const configured = opts.dishCounts[i];
+    if (configured === -1) {
       customers.push({ typeId: CUSTOMER_STAFF, waitTime: 0, weatherEff: 0, dishes: [] });
       continue;
     }
     const normX = n > 1 ? i / (n - 1) : 0;
     const realX = opts.curve.range.minX + normX * (opts.curve.range.maxX - opts.curve.range.minX);
     const target = Math.round(evaluateCurve(opts.curve, realX));
+    const dishCount = configured === 0 ? autoDishCount(target, maxSlots) : configured;
     const total = Math.max(dishCount, Math.min(dishCount * maxSlots, target));
     const slots = distribute(total, dishCount);
     customers.push({
@@ -141,5 +217,6 @@ export function generateCustomers(map: MapDef, opts: GenerateOptions): CustomerC
       dishes: slots.map((k) => ({ cookedIds: generateDish(k), effects: [] })),
     });
   }
+  topUpPieceAlignment(map, customers, maxSlots);
   return customers;
 }

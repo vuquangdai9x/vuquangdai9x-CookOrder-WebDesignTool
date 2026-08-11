@@ -64,9 +64,7 @@ let playView: PlayView | null = null;
 let designView: DesignView | null = null;
 /** Identity of the map last preloaded, so a same-map re-render doesn't re-preload. */
 let preloadedMapRef: MapData | null = null;
-/** Set when the startup silent sign-in check found no Google session/consent yet. */
-let needsSignIn = false;
-/** Spreadsheet id "Load from Sheet" reads from — editable in the header. No default is baked in (see SHEET_ID); only someone who pastes in their own project's id gets live data. */
+/** Spreadsheet id the Remote Data tab reads/writes — editable there. No default is baked in (see SHEET_ID); only someone who pastes in their own project's id gets live data. */
 let sheetIdInput = SHEET_ID;
 
 function loadDraft(): { map: MapData; migrated: boolean } | null {
@@ -147,19 +145,6 @@ async function render(): Promise<void> {
       el("span", { class: "data-origin" }, [
         sheetIdInput.trim() ? `${dataOrigin} · sheet ${sheetIdInput.slice(0, 8)}…` : dataOrigin,
       ]),
-      sheetIdField(),
-      // Clicking either loads the sheet; the label just sets the right
-      // expectation — a fresh browser/tab has no Google session yet, so the
-      // first click always shows the account/consent picker.
-      needsSignIn
-        ? button("🔑 Sign in with Google", () => void loadFromSheet(true), {
-            class: "full-btn",
-            title: "Sign in to read the linked Google Sheet",
-          })
-        : button("⟳ Load from Sheet", () => void loadFromSheet(true), {
-            class: "full-btn",
-            title: "Re-read the linked Google Sheet",
-          }),
       button("⬇ Export CSV", () => exportProjectCsv([map]), {
         class: "full-btn",
         title: "Download this map's level data as CSV",
@@ -172,16 +157,12 @@ async function render(): Promise<void> {
         class: "full-btn",
         title: "Discard the local draft and reload the bundled snapshot",
       }),
-      // Same three actions, collapsed behind one button for narrow windows —
-      // CSS swaps which of these two groups is visible (see .data-actions).
+      // Same actions, collapsed behind one button for narrow windows — CSS
+      // swaps which of these two groups is visible (see .data-actions).
       button("⋮", (e) =>
         showContextMenu(
           e,
           [
-            {
-              label: needsSignIn ? "🔑 Sign in with Google" : "⟳ Load from Sheet",
-              onSelect: () => void loadFromSheet(true),
-            },
             { label: "⬇ Export CSV", onSelect: () => exportProjectCsv([map]) },
             { label: "⬆ Import CSV", onSelect: () => importCsvFile() },
             { label: "♻ Reset draft", danger: true, separator: true, onSelect: () => resetDraft() },
@@ -203,10 +184,19 @@ async function render(): Promise<void> {
         currentLevelId = id;
       });
     } else if (mode === "remote") {
-      new RemoteDataView(main, map, () => sheetIdInput, () => {
-        saveDraft();
-        void render();
-      });
+      new RemoteDataView(
+        main,
+        map,
+        () => sheetIdInput,
+        (id) => {
+          sheetIdInput = id;
+        },
+        () => {
+          saveDraft();
+          void render();
+        },
+        (levelId) => openInDesign(levelId),
+      );
     } else {
       const parsed = toMapDef(map);
       const rawLevel = parsed.levels.find((l) => l.id === currentLevelId) ?? parsed.levels[0];
@@ -243,25 +233,14 @@ async function render(): Promise<void> {
 }
 
 /**
- * Text input for the spreadsheet id — no default is checked into source (see
- * SHEET_ID), so this starts empty and "Load from Sheet" only ever reads live
- * data for whoever pastes in an id they actually have.
+ * Switches to Design mode with the given level selected — the Remote Data
+ * tab's "Open in Design" button. Guards the same way switchMode("design")
+ * does when leaving Design mode dirty; entering it has nothing to guard.
  */
-function sheetIdField(): HTMLElement {
-  const input = el("input", {
-    type: "text",
-    value: sheetIdInput,
-    placeholder: "Paste a spreadsheet ID…",
-    class: "sheet-id-input",
-  }) as HTMLInputElement;
-  input.addEventListener("change", () => {
-    sheetIdInput = input.value.trim();
-    input.value = sheetIdInput;
-  });
-  return el("label", { class: "field small sheet-id-field", title: "Spreadsheet ID to read from" }, [
-    "Sheet ID",
-    input,
-  ]);
+function openInDesign(levelId: number): void {
+  currentLevelId = levelId;
+  mode = "design";
+  void render();
 }
 
 /**
@@ -324,7 +303,8 @@ function switchMode(next: Mode): void {
  *   picker — safe here because we're still inside the click's call stack.
  * - `false` (silent startup check): no overlay, no popup — either an
  *   existing Google session silently grants a token, or we quietly give up
- *   and flip `needsSignIn` so the header offers a sign-in button instead.
+ *   and leave the bundled/draft data in place (the user can still sign in
+ *   interactively from the Remote Data tab, which shares this same token).
  */
 async function loadFromSheet(interactive: boolean): Promise<void> {
   // No id typed in yet — most people opening this tool for the first time,
@@ -374,11 +354,9 @@ async function loadFromSheet(interactive: boolean): Promise<void> {
     };
     saveDraft();
     dataOrigin = "live Google Sheet";
-    needsSignIn = false;
   } catch (err) {
     console.error(err);
     if (err instanceof SheetAuthRequiredError) {
-      needsSignIn = true;
       // A silent check finding no session yet is the normal first-open state
       // for every new browser/tab — stay quiet and just offer the sign-in
       // button, rather than reporting it as a failure.

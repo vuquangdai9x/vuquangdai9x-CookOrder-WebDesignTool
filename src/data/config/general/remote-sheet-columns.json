@@ -1,0 +1,16 @@
+{
+  "_source": "docs/SHEET_STRUCTURE.md's documented MapLevelProgress column order (Map|Level|ID|Title|Weather|Tag|Customers|Grid|Queues|concat-data|Note|E-TimePlay|E-WinRate|R-TimePlay|R-WinRate, columns A-O) plus 4 new columns (P-S) appended after the existing ones for the Auto Generate record fields added to LevelData — nothing existing is shifted.",
+  "_note": "Column indexes are 0-based (0=A, 1=B, ...). Edit this file (no code change needed) if the real sheet's columns differ — the Remote Data tab reads this at load time.",
+  "tabName": "MapLevelProgress",
+  "columns": {
+    "map": 0,
+    "level": 1,
+    "customerString": 6,
+    "gridString": 7,
+    "queueString": 8,
+    "ingredientWeights": 15,
+    "customerDishesSequence": 16,
+    "complexityCurve": 17,
+    "shuffleCurve": 18
+  }
+}

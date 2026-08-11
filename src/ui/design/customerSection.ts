@@ -38,6 +38,8 @@ export interface CustomerSectionDeps {
   onSaved(): void;
   /** Lets the queue section's Recipe Pieces counts follow order edits live. */
   onCommit?(): void;
+  /** Fires after a successful Auto Generate — lets the caller chain into regenerating the queue to match. */
+  onGenerated?(): void;
 }
 
 /**
@@ -119,6 +121,7 @@ export function createCustomerSection(deps: CustomerSectionDeps): Section<Custom
             sec.draft.push(...tagged);
             sec.commit("Auto-generate customers", added, removed);
             deps.onSaved(); // the dialog also wrote ingredientWeights/customerDishesSequence/complexityCurve onto deps.level
+            deps.onGenerated?.();
           },
         });
       }, { title: "Generate a customer sequence from a dish-count list, ingredient weights, and a complexity curve" }),
@@ -162,7 +165,7 @@ function renderBody(
 ): void {
   body.append(levelParamsBar(section, deps));
 
-  const row = el("div", { class: "customer-cards" });
+  const row = el("div", { class: "customer-cards", "data-scroll-key": "customer-cards" });
 
   const savedCustomers = section.savedState;
   draft.forEach((customer, index) => {
@@ -297,8 +300,12 @@ function customerCard(
 ): HTMLElement {
   const staff = isStaff(customer);
   const status = customerStatus(customer, savedCustomers);
+  // A subtle tint so a wait-timed or weather-affected order stands out from
+  // a plain one at a glance, without competing with the change-tracking
+  // border colors (added/modified/removed-inside).
+  const timed = customer.weatherEff !== 0 || customer.waitTime > 0;
   const card = el("div", {
-    class: `customer-card${staff ? " staff" : ""} ${changeClass(status)}`,
+    class: `customer-card${staff ? " staff" : ""}${timed ? " timed" : ""} ${changeClass(status)}`,
   });
 
   const waitInput = el("input", {

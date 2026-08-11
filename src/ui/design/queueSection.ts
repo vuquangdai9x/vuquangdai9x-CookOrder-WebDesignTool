@@ -220,7 +220,7 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
         sec.draft.queues.push(tagNew([]));
         sec.commit("Add queue");
       }, { class: "add-queue-btn", title: `Append a new queue (max ${MAX_COLUMNS})` }),
-      button("✨ Auto Generate", () => autoGenerate(sec, deps, sec.draft), {
+      button("✨ Auto Generate", () => startQueueAutoGenerate(sec, deps), {
         title: "Fill every lane from the customer orders' ingredient demand",
       }),
     ],
@@ -1002,11 +1002,15 @@ function quickAddDrawer(
 // ---------- generation / shuffle ----------
 
 /**
- * Raw-ingredient demand implied by the customer orders. A tool recipe can yield
- * several pieces per raw unit (1 tomato → 2 slices), so demand is divided by
- * the yield and rounded up.
+ * Piece-level demand implied by the customer orders, keyed by raw id. A tool
+ * recipe can yield several pieces per raw pickup (1 tomato → 2 slices) — this
+ * returns the exact piece count needed, plus that raw id's yield, so a caller
+ * can compare against actual pieces on hand (raw pickups × yield) rather than
+ * rounding demand up to whole raw pickups first. Rounding at the raw-pickup
+ * level hides a real mismatch: 3 slices needed and 2 raw tomatoes (4 slices)
+ * both "round up" to needing 2 pickups, even though one slice would be wasted.
  */
-function demandByRaw(deps: QueueSectionDeps): Map<number, number> {
+function demandByRaw(deps: QueueSectionDeps): Map<number, { needPieces: number; amount: number }> {
   const cookedToRaw = new Map<number, { rawId: number; amount: number }>();
   for (const tool of deps.map.tools) {
     for (const recipe of tool.recipes) {
@@ -1021,23 +1025,43 @@ function demandByRaw(deps: QueueSectionDeps): Map<number, number> {
       }
     }
   }
-  const demand = new Map<number, number>();
+  const demand = new Map<number, { needPieces: number; amount: number }>();
   for (const [cookedId, count] of pieces) {
     const via = cookedToRaw.get(cookedId);
-    // No tool: the ingredient passes through as itself, one for one.
+    // No tool: the ingredient passes through as itself, one piece per pickup.
     const rawId = via?.rawId ?? cookedId;
-    const need = Math.ceil(count / (via?.amount ?? 1));
-    demand.set(rawId, (demand.get(rawId) ?? 0) + need);
+    const amount = via?.amount ?? 1;
+    const existing = demand.get(rawId);
+    if (existing) existing.needPieces += count;
+    else demand.set(rawId, { needPieces: count, amount });
   }
   return demand;
 }
 
-function autoGenerate(
+/** Pieces one pickup of a raw id yields, for every raw id with a recipe — used to price out "have" pieces even for a raw id the current orders don't demand at all. */
+function rawYieldAmounts(map: MapDef): Map<number, number> {
+  const amounts = new Map<number, number>();
+  for (const tool of map.tools) {
+    for (const recipe of tool.recipes) amounts.set(recipe.in, recipe.amount);
+  }
+  return amounts;
+}
+
+/**
+ * Opens the queue's Auto Generate dialog (fixed/curve shuffle) against the
+ * section's current draft. `skipOverwriteConfirm` lets a caller that already
+ * got the designer's intent some other way (see customerSection.ts's
+ * "generate customers, then offer to also regenerate the queue" chain) skip
+ * straight to the dialog — its own Cancel button still covers "changed my
+ * mind", so nothing is lost by skipping the generic confirm() here.
+ */
+export function startQueueAutoGenerate(
   section: Section<QueueDraft>,
   deps: QueueSectionDeps,
-  draft: QueueDraft,
+  skipOverwriteConfirm = false,
 ): void {
-  if (!confirm("Auto-generate overwrites every lane. Continue?")) return;
+  if (!skipOverwriteConfirm && !confirm("Auto-generate overwrites every lane. Continue?")) return;
+  const draft = section.draft;
   openAutoGenerateQueueDialog({
     level: deps.level,
     onGenerate: (shuffleRange) => {
@@ -1099,12 +1123,24 @@ function recipeFoldout(
   draft: QueueDraft,
 ): HTMLElement {
   const demand = demandByRaw(deps);
+  const rawYield = rawYieldAmounts(deps.map);
   const supply = new Map<number, number>();
   for (const lane of draft.queues) {
     for (const item of lane) {
       if (item.kind !== "ingredient") continue;
       supply.set(item.id, (supply.get(item.id) ?? 0) + 1);
     }
+  }
+
+  // Piece-level have/need per raw id — comparing raw pickup counts alone
+  // hides a real mismatch (e.g. 3 slices needed vs. 2 pickups yielding 4:
+  // both "round up" to the same pickup count, but one slice goes unused).
+  const rawIds = new Set([...demand.keys(), ...supply.keys()]);
+  const pieceCounts = new Map<number, { have: number; need: number }>();
+  for (const rawId of rawIds) {
+    const info = demand.get(rawId);
+    const amount = info?.amount ?? rawYield.get(rawId) ?? 1;
+    pieceCounts.set(rawId, { have: (supply.get(rawId) ?? 0) * amount, need: info?.needPieces ?? 0 });
   }
 
   // Keys held by queue items vs. ColorLock demand on the grid.
@@ -1127,7 +1163,8 @@ function recipeFoldout(
     }
   }
 
-  const shortPieces = [...demand].filter(([id, need]) => (supply.get(id) ?? 0) < need);
+  const shortPieces = [...pieceCounts].filter(([, { have, need }]) => have < need);
+  const excessPieces = [...pieceCounts].filter(([, { have, need }]) => have > need);
   const shortKeys = [...keysNeeded].filter(
     ([color, need]) => (keysHeld.get(color) ?? 0) < need,
   );
@@ -1147,18 +1184,19 @@ function recipeFoldout(
     ...(!shortPieces.length && !shortKeys.length && keysMismatch
       ? [el("span", { class: "warn-badge soft" }, ["⚠ Key colors don't match the grid's locks"])]
       : []),
+    ...(!shortPieces.length && !shortKeys.length && !keysMismatch && excessPieces.length
+      ? [el("span", { class: "warn-badge soft" }, ["⚠ Some queue pieces won't be used"])]
+      : []),
   ]);
 
   const foldout = el("section", { class: "foldout" }, [head]);
   if (!ui.foldoutOpen) return foldout;
 
   const pieceRows = el("div", { class: "piece-rows" });
-  const rawIds = new Set([...demand.keys(), ...supply.keys()]);
   for (const rawId of [...rawIds].sort((a, b) => a - b)) {
-    const need = demand.get(rawId) ?? 0;
-    const have = supply.get(rawId) ?? 0;
+    const { have, need } = pieceCounts.get(rawId)!;
     pieceRows.append(
-      el("div", { class: `piece-row${have < need ? " short" : ""}` }, [
+      el("div", { class: `piece-row${have < need ? " short" : have > need ? " excess" : ""}` }, [
         ingredientIconEl(rawId, 48),
         el("span", {}, [`${have} / ${need}`]),
       ]),
@@ -1182,7 +1220,7 @@ function recipeFoldout(
 
   foldout.append(
     el("div", { class: "foldout-body" }, [
-      el("div", {}, [el("small", {}, ["Ingredients (have / need)"]), pieceRows]),
+      el("div", {}, [el("small", {}, ["Pieces (have / need)"]), pieceRows]),
       ...(colorIds.size
         ? [el("div", {}, [el("small", {}, ["Keys (held / locks)"]), keyRows])]
         : []),
