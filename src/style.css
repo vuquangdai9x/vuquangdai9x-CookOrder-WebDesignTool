@@ -2263,24 +2263,57 @@ td input {
   font-size: 0.7rem;
 }
 
-.remote-boxes {
+.remote-row-columns {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.8rem;
 }
 
-.remote-box-col {
+.remote-col {
   flex: 1 1 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.3rem;
 }
 
-.remote-box-label {
+.remote-col-label {
   font-size: 0.68rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  margin-bottom: 0.1rem;
+}
+
+.remote-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.remote-field-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.remote-field-content {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+
+.remote-field-content .remote-box {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.remote-field-apply {
+  display: none;
+  flex: none;
+}
+
+.remote-field-content:hover .remote-field-apply {
+  display: inline-flex;
 }
 
 .remote-box {
@@ -2311,12 +2344,6 @@ td input {
   background: color-mix(in srgb, var(--bad) 35%, transparent);
   color: var(--text);
   border-radius: 2px;
-}
-
-.remote-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
 }
 
 .remote-status {
