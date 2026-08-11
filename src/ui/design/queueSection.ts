@@ -20,7 +20,6 @@ import type {
 } from "../../core/types.ts";
 import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
-import { writeRowToSheet } from "../../data/sheetWrite.ts";
 import {
   closeContextMenu,
   importField,
@@ -37,7 +36,11 @@ import { appendLine, createOverlay, railColor, railSegments } from "../queueGrou
 import type { Point } from "../queueGroupVisuals.ts";
 import { changeClass, cidOf, leafStatus, tagAllNew, tagNew } from "./changeTracking.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
+import { openAutoGenerateQueueDialog } from "./autoGenerateQueueDialog.ts";
+import { defaultCurve, openCurveDialog, parseCurve, serializeCurve } from "./curveEditor.ts";
 import { computeIngredientAssignment } from "./ingredientAssignment.ts";
+import { generateQueueLanes } from "./queueGenerate.ts";
+import type { ShuffleRangeSpec } from "./queueGenerate.ts";
 import { Section } from "./section.ts";
 
 const MIN_COLUMNS = 1;
@@ -211,25 +214,15 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
       deps.onSaved();
     },
     stringPreview: (draft) => serializeQueues(draft.queues, toCoordGroups(draft)),
-    writeToSheet: {
-      write: (draft) =>
-        writeRowToSheet(
-          {
-            mapIndex: deps.map.id,
-            levelIndex: deps.level.id,
-            weather: deps.level.weather,
-            tag: deps.level.levelTag,
-            unlock: deps.level.featureUnlock,
-          },
-          { ingredientQueue: serializeQueues(draft.queues, toCoordGroups(draft)) },
-        ),
-    },
     headerButtons: (sec) => [
       button("＋ Queue", () => {
         if (sec.draft.queues.length >= MAX_COLUMNS) return;
         sec.draft.queues.push(tagNew([]));
         sec.commit("Add queue");
-      }, { class: "small-btn add-queue-btn", title: `Append a new queue (max ${MAX_COLUMNS})` }),
+      }, { class: "add-queue-btn", title: `Append a new queue (max ${MAX_COLUMNS})` }),
+      button("✨ Auto Generate", () => autoGenerate(sec, deps, sec.draft), {
+        title: "Fill every lane from the customer orders' ingredient demand",
+      }),
     ],
     menuItems: (draft) => [
       {
@@ -258,10 +251,6 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
             section.commit("Import queues from string");
             close();
           }),
-      },
-      {
-        label: "Auto-Generate Queue",
-        onSelect: () => autoGenerate(section, deps, draft),
       },
       {
         label: "Shuffle Queue",
@@ -294,6 +283,7 @@ function renderBody(
   draft: QueueDraft,
   body: HTMLElement,
 ): void {
+  body.append(shuffleCurveBar(section, deps));
   body.append(recipeFoldout(section, deps, ui, draft));
   body.append(toolbar(section, ui));
 
@@ -376,6 +366,40 @@ function toolbar(section: Section<QueueDraft>, ui: QueueUiState): HTMLElement {
       ui.zoom = clampZoom(ui.zoom + 0.1);
       section.render();
     }, { class: "icon-btn", title: "Zoom in" }),
+  ]);
+}
+
+/**
+ * Read-only record of the curve used the last time Auto Generate ran in
+ * Curve mode — an Edit button opens a standalone dialog for it. Editing here
+ * only updates the stored string on deps.level; it doesn't re-shuffle the
+ * live queues (re-running Auto Generate is what applies it).
+ */
+function shuffleCurveBar(section: Section<QueueDraft>, deps: QueueSectionDeps): HTMLElement {
+  const input = el("input", {
+    type: "text",
+    value: deps.level.shuffleCurve ?? "",
+    readonly: "true",
+  }) as HTMLInputElement;
+
+  const edit = button(
+    "Edit",
+    () => {
+      const initial = deps.level.shuffleCurve
+        ? parseCurve(deps.level.shuffleCurve, defaultCurve(0, 5))
+        : defaultCurve(0, 5);
+      openCurveDialog("Shuffle Curve", initial, (curve) => {
+        deps.level.shuffleCurve = serializeCurve(curve);
+        deps.onSaved();
+        section.render();
+      });
+    },
+    { class: "small-btn" },
+  );
+
+  return el("label", { class: "field level-param-field" }, [
+    "Shuffle Curve",
+    el("div", { class: "level-param-row" }, [input, edit]),
   ]);
 }
 
@@ -1014,21 +1038,35 @@ function autoGenerate(
   draft: QueueDraft,
 ): void {
   if (!confirm("Auto-generate overwrites every lane. Continue?")) return;
-  const demand = demandByRaw(deps);
-  const pool: QueueItem[] = [];
-  for (const [rawId, count] of demand) {
-    for (let i = 0; i < count; i++) pool.push(tagNew({ kind: "ingredient", id: rawId, effects: [] }));
-  }
-  // Interleave so no lane is a run of one ingredient.
-  pool.sort(() => Math.random() - 0.5);
+  openAutoGenerateQueueDialog({
+    level: deps.level,
+    onGenerate: (shuffleRange) => {
+      runAutoGenerate(section, deps, draft, shuffleRange);
+      deps.onSaved(); // curve mode also wrote deps.level.shuffleCurve — flag the app-level change
+    },
+  });
+}
 
+function runAutoGenerate(
+  section: Section<QueueDraft>,
+  deps: QueueSectionDeps,
+  draft: QueueDraft,
+  shuffleRange: ShuffleRangeSpec,
+): void {
   const laneCount = Math.max(1, draft.queues.length);
+  const lanes = generateQueueLanes({
+    customers: deps.currentCustomers(),
+    tools: deps.map.tools,
+    laneCount,
+    shuffleRange,
+  });
+
   const before = draft.queues.reduce((n, q) => n + q.length, 0);
-  draft.queues.length = 0;
-  for (let i = 0; i < laneCount; i++) draft.queues.push(tagNew([]));
-  pool.forEach((item, i) => draft.queues[i % laneCount].push(item));
+  const after = lanes.reduce((n, l) => n + l.length, 0);
+  draft.queues = lanes.map((lane) => tagNew(lane.map((id) => tagNew({ kind: "ingredient", id, effects: [] }))));
   draft.groups = []; // authored groups don't survive a full regeneration
-  section.commit("Auto-generate queue", pool.length, before);
+  const label = shuffleRange.kind === "fixed" ? `shuffle range ${shuffleRange.value}` : "curve shuffle";
+  section.commit(`Auto-generate queue (${label})`, after, before);
 }
 
 function shuffle(

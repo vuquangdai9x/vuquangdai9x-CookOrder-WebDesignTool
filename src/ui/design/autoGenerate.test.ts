@@ -28,7 +28,12 @@ const cookedIngredients: CookedIngredientDef[] = [
 
 const fixtureMap: MapDef = { ...testMap, cookedIngredients };
 
-const allIds = new Set(cookedIngredients.map((c) => c.id));
+const WEIGHT = 100;
+const weightsOf = (ids: Iterable<number>): Map<number, number> =>
+  new Map([...ids].map((id) => [id, WEIGHT]));
+
+const allIds = cookedIngredients.map((c) => c.id);
+const allWeights = weightsOf(allIds);
 
 function flatCurve(value: number): CurveState {
   const curve = defaultCurve(value, value);
@@ -39,7 +44,7 @@ describe("generateCustomers", () => {
   it("creates one customer per dishCounts entry, in order", () => {
     const result = generateCustomers(fixtureMap, {
       dishCounts: [1, 2, 1],
-      allowedCookedIds: allIds,
+      ingredientWeights: allWeights,
       curve: flatCurve(1),
       random: () => 0,
     });
@@ -50,7 +55,7 @@ describe("generateCustomers", () => {
   it("turns a 0 dish-count into a Staff customer with no dishes", () => {
     const result = generateCustomers(fixtureMap, {
       dishCounts: [0],
-      allowedCookedIds: allIds,
+      ingredientWeights: allWeights,
       curve: flatCurve(3),
       random: () => 0,
     });
@@ -59,11 +64,10 @@ describe("generateCustomers", () => {
   });
 
   it("a 1-slot dish always gets a weak (capacity<=2) base — Cup, the only one allowed here", () => {
-    const withoutPotato = new Set(allIds);
-    withoutPotato.delete(8); // leave Cup as the fixture's only capacity<=2 base
+    const withoutPotato = weightsOf(allIds.filter((id) => id !== 8)); // leave Cup as the fixture's only capacity<=2 base
     const result = generateCustomers(fixtureMap, {
       dishCounts: [1, 1, 1, 1, 1],
-      allowedCookedIds: withoutPotato,
+      ingredientWeights: withoutPotato,
       curve: flatCurve(1), // target=1 -> every dish stays at 1 slot
       random: () => 0.99, // near-max random draw, still must land on the only weak base
     });
@@ -75,7 +79,7 @@ describe("generateCustomers", () => {
   it("a 2-slot dish CAN use the singleton base — Cup+Ice fills it exactly", () => {
     const result = generateCustomers(fixtureMap, {
       dishCounts: [1],
-      allowedCookedIds: allIds,
+      ingredientWeights: allWeights,
       curve: flatCurve(2), // target=2, single dish -> forced to 2 slots
       random: () => 0.99, // pool = all bases when k===2, biased to pick Cup(3) or Chicken(5), the later entries
     });
@@ -87,7 +91,7 @@ describe("generateCustomers", () => {
   it("a 3+-slot dish excludes the singleton base (capacity 2 can't reach 3), and starts with a base ingredient", () => {
     const result = generateCustomers(fixtureMap, {
       dishCounts: [1],
-      allowedCookedIds: allIds,
+      ingredientWeights: allWeights,
       curve: flatCurve(3), // target=3, single dish -> forced to 3 slots
       random: () => 0,
     });
@@ -100,7 +104,7 @@ describe("generateCustomers", () => {
   it("every non-first ingredient in a dish is a real follower of the dish's base", () => {
     const result = generateCustomers(fixtureMap, {
       dishCounts: [1],
-      allowedCookedIds: allIds,
+      ingredientWeights: allWeights,
       curve: flatCurve(3),
       random: () => 0,
     });
@@ -117,7 +121,7 @@ describe("generateCustomers", () => {
     for (let i = 0; i < 30; i++) {
       const result = generateCustomers(fixtureMap, {
         dishCounts: [1],
-        allowedCookedIds: allIds,
+        ingredientWeights: allWeights,
         curve: flatCurve(2), // target=2, single dish -> forced to 2 slots
         random: () => Math.random(),
       });
@@ -126,10 +130,10 @@ describe("generateCustomers", () => {
   });
 
   it("a 1-slot dish is fine with a zero-follower base (it never needed a follower anyway)", () => {
-    const onlyPotato = new Set([8]);
+    const onlyPotato = weightsOf([8]);
     const result = generateCustomers(fixtureMap, {
       dishCounts: [1],
-      allowedCookedIds: onlyPotato,
+      ingredientWeights: onlyPotato,
       curve: flatCurve(1),
       random: () => 0,
     });
@@ -139,7 +143,7 @@ describe("generateCustomers", () => {
   it("never repeats an ingredient within one dish", () => {
     const result = generateCustomers(fixtureMap, {
       dishCounts: [1],
-      allowedCookedIds: allIds,
+      ingredientWeights: allWeights,
       curve: flatCurve(4),
       random: () => Math.random(), // real randomness — repeat this a few times below
     });
@@ -147,15 +151,12 @@ describe("generateCustomers", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("respects the allowed-ingredients toggle (excludes a disallowed base entirely)", () => {
-    const withoutChicken = new Set(allIds);
-    withoutChicken.delete(5);
-    withoutChicken.delete(6);
-    withoutChicken.delete(7);
+  it("respects the ingredient weights (excludes a zero-weight base entirely)", () => {
+    const withoutChicken = weightsOf(allIds.filter((id) => id !== 5 && id !== 6 && id !== 7));
     for (let i = 0; i < 20; i++) {
       const result = generateCustomers(fixtureMap, {
         dishCounts: [1],
-        allowedCookedIds: withoutChicken,
+        ingredientWeights: withoutChicken,
         curve: flatCurve(3),
         random: () => Math.random(),
       });
@@ -165,10 +166,28 @@ describe("generateCustomers", () => {
     }
   });
 
+  it("biases selection toward higher-weight ingredients", () => {
+    // Two equally-eligible 1-slot bases (Cup=3, Potato=8, both capacity<=2);
+    // Cup outweighs Potato 99:1, so across many draws Cup should dominate.
+    const weights = new Map([[3, 99], [8, 1]]);
+    let cupCount = 0;
+    const n = 200;
+    for (let i = 0; i < n; i++) {
+      const result = generateCustomers(fixtureMap, {
+        dishCounts: [1],
+        ingredientWeights: weights,
+        curve: flatCurve(1),
+        random: () => Math.random(),
+      });
+      if (result[0].dishes[0].cookedIds[0] === 3) cupCount++;
+    }
+    expect(cupCount / n).toBeGreaterThan(0.8);
+  });
+
   it("keeps each dish's total ingredient count within maxDishSlots", () => {
     const result = generateCustomers(fixtureMap, {
       dishCounts: [1, 1, 1],
-      allowedCookedIds: allIds,
+      ingredientWeights: allWeights,
       curve: flatCurve(999), // absurdly high target
       maxDishSlots: 3,
       random: () => Math.random(),

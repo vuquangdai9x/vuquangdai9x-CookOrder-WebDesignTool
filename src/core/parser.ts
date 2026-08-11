@@ -146,8 +146,11 @@ export function serializeGrid(grid: GridCellConfig[]): string {
 // 4 params per customer: typeId ; waitTime ; weatherEff ; dishes, plus an
 // optional 5th (staffAmount, meaningful for type Staff; absent = 1 stack).
 // typeId comes from the customer-types definition table (0 Customer, 1 Staff,
-// extensible). Dish ids are "."-separated; legacy digit-runs ("0125") are
-// accepted when every id is a single digit.
+// extensible). Dish ids are "."-separated (a single id needs no separator at
+// all, e.g. "13"). There used to be a legacy fallback reading a dot-free run
+// as one digit per id ("0125" -> ids 0,1,2,5), kept for old pre-dot sheet
+// data — dropped now that ids run past 9, since it made a lone id like "13"
+// genuinely ambiguous with "the ids 1 and 3". Only "." is a separator now.
 //
 // Legacy pre-typeId forms are still parsed (and normalize to canonical on the
 // next serialize): "waitTime;weatherEff;dishes" and the staff variant
@@ -190,9 +193,7 @@ export function parseCustomers(s: string): CustomerConfig[] {
 
 function parseDish(dishStr: string): Dish {
   const { base, effects } = splitEffects(dishStr);
-  const cookedIds = base.includes(".")
-    ? base.split(".").map((t) => parseIntStrict(t, dishStr))
-    : [...base].map((ch) => parseIntStrict(ch, dishStr)); // legacy digit-run
+  const cookedIds = base === "" ? [] : base.split(".").map((t) => parseIntStrict(t, dishStr));
   return { cookedIds, effects };
 }
 

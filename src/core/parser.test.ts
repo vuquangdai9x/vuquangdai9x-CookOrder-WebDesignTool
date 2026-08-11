@@ -119,17 +119,40 @@ describe("customer string", () => {
     expect(serializeCustomers([c])).toBe(s);
   });
 
-  it("accepts legacy digit-run dishes and normalizes to '.'-separated", () => {
-    const legacy = "0;0;106,0125#4";
-    const customers = parseCustomers(legacy);
-    expect(customers[0].typeId).toBe(0);
-    expect(customers[0].dishes[0].cookedIds).toEqual([1, 0, 6]);
-    expect(customers[0].dishes[1]).toEqual({
-      cookedIds: [0, 1, 2, 5],
+  it("no longer accepts the legacy digit-run dish format — a dot-free run is always one id", () => {
+    // Dropped entirely: once ids run past 9, a dot-free digit run is
+    // genuinely ambiguous between "one multi-digit id" and "one id per
+    // character". Only "." separates ids now, full stop.
+    const [customer] = parseCustomers("0;0;0;106,0125#4");
+    expect(customer.dishes[0].cookedIds).toEqual([106]);
+    expect(customer.dishes[1]).toEqual({
+      cookedIds: [125],
       effects: [{ effectId: 4, params: [] }],
     });
-    // Re-serializing a legacy string always yields canonical (typeId-first).
-    expect(serializeCustomers(customers)).toBe("0;0;0;1.0.6,0.1.2.5#4");
+  });
+
+  it("round-trips a dish with a single multi-digit cooked id (regression: used to collide with the legacy digit-run reading)", () => {
+    // A lone id >= 10 (e.g. map1's Fried Potato, cooked id 13) needs no "."
+    // — split(".") on a dot-free string just returns that whole string as
+    // the one id, unambiguously, now that there's no competing reading.
+    const s = "0;0;0;13";
+    const customers = parseCustomers(s);
+    expect(customers[0].dishes[0].cookedIds).toEqual([13]);
+    expect(serializeCustomers(customers)).toBe(s);
+  });
+
+  it("keeps a solo single-digit dish exactly as before", () => {
+    const s = "0;0;0;7";
+    const customers = parseCustomers(s);
+    expect(customers[0].dishes[0].cookedIds).toEqual([7]);
+    expect(serializeCustomers(customers)).toBe(s);
+  });
+
+  it("still round-trips a multi-id dish that happens to include ids >= 10", () => {
+    const s = "0;0;0;12.14";
+    const customers = parseCustomers(s);
+    expect(customers[0].dishes[0].cookedIds).toEqual([12, 14]);
+    expect(serializeCustomers(customers)).toBe(s);
   });
 
   it("accepts the legacy 3-field form and infers typeId from dish emptiness", () => {

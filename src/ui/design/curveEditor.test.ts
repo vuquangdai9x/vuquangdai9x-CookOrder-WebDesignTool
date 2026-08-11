@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultCurve, evaluateCurve } from "./curveEditor.ts";
+import { defaultCurve, evaluateCurve, parseCurve, serializeCurve } from "./curveEditor.ts";
 import type { CurveState } from "./curveEditor.ts";
 
 describe("evaluateCurve", () => {
@@ -55,5 +55,24 @@ describe("evaluateCurve", () => {
     };
     expect(evaluateCurve(curve, 10)).toBeCloseTo(0, 4);
     expect(evaluateCurve(curve, 20)).toBeCloseTo(100, 4);
+  });
+});
+
+describe("serializeCurve / parseCurve", () => {
+  it("round-trips a curve through the string form", () => {
+    const curve = defaultCurve(1, 6);
+    const fallback = defaultCurve(0, 0);
+    expect(parseCurve(serializeCurve(curve), fallback)).toEqual(curve);
+  });
+
+  it("falls back on empty input", () => {
+    const fallback = defaultCurve(2, 9);
+    expect(parseCurve("", fallback)).toEqual(fallback);
+  });
+
+  it("falls back on malformed input instead of throwing", () => {
+    const fallback = defaultCurve(2, 9);
+    expect(parseCurve("not json", fallback)).toEqual(fallback);
+    expect(parseCurve("{}", fallback)).toEqual(fallback);
   });
 });

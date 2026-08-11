@@ -9,7 +9,6 @@ import { parseGrid, serializeGrid } from "../../core/parser.ts";
 import type { GlobalDefs, GridCellConfig, MapDef } from "../../core/types.ts";
 import { KEY_COLORS } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
-import { writeRowToSheet } from "../../data/sheetWrite.ts";
 import {
   closeContextMenu,
   importField,
@@ -48,19 +47,6 @@ export function createGridSection(deps: GridSectionDeps): Section<GridCellConfig
       deps.onSaved();
     },
     stringPreview: (draft) => serializeGrid(draft),
-    writeToSheet: {
-      write: (draft) =>
-        writeRowToSheet(
-          {
-            mapIndex: deps.map.id,
-            levelIndex: deps.level.id,
-            weather: deps.level.weather,
-            tag: deps.level.levelTag,
-            unlock: deps.level.featureUnlock,
-          },
-          { grid: serializeGrid(draft) },
-        ),
-    },
     menuItems: (draft) => [
       {
         label: "Import from string…",

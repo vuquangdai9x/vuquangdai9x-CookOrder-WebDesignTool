@@ -14,11 +14,35 @@ export const DEFAULT_MAX_DISH_SLOTS = 5;
 export interface GenerateOptions {
   /** One entry per customer to create, in order. 0 = a Staff customer (no dishes). */
   dishCounts: number[];
-  allowedCookedIds: Set<Id>;
+  /** Cooked ingredient id -> selection weight (0-100). 0/absent = excluded entirely. */
+  ingredientWeights: Map<Id, number>;
   curve: CurveState;
   maxDishSlots?: number;
   /** Injectable for deterministic tests; defaults to Math.random. */
   random?: () => number;
+}
+
+/** "3;1;2" -> [3,1,2] (dish count per customer). Non-numeric tokens fall back to 0. */
+export function parseDishCountSequence(s: string): number[] {
+  if (!s || !s.trim()) return [];
+  return s.split(";").map((t) => Math.max(0, Number(t) || 0));
+}
+
+export function serializeDishCountSequence(counts: number[]): string {
+  return counts.join(";");
+}
+
+/** Picks one item, biased by weight — a single rand() draw consumed as a position along the cumulative weight sum. */
+function weightedPick<T>(items: T[], weightOf: (t: T) => number, rand: () => number): T | undefined {
+  const weighted = items.map((t) => ({ t, w: Math.max(0, weightOf(t)) })).filter((x) => x.w > 0);
+  const total = weighted.reduce((sum, x) => sum + x.w, 0);
+  if (total <= 0) return undefined;
+  let r = rand() * total;
+  for (const x of weighted) {
+    r -= x.w;
+    if (r <= 0) return x.t;
+  }
+  return weighted[weighted.length - 1].t;
 }
 
 function followersOf(toppings: CookedIngredientDef[], baseId: Id): CookedIngredientDef[] {
@@ -37,9 +61,11 @@ function followersOf(toppings: CookedIngredientDef[], baseId: Id): CookedIngredi
  * dish starts at 1, then leftover "extra" ingredient slots are handed out to
  * random dishes one at a time, capped at `maxDishSlots` each).
  *
- * Per dish: allowed cooked ingredients split into "base" (no `baseId`) and
- * "topping" (has one). A base's *capacity* is 1 (itself) plus how many
- * allowed toppings require it — the biggest dish it could ever fill. Map1's
+ * Per dish: cooked ingredients with a nonzero weight split into "base" (no
+ * `baseId`) and "topping" (has one), and every pick (base or follower) is
+ * weighted-random rather than uniform — see `weightedPick`. A base's
+ * *capacity* is 1 (itself) plus how many allowed toppings require it — the
+ * biggest dish it could ever fill. Map1's
  * Soda Cup has capacity 2 (itself + Ice, its only follower): a 1-slot dish
  * always gets a capacity-2-or-less base first (it can't use a topping
  * anyway, so reserve the "big" bases like Bun/Chicken for bigger dishes); a
@@ -55,13 +81,11 @@ export function generateCustomers(map: MapDef, opts: GenerateOptions): CustomerC
   const maxSlots = Math.max(1, opts.maxDishSlots ?? DEFAULT_MAX_DISH_SLOTS);
   const n = opts.dishCounts.length;
 
-  const cooked = map.cookedIngredients.filter((c) => opts.allowedCookedIds.has(c.id));
+  const weightOf = (c: CookedIngredientDef) => opts.ingredientWeights.get(c.id) ?? 0;
+  const cooked = map.cookedIngredients.filter((c) => weightOf(c) > 0);
   const bases = cooked.filter((c) => c.baseId === undefined);
   const toppings = cooked.filter((c) => c.baseId !== undefined);
   const capacity = (base: CookedIngredientDef) => followersOf(toppings, base.id).length + 1;
-
-  const pickRandom = <T,>(arr: T[]): T | undefined =>
-    arr.length === 0 ? undefined : arr[Math.floor(rand() * arr.length)];
 
   function generateDish(slotTarget: number): Id[] {
     const k = Math.max(1, slotTarget);
@@ -69,14 +93,15 @@ export function generateCustomers(map: MapDef, opts: GenerateOptions): CustomerC
       k === 1
         ? bases.filter((b) => capacity(b) <= 2) // reserve "weak" bases for 1-slot dishes...
         : bases.filter((b) => capacity(b) >= k); // ...and only "strong enough" bases for the rest
-    const base = pickRandom(pool.length ? pool : bases);
+    const base = weightedPick(pool.length ? pool : bases, weightOf, rand);
     if (!base) return [];
     const dish = [base.id];
     const followerPool = followersOf(toppings, base.id);
     while (dish.length < k && followerPool.length > 0) {
-      const i = Math.floor(rand() * followerPool.length);
-      dish.push(followerPool[i].id);
-      followerPool.splice(i, 1);
+      const picked = weightedPick(followerPool, weightOf, rand);
+      if (!picked) break;
+      dish.push(picked.id);
+      followerPool.splice(followerPool.indexOf(picked), 1);
     }
     return dish;
   }

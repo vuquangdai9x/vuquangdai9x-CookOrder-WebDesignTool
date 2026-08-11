@@ -6,7 +6,7 @@
 // here is specific to that use — `evaluateCurve`/`createCurveEditor` work on
 // any CurveState.
 
-import { el } from "../dom.ts";
+import { button, el } from "../dom.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -279,4 +279,166 @@ export function createCurveEditor(initial: CurveState, onChange: (next: CurveSta
   );
 
   return wrap;
+}
+
+// ---------- named presets ----------
+// A shared, named library of curve shapes — saved explicitly, persisted in
+// localStorage so it survives reloads, and reused across every dialog that
+// embeds a curve editor (customer complexity, queue shuffle distance, ...).
+
+export interface CurvePreset {
+  name: string;
+  curve: CurveState;
+}
+
+const CURVE_PRESETS_KEY = "cookorder-curve-presets";
+
+export function loadCurvePresets(): CurvePreset[] {
+  try {
+    const raw = localStorage.getItem(CURVE_PRESETS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as CurvePreset[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCurvePresets(presets: CurvePreset[]): void {
+  try {
+    localStorage.setItem(CURVE_PRESETS_KEY, JSON.stringify(presets));
+  } catch (err) {
+    console.warn("Could not persist curve presets", err);
+  }
+}
+
+/**
+ * A curve editor plus a "Saved curves" row (select a preset to load it,
+ * Save As… to name and store the current shape, Delete to remove one) — the
+ * one widget every "pick or shape a curve" dialog embeds. `onChange` fires
+ * on every edit, same as `createCurveEditor` alone.
+ */
+export function createCurveWithPresets(initial: CurveState, onChange: (next: CurveState) => void): HTMLElement {
+  let curveState = initial;
+  let presets = loadCurvePresets();
+
+  // Swapped wholesale on preset load — createCurveEditor owns a fixed SVG
+  // bound to its `initial` state, so loading a different curve means
+  // mounting a fresh instance rather than pushing an update into it.
+  const curveHost = el("div", { class: "curve-host" });
+  const mount = (state: CurveState) => {
+    curveHost.replaceChildren(
+      createCurveEditor(state, (next) => {
+        curveState = next;
+        onChange(next);
+      }),
+    );
+  };
+  mount(curveState);
+
+  const presetSelect = el("select", { class: "curve-preset-select" }) as HTMLSelectElement;
+  const refreshOptions = (selectName?: string) => {
+    presetSelect.replaceChildren(
+      el("option", { value: "" }, ["— Load a saved curve —"]),
+      ...presets.map((p) => el("option", { value: p.name }, [p.name])),
+    );
+    if (selectName) presetSelect.value = selectName;
+  };
+  refreshOptions();
+  presetSelect.addEventListener("change", () => {
+    const preset = presets.find((p) => p.name === presetSelect.value);
+    if (!preset) return;
+    curveState = structuredClone(preset.curve);
+    onChange(curveState);
+    mount(curveState);
+  });
+
+  const presetRow = el("div", { class: "curve-preset-row" }, [
+    el("label", { class: "field small" }, ["Saved curves", presetSelect]),
+    button(
+      "Save As…",
+      () => {
+        const name = prompt("Name this curve", presetSelect.value || "")?.trim();
+        if (!name) return;
+        const existingIndex = presets.findIndex((p) => p.name === name);
+        if (existingIndex !== -1 && !confirm(`Overwrite the saved curve "${name}"?`)) return;
+        const entry: CurvePreset = { name, curve: structuredClone(curveState) };
+        if (existingIndex !== -1) presets[existingIndex] = entry;
+        else presets.push(entry);
+        saveCurvePresets(presets);
+        refreshOptions(name);
+      },
+      { class: "small-btn", title: "Save the current curve shape under a name for reuse" },
+    ),
+    button(
+      "Delete",
+      () => {
+        const name = presetSelect.value;
+        if (!name) return;
+        if (!confirm(`Delete the saved curve "${name}"?`)) return;
+        presets = presets.filter((p) => p.name !== name);
+        saveCurvePresets(presets);
+        refreshOptions();
+      },
+      { class: "small-btn danger" },
+    ),
+  ]);
+
+  return el("div", { class: "curve-with-presets" }, [curveHost, presetRow]);
+}
+
+// ---------- string encoding ----------
+// JSON is deliberately used instead of a terse custom grammar (unlike the
+// customer/grid/queue strings) — a curve is design-tool-only data (never sent
+// through the Sheet's single-cell row format), so there's no size pressure,
+// and JSON avoids reinventing float-precision-safe parsing for keyframe
+// x/y/tangent values.
+
+export function serializeCurve(curve: CurveState): string {
+  return JSON.stringify(curve);
+}
+
+/** Falls back to `fallback` on missing/invalid input rather than throwing — this is read-back design metadata, not canonical level data. */
+export function parseCurve(s: string, fallback: CurveState): CurveState {
+  if (!s || !s.trim()) return structuredClone(fallback);
+  try {
+    const parsed: unknown = JSON.parse(s);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      Array.isArray((parsed as CurveState).keyframes) &&
+      (parsed as CurveState).range
+    ) {
+      return parsed as CurveState;
+    }
+  } catch {
+    // fall through to fallback
+  }
+  return structuredClone(fallback);
+}
+
+/** Standalone "edit just this curve" popup — the curve editor + presets, an Apply/Cancel footer, nothing else. */
+export function openCurveDialog(title: string, initial: CurveState, onApply: (curve: CurveState) => void): void {
+  const close = () => overlay.remove();
+  let curveState = structuredClone(initial);
+
+  const panel = el("div", { class: "auto-generate-panel" }, [
+    createCurveWithPresets(curveState, (next) => (curveState = next)),
+    el("div", { class: "auto-generate-actions" }, [
+      button("Cancel", close),
+      button("Apply", () => { onApply(curveState); close(); }, { class: "primary" }),
+    ]),
+  ]);
+
+  const overlay = el("div", { class: "overlay-panel" }, [
+    el("div", { class: "definitions-head" }, [
+      el("h2", {}, [title]),
+      button("✕ Close", close, { class: "primary" }),
+    ]),
+    panel,
+  ]);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.body.append(overlay);
 }

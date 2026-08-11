@@ -20,6 +20,20 @@ export interface LevelData {
   outOfSlotPolicy?: "block-pick" | "park-on-grid";
   /** Starting charge count for each of the 4 boosters — see LevelConfig.boosterCharges. */
   boosterCharges?: number[];
+  /**
+   * Design-time record of the last Auto Generate run's inputs (Customer
+   * section) — not consumed by Play/sim, purely so a designer can inspect or
+   * re-edit the recipe that produced the current customer list. Format:
+   * "<cookedId>:<weight>;..." (0-100 each), one entry per ingredient with a
+   * nonzero weight — see ui/design/ingredientWeightEditor.ts.
+   */
+  ingredientWeights?: string;
+  /** Same record, dish count per customer: "<count>;<count>;..." — see ui/design/autoGenerate.ts. */
+  customerDishesSequence?: string;
+  /** Same record, the complexity curve used — JSON-encoded CurveState, see ui/design/curveEditor.ts. */
+  complexityCurve?: string;
+  /** Same record for the Queue section's Auto Generate curve-mode shuffle distance — JSON-encoded CurveState. */
+  shuffleCurve?: string;
 }
 
 export type MapData = Omit<MapDef, "levels"> & { levels: LevelData[] };
