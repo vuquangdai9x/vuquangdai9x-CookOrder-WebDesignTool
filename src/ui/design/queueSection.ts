@@ -38,7 +38,8 @@ import { changeClass, cidOf, leafStatus, tagAllNew, tagNew } from "./changeTrack
 import type { ChangeStatus } from "./changeTracking.ts";
 import { openAutoGenerateQueueDialog } from "./autoGenerateQueueDialog.ts";
 import { defaultCurve, openCurveDialog, parseCurve, serializeCurve } from "./curveEditor.ts";
-import { computeIngredientAssignment } from "./ingredientAssignment.ts";
+import { customerColor } from "./customerColors.ts";
+import type { EstimateResult } from "./estimateDifficulty.ts";
 import { generateQueueLanes } from "./queueGenerate.ts";
 import type { ShuffleRangeSpec } from "./queueGenerate.ts";
 import { Section } from "./section.ts";
@@ -56,6 +57,12 @@ export interface QueueSectionDeps {
   currentGrid(): GridCellConfig[];
   onSaved(): void;
   onCommit?(): void;
+  /**
+   * Latest Estimate Difficulty run for this level, or null if it hasn't been
+   * run (or an edit invalidated it) — see estimateDifficulty.ts. Drives the
+   * "Show pickup order" overlay.
+   */
+  currentEstimate?(): EstimateResult | null;
 }
 
 /**
@@ -84,8 +91,12 @@ interface QueueUiState {
   drawerOpen: boolean;
   /** Shift-click multi-select for Combine/Link — UI-only, not an undo step. */
   selection: Set<string>;
-  /** "Auto-calculate assigned ingredient" — see ingredientAssignment.ts. View-only, never saved. */
-  autoAssign: boolean;
+  /**
+   * "Show pickup order" — overlays each tile with the customer colour and
+   * pickup number from the last Estimate Difficulty run. View-only, never
+   * saved; does nothing until the estimate has been run at least once.
+   */
+  showPickup: boolean;
 }
 
 /** Tags every lane (container identity) and every item within it (leaf identity). */
@@ -200,7 +211,7 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
     foldoutOpen: true,
     drawerOpen: false,
     selection: new Set(),
-    autoAssign: false,
+    showPickup: false,
   };
 
   const section: Section<QueueDraft> = new Section<QueueDraft>({
@@ -285,24 +296,22 @@ function renderBody(
 ): void {
   body.append(shuffleCurveBar(section, deps));
   body.append(recipeFoldout(section, deps, ui, draft));
-  body.append(toolbar(section, ui));
+  body.append(toolbar(section, deps, ui));
 
   const lanes = el("div", { class: `queue-lanes${ui.removeMode ? " remove-mode" : ""}` });
   lanes.style.setProperty("--tile-zoom", String(ui.zoom));
 
-  // Recomputed fresh on every render, so it's automatically current whenever
-  // this section (or the customers section, via onCommit's refreshQueueReadout)
-  // re-renders after a dish/queue edit — see ingredientAssignment.ts.
-  const assignment = ui.autoAssign
-    ? computeIngredientAssignment(deps.map, deps.currentCustomers(), draft.queues)
-    : null;
+  // Read fresh on every render so it tracks the latest Estimate Difficulty
+  // run (the customers section re-renders this one via onCommit's
+  // refreshQueueReadout) — see estimateDifficulty.ts.
+  const estimate = ui.showPickup ? (deps.currentEstimate?.() ?? null) : null;
 
   // Compared against once per render — reordering/adding/removing during a
   // render doesn't shift this baseline out from under the diff.
   const savedQueues = section.savedState.queues;
   const maxRows = draft.queues.reduce((h, q) => Math.max(h, q.length), 0);
   draft.queues.forEach((lane, laneIndex) => {
-    lanes.append(laneEl(section, deps, ui, draft, lane, laneIndex, savedQueues, maxRows, assignment));
+    lanes.append(laneEl(section, deps, ui, draft, lane, laneIndex, savedQueues, maxRows, estimate));
   });
 
   // Lane reordering: drag a lane by its header.
@@ -343,19 +352,33 @@ function renderBody(
 
 const clampZoom = (z: number) => Math.min(2.5, Math.max(0.5, Math.round(z * 10) / 10));
 
-function toolbar(section: Section<QueueDraft>, ui: QueueUiState): HTMLElement {
-  const autoAssignCheckbox = el("input", { type: "checkbox" }) as HTMLInputElement;
-  autoAssignCheckbox.checked = ui.autoAssign;
-  autoAssignCheckbox.addEventListener("change", () => {
-    ui.autoAssign = autoAssignCheckbox.checked;
+function toolbar(
+  section: Section<QueueDraft>,
+  deps: QueueSectionDeps,
+  ui: QueueUiState,
+): HTMLElement {
+  const pickupCheckbox = el("input", { type: "checkbox" }) as HTMLInputElement;
+  pickupCheckbox.checked = ui.showPickup;
+  pickupCheckbox.addEventListener("change", () => {
+    ui.showPickup = pickupCheckbox.checked;
     section.render();
   });
 
+  const hasEstimate = !!deps.currentEstimate?.();
+  const label = el(
+    "label",
+    {
+      class: "pickup-toggle",
+      title: hasEstimate
+        ? "Design-view only — colours each tile by the customer it gets picked for and numbers it in pickup order. Never saved."
+        : "Run Estimate Difficulty on the Customers panel first",
+    },
+    [pickupCheckbox, "Show pickup order"],
+  );
+  if (!hasEstimate) label.classList.add("disabled");
+
   return el("div", { class: "queue-toolbar" }, [
-    el("label", { class: "auto-assign-toggle", title: "Design-view only — colors tiles by which customer they're headed for, never saved" }, [
-      autoAssignCheckbox,
-      "Auto-calculate assigned ingredient",
-    ]),
+    label,
     el("span", { class: "spacer" }),
     button("−", () => {
       ui.zoom = clampZoom(ui.zoom - 0.1);
@@ -432,7 +455,7 @@ function laneEl(
   laneIndex: number,
   savedQueues: QueueItem[][],
   maxRows: number,
-  assignment: Map<string, string> | null,
+  estimate: EstimateResult | null,
 ): HTMLElement {
   const node = el("div", {
     class: `queue-lane${ui.activeLane === laneIndex ? " active" : ""} ${changeClass(laneStatus(lane, savedQueues))}`,
@@ -453,7 +476,7 @@ function laneEl(
 
   const tiles = el("div", { class: "lane-tiles" });
   lane.forEach((item, itemIndex) => {
-    tiles.append(tileEl(section, deps, ui, draft, lane, item, itemIndex, savedQueues, assignment));
+    tiles.append(tileEl(section, deps, ui, draft, lane, item, itemIndex, savedQueues, estimate));
   });
 
   const addTile = el("div", { class: "queue-tile add-tile" }, ["＋"]);
@@ -514,14 +537,17 @@ function tileEl(
   item: QueueItem,
   itemIndex: number,
   savedQueues: QueueItem[][],
-  assignment: Map<string, string> | null,
+  estimate: EstimateResult | null,
 ): HTMLElement {
   const freeze = item.effects.find((e) => e.effectId === EFFECT_FREEZE);
   const key = item.effects.find((e) => e.effectId === EFFECT_HOLDING_KEY);
   const cid = cidOf(item);
   const group = cid ? draft.groups.find((g) => g.cids.includes(cid)) : undefined;
   const selected = !!cid && ui.selection.has(cid);
-  const autoColor = cid ? assignment?.get(cid) : undefined;
+  // Every member of a combined/linked group shares one pickup number, because
+  // the solver stamps all of a pick's cells with the same counter value.
+  const slot = cid ? estimate?.byCid.get(cid) : undefined;
+  const autoColor = slot ? customerColor(slot.customerIndex) : undefined;
 
   const tile = el("div", {
     class: [
@@ -531,6 +557,7 @@ function tileEl(
       selected ? "selected" : "",
       group ? `group-${group.kind}` : "",
       autoColor ? "auto-color" : "",
+      slot?.detour ? "pickup-detour" : "",
       changeClass(tileStatus(item, savedQueues)),
     ]
       .filter(Boolean)
@@ -544,6 +571,21 @@ function tileEl(
       ? el("span", { class: "tile-main" }, ["🧹"])
       : el("span", { class: "tile-main" }, [ingredientIconEl(item.id, 96)]),
   );
+
+  if (slot) {
+    tile.append(
+      el(
+        "span",
+        {
+          class: "pickup-order",
+          title: slot.detour
+            ? `Pick #${slot.order} — taken to dig toward customer ${slot.customerIndex + 1}'s order, or at random`
+            : `Pick #${slot.order} — for customer ${slot.customerIndex + 1}`,
+        },
+        [String(slot.order)],
+      ),
+    );
+  }
 
   // Statuses other than the two with dedicated visuals show as a corner icon.
   // EFFECT_LINK is retired (real linked groups supersede its old adjacency

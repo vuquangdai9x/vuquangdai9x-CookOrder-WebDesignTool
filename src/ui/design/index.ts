@@ -16,6 +16,8 @@ import type {
   ElementDef,
   GlobalDefs,
   GridCellConfig,
+  LevelConfig,
+  MapDef,
   ParamDef,
 } from "../../core/types.ts";
 import type { LevelData, MapData } from "../../data/mapLoader.ts";
@@ -30,6 +32,8 @@ import { createCustomerSection } from "./customerSection.ts";
 import { createGridSection } from "./gridSection.ts";
 import { createQueueSection, startQueueAutoGenerate, toCoordGroups, toQueueDraft } from "./queueSection.ts";
 import type { QueueDraft, QueueSectionDeps } from "./queueSection.ts";
+import { estimateDifficulty } from "./estimateDifficulty.ts";
+import type { EstimateResult } from "./estimateDifficulty.ts";
 import { tableEditor } from "./tableEditor.ts";
 
 type LayoutMode = "stack" | "split";
@@ -48,6 +52,12 @@ export class DesignView {
   private queues!: Section<QueueDraft>;
   /** Kept around so the customer section's post-Auto-Generate chain (see build()) can reopen the queue's own Auto Generate dialog against current deps. */
   private queueDeps!: QueueSectionDeps;
+  /**
+   * Last Estimate Difficulty run for the level currently open. Cleared on any
+   * level switch — a pickup order computed for a different level's queue would
+   * colour tiles with numbers that mean nothing.
+   */
+  private estimate: EstimateResult | null = null;
   private warningsEl = el("div", { class: "warnings" });
   private layoutMode: LayoutMode = "stack";
 
@@ -98,7 +108,9 @@ export class DesignView {
       toQueueDraft({ queues: parseQueues(next.queueString), groups: parseQueueGroups(next.queueString) }),
     );
     // A different level's drafts have nothing to do with what was last
-    // written to the sheet for the previous level.
+    // written to the sheet for the previous level — nor does a pickup order
+    // computed against the queue that just got replaced.
+    this.estimate = null;
     this.levelWriteSnapshot = null;
     this.levelWriteError = null;
     this.refreshWarnings();
@@ -132,6 +144,7 @@ export class DesignView {
       currentGrid: () => this.grid.draft,
       onSaved: saved,
       onCommit: refreshLevelWrite,
+      currentEstimate: () => this.estimate,
     };
 
     this.customers = createCustomerSection({
@@ -149,6 +162,8 @@ export class DesignView {
       // Cancel button already covers changing your mind) so regenerating
       // customers doesn't leave the queue out of sync by default.
       onGenerated: () => startQueueAutoGenerate(this.queues, this.queueDeps, true),
+      onEstimate: () => this.runEstimate(parsedMap),
+      currentEstimate: () => this.estimate,
     });
     this.grid = createGridSection({
       map: parsedMap,
@@ -165,6 +180,45 @@ export class DesignView {
 
     this.renderLayout();
     this.refreshWarnings();
+  }
+
+  /**
+   * Runs the difficulty solver over all three live drafts (not the saved
+   * strings — a designer wants to estimate what they're editing right now)
+   * and re-renders the two sections that display the result.
+   *
+   * The level is deep-cloned first so the solver's Simulation can't touch the
+   * drafts. `_cid` survives structuredClone, which is what lets the result map
+   * back onto the real queue tiles — see changeTracking.ts.
+   */
+  private runEstimate(parsedMap: MapDef): void {
+    const groups = toCoordGroups(this.queues.draft);
+    const level: LevelConfig = {
+      id: this.level.id,
+      name: this.level.name,
+      weather: this.level.weather,
+      levelTag: this.level.levelTag,
+      featureUnlock: this.level.featureUnlock,
+      shuffleDistance: this.level.shuffleDistance,
+      serveableSlots: this.level.serveableSlots,
+      queues: this.queues.draft.queues,
+      queueGroups: groups,
+      grid: this.grid.draft,
+      customers: this.customers.draft,
+      outOfSlotPolicy: this.level.outOfSlotPolicy,
+      boosterCharges: this.level.boosterCharges,
+    };
+
+    try {
+      this.estimate = estimateDifficulty(parsedMap, structuredClone(level));
+    } catch (err) {
+      console.error("Estimate Difficulty failed", err);
+      this.estimate = null;
+      alert(`Estimate Difficulty failed: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    this.customers.render();
+    this.queues.render();
   }
 
   /**

@@ -822,13 +822,18 @@ footer {
   margin-bottom: 0.5rem;
 }
 
-.auto-assign-toggle {
+.pickup-toggle {
   display: flex;
   align-items: center;
   gap: 0.3rem;
   font-size: 0.75rem;
   color: var(--muted);
   cursor: pointer;
+}
+
+/* Nothing to show until Estimate Difficulty has been run at least once. */
+.pickup-toggle.disabled {
+  opacity: 0.5;
 }
 
 .zoom-label {
@@ -997,12 +1002,38 @@ footer {
   background: #3a4a3a;
 }
 
-/* "Auto-calculate assigned ingredient" (see ingredientAssignment.ts) — a
-   per-customer color wash + ring, set via --auto-color. Comes after
-   .frozen/.group-* so it visually wins when the designer has it toggled on. */
+/* "Show pickup order" (see estimateDifficulty.ts) — a per-customer color wash
+   + ring, set via --auto-color. Comes after .frozen/.group-* so it visually
+   wins when the designer has it toggled on. */
 .queue-tile.auto-color {
   background: color-mix(in srgb, var(--auto-color) 38%, var(--panel));
   box-shadow: inset 0 0 0 2px var(--auto-color);
+}
+
+/* A pick made to dig toward a buried ingredient, or at random — it isn't
+   what that customer wanted, so it's marked out with a dashed ring. */
+.queue-tile.pickup-detour {
+  box-shadow: inset 0 0 0 2px var(--auto-color);
+  outline: 1px dashed var(--muted);
+  outline-offset: -4px;
+}
+
+/* Pickup order number. Every member of a combined/linked group carries the
+   same value, because the whole group is one pick. */
+.pickup-order {
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  min-width: 1.05rem;
+  padding: 0 0.15rem;
+  border-radius: 0.55rem;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.05rem;
+  text-align: center;
+  pointer-events: none;
 }
 
 .queue-tile.add-tile {
@@ -2668,3 +2699,73 @@ td input {
   gap: 0.5rem;
 }
 
+
+/* ---------- Estimate Difficulty (see ui/design/estimateDifficulty.ts) ---------- */
+
+/* Verdict line above the customer cards. The unsolvable case is the one a
+   designer must not miss, so it gets the --bad treatment. */
+.estimate-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  border-radius: 0.35rem;
+  background: var(--panel-2);
+  font-size: 0.78rem;
+}
+
+.estimate-bar.unsolvable {
+  border-left-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, var(--panel-2));
+}
+
+.estimate-reason {
+  color: var(--muted);
+}
+
+.estimate-metric {
+  margin-left: auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.7rem;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+/* Only the first metric pushes right; the rest sit next to it. */
+.estimate-metric ~ .estimate-metric {
+  margin-left: 0;
+}
+
+/* Per-customer grid cost, in the card header next to the wait badge. */
+.cust-cost {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-occupied,
+.cost-waste {
+  padding: 0 0.25rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+/* Waste is the number worth acting on, so it only lights up when non-zero. */
+.cost-waste.bad {
+  background: color-mix(in srgb, var(--bad) 30%, transparent);
+  color: #fff;
+}
+
+/* Ties the card to the colour its ingredients get in the queue lanes. */
+.customer-card[style*="--customer-color"] .cust-index {
+  border-bottom: 2px solid var(--customer-color);
+}
