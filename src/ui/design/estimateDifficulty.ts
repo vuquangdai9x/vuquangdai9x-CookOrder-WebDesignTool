@@ -6,19 +6,25 @@
 //
 // This drives the REAL Simulation (src/core/sim.ts), so tool slots, cooking
 // times, chained recipes, baseId ordering, usageNum multi-serve, direct-serve
-// and grid overflow all behave exactly as they do in Play mode. What's
-// heuristic is only the *choice* of which lane to pick, per the algorithm
-// below:
+// and grid overflow all behave exactly as they do in Play mode — including
+// the requirement that a landing ingredient is matched against *every*
+// serveable dish, not just the one being worked on (Simulation.autoServe
+// already walks all active customers and all their dishes).
 //
-//   for each customer, in arrival order:
-//     for each of their dishes, in order:
-//       - look along the FRONT row for something this dish still needs
-//         (bases first, so toppings aren't stranded), and pick it
-//       - otherwise look into the lookahead rows (2nd/3rd, per the map's
-//         visibleRows). If a needed item is buried at (x, y), pick lane x's
-//         front to dig toward it — those digging picks are "detours"
-//       - otherwise pick at random, to keep the queues flowing
-//       - if the grid overflows, halt and report the level unsolvable
+// What's heuristic is only the *choice* of which lane to pick:
+//
+//   1. Recompute the serveable window (below) whenever a customer completes.
+//   2. Score every pickable lane against every serveable dish at once:
+//        - a base ingredient a dish still needs        -> great
+//        - a topping whose base is already in the dish -> great
+//        - a topping whose base isn't down yet         -> considerable
+//      A match found in a lookahead row scores the same, decayed once per row
+//      below the front, so digging two deep for a great item can still beat
+//      taking a merely-considerable one off the top.
+//   3. Pick the highest-scoring lane. If its winning match was buried rather
+//      than fronting, the pick is a "detour" — we spent it digging.
+//   4. If nothing scores, spend a pick keeping the queues flowing.
+//   5. If the grid overflows, halt and report the level unsolvable.
 //
 // Every pick is stamped with a global pickup counter and the customer it was
 // made for; queueSection.ts renders those as a per-tile order badge and
@@ -27,9 +33,9 @@
 
 import { CUSTOMER_STAFF } from "../../core/effects.ts";
 import { Simulation } from "../../core/sim.ts";
-import type { LoseReason } from "../../core/sim.ts";
-import { resolveCookedId } from "../../core/types.ts";
-import type { CookedIngredientDef, Id, LevelConfig, MapDef, QueueItem } from "../../core/types.ts";
+import type { CustomerState, LoseReason } from "../../core/sim.ts";
+import { findToolRecipe, resolveCookedId } from "../../core/types.ts";
+import type { Id, LevelConfig, MapDef, QueueItem } from "../../core/types.ts";
 import { cidOf } from "./changeTracking.ts";
 
 /** What one queue tile turned out to be worth, once the solver got to it. */
@@ -39,9 +45,9 @@ export interface EstimateSlot {
   /** Index into the customer list this pick was made for; drives the tile colour. */
   customerIndex: number;
   /**
-   * True when this pick wasn't itself wanted — it was made to dig toward a
-   * buried ingredient, or at random because nothing useful was reachable.
-   * These are what drive grid waste.
+   * True when this pick wasn't itself wanted — it was spent digging toward a
+   * buried ingredient, or keeping the queues flowing because nothing
+   * reachable scored. These are what drive grid waste.
    */
   detour: boolean;
 }
@@ -57,9 +63,9 @@ export interface CustomerCost {
   gridOccupied: number;
   /** Peak grid cells holding something this customer's order does NOT need. */
   gridWaste: number;
-  /** How many picks were spent while this customer was the target. */
+  /** How many picks were attributed to this customer. */
   picks: number;
-  /** Of those, how many were digging/random picks rather than wanted ingredients. */
+  /** Of those, how many were digging/flow picks rather than a wanted ingredient. */
   detours: number;
 }
 
@@ -76,13 +82,47 @@ export interface EstimateResult {
 }
 
 export interface EstimateOptions {
-  /** Overrides the default seeded PRNG used by the random fallback. */
+  /** Overrides the default seeded PRNG used to break ties between useless picks. */
   rng?: () => number;
   /** Safety valve against a pathological level; default 5000. */
   maxIterations?: number;
 }
 
 const DEFAULT_MAX_ITERATIONS = 5000;
+/** Bound on draining cooking between picks — far above any real tool chain. */
+const SETTLE_GUARD = 200;
+
+/**
+ * Two customers may be serveable at once only while their orders together are
+ * small; past that the window narrows to one so a designer sees the same
+ * pressure a player would. Recomputed on init and whenever a customer leaves.
+ */
+const MAX_PAIR_DISHES = 5;
+
+/** An ingredient a dish still needs and that nothing has to come before. */
+const SCORE_BASE = 100;
+/** A topping whose base is already down, so it can be served the moment it lands. */
+const SCORE_READY = 100;
+/** A topping the dish wants but can't accept yet — worth fetching, but not first. */
+const SCORE_BLOCKED = 40;
+/**
+ * ...and barely worth anything once the grid is nearly full. A blocked
+ * topping occupies its cell until its base shows up, so fetching one under
+ * pressure is how a board deadlocks: the grid jams, and then a served
+ * customer's dirty plate has nowhere to land.
+ */
+const SCORE_BLOCKED_TIGHT = 5;
+/**
+ * A sweeper while dirty stacks are on the board. Sits between a blocked
+ * topping and a ready ingredient: clearing dirt isn't progress toward an
+ * order, but it is real work — and on a tight grid it's the only thing
+ * standing between the level and a dirty-overflow loss.
+ */
+const SCORE_SWEEPER = 60;
+/** ...and it outranks everything once the grid is under pressure. */
+const SCORE_SWEEPER_URGENT = 120;
+/** Multiplied in once per row below the front, so shallow beats deep, all else equal. */
+const ROW_DECAY = 0.5;
 
 /**
  * The default RNG is deliberately a fixed-seed PRNG, not Math.random: a
@@ -98,69 +138,35 @@ function seededRng(seed = 0x5eed): () => number {
     return s / 4294967296;
   };
 }
-/** Bound on draining cooking between picks — far above any real tool chain. */
-const SETTLE_GUARD = 200;
 
-/** Raw ingredient ids that eventually become each cooked id. */
-function rawsByCooked(map: MapDef): Map<Id, Id[]> {
-  const out = new Map<Id, Id[]>();
-  for (const raw of map.rawIngredients) {
-    const cooked = resolveCookedId(map.tools, map.rawIngredients, raw.id);
-    const bucket = out.get(cooked);
-    if (bucket) bucket.push(raw.id);
-    else out.set(cooked, [raw.id]);
-  }
-  return out;
-}
-
-const defOf = (map: MapDef, cookedId: Id): CookedIngredientDef | undefined =>
-  map.cookedIngredients.find((c) => c.id === cookedId);
+const isOrdering = (c: CustomerState): boolean => c.config.typeId !== CUSTOMER_STAFF;
 
 /**
- * Orders a dish's outstanding ingredients so the solver reaches for a base
- * before the toppings that depend on it. Without this the solver happily
- * fetches four toppings that can't be served, filling the grid with
- * base-blocked pieces — which is exactly the failure the old heuristic
- * couldn't see.
+ * How many customers should be serveable right now: two when the next two
+ * orders total at most MAX_PAIR_DISHES dishes, otherwise one.
  */
-function prioritize(map: MapDef, remaining: Id[], filled: Id[]): Id[] {
-  const rank = (id: Id): number => {
-    const base = defOf(map, id)?.baseId;
-    if (base === undefined) return 0; // a base itself, or needs nothing — always first
-    const options = Array.isArray(base) ? base : [base];
-    return options.some((b) => filled.includes(b)) ? 1 : 2; // servable now, else blocked
-  };
-  return [...remaining].sort((a, b) => rank(a) - rank(b));
-}
-
-/** Cooked ids a customer still needs across every one of their dishes. */
-function neededByCustomer(dishes: { remaining: Id[] }[]): Set<Id> {
-  const set = new Set<Id>();
-  for (const dish of dishes) for (const id of dish.remaining) set.add(id);
-  return set;
+function serveableWindow(sim: Simulation): number {
+  const upcoming = [...sim.active, ...sim.pending];
+  if (upcoming.length < 2) return 1;
+  const dishes = upcoming[0].dishes.length + upcoming[1].dishes.length;
+  return dishes <= MAX_PAIR_DISHES ? 2 : 1;
 }
 
 /**
- * Lanes whose fronting instance can be picked right now, deduped by group so
- * a combined/linked block spanning several columns is offered once.
+ * Applies the window to the sim and lets it admit customers under the new
+ * value. `tick(0)` is the public way to reach Simulation's private settle()
+ * (which is what calls fillSlots) without advancing any timer.
  */
-function pickableLanes(sim: Simulation): number[] {
-  const out: number[] = [];
-  const seen = new Set<number>();
-  for (let x = 0; x < sim.columnCount; x++) {
-    const front = sim.frontCell(x);
-    if (!front) continue;
-    if (front.group !== -1) {
-      if (seen.has(front.group)) continue;
-      seen.add(front.group);
-    }
-    if (sim.canPick(x).ok) out.push(x);
+function syncWindow(sim: Simulation): void {
+  for (let guard = 0; guard < 8; guard++) {
+    sim.level.serveableSlots = serveableWindow(sim);
+    if (sim.status !== "playing") return;
+    if (sim.active.length >= sim.level.serveableSlots || sim.pending.length === 0) return;
+    const before = sim.active.length;
+    sim.tick(0);
+    if (sim.active.length === before) return;
   }
-  return out;
 }
-
-const produces = (item: QueueItem | undefined, rawIds: Id[]): boolean =>
-  !!item && item.kind === "ingredient" && rawIds.includes(item.id);
 
 /** Drains every in-progress cooking step so the board has settled before the next decision. */
 function settle(sim: Simulation): void {
@@ -177,7 +183,7 @@ export function estimateDifficulty(
 ): EstimateResult {
   const rng = opts.rng ?? seededRng();
   const maxIterations = opts.maxIterations ?? DEFAULT_MAX_ITERATIONS;
-  const rawsFor = rawsByCooked(map);
+  const baseOf = new Map(map.cookedIngredients.map((c) => [c.id, c.baseId]));
 
   const sim = new Simulation(map, level, {
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
@@ -190,6 +196,61 @@ export function estimateDifficulty(
   let iterations = 0;
   let halted: string | undefined;
 
+  /**
+   * True from half-full onward, not just when nearly jammed: a chopping-board
+   * pick drops TWO pieces at once, so the room has to already be there.
+   * Recomputed once per decision and read by the scorers, so "is this pick
+   * safe right now?" is part of the score rather than an afterthought.
+   */
+  let gridTight = false;
+  const countGrid = (): { free: number; dirty: number } => {
+    let free = 0;
+    let dirty = 0;
+    for (const cell of sim.grid) {
+      if (cell.kind === "empty") free++;
+      else if (cell.kind === "dirty") dirty++;
+    }
+    return { free, dirty };
+  };
+
+  /**
+   * Cooked ids the serveable dishes still need *beyond what's already coming*:
+   * demand minus everything on the grid, in flight, or cooking. Without this
+   * the solver happily fetches a third tomato for a dish that wanted one,
+   * and since a chopping-board pick yields two pieces at a time, a 10-cell
+   * grid jams long before the orders are filled.
+   */
+  let outstanding = new Map<Id, number>();
+  const computeOutstanding = (): Map<Id, number> => {
+    const need = new Map<Id, number>();
+    for (const customer of sim.active) {
+      if (!isOrdering(customer)) continue;
+      for (const dish of customer.dishes) {
+        for (const id of dish.remaining) need.set(id, (need.get(id) ?? 0) + 1);
+      }
+    }
+    // Supply already in the pipeline.
+    for (const cell of sim.grid) {
+      if (cell.kind === "cooked" && need.has(cell.cookedId)) {
+        need.set(cell.cookedId, need.get(cell.cookedId)! - (cell.usesLeft ?? 1));
+      }
+    }
+    for (const flight of sim.flights) {
+      if (need.has(flight.itemId)) need.set(flight.itemId, need.get(flight.itemId)! - 1);
+    }
+    for (const tool of sim.tools) {
+      for (const slot of tool.slots) {
+        const item = slot.item;
+        if (!item) continue;
+        const recipe = tool.def.recipes.find((r) => r.in === item.rawId);
+        const out = item.chain?.out ?? recipe?.out ?? item.rawId;
+        if (!need.has(out)) continue;
+        need.set(out, need.get(out)! - (item.chain?.amount ?? recipe?.amount ?? 1));
+      }
+    }
+    return need;
+  };
+
   const costFor = (index: number): CustomerCost => {
     let c = costs.get(index);
     if (!c) {
@@ -197,6 +258,83 @@ export function estimateDifficulty(
       costs.set(index, c);
     }
     return c;
+  };
+
+  /**
+   * What a cooked id is worth to the dishes that are serveable *right now*,
+   * across every active customer — plus which customer wants it most, for
+   * attribution. 0 means nothing serveable wants it.
+   */
+  const valueOf = (cookedId: Id): { score: number; customerIndex: number } => {
+    let score = 0;
+    let customerIndex = -1;
+    // Enough of this is already on the grid or on its way — another one would
+    // only take up a cell.
+    if ((outstanding.get(cookedId) ?? 0) <= 0) return { score, customerIndex };
+    for (const customer of sim.active) {
+      if (!isOrdering(customer)) continue;
+      for (const dish of customer.dishes) {
+        if (!dish.remaining.includes(cookedId)) continue;
+        const base = baseOf.get(cookedId);
+        let s: number;
+        if (base === undefined) {
+          s = SCORE_BASE;
+        } else {
+          const options = Array.isArray(base) ? base : [base];
+          s = options.some((b) => dish.filled.includes(b))
+            ? SCORE_READY
+            : gridTight
+              ? SCORE_BLOCKED_TIGHT
+              : SCORE_BLOCKED;
+        }
+        if (s > score) {
+          score = s;
+          customerIndex = customer.index;
+        }
+      }
+    }
+    return { score, customerIndex };
+  };
+
+  /**
+   * What clearing the oldest dirty stack is worth right now. Nothing while the
+   * grid is clean; urgent once there's barely anywhere left to land an
+   * ingredient, which is the situation that ends runs as `dirty-overflow`.
+   */
+  const sweeperValue = (): number => {
+    const { dirty } = countGrid();
+    if (dirty === 0) return 0;
+    return gridTight ? SCORE_SWEEPER_URGENT : SCORE_SWEEPER;
+  };
+
+  /** What one queue item is worth, whichever kind it is. */
+  const valueOfItem = (item: QueueItem): { score: number; customerIndex: number } => {
+    if (item.kind === "sweeper") return { score: sweeperValue(), customerIndex: -1 };
+    return valueOf(resolveCookedId(map.tools, map.rawIngredients, item.id));
+  };
+
+  /**
+   * The best thing reachable down one lane. A match in row y is decayed by
+   * ROW_DECAY^y, because getting at it costs y extra picks — that's what makes
+   * "dig two deep for a base" comparable to "take a blocked topping off the top".
+   */
+  const scoreLane = (x: number, depth: number) => {
+    let score = 0;
+    let customerIndex = -1;
+    let fromFront = false;
+    for (let y = 0; y < depth; y++) {
+      const item = sim.queueGrid[x]?.[y]?.item;
+      if (!item) continue;
+      const v = valueOfItem(item);
+      if (v.score === 0) continue;
+      const decayed = v.score * ROW_DECAY ** y;
+      if (decayed > score) {
+        score = decayed;
+        customerIndex = v.customerIndex;
+        fromFront = y === 0;
+      }
+    }
+    return { score, customerIndex, fromFront };
   };
 
   /**
@@ -225,125 +363,104 @@ export function estimateDifficulty(
     cost.picks++;
     if (detour) cost.detours++;
     settle(sim);
+    syncWindow(sim);
     return true;
   };
 
-  /** Re-measures peak grid pressure from the target customer's point of view. */
-  const measure = (customerIndex: number, needed: Set<Id>): void => {
-    let occupied = 0;
-    let waste = 0;
-    for (const cell of sim.grid) {
-      let cooked: Id | null = null;
-      if (cell.kind === "cooked") cooked = cell.cookedId;
-      else if (cell.kind === "raw") cooked = resolveCookedId(map.tools, map.rawIngredients, cell.rawId);
-      else continue;
-      if (needed.has(cooked)) occupied++;
-      else waste++;
+  /**
+   * Re-measures peak grid pressure from every serveable customer's point of
+   * view — with two orders up at once, the same cell is "occupied" for the
+   * customer that wants it and "waste" for the one that doesn't.
+   */
+  const measure = (): void => {
+    for (const customer of sim.active) {
+      if (!isOrdering(customer)) continue;
+      const needed = new Set<Id>();
+      for (const dish of customer.dishes) for (const id of dish.remaining) needed.add(id);
+
+      let occupied = 0;
+      let waste = 0;
+      for (const cell of sim.grid) {
+        let cooked: Id | null = null;
+        if (cell.kind === "cooked") cooked = cell.cookedId;
+        else if (cell.kind === "raw") cooked = resolveCookedId(map.tools, map.rawIngredients, cell.rawId);
+        else continue;
+        if (needed.has(cooked)) occupied++;
+        else waste++;
+      }
+      const cost = costFor(customer.index);
+      cost.gridOccupied = Math.max(cost.gridOccupied, occupied);
+      cost.gridWaste = Math.max(cost.gridWaste, waste);
     }
-    const cost = costFor(customerIndex);
-    cost.gridOccupied = Math.max(cost.gridOccupied, occupied);
-    cost.gridWaste = Math.max(cost.gridWaste, waste);
   };
 
   settle(sim);
+  syncWindow(sim);
 
   while (sim.status === "playing" && iterations < maxIterations) {
     iterations++;
-
-    // The customer we're working for: the earliest active non-staff order.
-    // Staff clear dirty stacks on arrival and need nothing fetched.
-    const target = sim.active.find((c) => c.config.typeId !== CUSTOMER_STAFF);
-    if (!target) {
-      // Only staff (or nobody) is serveable — keep the queues moving so the
-      // next real customer can come forward.
-      const lanes = pickableLanes(sim);
-      if (lanes.length === 0) {
-        if (sim.fastForward() === 0) {
-          halted = "Nothing left to pick and nothing cooking — the queues ran dry.";
-          break;
-        }
-        continue;
-      }
-      if (!take(lanes[Math.floor(rng() * lanes.length)], sim.active[0]?.index ?? 0, true)) break;
-      continue;
-    }
-
-    const needed = neededByCustomer(target.dishes);
-    measure(target.index, needed);
-
-    // Work the first unfinished dish, in priority order so a base is always
-    // fetched before the toppings that are stuck behind it.
-    const dish = target.dishes.find((d) => d.remaining.length > 0);
-    const wanted = dish ? prioritize(map, dish.remaining, dish.filled) : [...needed];
+    measure();
+    gridTight = countGrid().free * 2 <= sim.grid.length;
+    outstanding = computeOutstanding();
 
     const lanes = pickableLanes(sim);
-
-    // 1. Highest-priority ingredient that's already at the front. The loop is
-    //    over `wanted` (not over lanes) precisely so priority wins over lane order.
-    let direct: number | undefined;
-    for (const cookedId of wanted) {
-      const raws = rawsFor.get(cookedId);
-      if (!raws) continue;
-      direct = lanes.find((x) => produces(sim.frontCell(x)?.item, raws));
-      if (direct !== undefined) break;
-    }
-    if (direct !== undefined) {
-      if (!take(direct, target.index, false)) break;
-      measure(target.index, needed);
-      continue;
-    }
-
-    // 2. Buried in a lookahead row — dig toward it by picking its lane's
-    //    front. Highest-priority ingredient first, then the shallowest one;
-    //    the front item we pick isn't what we want, so it's a detour.
-    const depth = Math.max(1, map.visibleRows);
-    let dig: number | undefined;
-    for (const cookedId of wanted) {
-      const raws = rawsFor.get(cookedId);
-      if (!raws) continue;
-      let digDepth = Infinity;
-      for (let y = 1; y < depth; y++) {
-        for (let x = 0; x < sim.columnCount; x++) {
-          if (!produces(sim.queueGrid[x]?.[y]?.item, raws)) continue;
-          if (y < digDepth && lanes.includes(x)) {
-            dig = x;
-            digDepth = y;
-          }
-        }
-      }
-      if (dig !== undefined) break;
-    }
-    if (dig !== undefined) {
-      if (!take(dig, target.index, true)) break;
-      measure(target.index, needed);
-      continue;
-    }
-
-    // 3. Nothing reachable is useful. Let cooking land first if it can —
-    //    the piece we're waiting on may already be in a tool.
     if (lanes.length === 0) {
       if (sim.fastForward() === 0) {
-        halted = "Nothing pickable and nothing cooking — this order can't be completed.";
+        halted = "Nothing left to pick and nothing cooking — the queues ran dry.";
         break;
       }
+      syncWindow(sim);
       continue;
     }
 
-    // 4. Nothing for this customer is reachable, so we have to spend a pick
-    //    just to keep the queues flowing. Prefer something a *different*
-    //    serveable customer needs over a blind random grab — it lands on the
-    //    grid either way, but this way it gets consumed instead of becoming
-    //    dead weight. Still a detour: it wasn't for the customer we're on.
-    const alsoNeeded = sim.neededCookedIds();
-    const useful = lanes.find((x) => {
-      const item = sim.frontCell(x)?.item;
-      if (!item || item.kind !== "ingredient") return false;
-      for (const id of alsoNeeded) if (rawsFor.get(id)?.includes(item.id)) return true;
-      return false;
-    });
-    const fallback = useful ?? lanes[Math.floor(rng() * lanes.length)];
-    if (!take(fallback, target.index, true)) break;
-    measure(target.index, needed);
+    const depth = Math.max(1, map.visibleRows);
+    let best = { lane: -1, score: 0, customerIndex: -1, fromFront: false };
+    for (const x of lanes) {
+      const s = scoreLane(x, depth);
+      if (s.score > best.score) {
+        best = { lane: x, score: s.score, customerIndex: s.customerIndex, fromFront: s.fromFront };
+      }
+    }
+
+    if (best.lane !== -1) {
+      // A sweeper belongs to no order, so it's booked against whoever is up.
+      const owner =
+        best.customerIndex >= 0
+          ? best.customerIndex
+          : (sim.active.find(isOrdering)?.index ?? sim.active[0]?.index ?? 0);
+      // A buried winner means this pick is spent digging toward it, not on
+      // the thing we actually want — that's what makes it a detour.
+      if (!take(best.lane, owner, !best.fromFront)) break;
+      measure();
+      continue;
+    }
+
+    // Nothing serveable wants anything reachable, so this pick only exists to
+    // keep the queues moving. Spend the cheapest one: a chopping-board pick
+    // drops TWO pieces on the grid, and on a level like a frozen-key order
+    // (where the wanted item is unpickable for several turns) a run of
+    // two-piece fallbacks is exactly what jams the board and ends the run.
+    const fallbackOwner = sim.active.find(isOrdering)?.index ?? sim.active[0]?.index ?? 0;
+    let fallback = lanes[Math.floor(rng() * lanes.length)];
+    if (gridTight) {
+      // While the grid is genuinely roomy, holding out for the smallest item
+      // just starves the queues, so footprint only decides it under pressure.
+      let cheapestYield = Infinity;
+      for (const x of lanes) {
+        const item = sim.frontCell(x)?.item;
+        if (!item) continue;
+        // A sweeper frees a cell instead of filling one — always cheapest.
+        const y = item.kind === "sweeper"
+          ? -1
+          : (findToolRecipe(map.tools, item.id)?.recipe.amount ?? 1);
+        if (y < cheapestYield) {
+          cheapestYield = y;
+          fallback = x;
+        }
+      }
+    }
+    if (!take(fallback, fallbackOwner, true)) break;
+    measure();
   }
 
   const bailed = sim.status === "playing" && !halted;
@@ -371,4 +488,23 @@ export function estimateDifficulty(
     byCid,
     perCustomer: [...costs.values()].sort((a, b) => a.index - b.index),
   };
+}
+
+/**
+ * Lanes whose fronting instance can be picked right now, deduped by group so
+ * a combined/linked block spanning several columns is offered once.
+ */
+function pickableLanes(sim: Simulation): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (let x = 0; x < sim.columnCount; x++) {
+    const front = sim.frontCell(x);
+    if (!front) continue;
+    if (front.group !== -1) {
+      if (seen.has(front.group)) continue;
+      seen.add(front.group);
+    }
+    if (sim.canPick(x).ok) out.push(x);
+  }
+  return out;
 }

@@ -160,6 +160,64 @@ describe("estimateDifficulty", () => {
     for (const count of byOrder.values()) expect(count).toBe(1);
   });
 
+  it("serves two small orders concurrently, but only one when the pair is too big", () => {
+    // Pair rule: 2 customers up at once only while their dishes total <= 5.
+    const small = tagged(
+      level({
+        queueString: "0,0%1,1",
+        gridString: EMPTY_GRID,
+        // 2 dishes + 2 dishes = 4 <= 5, so both are serveable together.
+        customerString: "0;0;0;0|0;0;0;1|0;0;0;0|0;0;0;1",
+        serveableSlots: 1, // deliberately wrong — the solver must override it
+      }),
+    );
+    const a = estimateDifficulty(testMap, small, { rng: seededRng(3) });
+    expect(a.solvable).toBe(true);
+    // Both of the first two customers get picks attributed while they're up.
+    expect(a.perCustomer.filter((c) => c.picks > 0).length).toBeGreaterThan(1);
+
+    const big = tagged(
+      level({
+        queueString: "0,0,0,0%1,1,1,1",
+        gridString: EMPTY_GRID,
+        // 4 dishes + 4 dishes = 8 > 5, so they must come up one at a time.
+        customerString: "0;0;0;0,0,0,0|0;0;0;1,1,1,1",
+        serveableSlots: 2,
+      }),
+    );
+    const b = estimateDifficulty(testMap, big, { rng: seededRng(3) });
+    expect(b.solvable).toBe(true);
+    // Customer 0's order is fully picked before customer 1 gets anything.
+    const orders = [...b.byCid.values()].sort((x, y) => x.order - y.order);
+    const firstOfCustomer1 = orders.findIndex((s) => s.customerIndex === 1);
+    const lastOfCustomer0 = orders.map((s) => s.customerIndex).lastIndexOf(0);
+    expect(firstOfCustomer1).toBeGreaterThan(lastOfCustomer0);
+  });
+
+  it("prefers a deep base over a shallow blocked topping, via row decay", () => {
+    // cooked 1 needs cooked 0. Lane 0 fronts the blocked topping (score 40);
+    // lane 1 has the base one row down (100 * 0.5 = 50). 50 > 40, so the
+    // solver digs lane 1 rather than taking the topping it can't serve.
+    const withBase: MapDef = {
+      ...testMap,
+      cookedIngredients: testMap.cookedIngredients.map((c) =>
+        c.id === 1 ? { ...c, baseId: 0 } : c,
+      ),
+    };
+    const lvl = tagged(
+      level({
+        queueString: "1,1%2,0",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.1",
+      }),
+    );
+    const digCid = cidOf(lvl.queues[1][0])!; // raw 2, the thing covering the base
+
+    const result = estimateDifficulty(withBase, lvl, { rng: seededRng(3) });
+    expect(result.byCid.get(digCid)?.order).toBe(1);
+    expect(result.byCid.get(digCid)?.detour).toBe(true); // it was a dig, not a want
+  });
+
   it("is deterministic by default, so re-running an unchanged level repeats the verdict", () => {
     // No rng passed — exercises the built-in seeded PRNG, not Math.random.
     const build = () =>
