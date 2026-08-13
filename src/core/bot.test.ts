@@ -45,7 +45,7 @@ describe("greedy bot", () => {
     const result1 = runBotTrial(map1, map1.levels[0], { type: "greedy" });
     const result2 = runBotTrial(map1, map1.levels[0], { type: "greedy" });
     expect(result1.status).toBe("won");
-    expect(result1.servedCount).toBe(7);
+    expect(result1.servedCount).toBe(4);
     // No RNG involved — identical every time.
     expect(result2.status).toBe("won");
     expect(result2.servedCount).toBe(result1.servedCount);

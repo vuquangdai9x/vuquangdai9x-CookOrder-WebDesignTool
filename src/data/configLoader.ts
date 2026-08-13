@@ -16,6 +16,7 @@ import type {
   ParamDef,
 } from "../core/types.ts";
 import type { LevelData, MapData } from "./mapLoader.ts";
+import { levelsForMap } from "./levelSnapshot.ts";
 
 import boostersJson from "./config/general/boosters.json";
 import cellStatusesJson from "./config/general/cell-statuses.json";
@@ -32,7 +33,6 @@ import weatherJson from "./config/general/weather.json";
 import map1Json from "./config/map1-burger/map.json";
 import map1CookedJson from "./config/map1-burger/cooked-ingredients.json";
 import map1IngredientsJson from "./config/map1-burger/ingredients.json";
-import map1LevelsJson from "./config/map1-burger/levels.json";
 import map1ToolsJson from "./config/map1-burger/cooking-tools.json";
 import map1DirtyJson from "./config/map1-burger/dirty-objects.json";
 import map1AvatarsJson from "./config/map1-burger/customer-avatars.json";
@@ -41,7 +41,6 @@ import map1LevelEconomyJson from "./config/map1-burger/level-economy.json";
 import map2Json from "./config/map2-donut/map.json";
 import map2CookedJson from "./config/map2-donut/cooked-ingredients.json";
 import map2IngredientsJson from "./config/map2-donut/ingredients.json";
-import map2LevelsJson from "./config/map2-donut/levels.json";
 import map2ToolsJson from "./config/map2-donut/cooking-tools.json";
 import map2DirtyJson from "./config/map2-donut/dirty-objects.json";
 import map2LevelEconomyJson from "./config/map2-donut/level-economy.json";
@@ -202,7 +201,7 @@ export const MAP1_DATA: MapData = buildMap(
   map1IngredientsJson.ingredients as IngredientRow[],
   map1CookedJson.cookedIngredients as CookedRow[],
   map1ToolsJson.tools as CookingToolDef[],
-  map1LevelsJson.levels as LevelData[],
+  levelsForMap(map1Json.id),
   map1DirtyJson.cookedIngredients as DirtyRow[],
   map1AvatarsJson.avatars as string[],
   map1LevelEconomyJson.levelEconomy as LevelEconomyEntry[],
@@ -213,7 +212,7 @@ export const MAP2_DATA: MapData = buildMap(
   map2IngredientsJson.ingredients as IngredientRow[],
   map2CookedJson.cookedIngredients as CookedRow[],
   map2ToolsJson.tools as CookingToolDef[],
-  map2LevelsJson.levels as LevelData[],
+  levelsForMap(map2Json.id),
   map2DirtyJson.cookedIngredients as DirtyRow[],
   [],
   map2LevelEconomyJson.levelEconomy as LevelEconomyEntry[],

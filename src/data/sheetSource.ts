@@ -22,6 +22,14 @@ import {
   requestAccessTokenInteractive,
 } from "./googleAuth.ts";
 import remoteSheetColumnsJson from "./config/general/remote-sheet-columns.json";
+import { columnLetter, letterToColumn, parseCsv } from "./csvColumns.ts";
+
+// Re-exported for backward compatibility — ui/remote/index.ts, sheetWrite.ts,
+// and sheetSource.test.ts all import these from here. The implementations
+// live in csvColumns.ts (a dependency-free leaf module) so levelSnapshot.ts
+// can use them without creating a circular import back through
+// configLoader.ts, which this file itself imports from.
+export { columnLetter, letterToColumn, parseCsv };
 
 /**
  * No default on purpose: the actual spreadsheet id is project-private, so it
@@ -189,27 +197,6 @@ export const REMOTE_LEVEL_FIELDS: { label: string; key: keyof RemoteSheetColumns
   { label: "Queues", key: "queueString" },
 ];
 
-/** 0-based column index -> spreadsheet letter ("A", "Z", "AA", ...). */
-export function columnLetter(index: number): string {
-  let n = index + 1;
-  let s = "";
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    s = String.fromCharCode(65 + rem) + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return s;
-}
-
-/** Inverse of columnLetter: spreadsheet letter(s) -> 0-based column index. Non-letter input (or empty) returns -1. */
-export function letterToColumn(letters: string): number {
-  const trimmed = letters.trim().toUpperCase();
-  if (!/^[A-Z]+$/.test(trimmed)) return -1;
-  let n = 0;
-  for (const ch of trimmed) n = n * 26 + (ch.charCodeAt(0) - 64);
-  return n - 1;
-}
-
 export interface LevelSheetRow {
   /** 1-indexed sheet row — needed to write this row's cells back in place. */
   rowNumber: number;
@@ -313,6 +300,7 @@ const LEVELS_CSV_HEADER = [
   "Level_ID", "Name", "Weather", "LevelTag", "FeatureUnlock", "ShuffleDistance",
   "ServeableSlots", "QueueString", "GridString", "CustomerString",
   "OutOfSlotPolicy", "BoosterCharges",
+  "IngredientWeights", "CustomerDishesSequence", "ComplexityCurve", "ShuffleCurve", "DesignNote",
 ];
 
 /** Level data only: metadata, customer, grid and queue strings — no map/ingredient/tool definitions. */
@@ -321,6 +309,8 @@ export function levelsCsv(map: MapData): string {
     l.id, l.name, l.weather, l.levelTag, l.featureUnlock, l.shuffleDistance,
     l.serveableSlots, l.queueString, l.gridString, l.customerString,
     l.outOfSlotPolicy ?? "", (l.boosterCharges ?? []).join("|"),
+    l.ingredientWeights ?? "", l.customerDishesSequence ?? "", l.complexityCurve ?? "",
+    l.shuffleCurve ?? "", l.designNote ?? "",
   ]);
   return toCsv([LEVELS_CSV_HEADER, ...rows]);
 }
@@ -343,68 +333,6 @@ export function exportProjectCsv(maps: MapData[]): void {
 
 // ---------- loading: CSV import ----------
 
-/**
- * Minimal RFC4180 CSV parser: handles quoted fields with embedded commas,
- * escaped quotes (""), and both \r\n and \n line endings. Needed because
- * csvEscape() quotes GridString/CustomerString whenever they contain a comma.
- */
-export function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-  let i = 0;
-  const n = text.length;
-  while (i < n) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i += 2;
-          continue;
-        }
-        inQuotes = false;
-        i++;
-        continue;
-      }
-      field += c;
-      i++;
-      continue;
-    }
-    if (c === '"') {
-      inQuotes = true;
-      i++;
-      continue;
-    }
-    if (c === ",") {
-      row.push(field);
-      field = "";
-      i++;
-      continue;
-    }
-    if (c === "\r") {
-      i++;
-      continue;
-    }
-    if (c === "\n") {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-      i++;
-      continue;
-    }
-    field += c;
-    i++;
-  }
-  if (field !== "" || row.length > 0) {
-    row.push(field);
-    rows.push(row);
-  }
-  return rows;
-}
-
 /** Reverses levelsCsv() — parses a levels CSV (with or without the header row) back into LevelData[]. */
 export function importLevelsCsv(text: string): LevelData[] {
   const allRows = parseCsv(text).filter((r) => r.some((cell) => cell.trim() !== ""));
@@ -416,6 +344,7 @@ export function importLevelsCsv(text: string): LevelData[] {
       id, name, weather, levelTag, featureUnlock, shuffleDistance,
       serveableSlots, queueString, gridString, customerString,
       outOfSlotPolicy, boosterCharges,
+      ingredientWeights, customerDishesSequence, complexityCurve, shuffleCurve, designNote,
     ] = r;
     if (!id || Number.isNaN(Number(id))) {
       throw new Error(`Row ${i + 1}: invalid Level_ID "${id ?? ""}"`);
@@ -439,6 +368,11 @@ export function importLevelsCsv(text: string): LevelData[] {
       const charges = boosterCharges.split("|").map(Number);
       if (charges.every((n) => !Number.isNaN(n))) level.boosterCharges = charges;
     }
+    if (ingredientWeights) level.ingredientWeights = ingredientWeights;
+    if (customerDishesSequence) level.customerDishesSequence = customerDishesSequence;
+    if (complexityCurve) level.complexityCurve = complexityCurve;
+    if (shuffleCurve) level.shuffleCurve = shuffleCurve;
+    if (designNote) level.designNote = designNote;
     return level;
   });
 }

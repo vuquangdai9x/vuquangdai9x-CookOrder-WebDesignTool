@@ -4,8 +4,8 @@ import { ALL_MAPS, MAP1_DATA, MAP2_DATA } from "./configLoader.ts";
 import { toMapDef } from "./mapLoader.ts";
 
 describe("bundled Map 1 (burger) snapshot", () => {
-  it("has 25 levels (1-6 real sheet data, 7-25 design-level-skill generated)", () => {
-    expect(MAP1_DATA.levels).toHaveLength(25);
+  it("has 20 levels (data-ready rows in the level-data-snapshot.csv — levels 21-25 have no Customers/Grid/Queues authored yet)", () => {
+    expect(MAP1_DATA.levels).toHaveLength(20);
     expect(MAP1_DATA.rawIngredients).toHaveLength(17); // 0-8 burger ids + 9-16 merged in from map2 (chick_breast_raw added 2026-08)
   });
 

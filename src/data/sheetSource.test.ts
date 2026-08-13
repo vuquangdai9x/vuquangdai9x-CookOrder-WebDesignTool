@@ -9,9 +9,12 @@ describe("CSV export (level data only — no map/ingredient/tool definitions)", 
     expect(lines).toHaveLength(MAP1_DATA.levels.length + 1);
     expect(lines[0]).toContain("QueueString");
     expect(lines[0]).not.toContain("GridWidth");
-    // Level 1_3's grid effects survive the round trip through CSV quoting.
-    const l3 = lines[3];
-    expect(l3).toContain('",,,,,#1,,,,#1"');
+    // A level with grid effects (commas + "#") survives the round trip through CSV quoting.
+    const levelWithEffect = MAP1_DATA.levels.find((l) => l.gridString.includes("#"));
+    expect(levelWithEffect).toBeDefined();
+    const rowIndex = MAP1_DATA.levels.indexOf(levelWithEffect!) + 1; // +1 for header row
+    const parsedRow = parseCsv(lines[rowIndex])[0];
+    expect(parsedRow[8]).toBe(levelWithEffect!.gridString); // GridString column
   });
 
   it("does not contain any definition tables", () => {

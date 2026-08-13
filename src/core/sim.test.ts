@@ -851,7 +851,7 @@ describe("real Map 1 level data", () => {
 
   it("level 1_1 starts with serveable customers and a full queue set", () => {
     expect(sim.level.queues).toHaveLength(3);
-    expect(sim.totalCustomers).toBe(7);
+    expect(sim.totalCustomers).toBe(4);
     expect(sim.active.length).toBe(sim.level.serveableSlots);
     expect(sim.status).toBe("playing");
   });
@@ -878,7 +878,7 @@ describe("real Map 1 level data", () => {
       else sim.tick(0.5);
     }
     expect(sim.status).toBe("won");
-    expect(sim.servedCount).toBe(7);
+    expect(sim.servedCount).toBe(4);
   });
 });
 
