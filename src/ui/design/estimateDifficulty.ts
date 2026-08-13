@@ -69,6 +69,27 @@ export interface CustomerCost {
   detours: number;
 }
 
+/** Grid pressure snapshot taken right after one pick has fully settled. */
+export interface OccupancySample {
+  /** Total grid cells not empty — cooked, parked raw, or dirty stacks alike. */
+  occupied: number;
+  /** Of those, how many are dirty stacks specifically. */
+  dirty: number;
+  /**
+   * The score `scoreLane()` gave this pick's winning match — 0 when `random`
+   * is true (nothing scored anything, see estimateDifficulty()'s step 4).
+   * Lets a caller (occupancyChart.ts) shade each pick by how confident the
+   * solver was in it, relative to the rest of the run.
+   */
+  score: number;
+  /** True when this pick came from the score-less fallback — the solver had nothing relevant reachable and just kept the queues moving. */
+  random: boolean;
+  /** Name of the ingredient(s)/sweeper this pick consumed — for the chart's hover tooltip. Usually one entry; more when a combined/linked block was picked as one. */
+  pickedNames: string[];
+  /** Customer index(es) whose order was fully served as a result of this pick, if any — drives the chart's per-completion marker. Usually empty or one entry. */
+  completesCustomers: number[];
+}
+
 export interface EstimateResult {
   solvable: boolean;
   /** Present when `solvable` is false — why the solver gave up. */
@@ -79,6 +100,14 @@ export interface EstimateResult {
   totalCustomers: number;
   byCid: Map<string, EstimateSlot>;
   perCustomer: CustomerCost[];
+  /**
+   * Grid pressure after each pick, in pickup order — occupancyHistory[i] is
+   * the state right after pick #(i+1) (see byCid's 1-based `order`). Powers
+   * customerSection.ts's occupancy chart. Length equals totalPicks.
+   */
+  occupancyHistory: OccupancySample[];
+  /** Total grid cells this level's board has — the chart's y-axis ceiling and the line at which the run would overflow. */
+  gridCapacity: number;
 }
 
 export interface EstimateOptions {
@@ -99,8 +128,13 @@ const SETTLE_GUARD = 200;
  */
 const MAX_PAIR_DISHES = 5;
 
-/** An ingredient a dish still needs and that nothing has to come before. */
-const SCORE_BASE = 100;
+/**
+ * An ingredient a dish still needs and that nothing has to come before.
+ * Exported as the ceiling occupancyChart.ts normalizes its tint gradient
+ * against: a pick scoring at or above this is one of the "2 best scenarios"
+ * (this, or SCORE_READY below) and reads as fully clear/no tint there.
+ */
+export const SCORE_BASE = 100;
 /** A topping whose base is already down, so it can be served the moment it lands. */
 const SCORE_READY = 100;
 /** A topping the dish wants but can't accept yet — worth fetching, but not first. */
@@ -192,9 +226,22 @@ export function estimateDifficulty(
 
   const byCid = new Map<string, EstimateSlot>();
   const costs = new Map<number, CustomerCost>();
+  const occupancyHistory: OccupancySample[] = [];
   let counter = 0;
   let iterations = 0;
   let halted: string | undefined;
+
+  /** One point on the occupancy chart — the board's state once a pick has fully settled. */
+  const sampleOccupancy = (): Pick<OccupancySample, "occupied" | "dirty"> => {
+    let occupied = 0;
+    let dirty = 0;
+    for (const cell of sim.grid) {
+      if (cell.kind === "empty") continue;
+      occupied++;
+      if (cell.kind === "dirty") dirty++;
+    }
+    return { occupied, dirty };
+  };
 
   /**
    * True from half-full onward, not just when nearly jammed: a chopping-board
@@ -345,12 +392,29 @@ export function estimateDifficulty(
    * The items are captured before pick() (which empties those cells) but only
    * stamped after it succeeds, so a rejected pick never burns a counter value.
    */
-  const take = (lane: number, customerIndex: number, detour: boolean): boolean => {
+  /** Human-readable label for a queue tile — the chart's hover tooltip, never gameplay-relevant. */
+  const nameOfItem = (item: QueueItem): string =>
+    item.kind === "sweeper"
+      ? "Sweeper"
+      : (map.rawIngredients.find((r) => r.id === item.id)?.name ?? `#${item.id}`);
+
+  const take = (
+    lane: number,
+    customerIndex: number,
+    detour: boolean,
+    score = 0,
+    random = false,
+  ): boolean => {
     const cells = sim.pickTargets(lane);
     if (cells.length === 0) return false;
     const items = cells
       .map((c) => sim.queueGrid[c.x]?.[c.y]?.item)
       .filter((i): i is QueueItem => !!i);
+
+    // Snapshot who's up before the pick lands, so completeCustomer()'s
+    // splice out of sim.active — the only way a customer leaves it — can be
+    // diffed afterward without depending on sim.events' 200-entry cap.
+    const activeBefore = new Set(sim.active.map((c) => c.index));
 
     if (!sim.pick(lane)) return false;
 
@@ -364,6 +428,18 @@ export function estimateDifficulty(
     if (detour) cost.detours++;
     settle(sim);
     syncWindow(sim);
+    const stillActive = new Set(sim.active.map((c) => c.index));
+    const completesCustomers = [...activeBefore].filter((idx) => !stillActive.has(idx));
+    // Sampled once the pick has fully settled (cooking drained, window
+    // resynced), so the chart shows the board's resting state after each
+    // pick rather than a mid-flight snapshot.
+    occupancyHistory.push({
+      ...sampleOccupancy(),
+      score,
+      random,
+      pickedNames: items.map(nameOfItem),
+      completesCustomers,
+    });
     return true;
   };
 
@@ -430,7 +506,7 @@ export function estimateDifficulty(
           : (sim.active.find(isOrdering)?.index ?? sim.active[0]?.index ?? 0);
       // A buried winner means this pick is spent digging toward it, not on
       // the thing we actually want — that's what makes it a detour.
-      if (!take(best.lane, owner, !best.fromFront)) break;
+      if (!take(best.lane, owner, !best.fromFront, best.score, false)) break;
       measure();
       continue;
     }
@@ -459,7 +535,7 @@ export function estimateDifficulty(
         }
       }
     }
-    if (!take(fallback, fallbackOwner, true)) break;
+    if (!take(fallback, fallbackOwner, true, 0, true)) break;
     measure();
   }
 
@@ -487,6 +563,8 @@ export function estimateDifficulty(
     totalCustomers: sim.totalCustomers,
     byCid,
     perCustomer: [...costs.values()].sort((a, b) => a.index - b.index),
+    occupancyHistory,
+    gridCapacity: sim.grid.length,
   };
 }
 

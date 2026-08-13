@@ -25,6 +25,7 @@ import { defaultCurve, openCurveDialog, parseCurve, serializeCurve } from "./cur
 import { customerColor } from "./customerColors.ts";
 import { difficultyColor, difficultyRatio } from "./estimateDifficulty.ts";
 import type { EstimateResult } from "./estimateDifficulty.ts";
+import { occupancyChartEl } from "./occupancyChart.ts";
 import {
   DEFAULT_INGREDIENT_WEIGHT,
   openIngredientWeightsDialog,
@@ -107,11 +108,17 @@ function customerStatus(
 }
 
 export function createCustomerSection(deps: CustomerSectionDeps): Section<CustomerConfig[]> {
+  // Survives re-renders (the section instance itself is only rebuilt on a
+  // full DesignView.build(), not on every Section.render()) but deliberately
+  // isn't reset on a fresh Estimate Difficulty run — a designer toggling the
+  // chart open once probably wants it to stay open across re-estimates.
+  const chartUi = { open: false };
+
   const section: Section<CustomerConfig[]> = new Section<CustomerConfig[]>({
     title: "Customers",
     saveLabel: "Save Customers",
     initial: tagAllNew(deps.parse()),
-    renderBody: (draft, body) => renderBody(section, deps, draft, body),
+    renderBody: (draft, body) => renderBody(section, deps, draft, body, chartUi),
     onCommit: () => deps.onCommit?.(),
     save: (draft) => {
       deps.level.customerString = serializeCustomers(draft);
@@ -177,11 +184,17 @@ function renderBody(
   deps: CustomerSectionDeps,
   draft: CustomerConfig[],
   body: HTMLElement,
+  chartUi: { open: boolean },
 ): void {
   body.append(levelParamsBar(section, deps));
 
   const estimate = deps.currentEstimate?.() ?? null;
-  if (estimate) body.append(estimateBar(estimate));
+  if (estimate) {
+    body.append(estimateBar(estimate, chartUi.open, () => {
+      chartUi.open = !chartUi.open;
+      section.render();
+    }));
+  }
 
   const row = el("div", { class: "customer-cards", "data-scroll-key": "customer-cards" });
 
@@ -217,11 +230,12 @@ function renderBody(
 }
 
 /**
- * Verdict line for the last Estimate Difficulty run. An unsolvable level is
- * the headline the designer needs, so it gets the warning styling and states
- * how far the solver got before it stalled.
+ * Verdict line for the last Estimate Difficulty run, plus a foldout that
+ * charts grid occupancy across the whole run once opened. An unsolvable
+ * level is the headline the designer needs, so it gets the warning styling
+ * and states how far the solver got before it stalled.
  */
-function estimateBar(estimate: EstimateResult): HTMLElement {
+function estimateBar(estimate: EstimateResult, chartOpen: boolean, onToggleChart: () => void): HTMLElement {
   const peakWaste = estimate.perCustomer.reduce((n, c) => Math.max(n, c.gridWaste), 0);
   const detours = estimate.perCustomer.reduce((n, c) => n + c.detours, 0);
 
@@ -230,6 +244,10 @@ function estimateBar(estimate: EstimateResult): HTMLElement {
     : `Unsolvable — served ${estimate.servedCount} of ${estimate.totalCustomers} after ${estimate.totalPicks} picks`;
 
   const parts: (string | HTMLElement)[] = [
+    button(chartOpen ? "▾" : "▸", onToggleChart, {
+      class: "icon-btn",
+      title: "Show grid occupancy across the whole run, pick by pick",
+    }),
     el("strong", {}, [estimate.solvable ? "✓ " : "⚠ ", summary]),
   ];
   if (estimate.reason) parts.push(el("span", { class: "estimate-reason" }, [estimate.reason]));
@@ -242,11 +260,18 @@ function estimateBar(estimate: EstimateResult): HTMLElement {
     ]),
   );
 
-  return el(
+  const bar = el(
     "div",
     { class: `estimate-bar${estimate.solvable ? "" : " unsolvable"}` },
     parts,
   );
+
+  if (!chartOpen) return bar;
+
+  return el("div", { class: "estimate-panel" }, [
+    bar,
+    occupancyChartEl(estimate.occupancyHistory, estimate.gridCapacity),
+  ]);
 }
 
 /**

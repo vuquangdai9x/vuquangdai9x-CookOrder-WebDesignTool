@@ -47,6 +47,102 @@ describe("estimateDifficulty", () => {
     expect(result.totalPicks).toBe(4);
   });
 
+  it("records one occupancy sample per pick, and reports the board's total cell count as capacity", () => {
+    const result = run(
+      testMap,
+      level({
+        queueString: "0,1%0,1",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.1|0;0;0;0.1",
+      }),
+    );
+
+    expect(result.occupancyHistory).toHaveLength(result.totalPicks);
+    expect(result.gridCapacity).toBe(testMap.gridWidth * testMap.gridHeight);
+    for (const sample of result.occupancyHistory) {
+      expect(sample.occupied).toBeGreaterThanOrEqual(0);
+      expect(sample.occupied).toBeLessThanOrEqual(result.gridCapacity);
+      expect(sample.dirty).toBeGreaterThanOrEqual(0);
+      expect(sample.dirty).toBeLessThanOrEqual(sample.occupied); // dirty stacks are a subset of occupied cells
+    }
+  });
+
+  it("occupancy climbs while a topping waits on the grid for its buried base, then the dirty dish takes its place", () => {
+    // cooked 1 needs cooked 0 (its base) already in the dish. Lane 0 fronts
+    // the topping with nothing else behind it; lane 1 buries the base two
+    // rows deep behind two irrelevant filler raws (cooked 2, which nothing
+    // orders). The topping can't direct-serve without its base, so it lands
+    // and waits; the fillers land too (nobody wants cooked 2 — pure waste)
+    // as the solver digs toward the base. Once the base surfaces it
+    // direct-serves, and the landed topping is served right behind it —
+    // occupied climbs to 3 (topping + 2 filler waste) and stays there (the
+    // topping's cell becomes the dirty dish it leaves behind), but only the
+    // final sample shows that dirty dish.
+    const withBase: MapDef = {
+      ...testMap,
+      cookedIngredients: testMap.cookedIngredients.map((c) => (c.id === 1 ? { ...c, baseId: 0 } : c)),
+    };
+    const result = run(
+      withBase,
+      level({
+        queueString: "1%2,2,0",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.1",
+      }),
+    );
+    expect(result.solvable).toBe(true);
+    // Every pick here scored something (never fell to the random fallback),
+    // and the scores trace the algorithm's own logic: pick 1 takes the front
+    // blocked topping (40, undecayed); picks 2-3 dig for the base one row
+    // deeper each time, so its score keeps decaying (100 * 0.5^2 = 25, then
+    // 100 * 0.5^1 = 50); pick 4 finally finds the base at the front (100, undecayed).
+    expect(result.occupancyHistory.map(({ occupied, dirty, score, random }) => ({ occupied, dirty, score, random }))).toEqual([
+      { occupied: 1, dirty: 0, score: 40, random: false },
+      { occupied: 2, dirty: 0, score: 25, random: false },
+      { occupied: 3, dirty: 0, score: 50, random: false },
+      { occupied: 3, dirty: 1, score: 100, random: false },
+    ]);
+  });
+
+  it("records which ingredient a pick consumed, and which customer it completed", () => {
+    const result = run(
+      testMap,
+      level({
+        queueString: "0",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0",
+      }),
+    );
+    expect(result.solvable).toBe(true);
+    expect(result.occupancyHistory).toHaveLength(1);
+    const sample = result.occupancyHistory[0];
+    // Cooked 0 has no baseId and nothing else competes for it, so this is a
+    // front-row, undecayed SCORE_BASE match, and — being the customer's only
+    // item — direct-serves straight from the tool without ever landing on
+    // the grid. Completing them in the same pick leaves testMap's generic
+    // dirty dish behind (it defines no dirtyObjects of its own), so occupied
+    // lands at 1, not 0.
+    expect(sample.pickedNames).toEqual(["raw0"]);
+    expect(sample.score).toBe(100);
+    expect(sample.random).toBe(false);
+    expect(sample.occupied).toBe(1);
+    expect(sample.dirty).toBe(1);
+    expect(sample.completesCustomers).toEqual([0]);
+  });
+
+  it("records an empty completesCustomers when a pick doesn't finish anyone's order", () => {
+    const result = run(
+      testMap,
+      level({
+        queueString: "0,0",
+        gridString: EMPTY_GRID,
+        // Two cooked-0's ordered — the first pick can't complete the customer alone.
+        customerString: "0;0;0;0.0",
+      }),
+    );
+    expect(result.occupancyHistory[0].completesCustomers).toEqual([]);
+  });
+
   it("attributes each pick to the customer it was made for", () => {
     const result = run(
       testMap,
@@ -126,6 +222,25 @@ describe("estimateDifficulty", () => {
     expect(detours.length).toBeGreaterThan(0);
     expect(result.perCustomer[0].detours).toBeGreaterThan(0);
     expect(result.perCustomer[0].gridWaste).toBeGreaterThan(0);
+  });
+
+  it("marks a pick as random with score 0 when nothing in the queue scores against any order", () => {
+    // The customer only ever wants cooked 0, but the queue is entirely
+    // cooked 2 (which nothing orders) — every pick falls to the score-less
+    // fallback, never to a scored dig or front-row match.
+    const result = run(
+      testMap,
+      level({
+        queueString: "2,2,2",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0",
+      }),
+    );
+    expect(result.occupancyHistory.length).toBeGreaterThan(0);
+    for (const sample of result.occupancyHistory) {
+      expect(sample.random).toBe(true);
+      expect(sample.score).toBe(0);
+    }
   });
 
   it("reports a level unsolvable, with a reason, when the grid overflows", () => {

@@ -2774,6 +2774,146 @@ td input {
   margin-left: 0;
 }
 
+/* Wraps the verdict bar + occupancy chart when the foldout is open — the bar
+   loses its own bottom margin/radius so the two read as one joined panel. */
+.estimate-panel {
+  margin-bottom: 0.6rem;
+}
+
+.estimate-panel .estimate-bar {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: none;
+}
+
+/* ---------- occupancy chart (see ui/design/occupancyChart.ts) ---------- */
+
+.occupancy-chart {
+  padding: 0.5rem 0.6rem 0.4rem;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 0.35rem 0.35rem;
+  background: var(--panel-2);
+}
+
+.occupancy-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.occupancy-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.occupancy-legend-swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.15rem;
+  border-radius: 0.1rem;
+}
+
+/* Clear/no tint (accent) at SCORE_BASE or above, fading to yellow the
+   further a pick's score fell short — see occupancyChart.ts's pickTint(). */
+.occupancy-legend-swatch-scored {
+  background: linear-gradient(90deg, #f0a441, #ffe066);
+}
+
+.occupancy-legend-swatch-random {
+  background: #e05a5a;
+}
+
+.occupancy-legend-swatch-dirty {
+  background: var(--muted);
+}
+
+.occupancy-legend-swatch-capacity {
+  background: repeating-linear-gradient(90deg, var(--muted) 0 3px, transparent 3px 6px);
+}
+
+.occupancy-legend-swatch-served {
+  background: linear-gradient(90deg, #e05a5a, #6bbf59, #5aa7e0);
+}
+
+.occupancy-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.occupancy-line {
+  stroke-width: 0.875;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* Occupied is colored per-segment inline (see occupancyChart.ts's
+   pickLineColor()) — deliberately no fixed `stroke` here, or it would win
+   over that inline attribute (SVG presentation attributes lose to any
+   matching stylesheet rule). */
+
+/* Plain gray — the dirty series carries no scoring/tint semantics of its own. */
+.occupancy-line-dirty {
+  stroke: var(--muted);
+}
+
+.occupancy-pick-band {
+  pointer-events: none;
+}
+
+.occupancy-point {
+  stroke: var(--panel-2);
+  stroke-width: 0.6;
+}
+
+/* One per pick that completed a customer — colored inline via customerColor()
+   so it matches that customer's badge/tile color elsewhere in the panel. */
+.occupancy-complete-line {
+  stroke-width: 1;
+  opacity: 0.8;
+}
+
+.occupancy-complete-label {
+  font-size: 7px;
+  font-weight: 600;
+}
+
+.occupancy-capacity-line {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.occupancy-gridline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.occupancy-axis-label {
+  fill: var(--muted);
+  font-size: 8px;
+}
+
+.occupancy-axis-label-x {
+  text-anchor: end;
+}
+
+.occupancy-axis-label-x-start {
+  text-anchor: start;
+}
+
+.occupancy-empty {
+  padding: 0.4rem 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 /* Per-customer grid cost, in the card header next to the wait badge. */
 .cust-cost {
   display: inline-flex;
