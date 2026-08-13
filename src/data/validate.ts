@@ -3,8 +3,8 @@
 import { EFFECT_FREEZE } from "../core/effects.ts";
 import { parseCustomers, parseGrid, parseQueueGroups, parseQueues } from "../core/parser.ts";
 import type { QueueGroup } from "../core/types.ts";
-import { findToolRecipe } from "../core/types.ts";
 import type { MapData } from "./mapLoader.ts";
+import { demandByRaw, rawYieldAmounts, supplyByRaw } from "./recipeDemand.ts";
 
 /** True when every cell of a group forms one 4-connected block. */
 function isFourConnected(cells: { x: number; y: number }[]): boolean {
@@ -108,32 +108,30 @@ export function validateMap(map: MapData): LevelWarning[] {
     }
 
     // Supply check: can the queues cover every ordered cooked ingredient?
-    // A tool recipe may yield several pieces from one raw unit (e.g. 1 tomato
-    // → 2 slices), and an ingredient with no tool passes through as itself.
-    const supply = new Map<number, number>();
-    for (const item of queues.flat()) {
-      if (item.kind !== "ingredient") continue;
-      const match = findToolRecipe(map.tools, item.id);
-      if (match) {
-        supply.set(
-          match.recipe.out,
-          (supply.get(match.recipe.out) ?? 0) + match.recipe.amount,
+    // Compares in USE units, not physical pickup count — need is a straight
+    // count of order occurrences, have is supply × yield × usageNum (how many
+    // times the queued pieces can actually be served). Shares this math —
+    // including a tool recipe's per-pickup yield and a usageNum ingredient's
+    // multi-serve capacity — with ui/design/queueSection.ts's live Recipe
+    // Pieces foldout; see recipeDemand.ts for why this is one implementation,
+    // not two.
+    const demand = demandByRaw(map, customers);
+    const supply = supplyByRaw(queues);
+    const rawYield = rawYieldAmounts(map);
+    for (const [rawId, info] of demand) {
+      const amount = info.amount || rawYield.get(rawId) || 1;
+      const have = (supply.get(rawId) ?? 0) * amount * info.usageNum;
+      const name = map.rawIngredients.find((r) => r.id === rawId)?.name ?? rawId;
+      if (have < info.need) {
+        add(`Not enough ${name}: orders need ${info.need} use(s), queues supply ${have}.`);
+      } else if (info.usageNum > 1 && have > info.need) {
+        // Bottles are indivisible, so a usageNum ingredient's supply almost
+        // never lands exactly on demand — flag it so a designer can see a
+        // landed piece's spare capacity will go unused, not just infer it.
+        add(
+          `Leftover ${name}: queues supply ${have} use(s) but orders only need ${info.need} — ` +
+            `some capacity of a landed piece will go unused.`,
         );
-      } else {
-        supply.set(item.id, (supply.get(item.id) ?? 0) + 1);
-      }
-    }
-    const demand = new Map<number, number>();
-    for (const c of customers) {
-      for (const d of c.dishes) {
-        for (const id of d.cookedIds) demand.set(id, (demand.get(id) ?? 0) + 1);
-      }
-    }
-    for (const [id, need] of demand) {
-      const have = supply.get(id) ?? 0;
-      if (have < need) {
-        const name = map.cookedIngredients.find((c) => c.id === id)?.name ?? id;
-        add(`Not enough ${name}: orders need ${need}, queues supply ${have}.`);
       }
     }
 

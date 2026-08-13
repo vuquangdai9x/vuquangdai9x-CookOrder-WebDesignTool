@@ -40,7 +40,7 @@
         { "in": 2, "out": 2, "amount": 2 },
         { "in": 3, "out": 3, "amount": 2 },
         { "in": 4, "out": 4, "amount": 2 },
-        { "in": 5, "out": 5, "amount": 2 },
+        { "in": 5, "out": 5, "amount": 3 },
         { "in": 15, "out": 15, "amount": 2 },
         { "in": 13, "out": 13, "amount": 2, "chainTools": [3] }
       ],

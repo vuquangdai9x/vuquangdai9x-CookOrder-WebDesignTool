@@ -23,6 +23,7 @@ import { changeClass, cidOf, tagAllNew, tagNew } from "./changeTracking.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
 import { defaultCurve, openCurveDialog, parseCurve, serializeCurve } from "./curveEditor.ts";
 import { customerColor } from "./customerColors.ts";
+import { difficultyColor, difficultyRatio } from "./estimateDifficulty.ts";
 import type { EstimateResult } from "./estimateDifficulty.ts";
 import {
   DEFAULT_INGREDIENT_WEIGHT,
@@ -362,6 +363,21 @@ function customerCard(
   // Matches the tile tint the queue section paints when "Show pickup order"
   // is on, so a card and its ingredients read as one colour group.
   if (cost) card.style.setProperty("--customer-color", customerColor(index));
+
+  if (cost && estimate) {
+    // Severity, not identity: colored green-to-red by how this order's peak
+    // footprint compares to the worst customer in this same level (see
+    // difficultyRatio) — a designer scanning the row should be able to spot
+    // the tight orders without reading numbers.
+    const worst = estimate.perCustomer.reduce((n, c) => Math.max(n, c.gridOccupied), 0);
+    const ratio = difficultyRatio(cost.gridOccupied, estimate.perCustomer);
+    const bar = el("div", {
+      class: "difficulty-bar",
+      title: `Peak grid pressure: ${cost.gridOccupied} cell(s) — the worst customer in this level peaks at ${worst}`,
+    });
+    bar.style.background = difficultyColor(ratio);
+    card.append(bar);
+  }
 
   const waitInput = el("input", {
     type: "number",

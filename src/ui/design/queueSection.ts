@@ -41,6 +41,7 @@ import { defaultCurve, openCurveDialog, parseCurve, serializeCurve } from "./cur
 import { customerColor } from "./customerColors.ts";
 import type { EstimateResult } from "./estimateDifficulty.ts";
 import { generateQueueLanes } from "./queueGenerate.ts";
+import { demandByRaw, rawYieldAmounts, supplyByRaw } from "../../data/recipeDemand.ts";
 import type { ShuffleRangeSpec } from "./queueGenerate.ts";
 import { Section } from "./section.ts";
 
@@ -576,6 +577,11 @@ function tileEl(
     tile.append(
       el(
         "span",
+        { class: "pickup-customer", title: `Assigned to customer ${slot.customerIndex + 1}` },
+        [`#${slot.customerIndex + 1}`],
+      ),
+      el(
+        "span",
         {
           class: "pickup-order",
           title: slot.detour
@@ -1044,52 +1050,6 @@ function quickAddDrawer(
 // ---------- generation / shuffle ----------
 
 /**
- * Piece-level demand implied by the customer orders, keyed by raw id. A tool
- * recipe can yield several pieces per raw pickup (1 tomato → 2 slices) — this
- * returns the exact piece count needed, plus that raw id's yield, so a caller
- * can compare against actual pieces on hand (raw pickups × yield) rather than
- * rounding demand up to whole raw pickups first. Rounding at the raw-pickup
- * level hides a real mismatch: 3 slices needed and 2 raw tomatoes (4 slices)
- * both "round up" to needing 2 pickups, even though one slice would be wasted.
- */
-function demandByRaw(deps: QueueSectionDeps): Map<number, { needPieces: number; amount: number }> {
-  const cookedToRaw = new Map<number, { rawId: number; amount: number }>();
-  for (const tool of deps.map.tools) {
-    for (const recipe of tool.recipes) {
-      cookedToRaw.set(recipe.out, { rawId: recipe.in, amount: recipe.amount });
-    }
-  }
-  const pieces = new Map<number, number>();
-  for (const customer of deps.currentCustomers()) {
-    for (const dish of customer.dishes) {
-      for (const cookedId of dish.cookedIds) {
-        pieces.set(cookedId, (pieces.get(cookedId) ?? 0) + 1);
-      }
-    }
-  }
-  const demand = new Map<number, { needPieces: number; amount: number }>();
-  for (const [cookedId, count] of pieces) {
-    const via = cookedToRaw.get(cookedId);
-    // No tool: the ingredient passes through as itself, one piece per pickup.
-    const rawId = via?.rawId ?? cookedId;
-    const amount = via?.amount ?? 1;
-    const existing = demand.get(rawId);
-    if (existing) existing.needPieces += count;
-    else demand.set(rawId, { needPieces: count, amount });
-  }
-  return demand;
-}
-
-/** Pieces one pickup of a raw id yields, for every raw id with a recipe — used to price out "have" pieces even for a raw id the current orders don't demand at all. */
-function rawYieldAmounts(map: MapDef): Map<number, number> {
-  const amounts = new Map<number, number>();
-  for (const tool of map.tools) {
-    for (const recipe of tool.recipes) amounts.set(recipe.in, recipe.amount);
-  }
-  return amounts;
-}
-
-/**
  * Opens the queue's Auto Generate dialog (fixed/curve shuffle) against the
  * section's current draft. `skipOverwriteConfirm` lets a caller that already
  * got the designer's intent some other way (see customerSection.ts's
@@ -1164,25 +1124,24 @@ function recipeFoldout(
   ui: QueueUiState,
   draft: QueueDraft,
 ): HTMLElement {
-  const demand = demandByRaw(deps);
+  const demand = demandByRaw(deps.map, deps.currentCustomers());
   const rawYield = rawYieldAmounts(deps.map);
-  const supply = new Map<number, number>();
-  for (const lane of draft.queues) {
-    for (const item of lane) {
-      if (item.kind !== "ingredient") continue;
-      supply.set(item.id, (supply.get(item.id) ?? 0) + 1);
-    }
-  }
+  const supply = supplyByRaw(draft.queues);
 
-  // Piece-level have/need per raw id — comparing raw pickup counts alone
-  // hides a real mismatch (e.g. 3 slices needed vs. 2 pickups yielding 4:
-  // both "round up" to the same pickup count, but one slice goes unused).
+  // Have/need in USE units, not physical pickup count — need is a straight
+  // count of order occurrences; have is pickups × yield × usageNum (how many
+  // times the queued pieces can actually be served). For a normal (usageNum
+  // 1) ingredient this still hides the same real mismatch a raw pickup count
+  // alone would (3 slices needed vs. 2 pickups yielding 4 both "round up" to
+  // the same pickup count) — a usageNum ingredient additionally surfaces a
+  // landed piece's leftover capacity instead of rounding it away.
   const rawIds = new Set([...demand.keys(), ...supply.keys()]);
   const pieceCounts = new Map<number, { have: number; need: number }>();
   for (const rawId of rawIds) {
     const info = demand.get(rawId);
     const amount = info?.amount ?? rawYield.get(rawId) ?? 1;
-    pieceCounts.set(rawId, { have: (supply.get(rawId) ?? 0) * amount, need: info?.needPieces ?? 0 });
+    const usageNum = info?.usageNum ?? 1;
+    pieceCounts.set(rawId, { have: (supply.get(rawId) ?? 0) * amount * usageNum, need: info?.need ?? 0 });
   }
 
   // Keys held by queue items vs. ColorLock demand on the grid.
@@ -1227,7 +1186,7 @@ function recipeFoldout(
       ? [el("span", { class: "warn-badge soft" }, ["⚠ Key colors don't match the grid's locks"])]
       : []),
     ...(!shortPieces.length && !shortKeys.length && !keysMismatch && excessPieces.length
-      ? [el("span", { class: "warn-badge soft" }, ["⚠ Some queue pieces won't be used"])]
+      ? [el("span", { class: "warn-badge soft" }, ["⚠ Some queued capacity won't be used"])]
       : []),
   ]);
 
@@ -1262,7 +1221,7 @@ function recipeFoldout(
 
   foldout.append(
     el("div", { class: "foldout-body" }, [
-      el("div", {}, [el("small", {}, ["Pieces (have / need)"]), pieceRows]),
+      el("div", {}, [el("small", {}, ["Uses (have / need)"]), pieceRows]),
       ...(colorIds.size
         ? [el("div", {}, [el("small", {}, ["Keys (held / locks)"]), keyRows])]
         : []),

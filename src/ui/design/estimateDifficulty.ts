@@ -491,6 +491,33 @@ export function estimateDifficulty(
 }
 
 /**
+ * Green→red for a 0..1 severity ratio — used by customerSection.ts's
+ * per-customer difficulty bar. A straight hue sweep (green 120° to red 0°)
+ * rather than a lightness/opacity ramp, so the color reads at a glance
+ * without needing to compare bars side by side.
+ */
+export function difficultyColor(ratio: number): string {
+  const clamped = Math.min(1, Math.max(0, ratio));
+  const hue = 120 * (1 - clamped);
+  return `hsl(${hue.toFixed(0)}, 70%, 45%)`;
+}
+
+/**
+ * How severe one customer's peak grid footprint is, relative to the worst
+ * customer *in the same level* — not the board's raw capacity. A single
+ * customer's own order almost never fills the whole board (two customers
+ * share it, alongside waste and dirty stacks), so scaling against total grid
+ * cells left every bar clustered in green/yellow with no real customer ever
+ * reading red. Scaling against this level's own worst offender instead
+ * guarantees the color always spans the full range: the hardest customer in
+ * any given level reads true red, an untouched one reads true green.
+ */
+export function difficultyRatio(occupied: number, perCustomer: CustomerCost[]): number {
+  const worst = perCustomer.reduce((n, c) => Math.max(n, c.gridOccupied), 0);
+  return worst > 0 ? occupied / worst : 0;
+}
+
+/**
  * Lanes whose fronting instance can be picked right now, deduped by group so
  * a combined/linked block spanning several columns is offered once.
  */

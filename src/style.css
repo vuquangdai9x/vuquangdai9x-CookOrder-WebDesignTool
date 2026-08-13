@@ -580,6 +580,18 @@ footer {
   border-style: dashed;
 }
 
+/* Estimate Difficulty's per-customer severity strip (see estimateDifficulty.ts
+   difficultyColor()) — pinned to the card's top edge; .customer-card's own
+   overflow:hidden clips it to the card's rounded corners for free. */
+.difficulty-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 2;
+}
+
 /* Wait-timed or weather-affected order — a subtle tint, distinct from the
    change-tracking border colors (added/modified/removed-inside), so it
    reads as "has a condition" at a glance without competing for attention. */
@@ -1033,6 +1045,26 @@ footer {
   font-weight: 700;
   line-height: 1.05rem;
   text-align: center;
+  pointer-events: none;
+}
+
+/* Which customer this tile is headed for — mirrors .pickup-order's pill but
+   pinned to the opposite corner, tinted with the same --auto-color as the
+   tile's own wash so the two badges read as one unit at a glance. */
+.pickup-customer {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  min-width: 1.4rem;
+  padding: 0 0.15rem;
+  border-radius: 0.55rem;
+  background: var(--auto-color, rgba(0, 0, 0, 0.72));
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.05rem;
+  text-align: center;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
   pointer-events: none;
 }
 
