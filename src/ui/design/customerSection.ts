@@ -26,6 +26,10 @@ import { customerColor } from "./customerColors.ts";
 import { difficultyColor, difficultyRatio } from "./estimateDifficulty.ts";
 import type { EstimateResult } from "./estimateDifficulty.ts";
 import { occupancyChartEl } from "./occupancyChart.ts";
+import type { ChartVisibility } from "./occupancyChart.ts";
+
+/** Foldout-open flag plus the per-category legend toggles — see occupancyChart.ts's ChartVisibility. */
+type ChartUi = { open: boolean } & ChartVisibility;
 import {
   DEFAULT_INGREDIENT_WEIGHT,
   openIngredientWeightsDialog,
@@ -111,8 +115,9 @@ export function createCustomerSection(deps: CustomerSectionDeps): Section<Custom
   // Survives re-renders (the section instance itself is only rebuilt on a
   // full DesignView.build(), not on every Section.render()) but deliberately
   // isn't reset on a fresh Estimate Difficulty run — a designer toggling the
-  // chart open once probably wants it to stay open across re-estimates.
-  const chartUi = { open: false };
+  // chart open (or a legend item off) once probably wants that to stick
+  // across re-estimates.
+  const chartUi: ChartUi = { open: false, scoredTint: true, randomTint: true, completeLines: true };
 
   const section: Section<CustomerConfig[]> = new Section<CustomerConfig[]>({
     title: "Customers",
@@ -184,16 +189,21 @@ function renderBody(
   deps: CustomerSectionDeps,
   draft: CustomerConfig[],
   body: HTMLElement,
-  chartUi: { open: boolean },
+  chartUi: ChartUi,
 ): void {
   body.append(levelParamsBar(section, deps));
 
   const estimate = deps.currentEstimate?.() ?? null;
   if (estimate) {
-    body.append(estimateBar(estimate, chartUi.open, () => {
-      chartUi.open = !chartUi.open;
-      section.render();
-    }));
+    body.append(
+      estimateBar(estimate, chartUi, () => {
+        chartUi.open = !chartUi.open;
+        section.render();
+      }, (key) => {
+        chartUi[key] = !chartUi[key];
+        section.render();
+      }),
+    );
   }
 
   const row = el("div", { class: "customer-cards", "data-scroll-key": "customer-cards" });
@@ -235,7 +245,13 @@ function renderBody(
  * level is the headline the designer needs, so it gets the warning styling
  * and states how far the solver got before it stalled.
  */
-function estimateBar(estimate: EstimateResult, chartOpen: boolean, onToggleChart: () => void): HTMLElement {
+function estimateBar(
+  estimate: EstimateResult,
+  chartUi: ChartUi,
+  onToggleChart: () => void,
+  onToggleVisibility: (key: keyof ChartVisibility) => void,
+): HTMLElement {
+  const chartOpen = chartUi.open;
   const peakWaste = estimate.perCustomer.reduce((n, c) => Math.max(n, c.gridWaste), 0);
   const detours = estimate.perCustomer.reduce((n, c) => n + c.detours, 0);
 
@@ -270,7 +286,7 @@ function estimateBar(estimate: EstimateResult, chartOpen: boolean, onToggleChart
 
   return el("div", { class: "estimate-panel" }, [
     bar,
-    occupancyChartEl(estimate.occupancyHistory, estimate.gridCapacity),
+    occupancyChartEl(estimate.occupancyHistory, estimate.gridCapacity, chartUi, onToggleVisibility),
   ]);
 }
 

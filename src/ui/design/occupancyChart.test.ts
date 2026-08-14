@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OccupancySample } from "./estimateDifficulty.ts";
-import { pickLineColor, pickTint, scaleOccupancy } from "./occupancyChart.ts";
+import { pickLineColor, pickPointColor, pickTint, scaleOccupancy } from "./occupancyChart.ts";
 
 // Only scaleOccupancy, pickTint, and pickLineColor are unit-tested —
 // occupancyChartEl builds real DOM/SVG nodes via document.createElement*,
@@ -108,5 +108,25 @@ describe("pickLineColor", () => {
     expect(r).toBeCloseTo((DEFAULT[0] + YELLOW[0]) / 2, 5);
     expect(g).toBeCloseTo((DEFAULT[1] + YELLOW[1]) / 2, 5);
     expect(b).toBeCloseTo((DEFAULT[2] + YELLOW[2]) / 2, 5);
+  });
+});
+
+describe("pickPointColor", () => {
+  const IDEAL: [number, number, number] = [107, 191, 89];
+  const YELLOW: [number, number, number] = [255, 224, 102];
+  const RANDOM: [number, number, number] = [224, 90, 90];
+
+  it("is green — not the plain default — for an ideal (fully clear) scored pick", () => {
+    expect(pickPointColor(s(0, 0, 100, false))).toEqual(IDEAL);
+    expect(pickPointColor(s(0, 0, 999, false))).toEqual(IDEAL); // clamped ratio, still ideal
+  });
+
+  it("is not green for a random pick, even one with a high score field", () => {
+    expect(pickPointColor(s(0, 0, 100, true))).toEqual(RANDOM);
+  });
+
+  it("matches pickLineColor for any non-ideal, non-random pick", () => {
+    expect(pickPointColor(s(0, 0, 50, false))).toEqual(pickLineColor(s(0, 0, 50, false)));
+    expect(pickPointColor(s(0, 0, 0, false))).toEqual(YELLOW);
   });
 });

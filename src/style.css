@@ -2812,6 +2812,32 @@ td input {
   gap: 0.3rem;
 }
 
+/* Legend items for scored/random/served are <button>s (see occupancyChart.ts's
+   legendToggle()) that click-toggle that category's visibility — reset the
+   button chrome so they still read as plain legend text, with a hover/off
+   state to signal they're interactive. */
+.occupancy-legend-toggle {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.occupancy-legend-toggle:hover {
+  color: var(--text);
+}
+
+.occupancy-legend-toggle-off {
+  opacity: 0.45;
+}
+
+.occupancy-legend-toggle-off .occupancy-legend-swatch {
+  filter: grayscale(1);
+}
+
 .occupancy-legend-swatch {
   display: inline-block;
   width: 0.9rem;
@@ -2847,10 +2873,17 @@ td input {
   height: auto;
 }
 
+/* Never a hover target of its own — sits on top of .occupancy-pick-band in
+   the SVG's paint order, and without this, hovering exactly on the visible
+   line (where a user naturally points) would hit the stroke and swallow the
+   event before it reached the band underneath. Letting pointer events pass
+   through means every pixel of a pick's span — line, point, or empty band —
+   goes to the same band listener (see the hover wiring in occupancyChartEl). */
 .occupancy-line {
   stroke-width: 0.875;
   stroke-linejoin: round;
   stroke-linecap: round;
+  pointer-events: none;
 }
 
 /* Occupied is colored per-segment inline (see occupancyChart.ts's
@@ -2863,19 +2896,70 @@ td input {
   stroke: var(--muted);
 }
 
+/* Brightened on hover via occupancyChartEl (fill swapped for its
+   dataset.hoverFill) — always hit-testable, even at alpha 0 (an ideal pick,
+   or a category toggled off via the legend), so hovering anywhere across a
+   pick's x-span shows its tooltip and highlight, not just the small point
+   marker. */
 .occupancy-pick-band {
-  pointer-events: none;
+  pointer-events: all;
 }
 
+/* No hover target of its own (see .occupancy-line above) — the band beneath
+   handles hover for the whole pick, including the point's own pixels. */
 .occupancy-point {
   stroke: var(--panel-2);
   stroke-width: 0.6;
+  pointer-events: none;
+}
+
+/* Shared "this is the hovered pick" highlight — applied to a pick's point and
+   the segment(s) touching it by occupancyChartEl's hover wiring (the band
+   itself is brightened separately, by swapping its fill, since a fully
+   transparent band has no color for a brightness filter to act on). */
+.occupancy-hl {
+  filter: brightness(1.6);
+}
+
+.occupancy-point.occupancy-hl {
+  r: 3.4px;
+}
+
+/* Instant, cursor-following pick info — replaces native SVG <title> tooltips,
+   which have an OS-controlled show delay (400ms+) and can't be styled. See
+   occupancyChartEl's mouseenter/mousemove/mouseleave wiring. */
+.occupancy-tooltip {
+  position: fixed;
+  z-index: 25;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* None of these carry a tooltip and all sit above the bands in paint order —
+   pass hover through to the band beneath rather than swallowing it. */
+.occupancy-gridline,
+.occupancy-capacity-line,
+.occupancy-axis-label,
+.occupancy-complete-line,
+.occupancy-complete-label {
+  pointer-events: none;
 }
 
 /* One per pick that completed a customer — colored inline via customerColor()
-   so it matches that customer's badge/tile color elsewhere in the panel. */
+   so it matches that customer's badge/tile color elsewhere in the panel.
+   Dashed so it reads as a marker/annotation, distinct from the solid
+   occupied/dirty data lines it crosses. */
 .occupancy-complete-line {
   stroke-width: 1;
+  stroke-dasharray: 3 2;
   opacity: 0.8;
 }
 
