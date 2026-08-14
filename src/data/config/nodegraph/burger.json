@@ -1,0 +1,158 @@
+{
+  "_note": "Map 1 (Burger) expressed as a recipe graph. Derived from the CURRENT runtime config — map1-burger/{map,ingredients,cooked-ingredients,cooking-tools,dirty-objects}.json — with ONE deliberate design change, the chicken flour-coating step (see _derivation). Validated against schema.json. runtimeRawId / runtimeCookedId / runtimeToolId / runtimeDirtyId are carried through so a future compiler can round-trip back to the runtime tables; the four coated intermediates have none, because they do not exist in the runtime yet.",
+  "_derivation": [
+    "Raw ids and cooked ids mirror 1:1 in this map (every recipe has in === out), but they are DISTINCT vertices here whenever a tool sits between them: `bun` (raw, pickupable) is not `bun-sliced` (cooked, servable).",
+    "Ice (8), Chili Bowl (14) and Cheese Sauce (16) have no tool recipe — they go straight from queue to grid — so each is ONE vertex that is both pickupable and servable.",
+    "`baseId` on a cooked ingredient became a base/topping edge: baseId 0 (Sliced Bun) -> the burger-toppings group; baseId 7 (Soda Cup) -> soda's topping; baseId [9,10,11,12] -> the fried-chicken-sauces group.",
+    "Fried Potato (cooked 13) carries no baseId and appears in no other item's baseId list, so in today's data it is a standalone order that takes no sauce — modelled as its own orderable with no topping.",
+    "Potato is the one chained recipe: Cutting Board with chainTools [fryer]. It produces NO intermediate item and never lands on the grid mid-chain, so it is a single process edge, not two.",
+    "DESIGN CHANGE vs. the current runtime — chicken now flour-coats before frying: chicken-{breast,wing,thigh,nugget} -> Flour -> *-flour-coated -> Fryer -> *-fried. Today's cooking-tools.json sends raw chicken straight into the Fryer and leaves Flour with an empty recipes array. Modelled as two real process edges with a coated intermediate vertex (not one edge with chainTools), because the coating is a distinct item state; contrast potato, where chainTools is correct precisely because no intermediate item exists. The four coated vertices are neither pickupable nor servable — they only ever sit between two tools — and carry no runtimeCookedId, since the runtime has no ids for them. Wiring this back into the sim means adding four cooked ingredients and rewriting the Fryer's recipe inputs.",
+    "Cheese slices yield 3, not 2 — cooking-tools.json recipe { in: 5, out: 5, amount: 3 }, which disagrees with ingredients.json's numSlices 2. `amount` is authoritative (the sim reads it); numSlices is carried as informational."
+  ],
+  "schemaVersion": 1,
+
+  "map": {
+    "id": "burger",
+    "name": "Burger",
+    "gridWidth": 5,
+    "gridHeight": 2,
+    "dirtyStackHeight": 5,
+    "visibleRows": 3
+  },
+
+  "vertices": {
+    "ingredient": [
+      { "name": "bun", "displayName": "Bun", "pickupable": true, "servable": false, "numSlices": 1, "price": 4, "code": "burger_bun_raw", "emoji": "🍞", "localImage": "Map1-burger/ingredients/burger_bun_raw.png", "runtimeRawId": 0 },
+      { "name": "patty", "displayName": "Patty", "pickupable": true, "servable": false, "numSlices": 1, "price": 10, "code": "beef_patty_raw", "emoji": "🥩", "localImage": "Map1-burger/ingredients/beef_patty_raw.png", "runtimeRawId": 1 },
+      { "name": "tomato", "displayName": "Tomato", "pickupable": true, "servable": false, "numSlices": 2, "price": 5, "code": "tomato", "emoji": "🍅", "localImage": "Map1-burger/ingredients/tomato.png", "runtimeRawId": 2 },
+      { "name": "lettuce", "displayName": "Lettuce", "pickupable": true, "servable": false, "numSlices": 2, "price": 5, "code": "lettuce_raw", "emoji": "🥬", "localImage": "Map1-burger/ingredients/lettuce_raw.png", "runtimeRawId": 3 },
+      { "name": "onion", "displayName": "Onion", "pickupable": true, "servable": false, "numSlices": 2, "price": 5, "code": "onion", "emoji": "🧅", "localImage": "Map1-burger/ingredients/onion.png", "runtimeRawId": 4 },
+      { "name": "cheese", "displayName": "Cheese", "pickupable": true, "servable": false, "numSlices": 2, "price": 6, "code": "cheese", "emoji": "🧀", "localImage": "Map1-burger/ingredients/cheese.png", "runtimeRawId": 5 },
+      { "name": "egg", "displayName": "Egg", "pickupable": true, "servable": false, "numSlices": 1, "price": 7, "code": "egg", "emoji": "🥚", "localImage": "Map1-burger/ingredients/egg.png", "runtimeRawId": 6 },
+      { "name": "cup", "displayName": "Soda Cup (empty)", "pickupable": true, "servable": false, "numSlices": 1, "price": 8, "code": "cup", "emoji": "🥤", "localImage": "Map1-burger/ingredients/cup.png", "runtimeRawId": 7 },
+      { "name": "chicken-breast", "displayName": "Chicken Breast", "pickupable": true, "servable": false, "numSlices": 1, "price": 0, "code": "chicken_breast_raw", "emoji": "🍗", "localImage": "Map1-burger/ingredients/chicken_breast_raw.png", "runtimeRawId": 9 },
+      { "name": "chicken-wing", "displayName": "Chicken Wing", "pickupable": true, "servable": false, "numSlices": 1, "price": 20, "code": "chicken_wing_raw", "emoji": "🍗", "localImage": "Map1-burger/ingredients/chick_wing_raw.png", "runtimeRawId": 10 },
+      { "name": "chicken-thigh", "displayName": "Chicken Thigh", "pickupable": true, "servable": false, "numSlices": 1, "price": 24, "code": "chicken_thigh_raw", "emoji": "🍗", "localImage": "Map1-burger/ingredients/chick_thigh_raw.png", "runtimeRawId": 11 },
+      { "name": "chicken-nugget", "displayName": "Chicken Nugget", "pickupable": true, "servable": false, "numSlices": 1, "price": 28, "code": "chicken_nugget_raw", "emoji": "🍗", "localImage": "Map1-burger/ingredients/chick_nugget_raw.png", "runtimeRawId": 12 },
+      { "name": "potato", "displayName": "Potato", "pickupable": true, "servable": false, "numSlices": 2, "price": 14, "code": "potato", "emoji": "🥔", "localImage": "Map1-burger/ingredients/potato.png", "runtimeRawId": 13 },
+      { "name": "chive", "displayName": "Chive", "pickupable": true, "servable": false, "numSlices": 2, "price": 8, "code": "chive", "emoji": "🌿", "localImage": "Map1-burger/ingredients/chive.png", "runtimeRawId": 15 },
+
+      { "name": "ice", "displayName": "Ice", "pickupable": true, "servable": true, "usageNum": 1, "limitPerDish": 1, "numSlices": 1, "price": 2, "code": "ice", "emoji": "🧊", "localImage": "Map1-burger/ingredients/ice.png", "runtimeRawId": 8, "runtimeCookedId": 8 },
+      { "name": "chili-bowl", "displayName": "Chili Bowl", "pickupable": true, "servable": true, "usageNum": 2, "limitPerDish": 1, "numSlices": 1, "price": 0, "code": "chili_bowl", "emoji": "🌶️", "localImage": "Map1-burger/ingredients/chili_bowl.png", "runtimeRawId": 14, "runtimeCookedId": 14 },
+      { "name": "cheese-sauce", "displayName": "Cheese Sauce", "pickupable": true, "servable": true, "usageNum": 3, "limitPerDish": 1, "numSlices": 1, "price": 8, "code": "cheese_sauce", "emoji": "🧀", "localImage": "Map1-burger/ingredients/cheese_sauce.png", "runtimeRawId": 16, "runtimeCookedId": 16 },
+
+      { "name": "bun-sliced", "displayName": "Sliced Bun", "servable": true, "usageNum": 1, "limitPerDish": 1, "emoji": "🍞", "localImage": "Map1-burger/ingredients/bun-sliced.png", "runtimeCookedId": 0 },
+      { "name": "patty-cooked", "displayName": "Cooked Patty", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🥩", "localImage": "Map1-burger/ingredients/patty-cooked.png", "runtimeCookedId": 1 },
+      { "name": "tomato-sliced", "displayName": "Tomato Slice", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🍅", "localImage": "Map1-burger/ingredients/tomato-sliced.png", "runtimeCookedId": 2 },
+      { "name": "lettuce-sliced", "displayName": "Lettuce Cut", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🥬", "localImage": "Map1-burger/ingredients/lettuce_sliced.png", "runtimeCookedId": 3 },
+      { "name": "onion-sliced", "displayName": "Onion Slice", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🧅", "localImage": "Map1-burger/ingredients/onion-sliced.png", "runtimeCookedId": 4 },
+      { "name": "cheese-sliced", "displayName": "Cheese Slice", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🧀", "localImage": "Map1-burger/ingredients/cheese_sliced.png", "runtimeCookedId": 5 },
+      { "name": "egg-cooked", "displayName": "Fried Egg", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🍳", "localImage": "Map1-burger/ingredients/egg_cooked.png", "runtimeCookedId": 6 },
+      { "name": "soda-cup", "displayName": "Soda Cup", "servable": true, "usageNum": 1, "limitPerDish": 1, "emoji": "🥤", "localImage": "Map1-burger/ingredients/cup_soda.png", "runtimeCookedId": 7 },
+      { "name": "chicken-breast-fried", "displayName": "Fried Breast", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🍗", "localImage": "Map1-burger/ingredients/chicken_breast_fried.png", "runtimeCookedId": 9 },
+      { "name": "chicken-wing-fried", "displayName": "Fried Wing", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🍗", "localImage": "Map1-burger/ingredients/chick_wing_fried.png", "runtimeCookedId": 10 },
+      { "name": "chicken-thigh-fried", "displayName": "Fried Thigh", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🍗", "localImage": "Map1-burger/ingredients/chick_thigh_fried.png", "runtimeCookedId": 11 },
+      { "name": "chicken-nugget-fried", "displayName": "Fried Nugget", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🍗", "localImage": "Map1-burger/ingredients/chick_nugget_fried.png", "runtimeCookedId": 12 },
+      { "name": "potato-fried", "displayName": "Fried Potato", "servable": true, "usageNum": 1, "limitPerDish": 0, "emoji": "🍟", "localImage": "Map1-burger/ingredients/potato_fried.png", "runtimeCookedId": 13 },
+      { "name": "chive-sliced", "displayName": "Chive Sliced", "servable": true, "usageNum": 1, "limitPerDish": 1, "emoji": "🌿", "localImage": "Map1-burger/ingredients/chive_sliced.png", "runtimeCookedId": 15 },
+
+      { "name": "chicken-breast-flour-coated", "displayName": "Coated Breast", "servable": false, "emoji": "🍗" },
+      { "name": "chicken-wing-flour-coated", "displayName": "Coated Wing", "servable": false, "emoji": "🍗" },
+      { "name": "chicken-thigh-flour-coated", "displayName": "Coated Thigh", "servable": false, "emoji": "🍗" },
+      { "name": "chicken-nugget-flour-coated", "displayName": "Coated Nugget", "servable": false, "emoji": "🍗" }
+    ],
+
+    "tool": [
+      { "name": "griddle", "displayName": "Griddle", "numSlots": 2, "cookingTime": 3, "upgradeCosts": [0, 2, 2], "emoji": "🍳", "localImage": "Map1-burger/tools/Asset_Tool_Pan.png", "runtimeToolId": 0 },
+      { "name": "coca-machine", "displayName": "Coca Machine", "numSlots": 1, "cookingTime": 2, "upgradeCosts": [0, 1, 1], "emoji": "🥤", "localImage": "Map1-burger/tools/Asset_Tool_SodaMachine.png", "runtimeToolId": 1 },
+      { "name": "cutting-board", "displayName": "Cutting Board", "numSlots": 1, "cookingTime": 1, "upgradeCosts": [0, 1, 1], "emoji": "🔪", "localImage": "Map1-burger/tools/Asset_Tool_CuttingBoard.png", "runtimeToolId": 2 },
+      { "name": "fryer", "displayName": "Fryer", "numSlots": 1, "cookingTime": 1, "upgradeCosts": [0, 1, 1], "emoji": "🍟", "localImage": "", "runtimeToolId": 3 },
+      { "name": "flour", "displayName": "Flour", "numSlots": 1, "cookingTime": 1, "upgradeCosts": [0, 1, 1], "emoji": "🌾", "localImage": "", "runtimeToolId": 4 }
+    ],
+
+    "group": [
+      { "name": "burger-toppings", "displayName": "Burger toppings", "groupType": "MULTIPLE", "maxQuantity": -1 },
+      { "name": "fried-chicken-bases", "displayName": "Fried chicken", "groupType": "SINGLE" },
+      { "name": "fried-chicken-sauces", "displayName": "Fried chicken sauces", "groupType": "MULTIPLE", "maxQuantity": -1 }
+    ],
+
+    "composite": [
+      { "name": "burger", "displayName": "Burger", "orderable": true },
+      { "name": "soda", "displayName": "Soda", "orderable": true },
+      { "name": "fried-chicken", "displayName": "Fried Chicken", "orderable": true },
+      { "name": "fried-potato", "displayName": "Fries", "orderable": true }
+    ],
+
+    "dirty": [
+      { "name": "dirty-plate", "displayName": "Dirty Plate", "emoji": "🍽", "localImage": "Map1-burger/map1-burger-dirty-plate.png", "runtimeDirtyId": 0 },
+      { "name": "dirty-cup", "displayName": "Dirty Cup", "emoji": "🥤", "localImage": "Map1-burger/mpa1-burger-dirty-cup.png", "runtimeDirtyId": 1 },
+      { "name": "dirty-chick-box", "displayName": "Dirty Chick Box", "emoji": "🍱", "fileId": "1DRgGjWYznwhgow9rlsy9-s7LP09XHOMq", "runtimeDirtyId": 2 }
+    ]
+  },
+
+  "edges": {
+    "process": [
+      { "from": "griddle", "to": "patty-cooked", "inputs": ["patty"], "amount": 1 },
+      { "from": "griddle", "to": "egg-cooked", "inputs": ["egg"], "amount": 1 },
+
+      { "from": "coca-machine", "to": "soda-cup", "inputs": ["cup"], "amount": 1 },
+
+      { "from": "cutting-board", "to": "bun-sliced", "inputs": ["bun"], "amount": 1 },
+      { "from": "cutting-board", "to": "tomato-sliced", "inputs": ["tomato"], "amount": 2 },
+      { "from": "cutting-board", "to": "lettuce-sliced", "inputs": ["lettuce"], "amount": 2 },
+      { "from": "cutting-board", "to": "onion-sliced", "inputs": ["onion"], "amount": 2 },
+      { "from": "cutting-board", "to": "cheese-sliced", "inputs": ["cheese"], "amount": 3 },
+      { "from": "cutting-board", "to": "chive-sliced", "inputs": ["chive"], "amount": 2 },
+      { "from": "cutting-board", "to": "potato-fried", "inputs": ["potato"], "amount": 2, "chainTools": ["fryer"] },
+
+      { "from": "flour", "to": "chicken-breast-flour-coated", "inputs": ["chicken-breast"], "amount": 1 },
+      { "from": "flour", "to": "chicken-wing-flour-coated", "inputs": ["chicken-wing"], "amount": 1 },
+      { "from": "flour", "to": "chicken-thigh-flour-coated", "inputs": ["chicken-thigh"], "amount": 1 },
+      { "from": "flour", "to": "chicken-nugget-flour-coated", "inputs": ["chicken-nugget"], "amount": 1 },
+
+      { "from": "fryer", "to": "chicken-breast-fried", "inputs": ["chicken-breast-flour-coated"], "amount": 1 },
+      { "from": "fryer", "to": "chicken-wing-fried", "inputs": ["chicken-wing-flour-coated"], "amount": 1 },
+      { "from": "fryer", "to": "chicken-thigh-fried", "inputs": ["chicken-thigh-flour-coated"], "amount": 1 },
+      { "from": "fryer", "to": "chicken-nugget-fried", "inputs": ["chicken-nugget-flour-coated"], "amount": 1 }
+    ],
+
+    "base": [
+      { "from": "burger", "to": "bun-sliced" },
+      { "from": "soda", "to": "soda-cup" },
+      { "from": "fried-chicken", "to": "fried-chicken-bases" },
+      { "from": "fried-potato", "to": "potato-fried" }
+    ],
+
+    "topping": [
+      { "from": "burger", "to": "burger-toppings" },
+      { "from": "soda", "to": "ice" },
+      { "from": "fried-chicken", "to": "fried-chicken-sauces" }
+    ],
+
+    "option": [
+      { "from": "burger-toppings", "to": "patty-cooked", "maxQuantity": -1 },
+      { "from": "burger-toppings", "to": "tomato-sliced", "maxQuantity": -1 },
+      { "from": "burger-toppings", "to": "lettuce-sliced", "maxQuantity": -1 },
+      { "from": "burger-toppings", "to": "onion-sliced", "maxQuantity": -1 },
+      { "from": "burger-toppings", "to": "cheese-sliced", "maxQuantity": -1 },
+      { "from": "burger-toppings", "to": "egg-cooked", "maxQuantity": -1 },
+
+      { "from": "fried-chicken-bases", "to": "chicken-breast-fried" },
+      { "from": "fried-chicken-bases", "to": "chicken-wing-fried" },
+      { "from": "fried-chicken-bases", "to": "chicken-thigh-fried" },
+      { "from": "fried-chicken-bases", "to": "chicken-nugget-fried" },
+
+      { "from": "fried-chicken-sauces", "to": "chili-bowl", "maxQuantity": 1 },
+      { "from": "fried-chicken-sauces", "to": "chive-sliced", "maxQuantity": 1 },
+      { "from": "fried-chicken-sauces", "to": "cheese-sauce", "maxQuantity": 1 }
+    ],
+
+    "leavesDirty": [
+      { "from": "burger", "to": "dirty-plate" },
+      { "from": "soda", "to": "dirty-cup" },
+      { "from": "fried-chicken", "to": "dirty-chick-box" }
+    ]
+  },
+
+  "layout": {}
+}
