@@ -372,6 +372,12 @@ export function estimateDifficulty(
     for (let y = 0; y < depth; y++) {
       const item = sim.queueGrid[x]?.[y]?.item;
       if (!item) continue;
+      // A Hidden slot reads as "?" to the player until it fronts, so the
+      // solver must not score it either — modelling it as worthless is what
+      // makes the solver dig blindly the way a real player would. No extra
+      // penalty constant is needed: denying lookahead shows up on its own as
+      // weaker winning scores and more score-less fallbacks in the readout.
+      if (sim.isHidden(x, y)) continue;
       const v = valueOfItem(item);
       if (v.score === 0) continue;
       const decayed = v.score * ROW_DECAY ** y;

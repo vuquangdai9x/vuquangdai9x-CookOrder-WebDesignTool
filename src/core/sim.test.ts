@@ -1348,3 +1348,71 @@ describe("boosters", () => {
     expect(sim.status).toBe("won");
   });
 });
+
+describe("Simulation.isHidden", () => {
+  // "#2" is the Hidden status (EFFECT_HIDDEN), authored with no params. The
+  // customer wants far more cooked 0 than the queue can ever supply, so the
+  // level never reaches "won" mid-test and later picks still go through.
+  const hiddenLevel = (queueData: string, combined = "", linked = "") =>
+    level({
+      queueString: combined || linked ? `${queueData}$${combined}$${linked}` : queueData,
+      gridString: EMPTY_GRID,
+      customerString: "0;0;0;0.0.0.0.0.0",
+    });
+
+  it("is false for a slot carrying no Hidden status, wherever it sits", () => {
+    const sim = new Simulation(testMap, hiddenLevel("0,1,2"));
+    expect(sim.isHidden(0, 0)).toBe(false);
+    expect(sim.isHidden(0, 1)).toBe(false);
+    expect(sim.isHidden(0, 2)).toBe(false);
+  });
+
+  it("hides a Hidden slot sitting behind another item, and reveals it once it fronts", () => {
+    // Lane 0: a plain raw 0 in front, a Hidden raw 1 behind it.
+    const sim = new Simulation(testMap, hiddenLevel("0,1#2"));
+    expect(sim.isHidden(0, 1)).toBe(true);
+
+    sim.pick(0); // consume the front item; the hidden one slides up to row 0
+    expect(sim.queueGrid[0][0]?.item.id).toBe(1);
+    expect(sim.isHidden(0, 0)).toBe(false);
+  });
+
+  it("never hides a slot already on the front row", () => {
+    const sim = new Simulation(testMap, hiddenLevel("1#2,0"));
+    expect(sim.isHidden(0, 0)).toBe(false);
+  });
+
+  it("is false for an out-of-range or empty cell rather than throwing", () => {
+    const sim = new Simulation(testMap, hiddenLevel("0"));
+    expect(sim.isHidden(9, 0)).toBe(false);
+    expect(sim.isHidden(0, 9)).toBe(false);
+  });
+
+  it("reveals a buried combined-block member as soon as the block fronts", () => {
+    // Combined block on the SECOND row of both lanes — cells (0,1) and (1,1) —
+    // so the hidden member starts buried rather than already fronting.
+    const sim = new Simulation(testMap, hiddenLevel("0,1#2%0,2", "0-1,1-1"));
+    expect(sim.queueGrid[0][1]?.group).toBe(0);
+    expect(sim.isHidden(0, 1)).toBe(true);
+
+    // A rigid block only rises when BOTH its columns clear, so emptying lane 1
+    // alone leaves it stuck — and the member stays masked.
+    sim.pick(1);
+    expect(sim.isHidden(0, 1)).toBe(true);
+
+    // Now lane 0's front goes too, the block rises, and reaching row 0 makes
+    // the whole block pickable — so the hidden member reveals with it.
+    sim.pick(0);
+    expect(sim.queueGrid[0][0]?.group).toBe(0);
+    expect(sim.isHidden(0, 0)).toBe(false);
+  });
+
+  it("keeps a buried linked-group member hidden — no early reveal like combined blocks get", () => {
+    // A linked group is only pickable once EVERY member is at row 0, so
+    // "revealed" and "pickable" already coincide with the plain y === 0 test.
+    // It must NOT take the combined branch's early reveal.
+    const sim = new Simulation(testMap, hiddenLevel("0,1#2%0,2", "", "0-1,1-1"));
+    expect(sim.groupKinds[sim.queueGrid[0][1]!.group]).toBe("linked");
+    expect(sim.isHidden(0, 1)).toBe(true);
+  });
+});

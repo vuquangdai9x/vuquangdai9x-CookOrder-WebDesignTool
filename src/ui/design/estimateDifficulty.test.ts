@@ -334,6 +334,33 @@ describe("estimateDifficulty", () => {
     expect(result.byCid.get(digCid)?.detour).toBe(true); // it was a dig, not a want
   });
 
+  it("won't dig for a base it can't see, once that base is Hidden", () => {
+    // Exactly the level above, with one character changed: the buried base at
+    // lane 1 row 1 is now Hidden ("0#2"). The player would see a "?" there, so
+    // the solver must too — the 100*0.5=50 lookahead score that previously beat
+    // lane 0's blocked topping (40) disappears, and the solver takes the
+    // topping instead of digging. Same map, same seed, opposite first pick.
+    const withBase: MapDef = {
+      ...testMap,
+      cookedIngredients: testMap.cookedIngredients.map((c) =>
+        c.id === 1 ? { ...c, baseId: 0 } : c,
+      ),
+    };
+    const lvl = tagged(
+      level({
+        queueString: "1,1%2,0#2",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0.1",
+      }),
+    );
+    const digCid = cidOf(lvl.queues[1][0])!; // raw 2, covering the now-hidden base
+    const toppingCid = cidOf(lvl.queues[0][0])!; // lane 0's front blocked topping
+
+    const result = estimateDifficulty(withBase, lvl, { rng: seededRng(3) });
+    expect(result.byCid.get(toppingCid)?.order).toBe(1);
+    expect(result.byCid.get(digCid)?.order).not.toBe(1);
+  });
+
   it("is deterministic by default, so re-running an unchanged level repeats the verdict", () => {
     // No rng passed — exercises the built-in seeded PRNG, not Math.random.
     const build = () =>

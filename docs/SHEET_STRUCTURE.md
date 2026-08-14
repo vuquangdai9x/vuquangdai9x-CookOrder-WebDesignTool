@@ -27,7 +27,7 @@ Potato, Chili Bowl, Cheese Sauce, Chive) were merged in from Map 2's `MapDefinit
 exercise chained-tool processing and multi-use serving in the sim — see "Chained recipes and
 multi-use ingredients" below. They aren't referenced by any level's queue/order data yet.
 
-**Ingredient statuses**: 0 None, 1 Freeze, 2 Link (retired), 3 HoldingKey.
+**Ingredient statuses**: 0 None, 1 Freeze, 2 Hidden, 3 HoldingKey.
 **Grid cell statuses**: 0 Normal, 1 Blocked, 2 OrderLock, 3 IngredientSlot, 4 ColorLock.
 **Key colors**: 0 None, 1 Red, 2 Yellow, 3 Green, 4 Blue, 5 Purple.
 **Weather**: Normal, Rainy, Sunny, Freeze, Stormy (added this pass) — each row now also carries a

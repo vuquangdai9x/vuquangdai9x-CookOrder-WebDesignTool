@@ -30,7 +30,7 @@ field they delete or leave blank:
 - Timed customers: some                # none | some | most  (waitTime + weatherEff usage)
 - Out-of-slot policy: block-pick       # block-pick | park-on-grid
 - Toggles grid: Blocked, OrderLock     # from: Blocked, OrderLock, IngredientSlot, ColorLock
-- Toggles queue: Freeze, HoldingKey    # from: Freeze, HoldingKey (Link is retired, see Step 1)
+- Toggles queue: Freeze, HoldingKey, Hidden    # from: Freeze, HoldingKey, Hidden (see Step 1)
 - Toggles grouping: none               # none | combined | linked | both
 - Toggles recovery: sweeper, staff     # from: sweeper, staff
 - Tension curve T(t): (0,1) (0.25,3) (0.6,8) (0.85,10) (1,3)
@@ -60,9 +60,12 @@ field they delete or leave blank:
     global total. It decrements by 1 every time the player picks a slot 4-connected to the
     frozen one (same column, one row off; or an adjacent column, same row) — picks
     elsewhere never count. **HoldingKey=3** (param = colorId) — picking it grants one key
-    of that color. Effect id **2 ("Link") is retired** — it's a harmless no-op kept only so
-    old data parses; it does **not** create a rope/pairing. Real slot grouping is a
-    separate mechanism — see "Combined/linked slots" below.
+    of that color. **Hidden=2** (no params, written as a bare `#2`) — the slot shows as `?`
+    to the player until it reaches the front row, or until its **combined** block fronts;
+    it never blocks a pick, and the Ingredient Pick booster does not reveal it. Use it to
+    deny lookahead. It does **not** create a rope/pairing — real slot grouping is a
+    separate mechanism, see "Combined/linked slots" below. Hidden on a slot that already
+    starts on row 0 is a no-op and validate.ts will warn.
   - Cell statuses: Blocked=`#1`, OrderLock=`#2:<ordersDone>`,
     IngredientSlot=`#3:<rawId>:<amount>`, ColorLock=`#4:<colorId>:<keyCount>`.
   - Key colors 1=Red 2=Yellow 3=Green 4=Blue 5=Purple (`general/key-colors.json`).

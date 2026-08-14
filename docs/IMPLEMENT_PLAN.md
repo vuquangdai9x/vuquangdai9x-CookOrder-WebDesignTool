@@ -73,7 +73,7 @@ Two ordering rules matter and are covered by regression tests:
 
 ## Phase 5 — Effect & behavior registries ✅
 
-Built-ins matching the sheet's tables: queue effects **Freeze** (1), **Link** (2, placeholder), **HoldingKey** (3); cell types **Blocked** (1), **OrderLock** (2), **IngredientLock** (3), **ColorLock** (4); queue object **sweeper**; customer type **staff** (a dish-less customer). Adding a new effect requires only a registry entry plus a definition row.
+Built-ins matching the sheet's tables: queue effects **Freeze** (1), **Hidden** (2), **HoldingKey** (3); cell types **Blocked** (1), **OrderLock** (2), **IngredientLock** (3), **ColorLock** (4); queue object **sweeper**; customer type **staff** (a dish-less customer). Adding a new effect requires only a registry entry plus a definition row.
 
 ## Phase 7 — ToolDesign layout rework ✅
 

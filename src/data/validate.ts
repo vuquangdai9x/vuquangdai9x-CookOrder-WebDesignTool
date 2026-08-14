@@ -1,6 +1,6 @@
 // Level sanity checks surfaced to designers in Design mode.
 
-import { EFFECT_FREEZE } from "../core/effects.ts";
+import { EFFECT_FREEZE, EFFECT_HIDDEN } from "../core/effects.ts";
 import { parseCustomers, parseGrid, parseQueueGroups, parseQueues } from "../core/parser.ts";
 import type { QueueGroup } from "../core/types.ts";
 import type { MapData } from "./mapLoader.ts";
@@ -98,6 +98,38 @@ export function validateMap(map: MapData): LevelWarning[] {
           );
         }
       }
+    });
+
+    // Hidden statuses that can never actually hide anything. The authored
+    // index IS the starting grid row (buildQueueGrid pads at the bottom, and
+    // the sim's opening advanceQueues() is a fixpoint for dense data), so a
+    // Hidden already at the front — or in a combined block that already fronts
+    // — is revealed before the first frame and does nothing.
+    // Caveat: playLevel.ts re-densifies lanes after dropping disabled raw
+    // ingredients, so a Hidden authored behind a disabled ingredient can also
+    // arrive pre-revealed at play time. That isn't visible from the authored
+    // string this validates, so it isn't caught here.
+    const combinedMinY = new Map<number, number>();
+    groups.forEach((g, gi) => {
+      if (g.kind !== "combined") return;
+      combinedMinY.set(gi, Math.min(...g.cells.map((c) => c.y)));
+    });
+    queues.forEach((lane, x) => {
+      lane.forEach((item, y) => {
+        if (!item.effects.some((e) => e.effectId === EFFECT_HIDDEN)) return;
+        const gi = cellOwner.get(`${x}:${y}`);
+        // A `linked` group is only pickable once every member is at row 0, so
+        // "revealed" and "pickable" coincide with y === 0 there — no separate
+        // case, and no warning beyond the plain front-row one below.
+        if (y === 0) {
+          add(`Hidden on queue cell (${x},${y}) does nothing — it already starts on the front row.`);
+        } else if (gi !== undefined && combinedMinY.get(gi) === 0) {
+          add(
+            `Hidden on queue cell (${x},${y}) does nothing — its combined block ` +
+              "already starts on the front row, so the whole block is revealed from the start.",
+          );
+        }
+      });
     });
 
     const unknownCooked = customers

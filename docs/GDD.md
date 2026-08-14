@@ -150,7 +150,7 @@ Built-in behaviors (all implemented as registry handlers so future maps can add 
 | Effect | Attaches to | Behavior (current design) |
 |---|---|---|
 | Freeze | queue item | Cannot be picked until `param0` picks of an **adjacent** slot (4-connected in the queue grid: same column one row off, or an adjacent column same row) have happened — not just any `param0` picks anywhere. Each frozen item tracks its own remaining count, decremented by every adjacent pick, down to 0. This needs per-item state and the picked cell's coordinates, which the generic effect-registry hook can't carry, so it's special-cased directly in `sim.ts` rather than going through the registry like the others. |
-| Link (retired) | queue item | No-op. Superseded by real combined/linked **queue groups** (§2.1.1), which are data (`QueueGroup`), not a per-item effect. Kept registered only so old authored data carrying this marker still parses harmlessly. |
+| Hidden | queue item | The slot renders as `?` instead of its ingredient until it reaches the front row — or, for a member of a **combined** block, until that block fronts. Purely informational: it never blocks a pick, and it does not reveal early for the Ingredient Pick booster, so spending that booster on a `?` is a gamble. Not to be confused with combined/linked **queue groups** (§2.1.1), which are data (`QueueGroup`), not a per-item effect. |
 | HoldingKey | queue item | Picking it grants one key of `param0` (colorId), which can open a matching ColorLock cell. |
 | Blocked | grid cell | Cell never accepts items. |
 | OrderLock | grid cell | Cell accepts items only once `param0` customers have been served. |

@@ -138,10 +138,13 @@ Purpose: build the ordered sequence of ingredients a player pulls from during a 
 - **Per-tile interaction** (right-click a tile):
   - **Insert Top** / **Insert Bottom** — opens a thumbnail picker, inserts at the front/back of
     that tile's own lane (not literally before/after the clicked tile).
-  - Per-status toggles for **Freeze** and **HoldingKey**, each with inline param inputs (Freeze's
-    thaw count, HoldingKey's lock-color picker). A retired **Link** status id from an older design
-    still parses harmlessly in old data but is no longer offered here — grouping is now the
-    Combine/Link actions above, not a per-tile toggle.
+  - Per-status toggles for **Freeze**, **Hidden** and **HoldingKey**. Freeze and HoldingKey expand
+    to inline param inputs (thaw count, lock-color picker); **Hidden** takes no params, so it's a
+    plain one-click on/off toggle. A Hidden tile keeps showing its real ingredient art here — a
+    designer has to see what they authored — and is marked instead by a dashed tint plus a ❔ badge
+    in the top-right corner, which coexists with Freeze's top-left badge and HoldingKey's
+    bottom-right one. The `?` mask only happens in Play mode. Note this is unrelated to the
+    Combine/Link grouping actions above.
   - **Remove**.
   - Hover also shows a small "X" remove button as a shortcut for the same action.
   - Visual encodes: a **frozen** tile (remaining thaw count > 0) gets an icy CSS filter and a

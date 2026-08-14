@@ -7,7 +7,7 @@
 // "linked-slot" group a meaningful (x,y) coordinate to reference.
 
 import Sortable from "sortablejs";
-import { CELL_COLOR_LOCK, EFFECT_FREEZE, EFFECT_HOLDING_KEY, EFFECT_LINK } from "../../core/effects.ts";
+import { CELL_COLOR_LOCK, EFFECT_FREEZE, EFFECT_HIDDEN, EFFECT_HOLDING_KEY } from "../../core/effects.ts";
 import { parseQueueGroups, parseQueues, serializeQueues, SWEEPER_ID } from "../../core/parser.ts";
 import type {
   CustomerConfig,
@@ -542,6 +542,7 @@ function tileEl(
 ): HTMLElement {
   const freeze = item.effects.find((e) => e.effectId === EFFECT_FREEZE);
   const key = item.effects.find((e) => e.effectId === EFFECT_HOLDING_KEY);
+  const hidden = item.effects.some((e) => e.effectId === EFFECT_HIDDEN);
   const cid = cidOf(item);
   const group = cid ? draft.groups.find((g) => g.cids.includes(cid)) : undefined;
   const selected = !!cid && ui.selection.has(cid);
@@ -557,6 +558,7 @@ function tileEl(
       item.kind === "sweeper" ? "sweeper" : "",
       selected ? "selected" : "",
       group ? `group-${group.kind}` : "",
+      hidden ? "hidden-slot" : "",
       autoColor ? "auto-color" : "",
       slot?.detour ? "pickup-detour" : "",
       changeClass(tileStatus(item, savedQueues)),
@@ -593,12 +595,13 @@ function tileEl(
     );
   }
 
-  // Statuses other than the two with dedicated visuals show as a corner icon.
-  // EFFECT_LINK is retired (real linked groups supersede its old adjacency
-  // bridge) but stays registered as a no-op so pre-existing strings parse —
-  // it's excluded here so a stale marker doesn't draw a dead corner badge.
+  // Statuses other than the ones with dedicated badges show as a corner icon.
+  // Both HoldingKey and Hidden are excluded because .tile-corner only ever
+  // renders cornerEffects[0] — sharing that one slot would make them mutually
+  // exclusive with Freeze on a single tile, when in practice a slot can
+  // legitimately be frozen AND hidden AND hold a key at once.
   const cornerEffects = item.effects.filter(
-    (e) => e.effectId !== EFFECT_HOLDING_KEY && e.effectId !== EFFECT_LINK,
+    (e) => e.effectId !== EFFECT_HOLDING_KEY && e.effectId !== EFFECT_HIDDEN,
   );
   if (cornerEffects.length) {
     tile.append(
@@ -608,6 +611,18 @@ function tileEl(
           ? [el("small", {}, [String(cornerEffects[0].params[0])])]
           : []),
       ]),
+    );
+  }
+  // Design mode never masks the ingredient — a designer has to see what they
+  // authored. The badge + tint just mark that the PLAYER won't see it until it
+  // fronts (see Simulation.isHidden()).
+  if (hidden) {
+    tile.append(
+      el(
+        "span",
+        { class: "tile-hidden", title: "Hidden — shows as ? in play until it reaches the top row" },
+        [statusIconEl(EFFECT_HIDDEN, 48)],
+      ),
     );
   }
   if (key) {
@@ -919,8 +934,25 @@ function tileMenu(
     });
   }
 
-  for (const def of deps.defs.effects.filter((d) => d.id !== 0 && d.id !== EFFECT_LINK)) {
+  for (const def of deps.defs.effects.filter((d) => d.id !== 0)) {
     const existing = item.effects.find((e) => e.effectId === def.id);
+    // A status with no params (Hidden) has nothing to configure, so an
+    // expansion panel would be an empty box with a lone Apply button. Make it
+    // a plain one-click on/off toggle instead.
+    if (def.paramDefs.length === 0) {
+      items.push({
+        label: def.name,
+        icon: statusIconEl(def.id, 48),
+        active: !!existing,
+        separator: def.id === deps.defs.effects[1]?.id,
+        onSelect: () => {
+          item.effects = item.effects.filter((e) => e.effectId !== def.id);
+          if (!existing) item.effects.push({ effectId: def.id, params: [] });
+          section.commit(existing ? `Clear ${def.name}` : `Set ${def.name}`);
+        },
+      });
+      continue;
+    }
     items.push({
       label: def.name,
       icon: statusIconEl(def.id, 48),

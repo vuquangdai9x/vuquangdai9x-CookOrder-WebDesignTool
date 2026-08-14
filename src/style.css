@@ -998,6 +998,41 @@ footer {
   filter: saturate(0.7) brightness(1.05) hue-rotate(180deg);
 }
 
+/* Hidden status. In Design mode the real ingredient still shows through (a
+   designer must see what they authored) and this tint plus .tile-hidden are
+   the only markers; in Play mode the same class rides along with a "?" mask
+   replacing .tile-main's contents. Deliberately a dashed border rather than a
+   .frozen-style filter, so it composes with .frozen on a tile that is both. */
+.queue-tile.hidden-slot {
+  border-style: dashed;
+  border-color: var(--muted);
+  background: #2f2f38;
+}
+
+/* The "?" that replaces the ingredient art in Play mode. Sized to fill
+   .tile-main like a real icon would — .mystery-mark is a card-sized 2rem and
+   would overflow a queue tile. */
+.hidden-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* Top-right, so it never collides with .tile-corner (top-left, Freeze) or
+   .tile-key (bottom-right) — all three can appear on one tile. */
+.tile-hidden {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: flex;
+  pointer-events: none;
+}
+
 /* Shift-click multi-select, for Combine/Link. */
 .queue-tile.selected {
   box-shadow: 0 0 0 2px var(--accent);

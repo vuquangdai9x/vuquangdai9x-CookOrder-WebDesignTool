@@ -8,7 +8,7 @@
 // travelling and guarantees the next logic step only runs once it lands.
 
 import "./effects.ts"; // registers built-in behaviors
-import { CUSTOMER_STAFF, EFFECT_FREEZE, EFFECT_HOLDING_KEY } from "./effects.ts";
+import { CUSTOMER_STAFF, EFFECT_FREEZE, EFFECT_HIDDEN, EFFECT_HOLDING_KEY } from "./effects.ts";
 import type { EffectContext } from "./registry.ts";
 import { getCellEffect, getQueueEffect } from "./registry.ts";
 import type {
@@ -398,6 +398,39 @@ export class Simulation {
       this.freezeRemaining.set(item, remaining);
     }
     return remaining;
+  }
+
+  /**
+   * True when the slot at (x,y) carries the Hidden status AND hasn't been
+   * revealed yet — i.e. the player should see "?" instead of the ingredient.
+   * Revealed once it reaches the front row, or (for a member of a combined
+   * block) once that block fronts, since picking any cell of a fronting block
+   * takes the whole thing — see pickInstanceCells().
+   *
+   * Deliberately GEOMETRIC rather than a canPick() test: canPick also fails on
+   * Freeze and on a full grid, so a canPick-based rule would let an already
+   * revealed slot flip back to "?" when the board fills up. Reveal must be
+   * monotonic. A `linked` group needs no case of its own — it's only pickable
+   * once every member is at row 0, so "revealed" and "pickupable" coincide
+   * with the y === 0 test.
+   *
+   * Derived state, with nothing cached: it reads only queueGrid + groupKinds,
+   * so it's always consistent and safe to call every frame. Don't "optimize"
+   * it into a Map like freezeRemaining — that one exists because a thaw count
+   * genuinely mutates; this doesn't.
+   */
+  isHidden(x: number, y: number): boolean {
+    const cell = this.queueGrid[x]?.[y];
+    if (!cell) return false;
+    if (!cell.item.effects.some((e) => e.effectId === EFFECT_HIDDEN)) return false;
+    if (y === 0) return false;
+    if (cell.group !== -1 && this.groupKinds[cell.group] === "combined") {
+      for (const col of this.queueGrid) {
+        const front = col[0];
+        if (front && front.group === cell.group) return false;
+      }
+    }
+    return true;
   }
 
   /**

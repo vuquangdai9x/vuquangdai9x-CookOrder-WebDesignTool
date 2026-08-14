@@ -1195,12 +1195,20 @@ export class PlayView {
         const isTop = y === 0;
         const groupKind: QueueGroupKind | undefined =
           cell.group !== -1 ? sim.groupKinds[cell.group] : undefined;
+        // Note isHidden() reads neither windowRows nor ingredientPickMode, so
+        // arming Ingredient Pick (which widens the window past visibleRows)
+        // deliberately does NOT reveal anything — spending it on a "?" is the
+        // gamble Hidden exists to create.
+        const hidden = sim.isHidden(x, y);
         const tile = this.queueTile(cell.item, {
           top: isTop,
           preview: !isTop && !this.ingredientPickMode,
-          wanted: wantedRaw.has(cell.item.id),
+          // A masked tile must not advertise itself as wanted — that would
+          // leak exactly the thing the mask is hiding.
+          wanted: !hidden && wantedRaw.has(cell.item.id),
           disabled: isTop && !this.ingredientPickMode && !check.ok,
           group: groupKind,
+          hidden,
         });
         tile.dataset.qx = String(x);
         tile.dataset.qy = String(y);
@@ -1553,6 +1561,8 @@ export class PlayView {
       preview?: boolean;
       /** Combined-slot cells get a shared tint; linked-slot cells too (their rope is drawn separately). */
       group?: QueueGroupKind;
+      /** Hidden status, not yet revealed — mask the contents (see Simulation.isHidden()). */
+      hidden?: boolean;
     },
   ): HTMLElement {
     // The item keeps carrying its Freeze effect for its whole life in the
@@ -1573,14 +1583,20 @@ export class PlayView {
         frozen ? "frozen" : "",
         item.kind === "sweeper" ? "sweeper" : "",
         opts.group ? `group-${opts.group}` : "",
+        opts.hidden ? "hidden-slot" : "",
       ]
         .filter(Boolean)
         .join(" "),
     });
+    // The mask is checked FIRST, ahead of the sweeper/ingredient split: a
+    // hidden sweeper must read as "?" like any other hidden slot, or its broom
+    // gives the slot away.
     tile.append(
-      item.kind === "sweeper"
-        ? el("span", { class: "tile-main" }, ["🧹"])
-        : el("span", { class: "tile-main" }, [ingredientIconEl(item.id, 96)]),
+      opts.hidden
+        ? el("span", { class: "tile-main" }, [el("span", { class: "hidden-mark" }, ["?"])])
+        : item.kind === "sweeper"
+          ? el("span", { class: "tile-main" }, ["🧹"])
+          : el("span", { class: "tile-main" }, [ingredientIconEl(item.id, 96)]),
     );
     if (frozen) {
       tile.append(

@@ -100,3 +100,43 @@ describe("validateMap — supply/demand check (in use units, not physical pickup
     expect(messagesStartingWith(map, "Leftover")).toHaveLength(0);
   });
 });
+
+describe("validateMap — dead Hidden statuses", () => {
+  // "#2" is the Hidden status. It masks a slot until it reaches the front row,
+  // so a Hidden that starts there already can never mask anything.
+  const hiddenWarnings = (queueString: string) =>
+    messagesStartingWith(
+      mapWithLevel(withUsageNum(1), { queueString, customerString: "0;0;0;2" }),
+      "Hidden",
+    );
+
+  it("warns about a Hidden authored on the front row", () => {
+    expect(hiddenWarnings("2#2,2")).toEqual([
+      "Hidden on queue cell (0,0) does nothing — it already starts on the front row.",
+    ]);
+  });
+
+  it("stays quiet for a Hidden that actually starts buried", () => {
+    expect(hiddenWarnings("2,2#2")).toHaveLength(0);
+  });
+
+  it("warns when a Hidden's combined block already fronts, since the block reveals as a unit", () => {
+    // Combined block on (0,0)+(0,1); the Hidden at (0,1) is revealed from the
+    // start because its block is pickable from the start.
+    expect(hiddenWarnings("2,2#2$0-0,0-1$")).toEqual([
+      "Hidden on queue cell (0,1) does nothing — its combined block already starts on the " +
+        "front row, so the whole block is revealed from the start.",
+    ]);
+  });
+
+  it("stays quiet when the Hidden's combined block starts off the front row", () => {
+    // Block on (0,1)+(0,2) — min-y is 1, so it genuinely masks for a while.
+    expect(hiddenWarnings("2,2#2,2$0-1,0-2$")).toHaveLength(0);
+  });
+
+  it("stays quiet for a Hidden in a linked group — linked reveals member-by-member", () => {
+    // A linked group is only pickable once every member is at row 0, so its
+    // members reveal on the plain y === 0 rule and none of this applies.
+    expect(hiddenWarnings("2,2#2%2,2$$0-1,1-1")).toHaveLength(0);
+  });
+});

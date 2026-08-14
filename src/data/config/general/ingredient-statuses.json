@@ -20,12 +20,12 @@
     },
     {
       "id": 2,
-      "name": "Link",
-      "emoji": "🔗",
-      "fileId": "161DWQYesZYrDWv6iyPobiXLgjR4PVeRS",
-      "localImage": "Global/IngredientStatus/ingredientSlot-link.png",
-      "description": "Linked to the next linked ingredient in the same queue unless broken.",
-      "paramDefs": [{ "name": "broken", "dataType": "int" }]
+      "name": "Hidden",
+      "emoji": "❔",
+      "fileId": "",
+      "localImage": "",
+      "description": "Slot only show [?] until it comes to the top row. If inside a combined-slot group, also reveal when the group is pickupable.",
+      "paramDefs": []
     },
     {
       "id": 3,

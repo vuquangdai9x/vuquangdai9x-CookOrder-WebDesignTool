@@ -29,6 +29,24 @@ describe("queue string", () => {
   it("treats negative ids as sweeper objects", () => {
     expect(parseQueues("-1,0")[0][0].kind).toBe("sweeper");
   });
+
+  it("round-trips a param-less status as a bare '#2', with no trailing colon", () => {
+    // The Hidden status (EFFECT_HIDDEN = 2) declares no paramDefs, so it must
+    // serialize as "#2" and never "#2:0" — the latter would re-parse as a
+    // one-param effect and break mapLoader's byte-exact round-trip assertion.
+    const s = "5#2,0";
+    expect(parseQueues(s)[0][0].effects).toEqual([{ effectId: 2, params: [] }]);
+    expect(serializeQueues(parseQueues(s))).toBe(s);
+  });
+
+  it("round-trips a param-less status alongside a param-bearing one on the same item", () => {
+    const s = "5#2#1:3";
+    expect(parseQueues(s)[0][0].effects).toEqual([
+      { effectId: 2, params: [] },
+      { effectId: 1, params: [3] },
+    ]);
+    expect(serializeQueues(parseQueues(s))).toBe(s);
+  });
 });
 
 describe("queue groups", () => {

@@ -11,7 +11,7 @@ import {
 // Ingredient status ids (ConfigTables "Ingredient statuses")
 export const EFFECT_NONE = 0;
 export const EFFECT_FREEZE = 1;
-export const EFFECT_LINK = 2;
+export const EFFECT_HIDDEN = 2;
 export const EFFECT_HOLDING_KEY = 3;
 
 // Grid cell status ids (ConfigTables "Grid cell statuses")
@@ -41,8 +41,21 @@ registerQueueEffect(EFFECT_NONE, {});
  */
 registerQueueEffect(EFFECT_FREEZE, {});
 
-/** Link: paired with another item. Pairing rules are map-specific; no-op for now. */
-registerQueueEffect(EFFECT_LINK, {});
+/**
+ * Hidden: the slot renders as "?" until it reaches the front row (or, inside a
+ * combined block, until that block fronts). Purely informational — it never
+ * blocks a pick, so the registered handler is genuinely empty rather than
+ * merely unimplemented.
+ *
+ * The reveal test can't live here for the same reason Freeze's can't (above):
+ * it depends on the item's queue COORDINATES, and canPick(effect, ctx) only
+ * receives a flat shared-counters snapshot with no way to locate the
+ * EffectInstance's owning cell. See Simulation.isHidden() in sim.ts.
+ *
+ * (Id 2 was previously a retired "Link" status — unrelated to the real
+ * combined/linked queue GROUPS, which live in LevelConfig.queueGroups.)
+ */
+registerQueueEffect(EFFECT_HIDDEN, {});
 
 /** HoldingKey: picking the item grants one key of `colorId`, opening ColorLock cells. */
 registerQueueEffect(EFFECT_HOLDING_KEY, {
