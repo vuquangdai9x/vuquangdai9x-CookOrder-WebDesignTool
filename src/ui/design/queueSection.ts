@@ -11,6 +11,7 @@ import { CELL_COLOR_LOCK, EFFECT_FREEZE, EFFECT_HIDDEN, EFFECT_HOLDING_KEY } fro
 import { parseQueueGroups, parseQueues, serializeQueues, SWEEPER_ID } from "../../core/parser.ts";
 import type {
   CustomerConfig,
+  EffectInstance,
   GlobalDefs,
   GridCellConfig,
   MapDef,
@@ -120,6 +121,18 @@ function coordsByCid(queues: QueueItem[][]): Map<string, { x: number; y: number 
       if (cid) map.set(cid, { x, y });
     });
   });
+  return map;
+}
+
+/** Live item references keyed by cid — lets a menu action mutate every selected tile's `effects` in place. */
+function itemsByCid(queues: QueueItem[][]): Map<string, QueueItem> {
+  const map = new Map<string, QueueItem>();
+  for (const lane of queues) {
+    for (const item of lane) {
+      const cid = cidOf(item);
+      if (cid) map.set(cid, item);
+    }
+  }
   return map;
 }
 
@@ -934,32 +947,66 @@ function tileMenu(
     });
   }
 
+  // Effect toggles act on every selected tile at once when 2+ are selected —
+  // NOT just the right-clicked one, matching Combine/Link/Uncombine/Break
+  // Link above. With a single tile (no multi-select), this is exactly the
+  // one-item behavior it always was.
+  const selectedItems = itemsByCid(draft.queues);
+  const targetItems: QueueItem[] =
+    selection.size >= 2
+      ? [...selection].map((cid) => selectedItems.get(cid)).filter((it): it is QueueItem => !!it)
+      : [item];
+
   for (const def of deps.defs.effects.filter((d) => d.id !== 0)) {
-    const existing = item.effects.find((e) => e.effectId === def.id);
+    const existingList = targetItems.map((it) => it.effects.find((e) => e.effectId === def.id));
+    const allActive = targetItems.length > 0 && existingList.every((e) => !!e);
+    const anyActive = existingList.some((e) => !!e);
+
     // A status with no params (Hidden) has nothing to configure, so an
     // expansion panel would be an empty box with a lone Apply button. Make it
-    // a plain one-click on/off toggle instead.
+    // a plain one-click on/off toggle instead. Priority "apply": as long as
+    // ANY target lacks the effect, clicking applies it to every target;
+    // toggling off only happens once every target already has it.
     if (def.paramDefs.length === 0) {
       items.push({
         label: def.name,
         icon: statusIconEl(def.id, 48),
-        active: !!existing,
+        active: allActive,
         separator: def.id === deps.defs.effects[1]?.id,
         onSelect: () => {
-          item.effects = item.effects.filter((e) => e.effectId !== def.id);
-          if (!existing) item.effects.push({ effectId: def.id, params: [] });
-          section.commit(existing ? `Clear ${def.name}` : `Set ${def.name}`);
+          const apply = !allActive;
+          for (const it of targetItems) {
+            it.effects = it.effects.filter((e) => e.effectId !== def.id);
+            if (apply) it.effects.push({ effectId: def.id, params: [] });
+          }
+          section.commit(apply ? `Set ${def.name}` : `Clear ${def.name}`);
         },
       });
       continue;
     }
+
+    // Per-param: the shared value if every target that already carries this
+    // effect agrees, else null ("-", differs across the selection). A target
+    // with no effect yet doesn't count toward disagreement — only existing
+    // instances need to agree for the field to show a real value.
+    const existingParams = existingList.filter((e): e is EffectInstance => !!e);
+    const seedParams: (number | null)[] = def.paramDefs.map((_, i) => {
+      const values = existingParams.map((e) => e.params[i] ?? 1);
+      if (values.length === 0) return 1;
+      return values.every((v) => v === values[0]) ? values[0] : null;
+    });
+    // Fallback for a "-" field the designer never touches: reuse whatever the
+    // first already-carrying target has, rather than silently zeroing every
+    // target's param out from under it.
+    const fallbackParams: number[] = def.paramDefs.map((_, i) => existingParams[0]?.params[i] ?? 1);
+
     items.push({
       label: def.name,
       icon: statusIconEl(def.id, 48),
-      active: !!existing,
+      active: allActive,
       separator: def.id === deps.defs.effects[1]?.id,
       expand: (close) => {
-        const params = existing ? [...existing.params] : def.paramDefs.map(() => 1);
+        const params: (number | null)[] = [...seedParams];
         const wrap = el("div", { class: "ctx-sub" });
 
         if (def.id === EFFECT_HOLDING_KEY) {
@@ -972,28 +1019,33 @@ function tileMenu(
                   b.classList.toggle("active", KEY_COLORS[i + 1].id === id);
                 });
               },
-              params[0],
+              params[0] ?? undefined,
             ),
           );
         } else {
           def.paramDefs.forEach((p, i) =>
-            wrap.append(numberField(p.name, params[i] ?? 1, (v) => (params[i] = v))),
+            wrap.append(numberField(p.name, params[i], (v) => (params[i] = v))),
           );
         }
 
         wrap.append(
-          button(existing ? "Update" : "Apply", () => {
-            item.effects = item.effects.filter((e) => e.effectId !== def.id);
-            item.effects.push({ effectId: def.id, params });
+          button(allActive ? "Update" : "Apply", () => {
+            const finalParams = params.map((p, i) => p ?? fallbackParams[i]);
+            for (const it of targetItems) {
+              it.effects = it.effects.filter((e) => e.effectId !== def.id);
+              it.effects.push({ effectId: def.id, params: finalParams });
+            }
             section.commit(`Set ${def.name}`);
             close();
           }),
-          ...(existing
+          ...(anyActive
             ? [
                 button(
                   "Remove",
                   () => {
-                    item.effects = item.effects.filter((e) => e.effectId !== def.id);
+                    for (const it of targetItems) {
+                      it.effects = it.effects.filter((e) => e.effectId !== def.id);
+                    }
                     section.commit(`Clear ${def.name}`);
                     close();
                   },

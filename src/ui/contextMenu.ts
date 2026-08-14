@@ -118,13 +118,23 @@ export function showContextContent(
   positionMenu(menu, event);
 }
 
-/** Number input row for an inline sub-editor. */
+/**
+ * Number input row for an inline sub-editor. `value: null` is the
+ * multi-select "differs across the selection" state — the field renders
+ * empty with a "-" placeholder instead of picking one of the values
+ * arbitrarily. `onCommit` only fires once the designer actually edits the
+ * field, so a `null` field left untouched never reports a value at all.
+ */
 export function numberField(
   label: string,
-  value: number,
+  value: number | null,
   onCommit: (v: number) => void,
 ): HTMLElement {
-  const input = el("input", { type: "number", value: String(value) }) as HTMLInputElement;
+  const input = el("input", {
+    type: "number",
+    value: value === null ? "" : String(value),
+    placeholder: value === null ? "-" : "",
+  }) as HTMLInputElement;
   input.addEventListener("click", (e) => e.stopPropagation());
   input.addEventListener("change", () => onCommit(Number(input.value) || 0));
   return el("label", { class: "ctx-field" }, [label, input]);
