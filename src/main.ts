@@ -9,6 +9,8 @@ import { toMapDef } from "./data/mapLoader.ts";
 import type { MapData } from "./data/mapLoader.ts";
 import { toPlayableLevelConfig } from "./data/playLevel.ts";
 import { GLOBAL_DEFS, MAP1_DATA } from "./data/configLoader.ts";
+import { clearNodeDraft, loadNodeProject, saveNodeProject } from "./data/nodeProject.ts";
+import type { NodeProjectState } from "./data/nodeProject.ts";
 import {
   exportProjectCsv,
   GoogleSheetApiSource,
@@ -20,6 +22,12 @@ import {
 import { DesignView } from "./ui/design/index.ts";
 import { PlayView } from "./ui/play/index.ts";
 import { RemoteDataView } from "./ui/remote/index.ts";
+import { MapProcessView } from "./ui/nodegraph/index.ts";
+import { NodeDesignView } from "./ui/nodedesign/index.ts";
+import { NodePlayView } from "./ui/nodeplay/index.ts";
+import { NodeRemoteDataView } from "./ui/noderemote/index.ts";
+import { nodeIconSource } from "./ui/nodegraph/iconAdapter.ts";
+import type { NodeIconSource } from "./ui/nodegraph/iconAdapter.ts";
 import { showContextMenu } from "./ui/contextMenu.ts";
 import { button, el } from "./ui/dom.ts";
 import { setIconMap } from "./ui/icon.ts";
@@ -27,7 +35,38 @@ import { preloadMapWithOverlay } from "./ui/preloadOverlay.ts";
 import { hideBlockingOverlay, showBlockingOverlay } from "./ui/loadingOverlay.ts";
 import { showSheetPermissionDialog } from "./ui/sheetPermissionDialog.ts";
 
-type Mode = "design" | "play" | "remote";
+/**
+ * Seven modes: four on the node-graph system, three on the untouched legacy
+ * one. The `n`-prefixed ids are the new stack; the bare ones are legacy and
+ * keep their original ids so a bookmarked draft/session keeps working.
+ */
+type Mode = "mapproc" | "ndesign" | "nplay" | "nremote" | "design" | "play" | "remote";
+type ModeGroup = "node" | "legacy";
+
+interface ModeDef {
+  id: Mode;
+  label: string;
+  group: ModeGroup;
+}
+
+/**
+ * ONE list drives both the tab bar and the mount table below. The previous
+ * shell was an `if / else if / else` in which `play` was the ELSE branch — an
+ * unrecognised mode silently booted legacy Play instead of saying anything.
+ * With a table there is no else branch to fall into: an unknown mode is a
+ * missing key, and that renders an error panel.
+ */
+const MODES: ModeDef[] = [
+  { id: "mapproc", label: "Map Process", group: "node" },
+  { id: "ndesign", label: "Design", group: "node" },
+  { id: "nplay", label: "Play", group: "node" },
+  { id: "nremote", label: "Remote Data", group: "node" },
+  { id: "design", label: "Design-Legacy", group: "legacy" },
+  { id: "play", label: "Play-Legacy", group: "legacy" },
+  { id: "remote", label: "Remote Data-Legacy", group: "legacy" },
+];
+
+const modeDef = (id: Mode): ModeDef | undefined => MODES.find((m) => m.id === id);
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const DRAFT_KEY = "cookorder-draft-map";
@@ -40,6 +79,9 @@ const DRAFT_KEY = "cookorder-draft-map";
  * which would otherwise render the grid with NaN dimensions. v4 added
  * dirtyObjects to MapDef; a v3 draft has no such array, which crashed image
  * preload (`map.dirtyObjects is not iterable`) instead of falling back.
+ *
+ * The node-graph system has its own key and its own version — see
+ * data/nodeProject.ts. Resetting one draft must never destroy the other.
  */
 const DRAFT_VERSION = 4;
 
@@ -50,21 +92,53 @@ interface Draft {
 
 const restored = loadDraft();
 
-/** Working copy the editors mutate; CSV export writes exactly this. */
-let map: MapData = restored?.map ?? structuredClone(MAP1_DATA);
+/** Legacy working state. The editors mutate `map`; CSV export writes exactly it. */
+const legacy = {
+  map: (restored?.map ?? structuredClone(MAP1_DATA)) as MapData,
+  /** Shared by Design-Legacy and Play-Legacy so switching modes never resets the open level. */
+  levelId: 0,
+  dataOrigin: restored
+    ? restored.migrated
+      ? "local draft (levels kept, definitions refreshed)"
+      : "local draft"
+    : "bundled Map 1 snapshot",
+};
+legacy.levelId = legacy.map.levels[0]?.id ?? 1;
+
+/** Node-graph working state, loaded from its own draft. */
+let node: NodeProjectState = loadNodeProject();
+let nodeLevelId = node.levels[0]?.id ?? 1;
+
 let mode: Mode = "play";
-let dataOrigin = restored
-  ? restored.migrated
-    ? "local draft (levels kept, definitions refreshed)"
-    : "local draft"
-  : "bundled Map 1 snapshot";
-/** Shared between Design and Play mode so switching modes never resets which level is open — see DesignView's onLevelChange and PlayView's onSelectLevel below. */
-let currentLevelId = map.levels[0]?.id ?? 1;
 let playView: PlayView | null = null;
-let designView: DesignView | null = null;
-/** Identity of the map last preloaded, so a same-map re-render doesn't re-preload. */
-let preloadedMapRef: MapData | null = null;
-/** Spreadsheet id the Remote Data tab reads/writes — editable there. No default is baked in (see SHEET_ID); only someone who pastes in their own project's id gets live data. */
+let nodePlayView: NodePlayView | null = null;
+
+/**
+ * Whether each mounted view has unsaved work. Views register here on mount, so
+ * the "leave anyway?" guards don't have to know which of seven views is up —
+ * previously this was a single `designView?.isDirty`, which silently stopped
+ * protecting anything the moment a second editable mode existed.
+ */
+let dirtyProviders: (() => boolean)[] = [];
+const anyDirty = () => dirtyProviders.some((f) => f());
+
+/**
+ * Icon sources already preloaded. A WeakSet, not a single identity slot: with
+ * two alternating sources (legacy map / node graph), one slot would miss on
+ * EVERY switch and re-run the whole preload each time.
+ */
+const preloaded = new WeakSet<object>();
+/** One icon source per graph document, so its identity is stable across renders. */
+const nodeIconSources = new WeakMap<object, NodeIconSource>();
+
+/**
+ * Bumped by every render. `render()` awaits the preload, and a mode switch
+ * during that await starts a second render — without this counter the first
+ * one would resume and pair the LAST writer's icon map with the FIRST mount.
+ */
+let renderGeneration = 0;
+
+/** Spreadsheet id the Remote Data tabs read/write — editable there, shared by both. */
 let sheetIdInput = SHEET_ID;
 
 function loadDraft(): { map: MapData; migrated: boolean } | null {
@@ -109,43 +183,66 @@ function loadDraft(): { map: MapData; migrated: boolean } | null {
 
 function saveDraft(): void {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ version: DRAFT_VERSION, map } satisfies Draft));
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({ version: DRAFT_VERSION, map: legacy.map } satisfies Draft),
+    );
   } catch (err) {
     console.warn("Could not persist draft", err);
   }
 }
 
+function saveNodeDraft(): void {
+  saveNodeProject(node);
+}
+
+/** The icon/preload source for the active mode — one ambient map, chosen per group. */
+function iconSourceFor(group: ModeGroup): MapData | NodeIconSource {
+  if (group === "legacy") return legacy.map;
+  let source = nodeIconSources.get(node.doc);
+  if (!source) {
+    source = nodeIconSource(node.doc);
+    nodeIconSources.set(node.doc, source);
+  }
+  return source;
+}
+
 async function render(): Promise<void> {
-  setIconMap(map);
-  // Only a genuine map change (new object identity) triggers a preload —
-  // switching mode/level within the same map reuses what's already loaded.
-  if (map !== preloadedMapRef) {
-    await preloadMapWithOverlay(map, GLOBAL_DEFS);
-    preloadedMapRef = map;
+  const generation = ++renderGeneration;
+  const def = modeDef(mode);
+  const source = iconSourceFor(def?.group ?? "legacy");
+
+  setIconMap(source);
+  if (!preloaded.has(source)) {
+    await preloadMapWithOverlay(source, GLOBAL_DEFS);
+    preloaded.add(source);
+    // A mode switch during that await already started a newer render, which
+    // has set its own icon map. Resuming here would mount this mode's view
+    // under the other one's icons.
+    if (generation !== renderGeneration) return;
+    setIconMap(source);
   }
 
   playView?.destroy();
   playView = null;
-  designView = null;
+  nodePlayView?.destroy();
+  nodePlayView = null;
+  dirtyProviders = [];
 
   const header = el("header", {}, [
     el("h1", {}, ["🍳 CookOrder"]),
     el("nav", { class: "mode-tabs" }, [
-      button("Design", () => switchMode("design"), {
-        class: mode === "design" ? "active" : "",
-      }),
-      button("Play", () => switchMode("play"), {
-        class: mode === "play" ? "active" : "",
-      }),
-      button("Remote Data", () => switchMode("remote"), {
-        class: mode === "remote" ? "active" : "",
-      }),
+      ...MODES.map((m) =>
+        button(m.label, () => switchMode(m.id), {
+          class: [mode === m.id ? "active" : "", m.group === "legacy" ? "legacy-tab" : ""]
+            .filter(Boolean)
+            .join(" "),
+        }),
+      ),
     ]),
     el("div", { class: "data-actions" }, [
-      el("span", { class: "data-origin" }, [
-        sheetIdInput.trim() ? `${dataOrigin} · sheet ${sheetIdInput.slice(0, 8)}…` : dataOrigin,
-      ]),
-      button("⬇ Export CSV", () => exportProjectCsv([map]), {
+      el("span", { class: "data-origin" }, [originLabel()]),
+      button("⬇ Export CSV", () => exportProjectCsv([legacy.map]), {
         class: "full-btn",
         title: "Download this map's level data as CSV",
       }),
@@ -163,9 +260,14 @@ async function render(): Promise<void> {
         showContextMenu(
           e,
           [
-            { label: "⬇ Export CSV", onSelect: () => exportProjectCsv([map]) },
+            { label: "⬇ Export CSV", onSelect: () => exportProjectCsv([legacy.map]) },
             { label: "⬆ Import CSV", onSelect: () => importCsvFile() },
             { label: "♻ Reset draft", danger: true, separator: true, onSelect: () => resetDraft() },
+            {
+              label: "♻ Reset node draft",
+              danger: true,
+              onSelect: () => resetNodeDraft(),
+            },
           ],
           { title: "Data" },
         ),
@@ -179,46 +281,12 @@ async function render(): Promise<void> {
 
   // A view that throws must not leave an empty page with no way out.
   try {
-    if (mode === "design") {
-      designView = new DesignView(main, map, GLOBAL_DEFS, saveDraft, currentLevelId, (id) => {
-        currentLevelId = id;
-      });
-    } else if (mode === "remote") {
-      new RemoteDataView(
-        main,
-        map,
-        () => sheetIdInput,
-        (id) => {
-          sheetIdInput = id;
-        },
-        () => {
-          saveDraft();
-          void render();
-        },
-        (levelId) => openInDesign(levelId),
-      );
-    } else {
-      const parsed = toMapDef(map);
-      const rawLevel = parsed.levels.find((l) => l.id === currentLevelId) ?? parsed.levels[0];
-      if (!rawLevel) {
-        main.append(el("p", {}, ["No levels to play."]));
-        return;
-      }
-      // Design mode edits/shows the real ids; Play mode is the only place
-      // a map's disabled ingredients (e.g. Map 1's bun) actually disappear.
-      const level = toPlayableLevelConfig(parsed, rawLevel);
-      playView = new PlayView(main, parsed, level, (id) => {
-        currentLevelId = id;
-        void render();
-      });
-    }
+    mount(mode, main);
   } catch (err) {
     console.error(err);
     main.replaceChildren(
       el("div", { class: "warnings" }, [
-        el("strong", {}, [
-          `${mode === "design" ? "Design" : mode === "remote" ? "Remote Data" : "Play"} mode failed to load`,
-        ]),
+        el("strong", {}, [`${def?.label ?? mode} mode failed to load`]),
         el("p", {}, [(err as Error).message]),
         el("p", {}, [
           "This usually means the saved draft no longer matches the current data schema.",
@@ -232,14 +300,123 @@ async function render(): Promise<void> {
   }
 }
 
+function originLabel(): string {
+  const group = modeDef(mode)?.group ?? "legacy";
+  const base = group === "node" ? node.origin : legacy.dataOrigin;
+  return sheetIdInput.trim() ? `${base} · sheet ${sheetIdInput.slice(0, 8)}…` : base;
+}
+
 /**
- * Switches to Design mode with the given level selected — the Remote Data
- * tab's "Open in Design" button. Guards the same way switchMode("design")
- * does when leaving Design mode dirty; entering it has nothing to guard.
+ * The mount table. Every mode has an entry; a missing one is an error panel
+ * rather than a silent fallback to some other mode.
+ */
+function mount(target: Mode, main: HTMLElement): void {
+  switch (target) {
+    case "mapproc": {
+      const view = new MapProcessView(main, node, () => {
+        saveNodeDraft();
+        void render();
+      });
+      dirtyProviders.push(() => view.isDirty);
+      return;
+    }
+    case "ndesign": {
+      const view = new NodeDesignView(main, node, GLOBAL_DEFS, saveNodeDraft, nodeLevelId, (id) => {
+        nodeLevelId = id;
+      });
+      dirtyProviders.push(() => view.isDirty);
+      return;
+    }
+    case "nplay": {
+      nodePlayView = new NodePlayView(main, node, nodeLevelId, (id) => {
+        nodeLevelId = id;
+        void render();
+      });
+      return;
+    }
+    case "nremote": {
+      new NodeRemoteDataView(
+        main,
+        node,
+        () => sheetIdInput,
+        (id) => {
+          sheetIdInput = id;
+        },
+        () => {
+          saveNodeDraft();
+          void render();
+        },
+        (levelId) => openInNodeDesign(levelId),
+      );
+      return;
+    }
+    case "design": {
+      const view = new DesignView(main, legacy.map, GLOBAL_DEFS, saveDraft, legacy.levelId, (id) => {
+        legacy.levelId = id;
+      });
+      dirtyProviders.push(() => view.isDirty);
+      return;
+    }
+    case "play": {
+      const parsed = toMapDef(legacy.map);
+      const rawLevel = parsed.levels.find((l) => l.id === legacy.levelId) ?? parsed.levels[0];
+      if (!rawLevel) {
+        main.append(el("p", {}, ["No levels to play."]));
+        return;
+      }
+      // Design mode edits/shows the real ids; Play mode is the only place
+      // a map's disabled ingredients (e.g. Map 1's bun) actually disappear.
+      const level = toPlayableLevelConfig(parsed, rawLevel);
+      playView = new PlayView(main, parsed, level, (id) => {
+        legacy.levelId = id;
+        void render();
+      });
+      return;
+    }
+    case "remote": {
+      new RemoteDataView(
+        main,
+        legacy.map,
+        () => sheetIdInput,
+        (id) => {
+          sheetIdInput = id;
+        },
+        () => {
+          saveDraft();
+          void render();
+        },
+        (levelId) => openInDesign(levelId),
+      );
+      return;
+    }
+    default: {
+      // Exhaustiveness: adding a Mode without a mount is a compile error here,
+      // and an unrecognised one at runtime says so instead of booting Play.
+      const unreachable: never = target;
+      main.append(
+        el("div", { class: "warnings" }, [
+          el("strong", {}, [`Unknown mode "${String(unreachable)}"`]),
+          el("p", {}, ["Pick a tab above."]),
+        ]),
+      );
+    }
+  }
+}
+
+/**
+ * Switches to Design-Legacy with the given level selected — the legacy Remote
+ * Data tab's "Open in Design" button.
  */
 function openInDesign(levelId: number): void {
-  currentLevelId = levelId;
+  legacy.levelId = levelId;
   mode = "design";
+  void render();
+}
+
+/** The node Remote Data tab's "Open in Design" — the node Design mode. */
+function openInNodeDesign(levelId: number): void {
+  nodeLevelId = levelId;
+  mode = "ndesign";
   void render();
 }
 
@@ -251,7 +428,7 @@ function openInDesign(levelId: number): void {
  * since the CSV no longer carries definitions.
  */
 function importCsvFile(): void {
-  if (designView?.isDirty) {
+  if (anyDirty()) {
     if (!confirm("Unsaved changes will be overwritten. Import CSV?")) return;
   }
   const input = el("input", { type: "file", accept: ".csv,text/csv" }) as HTMLInputElement;
@@ -263,9 +440,9 @@ function importCsvFile(): void {
       try {
         const levels = importLevelsCsv(String(reader.result));
         if (levels.length === 0) throw new Error("CSV has no level rows");
-        map = { ...map, levels };
-        currentLevelId = map.levels[0].id;
-        dataOrigin = `imported CSV (${file.name})`;
+        legacy.map = { ...legacy.map, levels };
+        legacy.levelId = legacy.map.levels[0].id;
+        legacy.dataOrigin = `imported CSV (${file.name})`;
         saveDraft();
         void render();
       } catch (err) {
@@ -278,17 +455,25 @@ function importCsvFile(): void {
 }
 
 function resetDraft(): void {
-  if (!confirm("Discard the local draft and reload the bundled snapshot?")) return;
+  if (!confirm("Discard the LEGACY local draft and reload the bundled snapshot?")) return;
   localStorage.removeItem(DRAFT_KEY);
-  map = structuredClone(MAP1_DATA);
-  dataOrigin = "bundled Map 1 snapshot";
-  currentLevelId = map.levels[0]?.id ?? 1;
+  legacy.map = structuredClone(MAP1_DATA);
+  legacy.dataOrigin = "bundled Map 1 snapshot";
+  legacy.levelId = legacy.map.levels[0]?.id ?? 1;
+  void render();
+}
+
+function resetNodeDraft(): void {
+  if (!confirm("Discard the NODE-GRAPH draft and re-migrate from the legacy snapshot?")) return;
+  clearNodeDraft();
+  node = loadNodeProject();
+  nodeLevelId = node.levels[0]?.id ?? 1;
   void render();
 }
 
 function switchMode(next: Mode): void {
-  if (mode === "design" && designView?.isDirty) {
-    if (!confirm("Some sections have unsaved changes. Leave Design mode anyway?")) return;
+  if (next !== mode && anyDirty()) {
+    if (!confirm("Some sections have unsaved changes. Leave this mode anyway?")) return;
   }
   mode = next;
   void render();
@@ -316,12 +501,12 @@ async function loadFromSheet(interactive: boolean): Promise<void> {
     return;
   }
 
-  if (interactive && designView?.isDirty) {
+  if (interactive && anyDirty()) {
     if (!confirm("Unsaved changes will be overwritten. Reload?")) return;
   }
 
   if (interactive) {
-    dataOrigin = "loading from Google Sheet…";
+    legacy.dataOrigin = "loading from Google Sheet…";
     showBlockingOverlay("Loading data from Google Sheet…");
     await render();
   }
@@ -329,13 +514,13 @@ async function loadFromSheet(interactive: boolean): Promise<void> {
   try {
     const project = await new GoogleSheetApiSource(interactive, sheetIdInput).loadProject();
     const fresh = project.maps[0];
-    map = {
-      ...map,
+    legacy.map = {
+      ...legacy.map,
       gridWidth: fresh.gridWidth,
       gridHeight: fresh.gridHeight,
       dirtyStackHeight: fresh.dirtyStackHeight,
       levels: fresh.levels.map((l, i) => ({
-        ...map.levels[i],
+        ...legacy.map.levels[i],
         id: l.id,
         name: l.name,
         weather: l.weather,
@@ -353,19 +538,19 @@ async function loadFromSheet(interactive: boolean): Promise<void> {
       })),
     };
     saveDraft();
-    dataOrigin = "live Google Sheet";
+    legacy.dataOrigin = "live Google Sheet";
   } catch (err) {
     console.error(err);
     if (err instanceof SheetAuthRequiredError) {
       // A silent check finding no session yet is the normal first-open state
       // for every new browser/tab — stay quiet and just offer the sign-in
       // button, rather than reporting it as a failure.
-      if (interactive) dataOrigin = `sign-in failed (${err.message}) — bundled snapshot`;
+      if (interactive) legacy.dataOrigin = `sign-in failed (${err.message}) — bundled snapshot`;
     } else if (err instanceof SheetPermissionError) {
-      dataOrigin = `sheet load failed (${err.message}) — bundled snapshot`;
+      legacy.dataOrigin = `sheet load failed (${err.message}) — bundled snapshot`;
       showSheetPermissionDialog({ sheetId: sheetIdInput });
     } else {
-      dataOrigin = `sheet load failed (${(err as Error).message}) — bundled snapshot`;
+      legacy.dataOrigin = `sheet load failed (${(err as Error).message}) — bundled snapshot`;
     }
   }
   if (interactive) hideBlockingOverlay();
@@ -373,7 +558,7 @@ async function loadFromSheet(interactive: boolean): Promise<void> {
 }
 
 window.addEventListener("beforeunload", (e) => {
-  if (designView?.isDirty) e.preventDefault();
+  if (anyDirty()) e.preventDefault();
 });
 
 /**

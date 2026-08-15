@@ -1,0 +1,278 @@
+// Everything the graph-native simulation needs, precomputed once per document.
+//
+// Legacy sim.ts calls `map.cookedIngredients.find(...)` and
+// `findToolRecipe(tools, id)` INSIDE the settle() fixpoint — a linear scan per
+// serve attempt. Here every hot lookup is an array index, keyed by a dense
+// ingredient/tool number interned at build time. That is not just tidier: it is
+// strictly less work per tick than the model it replaces.
+//
+// Layering note: this lives in core/ but imports from data/nodeGraph*. That
+// edge is safe and deliberate — the data/ node-graph modules import nothing
+// from core/, so there is no cycle, and the alternative (putting the
+// simulation's index under data/) would misplace it worse.
+
+import { buildLookup, slotIndex, slotsOf } from "../data/nodeGraphResolve.ts";
+import type { GraphLookup, Slot } from "../data/nodeGraphResolve.ts";
+import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
+
+/** One recipe, with the tool's default duration already folded in. */
+export interface ProcessStep {
+  /** Dense tool index. */
+  tool: number;
+  /** Dense ingredient indices. v1 reads inputs[0]; the list survives for later. */
+  inputs: number[];
+  /** Dense ingredient index produced. */
+  out: number;
+  amount: number;
+  /** edge.duration ?? tool.cookingTime — resolved here so the sim never re-derives it. */
+  duration: number;
+  /** Extra tools visited in order, producing no intermediate item. */
+  chainTools: number[];
+}
+
+/** A resolved choice point of an orderable, in dense indices. */
+export interface IndexedSlot {
+  kind: "fixed" | "group";
+  /** Dense group index, or -1 for a fixed slot. */
+  group: number;
+  options: number[];
+  maxQuantity: number;
+  isBase: boolean;
+}
+
+export interface GraphIndex {
+  doc: NodeGraphMap;
+  lookup: GraphLookup;
+
+  // --- interning ---
+  ingName: string[];
+  ingByName: Map<string, number>;
+  toolName: string[];
+  toolByName: Map<string, number>;
+  groupName: string[];
+  groupByName: Map<string, number>;
+  compositeName: string[];
+  compositeByName: Map<string, number>;
+  dirtyName: string[];
+  dirtyByName: Map<string, number>;
+
+  // --- production, replacing findToolRecipe / resolveCookedId ---
+  /** The one process edge producing this ingredient; null = pickupable leaf. */
+  producerOf: (ProcessStep | null)[];
+  /** The process edge consuming this ingredient; null = nothing takes it further. */
+  recipeForInput: (ProcessStep | null)[];
+  /**
+   * Following recipeForInput until the output is servable or nothing consumes
+   * it. What a pickup ACTUALLY becomes — the estimator must score against this,
+   * not one hop, or a chicken breast scores as producing a coated breast that
+   * no dish wants.
+   */
+  terminalOutput: number[];
+  /** Product of `amount` along that whole chain — real pieces per pickup. */
+  terminalYield: number[];
+  /** Tool visits along it. A chainTools route is one step (nothing lands mid-chain). */
+  chainDepth: number[];
+  /** Forward-reachable set per ingredient, including itself. */
+  reachableOutputs: Uint8Array[];
+
+  // --- assembly ---
+  orderables: number[];
+  slotsOfComposite: IndexedSlot[][];
+  /** Ingredient -> {orderable, slot}, or undefined when ambiguous/unused. */
+  slotOf: (({ orderable: number; slot: number }) | undefined)[];
+  /** Composite -> dirty index, or -1 for the generic dirty dish. */
+  dirtyOf: number[];
+
+  // --- per-ingredient scalars, hoisted out of .find() ---
+  usageNum: Int32Array;
+  limitPerDish: Int32Array;
+  servable: Uint8Array;
+  pickupable: Uint8Array;
+}
+
+function intern(names: string[]): Map<string, number> {
+  return new Map(names.map((n, i) => [n, i]));
+}
+
+export function buildIndex(doc: NodeGraphMap): GraphIndex {
+  const lookup = buildLookup(doc);
+
+  const ingName = doc.vertices.ingredient.map((v) => v.name);
+  const toolName = doc.vertices.tool.map((v) => v.name);
+  const groupName = doc.vertices.group.map((v) => v.name);
+  const compositeName = doc.vertices.composite.map((v) => v.name);
+  const dirtyName = doc.vertices.dirty.map((v) => v.name);
+
+  const ingByName = intern(ingName);
+  const toolByName = intern(toolName);
+  const groupByName = intern(groupName);
+  const compositeByName = intern(compositeName);
+  const dirtyByName = intern(dirtyName);
+
+  const n = ingName.length;
+  const usageNum = new Int32Array(n);
+  const limitPerDish = new Int32Array(n);
+  const servable = new Uint8Array(n);
+  const pickupable = new Uint8Array(n);
+  doc.vertices.ingredient.forEach((v, i) => {
+    usageNum[i] = v.usageNum ?? 1;
+    limitPerDish[i] = v.limitPerDish ?? 0;
+    servable[i] = v.servable ? 1 : 0;
+    pickupable[i] = v.pickupable ? 1 : 0;
+  });
+
+  const producerOf: (ProcessStep | null)[] = new Array(n).fill(null);
+  const recipeForInput: (ProcessStep | null)[] = new Array(n).fill(null);
+
+  for (const edge of doc.edges.process) {
+    const tool = toolByName.get(edge.from);
+    const out = ingByName.get(edge.to);
+    if (tool === undefined || out === undefined) continue; // INV-REF reports it
+    const inputs = edge.inputs
+      .map((name) => ingByName.get(name))
+      .filter((i): i is number => i !== undefined);
+    const step: ProcessStep = {
+      tool,
+      inputs,
+      out,
+      amount: edge.amount,
+      duration: edge.duration ?? doc.vertices.tool[tool].cookingTime,
+      chainTools: (edge.chainTools ?? [])
+        .map((name) => toolByName.get(name))
+        .filter((i): i is number => i !== undefined),
+    };
+    // First writer wins; a second producer is an INV-UNIQUE-PRODUCER error.
+    if (producerOf[out] === null) producerOf[out] = step;
+    for (const input of inputs) if (recipeForInput[input] === null) recipeForInput[input] = step;
+  }
+
+  // Follow recipeForInput until the output is servable (it lands on the grid)
+  // or nothing consumes it. Memoized, with a visiting guard so cyclic data
+  // returns rather than looping — this must stay total on invalid input.
+  const terminalOutput = new Array<number>(n).fill(-1);
+  const terminalYield = new Array<number>(n).fill(1);
+  const chainDepth = new Array<number>(n).fill(0);
+  const resolved = new Uint8Array(n);
+
+  const resolveTerminal = (i: number, visiting: Set<number>): void => {
+    if (resolved[i] || visiting.has(i)) {
+      if (!resolved[i]) {
+        terminalOutput[i] = i;
+        terminalYield[i] = 1;
+        chainDepth[i] = 0;
+        resolved[i] = 1;
+      }
+      return;
+    }
+    const step = recipeForInput[i];
+    if (!step || servable[i]) {
+      terminalOutput[i] = i;
+      terminalYield[i] = 1;
+      chainDepth[i] = 0;
+      resolved[i] = 1;
+      return;
+    }
+    visiting.add(i);
+    resolveTerminal(step.out, visiting);
+    visiting.delete(i);
+    terminalOutput[i] = terminalOutput[step.out];
+    terminalYield[i] = step.amount * terminalYield[step.out];
+    chainDepth[i] = 1 + chainDepth[step.out];
+    resolved[i] = 1;
+  };
+  for (let i = 0; i < n; i++) resolveTerminal(i, new Set());
+
+  // Forward reachability, memoized. Bitset per ingredient: 35 ingredients is
+  // 5 bytes each, so this is free at any realistic map size.
+  const words = Math.ceil(n / 8);
+  const reachableOutputs: Uint8Array[] = new Array(n);
+  const reachDone = new Uint8Array(n);
+  const computeReach = (i: number, visiting: Set<number>): Uint8Array => {
+    if (reachDone[i]) return reachableOutputs[i];
+    const bits = new Uint8Array(words);
+    bits[i >> 3] |= 1 << (i & 7);
+    if (!visiting.has(i)) {
+      visiting.add(i);
+      const step = recipeForInput[i];
+      if (step) {
+        const downstream = computeReach(step.out, visiting);
+        for (let w = 0; w < words; w++) bits[w] |= downstream[w];
+      }
+      visiting.delete(i);
+    }
+    reachableOutputs[i] = bits;
+    reachDone[i] = 1;
+    return bits;
+  };
+  for (let i = 0; i < n; i++) computeReach(i, new Set());
+
+  // Assembly: slot trees per composite, in dense indices.
+  const toIndexed = (slot: Slot): IndexedSlot => ({
+    kind: slot.kind,
+    group: slot.group === null ? -1 : (groupByName.get(slot.group) ?? -1),
+    options: slot.options.map((o) => ingByName.get(o)).filter((i): i is number => i !== undefined),
+    maxQuantity: slot.maxQuantity,
+    isBase: slot.isBase,
+  });
+  const slotsOfComposite = compositeName.map((name) => slotsOf(lookup, name).map(toIndexed));
+
+  const { slotOf: slotOfName } = slotIndex(lookup);
+  const slotOf: (({ orderable: number; slot: number }) | undefined)[] = new Array(n).fill(undefined);
+  for (const [ingredient, place] of slotOfName) {
+    const i = ingByName.get(ingredient);
+    const c = compositeByName.get(place.orderable);
+    if (i !== undefined && c !== undefined) slotOf[i] = { orderable: c, slot: place.slot };
+  }
+
+  const dirtyOf = compositeName.map((name) => {
+    const target = lookup.dirtyOf.get(name);
+    return target === undefined ? -1 : (dirtyByName.get(target) ?? -1);
+  });
+
+  const orderables = doc.vertices.composite
+    .map((c, i) => (c.orderable ? i : -1))
+    .filter((i) => i !== -1);
+
+  return {
+    doc,
+    lookup,
+    ingName,
+    ingByName,
+    toolName,
+    toolByName,
+    groupName,
+    groupByName,
+    compositeName,
+    compositeByName,
+    dirtyName,
+    dirtyByName,
+    producerOf,
+    recipeForInput,
+    terminalOutput,
+    terminalYield,
+    chainDepth,
+    reachableOutputs,
+    orderables,
+    slotsOfComposite,
+    slotOf,
+    dirtyOf,
+    usageNum,
+    limitPerDish,
+    servable,
+    pickupable,
+  };
+}
+
+/** True when `to` is forward-reachable from `from` (including from === to). */
+export function reaches(ix: GraphIndex, from: number, to: number): boolean {
+  const bits = ix.reachableOutputs[from];
+  return bits !== undefined && (bits[to >> 3] & (1 << (to & 7))) !== 0;
+}
+
+/** True when anything in `demand` is forward-reachable from `ing` — the "is this pick wanted" test. */
+export function reachesAny(ix: GraphIndex, ing: number, demand: Uint8Array): boolean {
+  const bits = ix.reachableOutputs[ing];
+  if (!bits) return false;
+  for (let w = 0; w < bits.length; w++) if ((bits[w] & demand[w]) !== 0) return true;
+  return false;
+}

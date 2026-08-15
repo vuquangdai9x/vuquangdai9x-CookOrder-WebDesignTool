@@ -1,0 +1,143 @@
+import { describe, expect, it } from "vitest";
+import burgerJson from "../data/config/nodegraph/burger.json";
+import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
+import { buildIndex } from "./nodeIndex.ts";
+import { parseDish } from "./nodeParser.ts";
+import { describeIssue, orderIdIndex, resolveDishes, resolveOrder } from "./nodeOrder.ts";
+
+const doc = burgerJson as unknown as NodeGraphMap;
+const ix = buildIndex(doc);
+const ids = orderIdIndex(ix);
+const resolve = (s: string) => resolveOrder(ix, parseDish(s), ids);
+const named = (r: ReturnType<typeof resolve>) =>
+  r.order.slots.map((s) => `${ix.ingName[s.ing]}@${s.slot}/gate${s.gate}`);
+
+// Ids from burger.json's table: composites c0-c2 (c3 is a tombstone),
+// groups g0-g2, raws 0-16, processed 100+.
+const BURGER = "{c0:100.{g0:101.101.102}}"; // bun + 2 patty + 1 tomato
+const SODA = "{c1:107.8}"; // soda cup + ice
+const CHICKEN = "{c2:{g1:109}.{g2:14}}"; // fried basket: wing + chili
+const FRIES = "{c2:{g1:112}}"; // fried basket: just potato, no sauce
+const SAUCY_FRIES = "{c2:{g1:112}.{g2:16}}"; // potato + cheese sauce
+
+describe("resolveOrder — reading the bracket tree", () => {
+  it("resolves a burger, keeping quantity as repeated slots", () => {
+    const r = resolve(BURGER);
+    expect(r.issues).toEqual([]);
+    expect(ix.compositeName[r.order.orderable]).toBe("burger");
+    expect(named(r)).toEqual([
+      "bun-sliced@0/gate-1",
+      "patty-cooked@1/gate0",
+      "patty-cooked@1/gate0",
+      "tomato-sliced@1/gate0",
+    ]);
+  });
+
+  it("gates every non-base slot on the base slot actually ordered", () => {
+    const r = resolve(CHICKEN);
+    expect(r.issues).toEqual([]);
+    const [base, sauce] = r.order.slots;
+    expect(ix.ingName[base.ing]).toBe("chicken-wing-fried");
+    expect(base.gate).toBe(-1); // this IS the base
+    expect(ix.ingName[sauce.ing]).toBe("chili-bowl");
+    expect(sauce.gate).toBe(0); // waits for slot 0, whichever cut was chosen
+  });
+
+  it("handles two fixed slots with no group", () => {
+    const r = resolve(SODA);
+    expect(r.issues).toEqual([]);
+    expect(named(r)).toEqual(["soda-cup@0/gate-1", "ice@1/gate0"]);
+  });
+
+  it("handles a base-only order, with the topping group left empty", () => {
+    const r = resolve(FRIES);
+    expect(r.issues).toEqual([]);
+    expect(named(r)).toEqual(["potato-fried@0/gate-1"]);
+  });
+
+  it("lets potato take a sauce, like any other fried base", () => {
+    // The whole point of folding potato into the fried basket: this dish was
+    // impossible in the legacy runtime, where cheese sauce required a chicken cut.
+    const r = resolve(SAUCY_FRIES);
+    expect(r.issues).toEqual([]);
+    expect(named(r)).toEqual(["potato-fried@0/gate-1", "cheese-sauce@1/gate0"]);
+  });
+
+  it("attaches the composite's dirty object", () => {
+    expect(ix.dirtyName[resolve(BURGER).order.dirty]).toBe("dirty-plate");
+    expect(ix.dirtyName[resolve(SODA).order.dirty]).toBe("dirty-cup");
+    expect(ix.dirtyName[resolve(CHICKEN).order.dirty]).toBe("dirty-chick-box");
+    expect(ix.dirtyName[resolve(FRIES).order.dirty]).toBe("dirty-chick-box");
+  });
+});
+
+describe("INV-DISH-SINGLE-ORDERABLE at dish level", () => {
+  it("rejects a member belonging to a different composite", () => {
+    const r = resolve("{c0:100.107}"); // a soda cup inside a burger
+    expect(r.issues).toHaveLength(1);
+    expect(describeIssue(r.issues[0])).toBe('"soda-cup" belongs to soda, but appears inside burger.');
+    // The rest of the order still resolves — one bad member is not fatal.
+    expect(named(r)).toEqual(["bun-sliced@0/gate-1"]);
+  });
+
+  it("rejects a group that is not part of this composite", () => {
+    const r = resolve("{c0:100.{g2:14}}"); // fried-chicken's sauce group inside a burger
+    const kinds = r.issues.map((i) => i.kind);
+    expect(kinds).toContain("wrong-group");
+    expect(r.issues.map(describeIssue).join(" ")).toContain("fried-basket-sauces");
+  });
+});
+
+describe("total on bad ids", () => {
+  it("reports an unknown composite and returns an unresolved order", () => {
+    const r = resolve("{c99:100}");
+    expect(r.order.orderable).toBe(-1);
+    expect(r.order.slots).toEqual([]);
+    expect(describeIssue(r.issues[0])).toBe("No composite has id 99.");
+  });
+
+  it("reports an unknown ingredient but keeps the rest of the dish", () => {
+    const r = resolve("{c0:100.{g0:999}}");
+    expect(describeIssue(r.issues[0])).toBe("No ingredient has id 999.");
+    expect(named(r)).toEqual(["bun-sliced@0/gate-1"]);
+  });
+
+  it("distinguishes a RETIRED id from one that never existed", () => {
+    const withTombstone = structuredClone(doc);
+    withTombstone.idTable.ingredient.push({ id: 900, node: null, retired: "old-sauce" });
+    const ix2 = buildIndex(withTombstone);
+    const r = resolveOrder(ix2, parseDish("{c0:100.{g0:900}}"), orderIdIndex(ix2));
+    expect(describeIssue(r.issues[0])).toBe('ingredient id 900 was retired (it used to be "old-sauce").');
+  });
+
+  it("never throws on a structurally valid but semantically wrong dish", () => {
+    expect(() => resolve("{c1:100.101.102}")).not.toThrow();
+  });
+});
+
+describe("limitPerDish", () => {
+  it("flags exceeding a per-dish limit", () => {
+    // bun-sliced has limitPerDish 1.
+    const r = resolve("{c0:100.100}");
+    const issue = r.issues.find((i) => i.kind === "over-limit");
+    expect(issue).toBeDefined();
+    expect(describeIssue(issue!)).toBe('"bun-sliced" appears 2 times but is limited to 1 per dish.');
+  });
+
+  it("allows unlimited repetition where limitPerDish is 0", () => {
+    const r = resolve("{c0:100.{g0:101.101.101.101}}");
+    expect(r.issues).toEqual([]);
+    expect(r.order.slots).toHaveLength(5);
+  });
+});
+
+describe("resolveDishes", () => {
+  it("resolves a customer's dishes and tags issues with their dish index", () => {
+    const { orders, issues } = resolveDishes(ix, [parseDish(BURGER), parseDish("{c1:100}")], ids);
+    expect(orders).toHaveLength(2);
+    expect(ix.compositeName[orders[0].orderable]).toBe("burger");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].dish).toBe(1);
+    expect(describeIssue(issues[0].issue)).toContain("bun-sliced");
+  });
+});

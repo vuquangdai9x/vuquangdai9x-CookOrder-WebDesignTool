@@ -22,6 +22,13 @@
     { "name": "visibleRows", "type": "int", "required": true, "min": 1, "description": "Queue rows shown in Play: 1 interactable front row plus previews." }
   ],
 
+  "_idTableNote": "Sits beside `map` in a map document, NOT inside it — see nodeIdTable.ts. Every integer in a queue, grid or customer string is a DATA ID resolved through this table to a node name; level data never references graph structure. Five spaces (ingredient/composite/group/tool/dirty) because the bracketed dish format names composites and groups by id too ({c0:...} and {g0:...}). Three rules keep committed levels safe as the graph changes: ids are APPEND-ONLY and never reused; deleting a node TOMBSTONES its entry (node: null, old name in `retired`) so a stale reference is a loud error rather than a silent repoint; renaming touches only the `node` field, so the id — and every level using it — is unaffected.",
+  "idTableEntryFields": [
+    { "name": "id", "type": "int", "required": true, "min": 0, "description": "The number that appears in level strings. Assign-once, never reused." },
+    { "name": "node", "type": "string", "description": "Vertex name this id resolves to. Absent/null marks a tombstone." },
+    { "name": "retired", "type": "string", "description": "The name this id used to point at. Set together with a null `node`, for diagnostics." }
+  ],
+
   "vertexKinds": [
     {
       "kind": "ingredient",
@@ -66,18 +73,11 @@
       "kind": "group",
       "label": "Choice group",
       "color": "#5aa7e0",
-      "description": "A reusable choice set referenced as a composite's base or topping, or nested as another group's option. SINGLE picks exactly one option; MULTIPLE picks a multiset.",
+      "description": "A reusable choice set referenced as a composite's base or topping, or nested as another group's option. A group always picks a multiset; `maxQuantity` is the only knob. There is deliberately no SINGLE kind — 'exactly one' is maxQuantity 1, which removes a whole class of 'which rule wins' questions.",
       "fields": [
         { "name": "name", "type": "string", "required": true, "unique": true },
         { "name": "displayName", "type": "string", "required": true },
-        {
-          "name": "groupType",
-          "type": "enum",
-          "required": true,
-          "options": ["SINGLE", "MULTIPLE"],
-          "description": "SINGLE = exactly one option, and each option is its own concrete variant. MULTIPLE = any combination, bounded by maxQuantity."
-        },
-        { "name": "maxQuantity", "type": "int", "default": -1, "description": "Total picks allowed across all options. -1 = unlimited. Ignored for SINGLE. An unlimited MULTIPLE makes the enclosing orderable's variant count unbounded — see the resolver." }
+        { "name": "maxQuantity", "type": "int", "default": -1, "description": "Total picks allowed across all options. -1 = unlimited (which makes the enclosing orderable's variant count unbounded — see the resolver); 1 = the old SINGLE, exactly one option chosen." }
       ]
     },
     {
@@ -88,7 +88,8 @@
       "fields": [
         { "name": "name", "type": "string", "required": true, "unique": true },
         { "name": "displayName", "type": "string", "required": true },
-        { "name": "orderable", "type": "bool", "default": false, "description": "A customer may order this. Marks a graph root — the tracer starts here." }
+        { "name": "orderable", "type": "bool", "default": false, "description": "A customer may order this. Marks a graph root — the tracer starts here." },
+        { "name": "toppingRequired", "type": "bool", "default": false, "description": "The topping slot must be filled. False = a bare base is a legal order (plain fries). Checked when a designer authors a dish and honoured by the customer auto-generator, which fills the slot rather than leaving it empty." }
       ]
     },
     {
@@ -151,7 +152,7 @@
       "to": ["ingredient", "group", "composite"],
       "description": "One choice within a group. Nesting a group inside a group is legal but must stay acyclic.",
       "fields": [
-        { "name": "maxQuantity", "type": "int", "default": -1, "description": "Max copies of THIS option. -1 = unlimited. Ignored by SINGLE groups." }
+        { "name": "maxQuantity", "type": "int", "default": -1, "description": "Max copies of THIS option, independent of the group total. -1 = unlimited. A group capped at 3 whose cheese option is capped at 1 allows three toppings but only one of them cheese." }
       ]
     },
     {
@@ -168,18 +169,27 @@
 
   "invariants": [
     { "id": "INV-REF", "severity": "error", "description": "Every edge endpoint and every ref field names a vertex declared in the same map." },
+    { "id": "INV-IDTABLE-UNIQUE", "severity": "error", "description": "Within each id space, ids are unique and non-negative, and no two live entries claim the same node name. A tombstone must record the name it retired." },
+    { "id": "INV-IDTABLE-RESOLVES", "severity": "error", "description": "Every non-tombstone id-table entry names a vertex that exists and is of that space's kind." },
+    { "id": "INV-NO-RETIRED-IN-USE", "severity": "error", "description": "No level string references a tombstoned id. Checked against the level dataset, so deleting a node that levels still use fails loudly instead of silently repointing them." },
+    { "id": "INV-ORDER-REBUILDABLE", "severity": "error", "description": "Each servable ingredient maps to exactly one slot across the flattened slot tree: it appears in no more than one slot of a composite (C1) and is hosted by no more than one orderable (C2). This is what lets a legacy flat dish be re-bracketed losslessly during migration. Nesting depth is NOT a violation — nested composites flatten cleanly; slot ambiguity is the hazard." },
+    { "id": "INV-DISH-SINGLE-ORDERABLE", "severity": "error", "description": "Every member of a dish belongs to the composite its outermost bracket names. The bracket format makes the shape single-orderable by construction; this catches a member smuggled into a bracket it does not belong to, e.g. a soda cup inside a burger." },
+    { "id": "INV-INTERMEDIATE-AMOUNT", "severity": "error", "description": "A process edge producing a non-servable intermediate must have amount 1. Amounts above 1 would leave half a batch forwarded and half stranded." },
     { "id": "INV-UNIQUE-PRODUCER", "severity": "error", "description": "At most one process edge targets any ingredient. An ingredient with no producer must be pickupable." },
     { "id": "INV-ACYCLIC", "severity": "error", "description": "No cycles in process/base/topping/option edges." },
     { "id": "INV-NAMESPACE", "severity": "error", "description": "Vertex names are unique across ALL kinds — base/topping/option edges resolve into one shared namespace." },
     { "id": "INV-TRACEABLE", "severity": "error", "description": "Every distinct leaf reachable from an orderable composite bottoms out at a pickupable ingredient." },
     { "id": "INV-BASE-REQUIRED", "severity": "error", "description": "Every composite has exactly one base edge." },
     { "id": "INV-GROUP-NONEMPTY", "severity": "error", "description": "Every group has at least one option edge." },
+    { "id": "INV-TOPPING-REQUIRED", "severity": "error", "description": "A composite marked toppingRequired actually has a topping edge to require. Marking it without one makes every order of that composite unfillable." },
     { "id": "INV-SERVABLE", "severity": "error", "description": "Anything reachable as a base or topping leaf is marked servable." },
     { "id": "WARN-ORPHAN-OUTPUT", "severity": "warning", "description": "An ingredient produced by a tool but consumed by nothing and not reachable from any orderable." },
     { "id": "WARN-UNUSED-PICKUP", "severity": "warning", "description": "A pickupable ingredient no orderable reaches." },
     { "id": "WARN-UNREACHED-COMPOSITE", "severity": "warning", "description": "A composite no orderable reaches." },
     { "id": "WARN-UNBOUNDED", "severity": "warning", "description": "An orderable's concrete-variant count is unbounded because a MULTIPLE group on its path is uncapped. Expected for build-your-own items; stated so it is a choice, not an accident." },
     { "id": "WARN-EMPTY-TOOL", "severity": "warning", "description": "A tool with no process edges." },
-    { "id": "WARN-DEGENERATE-CHOICE", "severity": "warning", "description": "A SINGLE group with exactly one option." }
+    { "id": "WARN-DEGENERATE-CHOICE", "severity": "warning", "description": "A group with exactly one option and no room for repeats — the choice is not a choice." },
+    { "id": "WARN-UNTABLED-NODE", "severity": "warning", "description": "A pickupable or servable ingredient — or an orderable composite, or a group reachable from one — with no id-table entry. It cannot be referenced by level data until an id is minted." },
+    { "id": "WARN-MULTI-INPUT", "severity": "warning", "description": "A process edge with more than one input. The data keeps the list, but the v1 simulation reads only inputs[0]." }
   ]
 }

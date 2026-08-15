@@ -315,8 +315,9 @@ export function levelsCsv(map: MapData): string {
   return toCsv([LEVELS_CSV_HEADER, ...rows]);
 }
 
-function downloadFile(name: string, content: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type: "text/csv" }));
+/** `mime` defaults to CSV, the only thing this module itself downloads. */
+export function downloadFile(name: string, content: string, mime = "text/csv"): void {
+  const url = URL.createObjectURL(new Blob([content], { type: mime }));
   const a = document.createElement("a");
   a.href = url;
   a.download = name;

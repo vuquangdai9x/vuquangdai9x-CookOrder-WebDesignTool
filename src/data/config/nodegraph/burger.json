@@ -3,8 +3,8 @@
   "_derivation": [
     "Raw ids and cooked ids mirror 1:1 in this map (every recipe has in === out), but they are DISTINCT vertices here whenever a tool sits between them: `bun` (raw, pickupable) is not `bun-sliced` (cooked, servable).",
     "Ice (8), Chili Bowl (14) and Cheese Sauce (16) have no tool recipe — they go straight from queue to grid — so each is ONE vertex that is both pickupable and servable.",
-    "`baseId` on a cooked ingredient became a base/topping edge: baseId 0 (Sliced Bun) -> the burger-toppings group; baseId 7 (Soda Cup) -> soda's topping; baseId [9,10,11,12] -> the fried-chicken-sauces group.",
-    "Fried Potato (cooked 13) carries no baseId and appears in no other item's baseId list, so in today's data it is a standalone order that takes no sauce — modelled as its own orderable with no topping.",
+    "`baseId` on a cooked ingredient became a base/topping edge: baseId 0 (Sliced Bun) -> the burger-toppings group; baseId 7 (Soda Cup) -> soda's topping; baseId [9,10,11,12] -> the fried-basket-sauces group.",
+    "DESIGN CHANGE — fried potato joined the fried basket. In the runtime, Fried Potato (cooked 13) carries no baseId and is in no sauce's baseId list, so it was a standalone order that could take no sauce. That made 8 authored dishes across levels 1_17/1_18/1_20 — all exactly [13,16], fried potato + cheese sauce — impossible to complete: cheese sauce needs one of the four fried chicken cuts present, and those dishes have none. Verified against the legacy simulation, which serves 0 of 14 customers on 1_17 and stalls. Fixed by making `potato-fried` a fifth option of the (renamed) `fried-basket-bases` group, so every sauce applies to it exactly as it does to the chicken cuts, and deleting the standalone `fried-potato` composite. Consequences worth knowing: a potato order now leaves a Dirty Chick Box (previously it left nothing at all), and potato can now take chili and chive as well as cheese sauce — the group applies to whatever base was chosen. Composite id 3 is TOMBSTONED rather than reused, per the id-table rules.",
     "Potato is the one chained recipe: Cutting Board with chainTools [fryer]. It produces NO intermediate item and never lands on the grid mid-chain, so it is a single process edge, not two.",
     "DESIGN CHANGE vs. the current runtime — chicken now flour-coats before frying: chicken-{breast,wing,thigh,nugget} -> Flour -> *-flour-coated -> Fryer -> *-fried. Today's cooking-tools.json sends raw chicken straight into the Fryer and leaves Flour with an empty recipes array. Modelled as two real process edges with a coated intermediate vertex (not one edge with chainTools), because the coating is a distinct item state; contrast potato, where chainTools is correct precisely because no intermediate item exists. The four coated vertices are neither pickupable nor servable — they only ever sit between two tools — and carry no runtimeCookedId, since the runtime has no ids for them. Wiring this back into the sim means adding four cooked ingredients and rewriting the Fryer's recipe inputs.",
     "Cheese slices yield 3, not 2 — cooking-tools.json recipe { in: 5, out: 5, amount: 3 }, which disagrees with ingredients.json's numSlices 2. `amount` is authoritative (the sim reads it); numSlices is carried as informational."
@@ -18,6 +18,69 @@
     "gridHeight": 2,
     "dirtyStackHeight": 5,
     "visibleRows": 3
+  },
+
+  "idTable": {
+    "ingredient": [
+      { "id": 0, "node": "bun" },
+      { "id": 1, "node": "patty" },
+      { "id": 2, "node": "tomato" },
+      { "id": 3, "node": "lettuce" },
+      { "id": 4, "node": "onion" },
+      { "id": 5, "node": "cheese" },
+      { "id": 6, "node": "egg" },
+      { "id": 7, "node": "cup" },
+      { "id": 8, "node": "ice" },
+      { "id": 9, "node": "chicken-breast" },
+      { "id": 10, "node": "chicken-wing" },
+      { "id": 11, "node": "chicken-thigh" },
+      { "id": 12, "node": "chicken-nugget" },
+      { "id": 13, "node": "potato" },
+      { "id": 14, "node": "chili-bowl" },
+      { "id": 15, "node": "chive" },
+      { "id": 16, "node": "cheese-sauce" },
+      { "id": 100, "node": "bun-sliced" },
+      { "id": 101, "node": "patty-cooked" },
+      { "id": 102, "node": "tomato-sliced" },
+      { "id": 103, "node": "lettuce-sliced" },
+      { "id": 104, "node": "onion-sliced" },
+      { "id": 105, "node": "cheese-sliced" },
+      { "id": 106, "node": "egg-cooked" },
+      { "id": 107, "node": "soda-cup" },
+      { "id": 108, "node": "chicken-breast-fried" },
+      { "id": 109, "node": "chicken-wing-fried" },
+      { "id": 110, "node": "chicken-thigh-fried" },
+      { "id": 111, "node": "chicken-nugget-fried" },
+      { "id": 112, "node": "potato-fried" },
+      { "id": 113, "node": "chive-sliced" },
+      { "id": 114, "node": "chicken-breast-flour-coated" },
+      { "id": 115, "node": "chicken-wing-flour-coated" },
+      { "id": 116, "node": "chicken-thigh-flour-coated" },
+      { "id": 117, "node": "chicken-nugget-flour-coated" }
+    ],
+    "composite": [
+      { "id": 0, "node": "burger" },
+      { "id": 1, "node": "soda" },
+      { "id": 2, "node": "fried-basket" },
+      { "id": 3, "node": null, "retired": "fried-potato" }
+    ],
+    "group": [
+      { "id": 0, "node": "burger-toppings" },
+      { "id": 1, "node": "fried-basket-bases" },
+      { "id": 2, "node": "fried-basket-sauces" }
+    ],
+    "tool": [
+      { "id": 0, "node": "griddle" },
+      { "id": 1, "node": "coca-machine" },
+      { "id": 2, "node": "cutting-board" },
+      { "id": 3, "node": "fryer" },
+      { "id": 4, "node": "flour" }
+    ],
+    "dirty": [
+      { "id": 0, "node": "dirty-plate" },
+      { "id": 1, "node": "dirty-cup" },
+      { "id": 2, "node": "dirty-chick-box" }
+    ]
   },
 
   "vertices": {
@@ -66,21 +129,20 @@
       { "name": "griddle", "displayName": "Griddle", "numSlots": 2, "cookingTime": 3, "upgradeCosts": [0, 2, 2], "emoji": "🍳", "localImage": "Map1-burger/tools/Asset_Tool_Pan.png", "runtimeToolId": 0 },
       { "name": "coca-machine", "displayName": "Coca Machine", "numSlots": 1, "cookingTime": 2, "upgradeCosts": [0, 1, 1], "emoji": "🥤", "localImage": "Map1-burger/tools/Asset_Tool_SodaMachine.png", "runtimeToolId": 1 },
       { "name": "cutting-board", "displayName": "Cutting Board", "numSlots": 1, "cookingTime": 1, "upgradeCosts": [0, 1, 1], "emoji": "🔪", "localImage": "Map1-burger/tools/Asset_Tool_CuttingBoard.png", "runtimeToolId": 2 },
-      { "name": "fryer", "displayName": "Fryer", "numSlots": 1, "cookingTime": 1, "upgradeCosts": [0, 1, 1], "emoji": "🍟", "localImage": "", "runtimeToolId": 3 },
-      { "name": "flour", "displayName": "Flour", "numSlots": 1, "cookingTime": 1, "upgradeCosts": [0, 1, 1], "emoji": "🌾", "localImage": "", "runtimeToolId": 4 }
+      { "name": "fryer", "displayName": "Fryer", "numSlots": 1, "cookingTime": 1, "upgradeCosts": [0, 1, 1], "emoji": "🍟", "runtimeToolId": 3 },
+      { "name": "flour", "displayName": "Flour", "numSlots": 1, "cookingTime": 1, "upgradeCosts": [0, 1, 1], "emoji": "🌾", "runtimeToolId": 4 }
     ],
 
     "group": [
-      { "name": "burger-toppings", "displayName": "Burger toppings", "groupType": "MULTIPLE", "maxQuantity": -1 },
-      { "name": "fried-chicken-bases", "displayName": "Fried chicken", "groupType": "SINGLE" },
-      { "name": "fried-chicken-sauces", "displayName": "Fried chicken sauces", "groupType": "MULTIPLE", "maxQuantity": -1 }
+      { "name": "burger-toppings", "displayName": "Burger toppings", "maxQuantity": -1 },
+      { "name": "fried-basket-bases", "displayName": "Fried item", "maxQuantity": 1 },
+      { "name": "fried-basket-sauces", "displayName": "Fried item sauces", "maxQuantity": -1 }
     ],
 
     "composite": [
       { "name": "burger", "displayName": "Burger", "orderable": true },
       { "name": "soda", "displayName": "Soda", "orderable": true },
-      { "name": "fried-chicken", "displayName": "Fried Chicken", "orderable": true },
-      { "name": "fried-potato", "displayName": "Fries", "orderable": true }
+      { "name": "fried-basket", "displayName": "Fried Basket", "orderable": true }
     ],
 
     "dirty": [
@@ -119,14 +181,13 @@
     "base": [
       { "from": "burger", "to": "bun-sliced" },
       { "from": "soda", "to": "soda-cup" },
-      { "from": "fried-chicken", "to": "fried-chicken-bases" },
-      { "from": "fried-potato", "to": "potato-fried" }
+      { "from": "fried-basket", "to": "fried-basket-bases" }
     ],
 
     "topping": [
       { "from": "burger", "to": "burger-toppings" },
       { "from": "soda", "to": "ice" },
-      { "from": "fried-chicken", "to": "fried-chicken-sauces" }
+      { "from": "fried-basket", "to": "fried-basket-sauces" }
     ],
 
     "option": [
@@ -137,20 +198,21 @@
       { "from": "burger-toppings", "to": "cheese-sliced", "maxQuantity": -1 },
       { "from": "burger-toppings", "to": "egg-cooked", "maxQuantity": -1 },
 
-      { "from": "fried-chicken-bases", "to": "chicken-breast-fried" },
-      { "from": "fried-chicken-bases", "to": "chicken-wing-fried" },
-      { "from": "fried-chicken-bases", "to": "chicken-thigh-fried" },
-      { "from": "fried-chicken-bases", "to": "chicken-nugget-fried" },
+      { "from": "fried-basket-bases", "to": "chicken-breast-fried" },
+      { "from": "fried-basket-bases", "to": "chicken-wing-fried" },
+      { "from": "fried-basket-bases", "to": "chicken-thigh-fried" },
+      { "from": "fried-basket-bases", "to": "chicken-nugget-fried" },
+      { "from": "fried-basket-bases", "to": "potato-fried" },
 
-      { "from": "fried-chicken-sauces", "to": "chili-bowl", "maxQuantity": 1 },
-      { "from": "fried-chicken-sauces", "to": "chive-sliced", "maxQuantity": 1 },
-      { "from": "fried-chicken-sauces", "to": "cheese-sauce", "maxQuantity": 1 }
+      { "from": "fried-basket-sauces", "to": "chili-bowl", "maxQuantity": 1 },
+      { "from": "fried-basket-sauces", "to": "chive-sliced", "maxQuantity": 1 },
+      { "from": "fried-basket-sauces", "to": "cheese-sauce", "maxQuantity": 1 }
     ],
 
     "leavesDirty": [
       { "from": "burger", "to": "dirty-plate" },
       { "from": "soda", "to": "dirty-cup" },
-      { "from": "fried-chicken", "to": "dirty-chick-box" }
+      { "from": "fried-basket", "to": "dirty-chick-box" }
     ]
   },
 
