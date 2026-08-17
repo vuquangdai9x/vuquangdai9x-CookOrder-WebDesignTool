@@ -38,7 +38,15 @@ import { ID_SPACES } from "./nodeIdTable.ts";
 
 const LIST_SEP = "|";
 const ID_FIELDS = ["space", "id", "node", "retired"];
-const MAP_FIELDS = ["id", "name", "gridWidth", "gridHeight", "dirtyStackHeight", "visibleRows"];
+const MAP_FIELDS = [
+  "id",
+  "name",
+  "gridWidth",
+  "gridHeight",
+  "dirtyStackHeight",
+  "visibleRows",
+  "customerAvatars",
+];
 
 // ---------- writing ----------
 
@@ -136,6 +144,7 @@ function coerce(field: FieldDef, raw: string): unknown {
       return Number.isFinite(n) ? n : undefined;
     }
     case "ref[]":
+    case "string[]":
     case "int[]": {
       const parts = text.split(LIST_SEP).filter((p) => p !== "");
       return field.type === "int[]" ? parts.map(Number).filter(Number.isFinite) : parts;
@@ -196,7 +205,8 @@ export function csvToGraph(text: string): CsvImportResult {
       header.forEach((name, c) => {
         const raw = (row[c] ?? "").trim();
         if (raw === "") return;
-        map[name] = name === "id" || name === "name" ? raw : Number(raw);
+        if (name === "customerAvatars") map[name] = raw.split(LIST_SEP).filter(Boolean);
+        else map[name] = name === "id" || name === "name" ? raw : Number(raw);
       });
       return;
     }

@@ -10,7 +10,8 @@
     { "type": "enum", "widget": "select", "note": "options listed per-field" },
     { "type": "ref", "widget": "vertex-picker", "note": "name of another vertex; refKinds restricts which" },
     { "type": "ref[]", "widget": "vertex-multi-picker" },
-    { "type": "int[]", "widget": "number-list" }
+    { "type": "int[]", "widget": "number-list" },
+    { "type": "string[]", "widget": "text-list", "note": "free-form strings, e.g. asset paths" }
   ],
 
   "mapFields": [
@@ -19,7 +20,8 @@
     { "name": "gridWidth", "type": "int", "required": true, "min": 1, "description": "Prep-grid columns. Fixed for every level in the map." },
     { "name": "gridHeight", "type": "int", "required": true, "min": 1, "description": "Prep-grid rows." },
     { "name": "dirtyStackHeight", "type": "int", "required": true, "min": 1, "description": "How many dirty objects stack in one grid cell before it overflows and the level is lost." },
-    { "name": "visibleRows", "type": "int", "required": true, "min": 1, "description": "Queue rows shown in Play: 1 interactable front row plus previews." }
+    { "name": "visibleRows", "type": "int", "required": true, "min": 1, "description": "Queue rows shown in Play: 1 interactable front row plus previews." },
+    { "name": "customerAvatars", "type": "string[]", "description": "Bundled avatar paths (relative to src/assets/) Play mode draws behind each customer card; one is picked at random per customer." }
   ],
 
   "_idTableNote": "Sits beside `map` in a map document, NOT inside it — see nodeIdTable.ts. Every integer in a queue, grid or customer string is a DATA ID resolved through this table to a node name; level data never references graph structure. Five spaces (ingredient/composite/group/tool/dirty) because the bracketed dish format names composites and groups by id too ({c0:...} and {g0:...}). Three rules keep committed levels safe as the graph changes: ids are APPEND-ONLY and never reused; deleting a node TOMBSTONES its entry (node: null, old name in `retired`) so a stale reference is a loud error rather than a silent repoint; renaming touches only the `node` field, so the id — and every level using it — is unaffected.",

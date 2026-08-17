@@ -1,31 +1,33 @@
-// Design mode on the node graph — the legacy page, driven by graph rules.
+// Design mode on the node graph — the LEGACY page, driven by graph rules.
 //
-// The reuse claim was tested rather than assumed, and it mostly held. Queue and
-// grid grammars are unchanged, so `createQueueSection` and `createGridSection`
-// come through VERBATIM, reading a projection of the graph into the `MapDef`
-// shape they were written against (see data/nodeGraphToMapDef.ts). Only the
-// customer section is forked, because the bracket dish format genuinely turns a
-// flat chip list into a tree editor.
+// Layout, class names and element sizes are copied 1-1 from design/index.ts:
+// the same map settings bar, the same level bar with its layout toggle and
+// Definitions button, the same `.design-stack` / `.design-split` modes, and the
+// same three sections in the same order. Queue and grid grammars are unchanged,
+// so `createQueueSection` and `createGridSection` come through VERBATIM,
+// reading a projection of the graph into the `MapDef` shape they were written
+// against (see data/nodeGraphToMapDef.ts).
+//
+// Only the customer section is forked, and inside it only one gesture differs:
+// right-clicking a dish opens a menu that configures its nested composite and
+// groups. Everything else a designer touches behaves identically.
 //
 // The projection is also what makes the difficulty estimator work unchanged.
 // The plan expected to fork it for chain awareness; it turned out not to be
 // necessary, because the projection collapses a multi-tool route into legacy's
 // `chainTools` spelling — so the estimator already scores a raw chicken breast
 // as producing a FRIED one (not the coated intermediate no dish wants) and
-// still pays for both tool visits. That removes the single largest risk the
-// plan carried, and it removes ~700 lines of forked solver with it.
+// still pays for both tool visits.
 
 import { button, el } from "../dom.ts";
 import { estimateDifficulty } from "../design/estimateDifficulty.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
 import { createGridSection } from "../design/gridSection.ts";
-import { createQueueSection, toQueueDraft } from "../design/queueSection.ts";
+import { createQueueSection, startQueueAutoGenerate, toQueueDraft } from "../design/queueSection.ts";
 import type { QueueDraft, QueueSectionDeps } from "../design/queueSection.ts";
 import type { Section } from "../design/section.ts";
 import { createNodeCustomerSection } from "./nodeCustomerSection.ts";
 import { openNodeGenerateDialog } from "./nodeGenerateDialog.ts";
-import { occupancyChartEl } from "../design/occupancyChart.ts";
-import type { ChartVisibility } from "../design/occupancyChart.ts";
 import { parseGrid, parseQueueGroups, parseQueues } from "../../core/parser.ts";
 import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
@@ -37,6 +39,8 @@ import { nodeAsMapDef, nodeLevelAsLevelConfig } from "../../data/nodeGraphToMapD
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import { validateNodeGraph } from "../../data/nodeGraphValidate.ts";
 import type { NodeProjectState } from "../../data/nodeProject.ts";
+
+type LayoutMode = "stack" | "split";
 
 export class NodeDesignView {
   private root: HTMLElement;
@@ -54,10 +58,8 @@ export class NodeDesignView {
   private queueDeps!: QueueSectionDeps;
   /** Last Estimate Difficulty run for the OPEN level; cleared on any level switch. */
   private estimate: EstimateResult | null = null;
-  /** Legend toggles for the occupancy chart; kept across re-renders of the chart. */
-  private chartVisibility: ChartVisibility = { scoredTint: true, randomTint: true, completeLines: true };
   private warningsEl = el("div", { class: "warnings" });
-  private chartEl = el("div", { class: "node-estimate-chart" });
+  private layoutMode: LayoutMode = "stack";
 
   constructor(
     root: HTMLElement,
@@ -86,11 +88,11 @@ export class NodeDesignView {
     const next = this.project.levels.find((l) => l.id === levelId);
     if (!next) return;
     this.level = next;
-    // An estimate is a property of ONE level's queue; carrying it across would
+    // An estimate belongs to ONE level's queue; carrying it across would
     // colour tiles with numbers that mean nothing here.
     this.estimate = null;
-    this.onLevelChange?.(levelId);
     this.build();
+    this.onLevelChange?.(levelId);
   }
 
   private build(): void {
@@ -99,22 +101,42 @@ export class NodeDesignView {
       return;
     }
 
-    const commit = () => {
-      this.estimate = null; // any edit invalidates the pickup-order overlay
-      this.refreshWarnings();
-    };
     const saved = () => {
       this.onChange();
       this.refreshWarnings();
     };
+    // The queue's Recipe Pieces foldout reads the other two drafts, so their
+    // commits re-render it.
+    const refreshQueueReadout = () => this.queues?.render();
+
+    this.queueDeps = {
+      map: this.projected.map,
+      defs: this.defs,
+      level: this.level,
+      parse: () => ({
+        queues: parseQueues(this.level.queueString),
+        groups: parseQueueGroups(this.level.queueString),
+      }),
+      // Recipe Pieces counts pieces against orders, so it needs the orders in
+      // the flat shape it was written for. Resolving each bracket dish gives
+      // exactly that, losing nothing the foldout reads.
+      currentCustomers: () => this.flatCustomers(),
+      currentGrid: () => this.grid.draft,
+      onSaved: saved,
+      currentEstimate: () => this.estimate,
+    };
 
     this.customers = createNodeCustomerSection({
       ix: this.projected.ix,
+      projected: this.projected,
       defs: this.defs,
       level: this.level,
-      dataIdOf: this.projected.dataIdOf,
       onSaved: saved,
-      onCommit: commit,
+      onCommit: () => {
+        this.estimate = null; // any edit invalidates the pickup-order overlay
+        refreshQueueReadout();
+      },
+      onEstimate: () => this.runEstimate(),
       currentEstimate: () => this.estimate,
       onAutoGenerate: () =>
         openNodeGenerateDialog({
@@ -124,8 +146,13 @@ export class NodeDesignView {
           level: this.level,
           currentCustomers: () => this.customers.draft,
           onGenerate: (customers) => {
+            const removed = this.customers.draft.length;
             this.customers.draft = customers;
-            this.customers.commit("Auto Generate customers", customers.length, 0);
+            this.customers.commit("Auto-generate customers", customers.length, removed);
+            saved();
+            // Chain into the queue's own Auto Generate, exactly as legacy does,
+            // so regenerating customers doesn't leave the queue out of sync.
+            startQueueAutoGenerate(this.queues, this.queueDeps, true);
           },
         }),
     });
@@ -136,46 +163,65 @@ export class NodeDesignView {
       level: this.level,
       parse: () => parseGrid(this.level.gridString),
       onSaved: saved,
-      onCommit: commit,
+      onCommit: refreshQueueReadout,
     });
 
-    this.queueDeps = {
-      map: this.projected.map,
-      defs: this.defs,
-      level: this.level,
-      parse: () => ({
-        queues: parseQueues(this.level.queueString),
-        groups: parseQueueGroups(this.level.queueString),
-      }),
-      // The Recipe Pieces foldout counts pieces against orders, so it needs the
-      // orders in the flat shape it was written for. Resolving each bracket
-      // dish gives exactly that, with no information the foldout uses lost.
-      currentCustomers: () => this.flatCustomers(),
-      currentGrid: () => this.grid.draft,
-      onSaved: saved,
-      onCommit: commit,
-      currentEstimate: () => this.estimate,
-    };
     this.queues = createQueueSection(this.queueDeps);
     this.queues.draft = toQueueDraft(this.queueDeps.parse());
-
-    // `Section` builds its header in the constructor but leaves the body to
-    // the caller's first render — the same contract the legacy DesignView
-    // honours. Skipping it leaves an empty section that looks like a data bug.
-    this.customers.render();
     this.grid.render();
     this.queues.render();
 
+    this.renderLayout();
+    this.refreshWarnings();
+  }
+
+  /** Rebuilds the wrapper around the three existing sections, keeping their drafts. */
+  private renderLayout(): void {
     this.root.replaceChildren(
+      this.mapSettingsBar(),
       this.levelBar(),
       this.warningsEl,
-      this.chartEl,
+      this.layoutMode === "split" ? this.splitLayout() : this.stackLayout(),
+    );
+  }
+
+  private setLayoutMode(mode: LayoutMode): void {
+    if (this.layoutMode === mode) return;
+    this.layoutMode = mode;
+    this.renderLayout();
+  }
+
+  private stackLayout(): HTMLElement {
+    return el("div", { class: "design-stack" }, [
       this.customers.element,
       this.grid.element,
       this.queues.element,
-    );
-    this.refreshWarnings();
-    this.renderChart();
+    ]);
+  }
+
+  private splitLayout(): HTMLElement {
+    return el("div", { class: "design-split" }, [
+      el("div", { class: "design-split-left" }, [this.customers.element]),
+      el("div", { class: "design-split-right" }, [
+        el("div", { class: "design-split-right-top" }, [this.grid.element]),
+        el("div", { class: "design-split-right-bottom" }, [this.queues.element]),
+      ]),
+    ]);
+  }
+
+  private layoutToggle(): HTMLElement {
+    return el("div", { class: "layout-toggle field small" }, [
+      "Layout",
+      el("div", { class: "toggle-group" }, [
+        button("Current", () => this.setLayoutMode("stack"), {
+          class: `small-btn${this.layoutMode === "stack" ? " active" : ""}`,
+        }),
+        button("Split", () => this.setLayoutMode("split"), {
+          class: `small-btn${this.layoutMode === "split" ? " active" : ""}`,
+          title: "Customers left (vertical list) — grid + queue stacked right",
+        }),
+      ]),
+    ]);
   }
 
   /** Node customers in the legacy flat shape, for the sections that count ingredients. */
@@ -198,114 +244,145 @@ export class NodeDesignView {
     }));
   }
 
-  private levelBar(): HTMLElement {
-    const picker = el("select", {}) as HTMLSelectElement;
-    for (const level of this.project.levels) {
-      picker.append(el("option", { value: String(level.id) }, [level.name]));
-    }
-    picker.value = String(this.level.id);
-    picker.addEventListener("change", () => this.selectLevel(Number(picker.value)));
+  private mapSettingsBar(): HTMLElement {
+    const doc = this.project.doc;
+    const stackInput = el("input", {
+      type: "number",
+      value: String(doc.map.dirtyStackHeight),
+      min: "1",
+    }) as HTMLInputElement;
+    stackInput.addEventListener("change", () => {
+      doc.map.dirtyStackHeight = Math.max(1, Number(stackInput.value) || 1);
+      this.onChange();
+    });
 
-    const dropdown = (
-      label: string,
-      options: string[],
-      value: string,
-      onSet: (v: string) => void,
-    ): HTMLElement => {
-      const select = el("select", {}) as HTMLSelectElement;
-      for (const option of options) select.append(el("option", { value: option }, [option]));
-      select.value = value;
-      select.addEventListener("change", () => {
-        onSet(select.value);
-        this.onChange();
-      });
-      return el("label", { class: "inline-field" }, [label, select]);
-    };
-
-    const numberField = (label: string, value: number, onSet: (n: number) => void): HTMLElement => {
-      const input = el("input", { type: "number", value: String(value) }) as HTMLInputElement;
-      input.addEventListener("change", () => {
-        onSet(Number(input.value) || 0);
-        this.onChange();
-      });
-      return el("label", { class: "inline-field" }, [label, input]);
-    };
-
-    return el("div", { class: "level-bar" }, [
-      el("strong", {}, ["Level"]),
-      picker,
-      dropdown("weather", WEATHER.map((w) => w.id), this.level.weather, (v) => (this.level.weather = v)),
-      dropdown("tag", TAGS.map((t) => t.id), this.level.levelTag, (v) => (this.level.levelTag = v)),
-      numberField("serve slots", this.level.serveableSlots, (n) => (this.level.serveableSlots = n)),
-      numberField("shuffle", this.level.shuffleDistance, (n) => (this.level.shuffleDistance = n)),
-      button("📊 Estimate Difficulty", () => this.runEstimate(), {
-        title: "Run the greedy solver over this level",
-      }),
+    return el("div", { class: "level-bar map-settings" }, [
+      el("strong", { class: "map-settings-label" }, [`Map: ${doc.map.name}`]),
+      el("label", { class: "field small" }, ["Dirty stack", stackInput]),
+      el("small", { class: "muted" }, ["Applies to every level in this map"]),
     ]);
   }
 
+  private levelBar(): HTMLElement {
+    const picker = el("select", { class: "level-picker" }) as HTMLSelectElement;
+    for (const l of this.project.levels) {
+      const opt = el("option", { value: String(l.id) }, [
+        `${l.name}${l.levelTag ? ` (${l.levelTag})` : ""}`,
+      ]);
+      if (l.id === this.level.id) (opt as HTMLOptionElement).selected = true;
+      picker.append(opt);
+    }
+    picker.addEventListener("change", () => this.selectLevel(Number(picker.value)));
+
+    const metaField = (label: string, value: string | number, type: string, apply: (v: string) => void) => {
+      const input = el("input", { value: String(value), type }) as HTMLInputElement;
+      input.addEventListener("change", () => {
+        apply(input.value);
+        this.onChange();
+      });
+      return el("label", { class: "field small" }, [label, input]);
+    };
+
+    // The current value is kept as an extra option if it isn't a known one, so
+    // unexpected data is never silently clobbered by picking a select option.
+    const selectField = (
+      label: string,
+      options: { id: string; name: string }[],
+      value: string,
+      apply: (v: string) => void,
+    ) => {
+      const select = el("select", {}) as HTMLSelectElement;
+      const known = options.some((o) => o.id === value);
+      const all = known ? options : [{ id: value, name: `${value || "(blank)"} (unknown)` }, ...options];
+      for (const o of all) {
+        const opt = el("option", { value: o.id }, [o.name || "(blank)"]);
+        if (o.id === value) (opt as HTMLOptionElement).selected = true;
+        select.append(opt);
+      }
+      select.addEventListener("change", () => {
+        apply(select.value);
+        this.onChange();
+      });
+      return el("label", { class: "field small" }, [label, select]);
+    };
+
+    return el("div", { class: "level-bar" }, [
+      el("label", { class: "field small" }, ["Level", picker]),
+      this.layoutToggle(),
+      selectField(
+        "Weather",
+        WEATHER.map((w) => ({ id: w.id, name: w.id })),
+        this.level.weather,
+        (v) => (this.level.weather = v),
+      ),
+      selectField("Tag", TAGS, this.level.levelTag, (v) => (this.level.levelTag = v)),
+      metaField("Unlock", this.level.featureUnlock, "text", (v) => (this.level.featureUnlock = v)),
+      metaField("Serve slots", this.level.serveableSlots, "number", (v) => {
+        this.level.serveableSlots = Math.max(1, Number(v) || 1);
+      }),
+      el("span", { class: "spacer" }),
+      button("+ Level", () => this.addLevel()),
+      button("🗑 Level", () => this.deleteLevel(), { class: "danger" }),
+    ]);
+  }
+
+  private addLevel(): void {
+    const nextId = this.project.levels.reduce((n, l) => Math.max(n, l.id), 0) + 1;
+    const template = this.level;
+    this.project.levels.push({
+      ...structuredClone(template),
+      id: nextId,
+      name: `${this.project.doc.map.id}_${nextId}`,
+    });
+    this.onChange();
+    this.selectLevel(nextId);
+  }
+
+  private deleteLevel(): void {
+    if (this.project.levels.length <= 1) return;
+    if (!confirm(`Delete level "${this.level.name}"?`)) return;
+    const at = this.project.levels.findIndex((l) => l.id === this.level.id);
+    this.project.levels.splice(at, 1);
+    this.onChange();
+    this.selectLevel(this.project.levels[Math.max(0, at - 1)].id);
+  }
+
   /**
-   * The estimator runs on the PROJECTION, not the graph — so what it reports is
-   * an approximation in exactly one respect: intermediates are collapsed into a
-   * chainTools hop rather than modelled as real items. The tool cost, the
-   * yields and the gates all survive, which is what the score depends on.
+   * The estimator runs on the PROJECTION, not the graph — an approximation in
+   * exactly one respect: intermediates are collapsed into a chainTools hop
+   * rather than modelled as separate items. Tool cost, yields and gates all
+   * survive, which is what the score depends on.
    */
   private runEstimate(): void {
     const level = nodeLevelAsLevelConfig(this.projected, this.level);
+    // The estimator reads live drafts, not the saved strings.
+    level.customers = this.flatCustomers();
+    level.grid = this.grid.draft;
+    level.queues = this.queues.draft.queues;
     try {
-      this.estimate = estimateDifficulty(this.projected.map, level);
+      this.estimate = estimateDifficulty(this.projected.map, structuredClone(level));
     } catch (err) {
       this.estimate = null;
-      console.error(err);
-      alert(`Estimate failed: ${(err as Error).message}`);
+      console.error("Estimate Difficulty failed", err);
+      alert(`Estimate Difficulty failed: ${(err as Error).message}`);
       return;
     }
-    this.build();
+    this.customers.render();
+    this.queues.render();
   }
 
-  /**
-   * The occupancy chart, imported from the legacy Design mode UNCHANGED. It
-   * reads `EstimateResult`, and the node estimator produces exactly that type,
-   * so the whole visualisation — tints, dirty line, per-customer markers,
-   * legend toggles — comes across for free.
-   */
-  private renderChart(): void {
-    if (!this.estimate) {
-      this.chartEl.replaceChildren();
-      return;
-    }
-    this.chartEl.replaceChildren(
-      occupancyChartEl(
-        this.estimate.occupancyHistory,
-        this.estimate.gridCapacity,
-        this.chartVisibility,
-        (key) => {
-          this.chartVisibility = { ...this.chartVisibility, [key]: !this.chartVisibility[key] };
-          this.renderChart();
-        },
-      ),
-    );
-  }
-
+  /** Same bar, same `.ok` styling as legacy — sourced from the graph's invariants. */
   private refreshWarnings(): void {
-    const rows: string[] = [];
     const { errors } = validateNodeGraph(this.project.doc);
-    for (const issue of errors.slice(0, 6)) rows.push(`Graph: ${issue.invariantId} — ${issue.message}`);
-    if (errors.length > 6) rows.push(`…and ${errors.length - 6} more graph errors`);
-
-    if (this.estimate) {
-      rows.push(
-        `Estimate: ${this.estimate.solvable ? "solvable" : "not solvable"}, ` +
-          `${this.estimate.servedCount}/${this.estimate.totalCustomers} served, ` +
-          `${this.estimate.totalPicks} picks` +
-          (this.estimate.reason ? ` — ${this.estimate.reason}` : ""),
-      );
+    this.warningsEl.replaceChildren();
+    this.warningsEl.classList.toggle("ok", errors.length === 0);
+    if (errors.length === 0) {
+      this.warningsEl.append("✓ No warnings for this level");
+      return;
     }
-
-    this.warningsEl.replaceChildren(
-      ...(rows.length === 0
-        ? [el("span", { class: "muted" }, ["Graph valid · no level warnings."])]
-        : rows.map((r) => el("div", {}, [r]))),
-    );
+    this.warningsEl.append(el("strong", {}, [`⚠ ${errors.length} graph error(s)`]));
+    for (const issue of errors) {
+      this.warningsEl.append(el("div", {}, [`${issue.invariantId} — ${issue.message}`]));
+    }
   }
 }

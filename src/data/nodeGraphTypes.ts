@@ -16,7 +16,16 @@
 
 // ---------- schema.json ----------
 
-export type FieldType = "string" | "int" | "number" | "bool" | "enum" | "ref" | "ref[]" | "int[]";
+export type FieldType =
+  | "string"
+  | "int"
+  | "number"
+  | "bool"
+  | "enum"
+  | "ref"
+  | "ref[]"
+  | "int[]"
+  | "string[]";
 
 export interface FieldDef {
   name: string;
@@ -224,6 +233,8 @@ export interface NodeGraphMapHeader {
   gridHeight: number;
   dirtyStackHeight: number;
   visibleRows: number;
+  /** Bundled avatar paths Play draws behind each customer card, picked at random per customer. */
+  customerAvatars?: string[];
 }
 
 export interface NodeGraphMap {

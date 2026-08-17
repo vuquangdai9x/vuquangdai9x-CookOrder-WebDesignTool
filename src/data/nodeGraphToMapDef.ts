@@ -169,7 +169,7 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
     rawIngredients,
     cookedIngredients,
     dirtyObjects,
-    customerAvatars: [],
+    customerAvatars: doc.map.customerAvatars ?? [],
     tools,
     levels: [],
     disabledRawIds: [],
