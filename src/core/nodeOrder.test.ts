@@ -14,11 +14,11 @@ const named = (r: ReturnType<typeof resolve>) =>
 
 // Ids from burger.json's table: composites c0-c2 (c3 is a tombstone),
 // groups g0-g2, raws 0-16, processed 100+.
-const BURGER = "{c0:100.{g0:101.101.102}}"; // bun + 2 patty + 1 tomato
-const SODA = "{c1:107.8}"; // soda cup + ice
-const CHICKEN = "{c2:{g1:109}.{g2:14}}"; // fried basket: wing + chili
-const FRIES = "{c2:{g1:112}}"; // fried basket: just potato, no sauce
-const SAUCY_FRIES = "{c2:{g1:112}.{g2:16}}"; // potato + cheese sauce
+const BURGER = "{c0:17.{g0:18.18.19}}"; // bun + 2 patty + 1 tomato
+const SODA = "{c1:24.8}"; // soda cup + ice
+const CHICKEN = "{c2:{g1:26}.{g2:14}}"; // fried basket: wing + chili
+const FRIES = "{c2:{g1:29}}"; // fried basket: just potato, no sauce
+const SAUCY_FRIES = "{c2:{g1:29}.{g2:16}}"; // potato + cheese sauce
 
 describe("resolveOrder — reading the bracket tree", () => {
   it("resolves a burger, keeping quantity as repeated slots", () => {
@@ -73,7 +73,7 @@ describe("resolveOrder — reading the bracket tree", () => {
 
 describe("INV-DISH-SINGLE-ORDERABLE at dish level", () => {
   it("rejects a member belonging to a different composite", () => {
-    const r = resolve("{c0:100.107}"); // a soda cup inside a burger
+    const r = resolve("{c0:17.24}"); // a soda cup inside a burger
     expect(r.issues).toHaveLength(1);
     expect(describeIssue(r.issues[0])).toBe('"soda-cup" belongs to soda, but appears inside burger.');
     // The rest of the order still resolves — one bad member is not fatal.
@@ -81,7 +81,7 @@ describe("INV-DISH-SINGLE-ORDERABLE at dish level", () => {
   });
 
   it("rejects a group that is not part of this composite", () => {
-    const r = resolve("{c0:100.{g2:14}}"); // fried-chicken's sauce group inside a burger
+    const r = resolve("{c0:17.{g2:14}}"); // fried-chicken's sauce group inside a burger
     const kinds = r.issues.map((i) => i.kind);
     expect(kinds).toContain("wrong-group");
     expect(r.issues.map(describeIssue).join(" ")).toContain("fried-basket-sauces");
@@ -90,42 +90,46 @@ describe("INV-DISH-SINGLE-ORDERABLE at dish level", () => {
 
 describe("total on bad ids", () => {
   it("reports an unknown composite and returns an unresolved order", () => {
-    const r = resolve("{c99:100}");
+    const r = resolve("{c99:17}");
     expect(r.order.orderable).toBe(-1);
     expect(r.order.slots).toEqual([]);
     expect(describeIssue(r.issues[0])).toBe("No composite has id 99.");
   });
 
   it("reports an unknown ingredient but keeps the rest of the dish", () => {
-    const r = resolve("{c0:100.{g0:999}}");
+    const r = resolve("{c0:17.{g0:999}}");
     expect(describeIssue(r.issues[0])).toBe("No ingredient has id 999.");
     expect(named(r)).toEqual(["bun-sliced@0/gate-1"]);
   });
 
   it("distinguishes a RETIRED id from one that never existed", () => {
     const withTombstone = structuredClone(doc);
-    withTombstone.idTable.ingredient.push({ id: 900, node: null, retired: "old-sauce" });
+    // The id is the row's POSITION, so a pushed tombstone takes the next index.
+    const retiredId = withTombstone.idTable.ingredient.length;
+    withTombstone.idTable.ingredient.push({ node: null, retired: "old-sauce" });
     const ix2 = buildIndex(withTombstone);
-    const r = resolveOrder(ix2, parseDish("{c0:100.{g0:900}}"), orderIdIndex(ix2));
-    expect(describeIssue(r.issues[0])).toBe('ingredient id 900 was retired (it used to be "old-sauce").');
+    const r = resolveOrder(ix2, parseDish(`{c0:17.{g0:${retiredId}}}`), orderIdIndex(ix2));
+    expect(describeIssue(r.issues[0])).toBe(
+      `ingredient id ${retiredId} was retired (it used to be "old-sauce").`,
+    );
   });
 
   it("never throws on a structurally valid but semantically wrong dish", () => {
-    expect(() => resolve("{c1:100.101.102}")).not.toThrow();
+    expect(() => resolve("{c1:17.18.19}")).not.toThrow();
   });
 });
 
 describe("limitPerDish", () => {
   it("flags exceeding a per-dish limit", () => {
     // bun-sliced has limitPerDish 1.
-    const r = resolve("{c0:100.100}");
+    const r = resolve("{c0:17.17}");
     const issue = r.issues.find((i) => i.kind === "over-limit");
     expect(issue).toBeDefined();
     expect(describeIssue(issue!)).toBe('"bun-sliced" appears 2 times but is limited to 1 per dish.');
   });
 
   it("allows unlimited repetition where limitPerDish is 0", () => {
-    const r = resolve("{c0:100.{g0:101.101.101.101}}");
+    const r = resolve("{c0:17.{g0:18.18.18.18}}");
     expect(r.issues).toEqual([]);
     expect(r.order.slots).toHaveLength(5);
   });
@@ -133,7 +137,7 @@ describe("limitPerDish", () => {
 
 describe("resolveDishes", () => {
   it("resolves a customer's dishes and tags issues with their dish index", () => {
-    const { orders, issues } = resolveDishes(ix, [parseDish(BURGER), parseDish("{c1:100}")], ids);
+    const { orders, issues } = resolveDishes(ix, [parseDish(BURGER), parseDish("{c1:17}")], ids);
     expect(orders).toHaveLength(2);
     expect(ix.compositeName[orders[0].orderable]).toBe("burger");
     expect(issues).toHaveLength(1);

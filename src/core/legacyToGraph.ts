@@ -40,6 +40,7 @@ import type { CustomerConfig, LevelConfig, MapDef, QueueItem } from "./types.ts"
 import type { NodeCustomerConfig, NodeDish } from "./nodeParser.ts";
 import type { NodeLevelConfig } from "./nodeSim.ts";
 import { buildMigration, buildRecogniser, migrateGridCells, recogniseDish } from "../data/nodeGraphMigrate.ts";
+import type { LegacyNames } from "../data/nodeGraphMigrate.ts";
 import type {
   CompositeVertex,
   DirtyVertex,
@@ -52,11 +53,20 @@ import type {
 } from "../data/nodeGraphTypes.ts";
 
 /** Vertex name for a legacy COOKED ingredient id. */
-const cookedName = (id: number) => `ck${id}`;
+/**
+ * The adapter's naming scheme, exported.
+ *
+ * Tests need to address "the vertex legacy cooked id 3 became". That used to be
+ * done by stamping `runtimeCookedId` onto the vertex — which put a LEGACY
+ * concern into the shipped map format, where every authored map carried a field
+ * only a test adapter ever read. The names are already a pure function of the
+ * id, so exposing the function says the same thing and costs the data nothing.
+ */
+export const cookedName = (id: number) => `ck${id}`;
 /** Vertex name for a legacy RAW ingredient id that needs a tool. */
-const rawName = (id: number) => `rw${id}`;
-const toolName = (id: number) => `tl${id}`;
-const dirtyName = (id: number) => `dt${id}`;
+export const rawName = (id: number) => `rw${id}`;
+export const toolName = (id: number) => `tl${id}`;
+export const dirtyName = (id: number) => `dt${id}`;
 
 class UnionFind {
   private parent = new Map<number, number>();
@@ -127,6 +137,17 @@ function legacyUnsatisfiable(cookedIds: number[], map: MapDef): boolean {
  *   every cooked ingredient lands in a composite of its own and a two-item dish
  *   becomes unresolvable.
  */
+/**
+ * The vertex a legacy RAW id picks up as.
+ *
+ * The only case where the name is not a plain function of the id: a raw with no
+ * recipe IS its cooked form, so the two legacy ids converge on one vertex.
+ */
+export function pickupName(map: MapDef, rawId: number): string {
+  if (findToolRecipe(map.tools, rawId)) return rawName(rawId);
+  return cookedName(resolveCookedId(map.tools, map.rawIngredients, rawId));
+}
+
 export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): NodeGraphMap {
   // ---------- ingredients ----------
   const ingredient: IngredientVertex[] = [];
@@ -141,7 +162,6 @@ export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): 
       name,
       displayName: def?.name ?? `cooked${id}`,
       servable: true,
-      runtimeCookedId: id,
       ...(def?.usageNum && def.usageNum > 1 ? { usageNum: def.usageNum } : {}),
       ...(def?.limit ? { limitPerDish: def.limit } : {}),
       ...(def?.localImage ? { localImage: def.localImage } : {}),
@@ -163,7 +183,6 @@ export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): 
         name: rawName(raw.id),
         displayName: raw.name,
         pickupable: true,
-        runtimeRawId: raw.id,
         ...(raw.numSlices ? { numSlices: raw.numSlices } : {}),
         ...(raw.price ? { price: raw.price } : {}),
         ...(raw.code ? { code: raw.code } : {}),
@@ -179,7 +198,6 @@ export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): 
     // one vertex — exactly the case legacy handled with mirrored numbering.
     const cooked = ensureCooked(resolveCookedId(map.tools, map.rawIngredients, raw.id));
     cooked.pickupable = true;
-    cooked.runtimeRawId = raw.id;
     pickupVertex.set(raw.id, cooked.name);
   }
 
@@ -324,12 +342,61 @@ export interface LevelProjection {
 }
 
 /**
+ * Recover "which vertex did legacy id N become" from a graph THIS adapter built.
+ *
+ * The naming scheme is the mapping — `rw3`/`ck3`/`tl3`/`dt3` — so it can be read
+ * straight back off the vertex names, with no legacy ids stored in the data.
+ * The one subtlety is the merge: a raw with no recipe IS its cooked form, so it
+ * has no `rw` vertex and its id resolves to the `ck` one instead (legacy raw and
+ * cooked ids mirror, which is what makes that a same-number lookup).
+ *
+ * Only meaningful for adapter-produced graphs. An authored map has no legacy
+ * counterpart and yields empty maps, which is correct: nothing to migrate.
+ */
+export function legacyNamesOf(doc: NodeGraphMap): LegacyNames {
+  const names = {
+    raw: new Map<number, string>(),
+    cooked: new Map<number, string>(),
+    tool: new Map<number, string>(),
+    dirty: new Map<number, string>(),
+  };
+  const have = new Set(doc.vertices.ingredient.map((v) => v.name));
+
+  const idOfPrefix = (name: string, prefix: string): number | null => {
+    if (!name.startsWith(prefix)) return null;
+    const n = Number(name.slice(prefix.length));
+    return Number.isInteger(n) ? n : null;
+  };
+
+  for (const vertex of doc.vertices.ingredient) {
+    const cooked = idOfPrefix(vertex.name, "ck");
+    if (cooked !== null) {
+      names.cooked.set(cooked, vertex.name);
+      // Merged: no separate rw vertex means this one is also the pickup.
+      if (!have.has(rawName(cooked))) names.raw.set(cooked, vertex.name);
+      continue;
+    }
+    const raw = idOfPrefix(vertex.name, "rw");
+    if (raw !== null) names.raw.set(raw, vertex.name);
+  }
+  for (const vertex of doc.vertices.tool) {
+    const id = idOfPrefix(vertex.name, "tl");
+    if (id !== null) names.tool.set(id, vertex.name);
+  }
+  for (const vertex of doc.vertices.dirty) {
+    const id = idOfPrefix(vertex.name, "dt");
+    if (id !== null) names.dirty.set(id, vertex.name);
+  }
+  return names;
+}
+
+/**
  * Projects one parsed legacy level onto a graph produced by legacyToGraph().
  * Queue and grid geometry pass straight through; only the ids change, and the
  * flat dishes become bracket trees.
  */
 export function legacyLevelToNode(doc: NodeGraphMap, level: LevelConfig): LevelProjection {
-  const migration = buildMigration(doc);
+  const migration = buildMigration(doc, legacyNamesOf(doc));
   const rec = buildRecogniser(doc);
   const unplaced: { customer: number; dish: number; reason: string }[] = [];
 

@@ -33,13 +33,22 @@ export interface GraphValidation {
   warnings: GraphIssue[];
 }
 
-/** Which vertex kind an id space must point at. */
-const SPACE_KIND: Record<IdSpace, VertexKindName> = {
-  ingredient: "ingredient",
-  composite: "composite",
-  group: "group",
-  tool: "tool",
-  dirty: "dirty",
+/**
+ * Which vertex kinds an id space may point at.
+ *
+ * Four spaces name exactly one kind. The COMPOSITE space is the exception: it
+ * is the space a dish's outermost `{cN:…}` resolves through, so it names
+ * whatever is ORDERABLE — and an orderable need not be a composite. A dish of
+ * one item (plain fries) is an ingredient; a dish that is a free choice from a
+ * set is a group. Pinning this space to composites alone would make those
+ * un-orderable for no reason beyond the name of the space.
+ */
+const SPACE_KINDS: Record<IdSpace, VertexKindName[]> = {
+  ingredient: ["ingredient"],
+  composite: ["composite", "ingredient", "group"],
+  group: ["group"],
+  tool: ["tool"],
+  dirty: ["dirty"],
 };
 
 export function validateNodeGraph(doc: NodeGraphMap): GraphValidation {
@@ -355,21 +364,22 @@ function checkIdTable(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
     add("INV-IDTABLE-UNIQUE", `${issue.space}: ${issue.message}`);
   }
   for (const space of ID_SPACES) {
-    for (const entry of doc.idTable[space] ?? []) {
-      if (entry.node === null || entry.node === undefined) continue;
+    // The id is the row's index — see nodeIdTable.ts's header.
+    (doc.idTable[space] ?? []).forEach((entry, id) => {
+      if (!entry || entry.node === null || entry.node === undefined) return;
       const kind = lk.kindOf.get(entry.node);
       if (!kind) {
         add(
           "INV-IDTABLE-RESOLVES",
-          `Id ${entry.id} in the ${space} space names "${entry.node}", which is not declared in this map.`,
+          `Id ${id} in the ${space} space names "${entry.node}", which is not declared in this map.`,
         );
-      } else if (kind !== SPACE_KIND[space]) {
+      } else if (!SPACE_KINDS[space].includes(kind)) {
         add(
           "INV-IDTABLE-RESOLVES",
-          `Id ${entry.id} in the ${space} space names "${entry.node}", which is a ${kind}.`,
+          `Id ${id} in the ${space} space names "${entry.node}", which is a ${kind} — this space accepts ${SPACE_KINDS[space].join(", ")}.`,
         );
       }
-    }
+    });
   }
   // Anything level data may reference needs an id, or it is unreachable from level data.
   const ix = buildIdIndex(doc.idTable);

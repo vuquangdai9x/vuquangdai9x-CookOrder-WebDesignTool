@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 import burgerJson from "./config/nodegraph/burger.json";
-import { MAP1_DATA } from "./configLoader.ts";
-import { migrateMap } from "./nodeGraphMigrate.ts";
+import burgerLevelsCsv from "./config/nodegraph/levels/burger-levels.csv?raw";
+import { importLevelsCsv } from "./sheetSource.ts";
 import { nodeAsMapDef, nodeLevelAsLevelConfig } from "./nodeGraphToMapDef.ts";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 import type { LevelData } from "./mapLoader.ts";
 import { buildIdIndex } from "./nodeIdTable.ts";
+import { buildIndex } from "../core/nodeIndex.ts";
 import { parseQueues } from "../core/parser.ts";
 import { estimateDifficulty } from "../ui/design/estimateDifficulty.ts";
 
 const doc = burgerJson as unknown as NodeGraphMap;
 const projected = nodeAsMapDef(doc);
 const ids = buildIdIndex(doc.idTable);
-const migrated = migrateMap(MAP1_DATA, doc);
+// Committed levels, not migrated ones: an authored graph carries no legacy ids
+// to migrate from, and the CSV is what the app itself loads.
+const levels = importLevelsCsv(burgerLevelsCsv);
 
 const dataId = (node: string): number => {
   const id = ids.byNode.ingredient.get(node);
@@ -49,10 +52,17 @@ describe("the projection carries what the Design sections read", () => {
   });
 
   it("reports a pickup's numSlices as its WHOLE-CHAIN yield", () => {
+    // numSlices is no longer authored on the ingredient — it is the product of
+    // `amount` along the route, which is the number the Design sections need.
+    // Compared against the index rather than hard-coded, so re-authoring a route
+    // moves both sides together instead of breaking this.
     const raw = (node: string) => projected.map.rawIngredients.find((r) => r.id === dataId(node))!;
-    expect(raw("tomato").numSlices).toBe(2);
-    expect(raw("potato").numSlices).toBe(2);
-    expect(raw("chicken-breast").numSlices).toBe(1);
+    const ix = buildIndex(doc);
+    for (const node of ["tomato", "potato", "chicken-breast"]) {
+      expect(raw(node).numSlices, node).toBe(ix.terminalYield[ix.ingByName.get(node)!]);
+    }
+    // And it really is a whole-chain figure, not a per-edge one.
+    expect(raw("tomato").numSlices).toBeGreaterThan(1);
   });
 });
 
@@ -71,26 +81,35 @@ describe("multi-tool routes collapse into chainTools", () => {
     expect(recipe.chainTools).toEqual([ids.byNode.tool.get("fryer")]);
   });
 
-  it("never leaves a coated intermediate as a recipe OUTPUT", () => {
-    // The intermediate keeps an id — it is a real vertex — but it is not
-    // servable, so no projected recipe may end there. Every recipe output has
-    // to be something a dish can actually ask for.
-    const coated = dataId("chicken-breast-flour-coated");
+  it("never leaves a non-servable intermediate as a recipe OUTPUT", () => {
+    // An intermediate has no id at all now — nothing in level data can name it,
+    // so minting one would be an id nothing could use. That makes the check
+    // stronger rather than weaker: every projected recipe output must resolve
+    // to something a dish can actually ask for, and an intermediate cannot.
+    const intermediates = doc.vertices.ingredient.filter((v) => !v.servable && !v.pickupable);
+    expect(intermediates.length, "no intermediates in this graph to check").toBeGreaterThan(0);
+    for (const v of intermediates) {
+      expect(ids.byNode.ingredient.get(v.name), `${v.name} should have no id`).toBeUndefined();
+    }
+
     for (const tool of projected.map.tools) {
       for (const recipe of tool.recipes) {
-        expect(recipe.out, `${tool.name} produces a non-servable output`).not.toBe(coated);
         expect(
           projected.map.cookedIngredients.some((c) => c.id === recipe.out),
-          `${tool.name} -> ${recipe.out}`,
+          `${tool.name} -> ${recipe.out} is not a servable output`,
         ).toBe(true);
       }
     }
   });
 
-  it("keeps potato's already-chained route intact", () => {
+  it("collapses potato's two-tool route into one chainTools recipe", () => {
+    // Whether burger.json spells this as one chainTools edge or as two process
+    // edges, the projection must hand legacy ONE recipe carrying the second
+    // tool — that is what stops the estimator scoring a potato at zero.
+    const ix = buildIndex(doc);
     const recipe = toolNamed("Cutting Board").recipes.find((r) => r.in === dataId("potato"))!;
     expect(recipe.out).toBe(dataId("potato-fried"));
-    expect(recipe.amount).toBe(2);
+    expect(recipe.amount).toBe(ix.terminalYield[ix.ingByName.get("potato")!]);
     expect(recipe.chainTools).toEqual([ids.byNode.tool.get("fryer")]);
   });
 
@@ -101,7 +120,7 @@ describe("multi-tool routes collapse into chainTools", () => {
 });
 
 describe("nodeLevelAsLevelConfig", () => {
-  const level = nodeLevelAsLevelConfig(projected, migrated.levels[0]);
+  const level = nodeLevelAsLevelConfig(projected, levels[0]);
 
   it("flattens each bracket dish to the data ids it resolves to", () => {
     expect(level.customers[0].dishes[0].cookedIds).toEqual([
@@ -113,7 +132,7 @@ describe("nodeLevelAsLevelConfig", () => {
   it("carries the level's own geometry and settings across", () => {
     expect(level.queues.length).toBeGreaterThan(0);
     expect(level.grid).toHaveLength(projected.map.gridWidth * projected.map.gridHeight);
-    expect(level.serveableSlots).toBe(migrated.levels[0].serveableSlots);
+    expect(level.serveableSlots).toBe(levels[0].serveableSlots);
   });
 });
 
@@ -129,7 +148,7 @@ describe("the difficulty estimator, on node data", () => {
     // Worth pinning: the gate cannot be tested on authored data at all. Raw
     // ids 9-12 appear in no Map 1 queue, so a test that only ran real levels
     // would pass while proving nothing about the chain.
-    const queued = migrated.levels.flatMap((data) =>
+    const queued = levels.flatMap((data: LevelData) =>
       parseQueues(data.queueString).flatMap((lane) => lane.map((item) => item.id)),
     );
     expect(CUTS.filter((id) => queued.includes(id))).toEqual([]);
@@ -169,8 +188,8 @@ describe("the difficulty estimator, on node data", () => {
     expect(result.solvable).toBe(true);
   });
 
-  it("runs to a real verdict on every migrated level, never throwing", () => {
-    for (const data of migrated.levels) {
+  it("runs to a real verdict on every committed level, never throwing", () => {
+    for (const data of levels) {
       const level = nodeLevelAsLevelConfig(projected, data);
       expect(() => estimateDifficulty(projected.map, level), data.name).not.toThrow();
     }

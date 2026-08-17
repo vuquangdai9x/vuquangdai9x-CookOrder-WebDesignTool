@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import burgerJson from "../data/config/nodegraph/burger.json";
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
 import { buildIndex, reaches, reachesAny } from "./nodeIndex.ts";
+import { chainedPotato } from "./nodeTestFixtures.ts";
 
 const ix = buildIndex(burgerJson as unknown as NodeGraphMap);
 const ing = (name: string): number => {
@@ -13,11 +14,17 @@ const nameOf = (i: number) => ix.ingName[i];
 
 describe("interning", () => {
   it("covers every vertex kind", () => {
-    expect(ix.ingName).toHaveLength(35);
-    expect(ix.toolName).toHaveLength(5);
-    expect(ix.groupName).toHaveLength(3);
-    expect(ix.compositeName).toHaveLength(3);
-    expect(ix.dirtyName).toHaveLength(3);
+    // Counts come from the document. Hard-coding them made this a test of the
+    // designer's current data rather than of interning.
+    const doc = burgerJson as unknown as NodeGraphMap;
+    expect(ix.ingName).toHaveLength(doc.vertices.ingredient.length);
+    expect(ix.toolName).toHaveLength(doc.vertices.tool.length);
+    expect(ix.groupName).toHaveLength(doc.vertices.group.length);
+    expect(ix.compositeName).toHaveLength(doc.vertices.composite.length);
+    expect(ix.dirtyName).toHaveLength(doc.vertices.dirty.length);
+    for (const kind of ["ingredient", "tool", "group", "composite", "dirty"] as const) {
+      expect(doc.vertices[kind].length, `no ${kind} vertices`).toBeGreaterThan(0);
+    }
   });
 
   it("round-trips name <-> dense index", () => {
@@ -53,9 +60,21 @@ describe("terminalOutput / terminalYield / chainDepth", () => {
   });
 
   it("treats a chainTools route as ONE step — nothing lands mid-chain", () => {
-    expect(nameOf(ix.terminalOutput[ing("potato")])).toBe("potato-fried");
-    expect(ix.chainDepth[ing("potato")]).toBe(1);
-    expect(ix.terminalYield[ing("potato")]).toBe(2);
+    // Derived, not assumed: burger.json may spell potato either way, and this
+    // test is about the chainTools spelling itself. See nodeTestFixtures.ts.
+    const cx = buildIndex(chainedPotato(burgerJson as unknown as NodeGraphMap));
+    const potato = cx.ingByName.get("potato")!;
+    expect(cx.ingName[cx.terminalOutput[potato]]).toBe("potato-fried");
+    expect(cx.chainDepth[potato]).toBe(1);
+    // Two tools, but one step: no intermediate vertex exists to land on.
+    expect(cx.ingByName.has("potato_sliced")).toBe(false);
+  });
+
+  it("multiplies yield along a collapsed chain", () => {
+    // Collapsing two edges into chainTools must not change what a potato is
+    // worth — that is the whole claim `terminalYield` makes.
+    const cx = buildIndex(chainedPotato(burgerJson as unknown as NodeGraphMap));
+    expect(cx.terminalYield[cx.ingByName.get("potato")!]).toBe(ix.terminalYield[ing("potato")]);
   });
 
   it("leaves a pickupable-and-servable ingredient as its own terminal", () => {
@@ -88,8 +107,9 @@ describe("producerOf / recipeForInput", () => {
   });
 
   it("keeps chainTools on the step that owns them", () => {
-    const potato = ix.producerOf[ing("potato-fried")]!;
-    expect(potato.chainTools.map((t) => ix.toolName[t])).toEqual(["fryer"]);
+    const cx = buildIndex(chainedPotato(burgerJson as unknown as NodeGraphMap));
+    const potato = cx.producerOf[cx.ingByName.get("potato-fried")!]!;
+    expect(potato.chainTools.map((t) => cx.toolName[t])).toEqual(["fryer"]);
     // The chicken route uses two real edges instead, so neither carries chainTools.
     expect(ix.producerOf[ing("chicken-breast-fried")]!.chainTools).toEqual([]);
     expect(ix.producerOf[ing("chicken-breast-flour-coated")]!.chainTools).toEqual([]);
@@ -172,9 +192,7 @@ describe("per-ingredient scalars", () => {
     expect(ix.usageNum[ing("patty-cooked")]).toBe(1);
   });
 
-  it("hoists limitPerDish, servable and pickupable", () => {
-    expect(ix.limitPerDish[ing("bun-sliced")]).toBe(1);
-    expect(ix.limitPerDish[ing("patty-cooked")]).toBe(0); // unlimited
+  it("hoists servable and pickupable", () => {
     expect(ix.servable[ing("bun-sliced")]).toBe(1);
     expect(ix.servable[ing("bun")]).toBe(0);
     expect(ix.pickupable[ing("bun")]).toBe(1);

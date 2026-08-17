@@ -65,7 +65,7 @@ describe("INV-ORDER-REBUILDABLE — the two ways a flat dish stops being re-brac
       c.name === "burger" ? { ...c, orderable: false } : c,
     );
     doc.edges.base.push({ from: "meal", to: "burger" });
-    doc.idTable.composite.push({ id: 4, node: "meal" });
+    doc.idTable.composite.push({ node: "meal" });
     const { errors } = validateNodeGraph(doc);
     expect(errors.filter((e) => e.invariantId === "INV-ORDER-REBUILDABLE")).toEqual([]);
   });
@@ -141,7 +141,7 @@ describe("graph structure invariants", () => {
     const doc = clone();
     doc.vertices.ingredient.push({ name: "unobtainium", displayName: "Unobtainium", servable: true });
     doc.edges.option.push({ from: "burger-toppings", to: "unobtainium", maxQuantity: -1 });
-    doc.idTable.ingredient.push({ id: 200, node: "unobtainium" });
+    doc.idTable.ingredient.push({ node: "unobtainium" });
     const { errors } = validateNodeGraph(doc);
     expect(errors.find((e) => e.invariantId === "INV-TRACEABLE")!.message).toContain("unobtainium");
   });
@@ -171,21 +171,21 @@ describe("graph structure invariants", () => {
 describe("id table invariants", () => {
   it("INV-IDTABLE-RESOLVES: an entry naming a vertex that does not exist", () => {
     const doc = clone();
-    doc.idTable.ingredient.push({ id: 300, node: "no-such-node" });
+    doc.idTable.ingredient.push({ node: "no-such-node" });
     const { errors } = validateNodeGraph(doc);
     expect(errors.find((e) => e.invariantId === "INV-IDTABLE-RESOLVES")!.message).toContain("no-such-node");
   });
 
   it("INV-IDTABLE-RESOLVES: an entry pointing at the wrong kind", () => {
     const doc = clone();
-    doc.idTable.ingredient.push({ id: 301, node: "griddle" });
+    doc.idTable.ingredient.push({ node: "griddle" });
     const { errors } = validateNodeGraph(doc);
     expect(errors.find((e) => e.invariantId === "INV-IDTABLE-RESOLVES")!.message).toContain("which is a tool");
   });
 
   it("INV-IDTABLE-UNIQUE: a duplicate id", () => {
     const doc = clone();
-    doc.idTable.ingredient.push({ id: 0, node: "bun-sliced" });
+    doc.idTable.ingredient.push({ node: "bun-sliced" });
     const { errors } = validateNodeGraph(doc);
     expect(ids(errors)).toContain("INV-IDTABLE-UNIQUE");
   });
@@ -199,7 +199,7 @@ describe("id table invariants", () => {
 
   it("a tombstoned id is not treated as an unresolved reference", () => {
     const doc = clone();
-    doc.idTable.ingredient.push({ id: 400, node: null, retired: "long-gone" });
+    doc.idTable.ingredient.push({ node: null, retired: "long-gone" });
     const { errors } = validateNodeGraph(doc);
     expect(errors.filter((e) => e.invariantId.startsWith("INV-IDTABLE"))).toEqual([]);
   });
@@ -216,7 +216,7 @@ describe("warnings", () => {
   it("WARN-UNUSED-PICKUP: a pickupable no orderable reaches", () => {
     const doc = clone();
     doc.vertices.ingredient.push({ name: "spare", displayName: "Spare", pickupable: true });
-    doc.idTable.ingredient.push({ id: 500, node: "spare" });
+    doc.idTable.ingredient.push({ node: "spare" });
     const { warnings } = validateNodeGraph(doc);
     expect(warnings.find((w) => w.invariantId === "WARN-UNUSED-PICKUP")!.message).toContain("spare");
   });
@@ -224,7 +224,7 @@ describe("warnings", () => {
   it("WARN-EMPTY-TOOL: a tool with no recipes", () => {
     const doc = clone();
     doc.vertices.tool.push({ name: "idle-tool", displayName: "Idle", numSlots: 1, cookingTime: 1 });
-    doc.idTable.tool.push({ id: 9, node: "idle-tool" });
+    doc.idTable.tool.push({ node: "idle-tool" });
     const { warnings } = validateNodeGraph(doc);
     expect(warnings.find((w) => w.invariantId === "WARN-EMPTY-TOOL")!.message).toContain("idle-tool");
   });

@@ -43,6 +43,7 @@ import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import type { NodeProjectState } from "../../data/nodeProject.ts";
+import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
 
 /** Same per-tool tints the legacy tool strip uses, so the two read identically. */
 const TOOL_COLORS = [
@@ -80,6 +81,29 @@ export class NodePlayView {
   private paused = false;
   private toolbarFolded = false;
   private customerAvatarByIndex = new Map<number, string>();
+
+  // ---------- tier diffing ----------
+  //
+  // Each tier is rebuilt ONLY when its structure key changes, not on every
+  // clock tick. TICK_MS is 100 — rebuilding all three tiers unconditionally
+  // there means tearing down and recreating every tile, card and slot in the
+  // page ten times a second, which is both the visible "play-page refreshes
+  // intensively" symptom and a real hazard for clicking: a tile that receives
+  // mousedown can be gone from the DOM by the time mouseup fires. Mirrors
+  // ui/play/index.ts's syncPage()/structureKey.ts, scoped down for a view that
+  // has no flight animation to hold a tier back for.
+  private customersEl!: HTMLElement;
+  private middleEl!: HTMLElement;
+  private queuesEl!: HTMLElement;
+  private customersKey = "";
+  private middleKey = "";
+  private queuesKey = "";
+  private overlayEl: HTMLElement | null = null;
+  /** Populated by customerCard(); patched every tick without touching the DOM tree. */
+  private timerEls = new Map<number, HTMLElement>();
+  private timerBarEls = new Map<number, HTMLElement>();
+  /** Populated by toolsEl(); keyed "toolIndex:slotIndex". */
+  private barEls = new Map<string, HTMLElement>();
 
   constructor(
     root: HTMLElement,
@@ -132,7 +156,24 @@ export class NodePlayView {
   private mount(): void {
     this.page = el("div", { class: "play-page" });
     this.root.replaceChildren(this.weatherLayer(), this.toolbar(), this.page);
-    this.render();
+    this.fullRender();
+  }
+
+  /** Builds every tier from scratch and records their structure keys. Called once per mount/restart. */
+  private fullRender(): void {
+    this.timerEls.clear();
+    this.timerBarEls.clear();
+    this.barEls.clear();
+    this.overlayEl = null;
+    this.customersEl = this.customersTier();
+    this.middleEl = this.middleTier();
+    this.queuesEl = this.queuesTier();
+    this.customersKey = customersStructureKey(this.sim);
+    this.middleKey = middleStructureKey(this.sim);
+    this.queuesKey = queuesStructureKey(this.sim);
+    this.page.replaceChildren(this.customersEl, this.middleEl, this.queuesEl);
+    this.syncOverlay();
+    this.patchLiveValues();
   }
 
   /**
@@ -180,11 +221,11 @@ export class NodePlayView {
       if (this.paused) return;
       if (this.sim.status !== "playing") {
         this.stopClock();
-        this.render();
+        this.syncPage();
         return;
       }
       this.sim.tick((TICK_MS / 1000) * this.speedFactor);
-      this.render();
+      this.syncPage();
     }, TICK_MS);
   }
 
@@ -196,15 +237,79 @@ export class NodePlayView {
 
   // ---------- rendering ----------
 
-  /** Re-renders the three tiers only; the toolbar and weather layer persist. */
-  private render(): void {
-    this.page.replaceChildren(
-      this.customersTier(),
-      this.middleTier(),
-      this.queuesTier(),
-      ...(this.sim.status === "playing" ? [] : [this.overlay()]),
-    );
+  /**
+   * Rebuilds only the tier(s) whose structure actually changed, then patches
+   * the values that move every tick (timers, cook bars, the HUD) in place.
+   * The toolbar and weather layer persist untouched, as before.
+   */
+  private syncPage(): void {
+    const nextMiddle = middleStructureKey(this.sim);
+    if (nextMiddle !== this.middleKey) {
+      this.barEls.clear(); // only toolsEl() (part of the middle tier) populates this
+      const next = this.middleTier();
+      this.middleEl.replaceWith(next);
+      this.middleEl = next;
+      this.middleKey = nextMiddle;
+    }
+
+    const nextQueues = queuesStructureKey(this.sim);
+    if (nextQueues !== this.queuesKey) {
+      const next = this.queuesTier();
+      this.queuesEl.replaceWith(next);
+      this.queuesEl = next;
+      this.queuesKey = nextQueues;
+    }
+
+    const nextCustomers = customersStructureKey(this.sim);
+    if (nextCustomers !== this.customersKey) {
+      this.timerEls.clear(); // only customerCard() populates these
+      this.timerBarEls.clear();
+      const next = this.customersTier();
+      this.customersEl.replaceWith(next);
+      this.customersEl = next;
+      this.customersKey = nextCustomers;
+    }
+
+    this.syncOverlay();
+    this.patchLiveValues();
+  }
+
+  private syncOverlay(): void {
+    const shouldShow = this.sim.status !== "playing";
+    if (shouldShow && !this.overlayEl) {
+      this.overlayEl = this.overlay();
+      this.page.append(this.overlayEl);
+    } else if (!shouldShow && this.overlayEl) {
+      this.overlayEl.remove();
+      this.overlayEl = null;
+    }
+  }
+
+  /** Timers, cook progress and the HUD move every tick but never restructure. */
+  private patchLiveValues(): void {
     this.refreshHud();
+    for (const c of this.sim.active) {
+      const badge = this.timerEls.get(c.index);
+      if (badge) badge.textContent = this.timerText(c);
+      const fill = this.timerBarEls.get(c.index);
+      if (fill) {
+        const total = c.config.waitTime || 1;
+        fill.style.width = `${Math.max(0, Math.min(100, (c.timeLeft / total) * 100))}%`;
+      }
+    }
+    for (const tool of this.sim.tools) {
+      tool.slots.forEach((slot, i) => {
+        const bar = this.barEls.get(`${tool.index}:${i}`);
+        if (!bar) return;
+        bar.style.width = slot.item
+          ? `${Math.min(100, (slot.item.elapsed / slot.item.duration) * 100)}%`
+          : "0%";
+      });
+    }
+  }
+
+  private timerText(c: NodeCustomerState): string {
+    return c.timeLeft === Infinity ? "∞" : `${Math.max(0, c.timeLeft).toFixed(0)}s`;
   }
 
   private refreshHud(): void {
@@ -264,7 +369,7 @@ export class NodePlayView {
     policy.addEventListener("change", () => {
       this.sim.setOutOfSlotPolicy(policy.value as OutOfSlotPolicy);
       this.level.outOfSlotPolicy = policy.value as OutOfSlotPolicy;
-      this.render();
+      this.syncPage();
     });
 
     // Map/level/speed/policy are "config" and fold away; the HUD is live game
@@ -332,7 +437,11 @@ export class NodePlayView {
       const total = c.config.waitTime || 1;
       fill.style.width = `${Math.max(0, Math.min(100, (c.timeLeft / total) * 100))}%`;
       card.append(el("div", { class: "wait-progress" }, [fill]));
+      this.timerBarEls.set(c.index, fill);
     }
+
+    const badge = el("span", { class: "wait-badge" }, [this.timerText(c)]);
+    if (servable) this.timerEls.set(c.index, badge);
 
     const content = el("div", { class: "customer-content" });
     content.append(
@@ -340,9 +449,7 @@ export class NodePlayView {
         c.isStaff
           ? el("span", { class: "cust-index" }, [customerTypeIconEl(c.config.typeId, 48)])
           : el("span", { class: "cust-index" }, [`#${c.index + 1}`]),
-        el("span", { class: "wait-badge" }, [
-          c.timeLeft === Infinity ? "∞" : `${Math.max(0, c.timeLeft).toFixed(0)}s`,
-        ]),
+        badge,
       ]),
     );
 
@@ -523,6 +630,7 @@ export class NodePlayView {
         if (slot.item) {
           bar.style.width = `${Math.min(100, (slot.item.elapsed / slot.item.duration) * 100)}%`;
         }
+        this.barEls.set(`${tool.index}:${i}`, bar);
         const node = el("div", {
           class: `tool-slot${slot.item ? " busy" : ""}`,
           "data-slot": `${tool.index}:${i}`,
@@ -603,7 +711,7 @@ export class NodePlayView {
           tile.title = check.reason ?? "Pick this ingredient";
           if (check.ok) {
             tile.addEventListener("click", () => {
-              if (sim.pick(x)) this.render();
+              if (sim.pick(x)) this.syncPage();
             });
           }
         }

@@ -81,7 +81,7 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
       cookedIngredients.push({
         ...shared,
         ...(vertex.usageNum && vertex.usageNum > 1 ? { usageNum: vertex.usageNum } : {}),
-        ...(vertex.limitPerDish ? { limit: vertex.limitPerDish } : {}),
+        ...(limitHintFor(ix, dense) ?? {}),
         ...(baseHintFor(ix, dense, dataIdOf) ?? {}),
       });
     }
@@ -259,6 +259,21 @@ function collapsedRoute(
     current = next.out;
   }
   return { tool: first.tool, out: current, amount, chainTools };
+}
+
+/**
+ * The per-dish `limit` a Design section would show, read off the slot this
+ * ingredient fills rather than off the ingredient itself — the cap is a
+ * property of the choice, not of the item.
+ */
+function limitHintFor(ix: GraphIndex, dense: number): { limit: number } | null {
+  const place = ix.slotOf[dense];
+  if (!place) return null;
+  const slot = ix.slotsOfComposite[place.orderable]?.[place.slot];
+  if (!slot) return null;
+  const at = slot.options.indexOf(dense);
+  const cap = at === -1 ? -1 : (slot.optionMax[at] ?? -1);
+  return cap > 0 ? { limit: cap } : null;
 }
 
 /**

@@ -3161,10 +3161,103 @@ td input {
   user-select: none;
 }
 
+/*
+ * Two levels of selection. Everything in the marquee gets `selected`; the ONE
+ * node the inspector describes also gets `primary`. Without the second level a
+ * ten-node selection gives no clue which of them the side panel is editing.
+ */
 .nodegraph-node.selected {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+.nodegraph-node.primary {
+  outline-width: 3px;
+  box-shadow: 0 0 0 6px rgba(240, 164, 65, 0.16);
+}
+
+/* Rubber-band selection box. Purely visual — hit-testing is arithmetic. */
+.nodegraph-marquee {
+  position: absolute;
+  z-index: 3;
+  border: 1px dashed var(--accent);
+  background: rgba(240, 164, 65, 0.1);
+  pointer-events: none;
+}
+
+/* Right-drag pan: the cursor is the only feedback that the gesture took. */
+.nodegraph-canvas.panning,
+.nodegraph-canvas.panning .nodegraph-node {
+  cursor: grabbing;
+}
+
+/* ---------- designer notes ---------- */
+
+.nodegraph-note {
+  position: absolute;
+  z-index: 2;
+  max-width: 190px;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid rgba(240, 164, 65, 0.5);
+  border-left: 3px solid var(--accent);
+  background: rgba(240, 164, 65, 0.09);
+  color: var(--fg);
+  font-size: 0.68rem;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  cursor: grab;
+  user-select: none;
+}
+
+.nodegraph-note:hover {
+  border-color: var(--accent);
+  background: rgba(240, 164, 65, 0.16);
+}
+
+/* ---------- the mapping tables ---------- */
+
+/*
+ * These render the id table, not the graph. Styled apart from vertices on
+ * purpose: a designer must never mistake a lookup row for a process step.
+ */
+.nodegraph-table {
+  --node-color: #7c8598;
+  border-style: dashed;
+  background: var(--panel-2);
+  max-height: 520px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 1;
+}
+
+.nodegraph-table .np-table-row {
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.nodegraph-table .np-row-label {
+  flex: 0 0 1.6rem;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* A tombstone still holds its id — shown, struck, so the row numbers do not lie. */
+.np-table-retired .np-row-value {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* Lookup wires are NOT graph edges: nothing in the runtime walks them. */
+.edge-lookup {
+  stroke: #7c8598;
+  stroke-width: 1.5;
+  stroke-dasharray: 3 5;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.edge-lookup-orderable { stroke: #c7a3e0; }
 
 .nodegraph-node-label {
   display: flex;
@@ -3242,7 +3335,34 @@ td input {
   padding: 0 0.15rem;
 }
 
-.np-orderable {
+/*
+ * The thumbnail frame. A fixed SQUARE, so a tall source image cannot stretch
+ * the header — port geometry is computed from the constant NODE_HEAD_H rather
+ * than measured, and a header that grew with its artwork would put every edge
+ * on that node a few pixels out.
+ */
+.nodegraph-node-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nodegraph-node-icon img,
+.nodegraph-node-icon .icon {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.np-orderable,
+.np-usage {
   position: absolute;
   top: -9px;
   left: -9px;
@@ -3252,6 +3372,16 @@ td input {
   border-radius: 50%;
   background: var(--panel-2);
   border: 1px solid var(--accent);
+}
+
+/* usageNum > 1: how many dish slots one landed piece fills. */
+.np-usage {
+  min-width: 17px;
+  text-align: center;
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 3px 2px;
+  color: var(--accent);
 }
 
 .np-rows {
@@ -3595,3 +3725,93 @@ td input {
 }
 
 .play-stat.warn { color: var(--accent); }
+
+/* Drag-to-reorder a tool's recipes. The grip is the handle so the number
+   fields inside the row stay clickable. */
+.nodegraph-recipe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.nodegraph-recipe-grip {
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+  letter-spacing: -1px;
+}
+
+.nodegraph-recipe-grip:active { cursor: grabbing; }
+
+.nodegraph-map-picker {
+  max-width: 190px;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--fg);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* A lookup row aimed at a node that cannot serve that role. Flagged rather
+   than hidden — hiding it would take the mistake off screen. */
+.np-table-misaimed {
+  background: rgba(214, 90, 90, 0.14);
+}
+
+.np-table-misaimed .np-row-value {
+  color: var(--bad, #d65a5a);
+}
+
+/* Lookup-table rows reorder by drag, which RENUMBERS ids — the grip is the
+   handle so a stray click on the row cannot trigger it. */
+.np-table-grip {
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+  letter-spacing: -1px;
+  flex: 0 0 auto;
+}
+
+.np-table-grip:active { cursor: grabbing; }
+
+/* An empty row is a slot waiting to be wired, not an error. */
+.nodegraph-table .np-table-retired .np-row-value {
+  color: var(--muted);
+  font-style: italic;
+  text-decoration: none;
+}
+
+/* A mapping-table port is a wire ANCHOR, not a handle: membership follows the
+   node's own pickupable/orderable flag, so there is nothing here to drag. */
+.np-port-static {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* A flagged node with no id-table entry: level data cannot name it yet. */
+.np-table-untabled .np-row-label { color: var(--bad, #d65a5a); }
+.np-table-untabled .np-row-value { color: var(--muted); }
+
+.np-table-empty {
+  justify-content: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Id table rows reorder by drag, which RENUMBERS — the grip is the handle so a
+   stray click on a row cannot trigger it. */
+.nodegraph-idrows {
+  display: flex;
+  flex-direction: column;
+}
+
+.nodegraph-idgrip {
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+  letter-spacing: -1px;
+  flex: 0 0 auto;
+}
+
+.nodegraph-idgrip:active { cursor: grabbing; }

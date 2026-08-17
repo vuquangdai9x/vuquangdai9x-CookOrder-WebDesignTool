@@ -87,17 +87,20 @@ export interface NodeGraphSchema {
 // ---------- the id table ----------
 // Level strings never name a vertex. Every integer in a queue, grid or
 // customer string is a DATA ID resolved through this table to a node name.
-// That indirection is what lets a designer add, remove and rename nodes
-// without silently repointing committed levels — see nodeIdTable.ts for the
-// append-only / tombstone / free-rename rules that make it safe.
+// That indirection is what lets a designer rename nodes without silently
+// repointing committed levels — see nodeIdTable.ts for the rules.
+//
+// The id IS THE ROW'S POSITION. `idTable.ingredient[13]` is what a queue digit
+// `13` picks up; `idTable.composite[0]` is what a dish's `{c0:` names. There is
+// no stored `id` field on purpose: a position and a number meant to agree are
+// two places to disagree, and the loser is always the one level strings used.
 
 export type IdSpace = "ingredient" | "composite" | "group" | "tool" | "dirty";
 
 export interface IdEntry {
-  id: number;
-  /** null = tombstone: the id is permanently retired, never reissued. */
+  /** null = tombstone: the slot is retired but kept, so later rows never shift. */
   node: string | null;
-  /** The name this id used to point at, kept for diagnostics. Set with `node: null`. */
+  /** The name this slot used to hold, kept for diagnostics. Set with `node: null`. */
   retired?: string;
 }
 
@@ -114,17 +117,11 @@ export interface IngredientVertex {
   servable?: boolean;
   /** Dish slots ONE landed piece can fill before it's consumed. >1 also disables direct-serve. */
   usageNum?: number;
-  /** Max copies one dish may call for; 0 = unlimited. */
-  limitPerDish?: number;
-  numSlices?: number;
   price?: number;
   code?: string;
   emoji?: string;
   localImage?: string;
   fileId?: string;
-  /** Legacy ids, present only where a runtime counterpart exists. Read by the migration. */
-  runtimeRawId?: number;
-  runtimeCookedId?: number;
 }
 
 export interface ToolVertex {
@@ -245,6 +242,22 @@ export interface NodeGraphMap {
   edges: EdgeSets;
   /** Editor node positions, keyed "kind:name". Kept apart so semantic data stays diff-clean. */
   layout?: Record<string, { x: number; y: number }>;
+  /**
+   * Free-floating designer notes pinned to canvas positions.
+   *
+   * Editor furniture, like `layout` — the runtime, the validator and the CSV all
+   * ignore them. They live in the document rather than in localStorage so a note
+   * explaining WHY a route is spelled a particular way travels with the graph it
+   * explains, through export, commit and review.
+   */
+  notes?: GraphNote[];
+}
+
+export interface GraphNote {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
 }
 
 /** Any vertex, when the kind is known only at runtime. */

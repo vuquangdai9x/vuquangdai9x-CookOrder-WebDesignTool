@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import burgerJson from "../data/config/nodegraph/burger.json";
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
 import { validateNodeGraph } from "../data/nodeGraphValidate.ts";
-import { legacyLevelToNode, legacyToGraph } from "./legacyToGraph.ts";
+import { cookedName, legacyLevelToNode, legacyToGraph, pickupName, rawName } from "./legacyToGraph.ts";
 import { buildIndex } from "./nodeIndex.ts";
 import { parseNodeCustomers } from "./nodeParser.ts";
 import { NodeSimulation } from "./nodeSim.ts";
 import type { NodeLevelConfig } from "./nodeSim.ts";
 import { parseGrid, parseQueueGroups, parseQueues } from "./parser.ts";
+import { chainedPotato } from "./nodeTestFixtures.ts";
 import { EMPTY_GRID, level, testMap } from "./testFixtures.ts";
 
 const burger = buildIndex(burgerJson as unknown as NodeGraphMap);
@@ -49,13 +50,33 @@ function nodeLevel(o: LevelStrings): NodeLevelConfig {
 
 const sim = (o: LevelStrings, options = {}) => new NodeSimulation(burger, nodeLevel(o), options);
 
+/**
+ * The same map with potato spelled as ONE chainTools edge. `burger.json` is a
+ * designer's file and may spell that route either way; these tests are about
+ * the engine's handling of the spelling, so they derive it. See
+ * `nodeTestFixtures.ts`.
+ */
+const chained = buildIndex(chainedPotato(burgerJson as unknown as NodeGraphMap));
+const chainedIng = (name: string) => {
+  const i = chained.ingByName.get(name);
+  if (i === undefined) throw new Error(`no ingredient "${name}"`);
+  return i;
+};
+const chainedTool = (name: string) => {
+  const i = chained.toolByName.get(name);
+  if (i === undefined) throw new Error(`no tool "${name}"`);
+  return i;
+};
+const chainedSim = (o: LevelStrings, options = {}) =>
+  new NodeSimulation(chained, nodeLevel(o), options);
+
 // Burger id-table ids, for readability in the strings below.
 // raws 0-16 · processed 100+ · composites c0 burger, c1 soda, c2 fried-basket
 // groups g0 burger-toppings, g1 fried-basket-bases, g2 fried-basket-sauces.
 
 describe("core loop", () => {
   it("picks, cooks, serves and wins", () => {
-    const s = sim({ queueString: "0,1", customerString: "0;0;0;{c0:100.{g0:101}}" });
+    const s = sim({ queueString: "0,1", customerString: "0;0;0;{c0:17.{g0:18}}" });
     expect(s.active).toHaveLength(1);
     expect(s.issues).toEqual([]);
     s.pick(0);
@@ -66,7 +87,7 @@ describe("core loop", () => {
   });
 
   it("places cooked output in the first free cell in scan order", () => {
-    const s = sim({ queueString: "1", customerString: "0;0;0;{c0:100.{g0:101}}" });
+    const s = sim({ queueString: "1", customerString: "0;0;0;{c0:17.{g0:18}}" });
     s.pick(0);
     s.tick(4);
     expect(s.grid[0]).toEqual({ kind: "cooked", ing: ing("patty-cooked") });
@@ -77,7 +98,7 @@ describe("core loop", () => {
     const s = sim({
       queueString: "1",
       gridString: "#1,,,,,,,,,",
-      customerString: "0;0;0;{c0:100.{g0:101}}",
+      customerString: "0;0;0;{c0:17.{g0:18}}",
     });
     s.pick(0);
     s.tick(4);
@@ -86,7 +107,7 @@ describe("core loop", () => {
   });
 
   it("loses when the queues run dry with an order outstanding", () => {
-    const s = sim({ queueString: "1", customerString: "0;0;0;{c0:100.{g0:101}}" });
+    const s = sim({ queueString: "1", customerString: "0;0;0;{c0:17.{g0:18}}" });
     s.pick(0);
     s.runToEnd();
     expect(s.status).toBe("lost");
@@ -94,15 +115,15 @@ describe("core loop", () => {
   });
 
   it("loses when a customer runs out of patience", () => {
-    const s = sim({ queueString: "0,1", customerString: "0;2;0;{c0:100.{g0:101}}" });
+    const s = sim({ queueString: "0,1", customerString: "0;2;0;{c0:17.{g0:18}}" });
     s.runToEnd();
     expect(s.status).toBe("lost");
     expect(s.loseReason).toBe("customer-timeout");
   });
 
   it("halves patience for a weather-affected customer in bad weather", () => {
-    const normal = sim({ queueString: "0", customerString: "0;10;1;{c0:100}" });
-    const rainy = sim({ queueString: "0", customerString: "0;10;1;{c0:100}", weather: "Rainy" });
+    const normal = sim({ queueString: "0", customerString: "0;10;1;{c0:17}" });
+    const rainy = sim({ queueString: "0", customerString: "0;10;1;{c0:17}", weather: "Rainy" });
     expect(normal.active[0].timeLeft).toBe(10);
     expect(rainy.active[0].timeLeft).toBe(5);
   });
@@ -118,7 +139,7 @@ describe("the two spellings of a two-tool route", () => {
    */
   it("forwards a coated chicken piece flour -> fryer with no grid landing", () => {
     const s = sim(
-      { queueString: "9", customerString: "0;0;0;{c2:{g1:108}}" },
+      { queueString: "9", customerString: "0;0;0;{c2:{g1:25}}" },
       { instantFlights: false },
     );
     expect(s.pick(0)).toBe(true);
@@ -147,28 +168,32 @@ describe("the two spellings of a two-tool route", () => {
    * says what it will eventually become.
    */
   it("hops a potato cutting-board -> fryer carrying its chain state", () => {
-    const s = sim(
-      { queueString: "13", customerString: "0;0;0;{c2:{g1:112}}" },
+    const s = chainedSim(
+      { queueString: "13", customerString: "0;0;0;{c2:{g1:29}}" },
       { instantFlights: false },
     );
     s.pick(0);
     s.completeAllFlights();
-    const chain = s.tools[tool("cutting-board")].slots[0].item?.chain;
-    expect(chain?.remaining.map((t) => burger.toolName[t])).toEqual(["fryer"]);
-    expect(chain?.out).toBe(ing("potato-fried"));
+    const chain = s.tools[chainedTool("cutting-board")].slots[0].item?.chain;
+    expect(chain?.remaining.map((t) => chained.toolName[t])).toEqual(["fryer"]);
+    expect(chain?.out).toBe(chainedIng("potato-fried"));
 
     s.tick(1);
     expect(s.flights.map((f) => f.kind)).toEqual(["tool-to-tool"]);
     // Still the RAW potato — unlike chicken, nothing intermediate exists.
-    expect(s.flights[0].ing).toBe(ing("potato"));
+    expect(s.flights[0].ing).toBe(chainedIng("potato"));
     s.completeAllFlights();
 
     s.tick(1);
-    // Two pieces: one flies straight to the waiting customer, one lands.
-    expect(s.flights.map((f) => f.kind).sort()).toEqual(["tool-to-customer", "tool-to-grid"]);
+    // The collapsed edge carries the whole chain's yield. One piece flies
+    // straight to the waiting customer; any surplus lands on the grid.
+    const yield_ = chained.terminalYield[chainedIng("potato")];
+    expect(s.flights.map((f) => f.kind).sort()).toEqual(
+      yield_ > 1 ? ["tool-to-customer", "tool-to-grid"] : ["tool-to-customer"],
+    );
     s.completeAllFlights();
     expect(s.status).toBe("won");
-    expect(s.grid.filter((c) => c.kind === "cooked")).toHaveLength(1);
+    expect(s.grid.filter((c) => c.kind === "cooked")).toHaveLength(yield_ - 1);
   });
 
   it("stalls a forward rather than dropping the piece when the fryer is taken", () => {
@@ -176,10 +201,10 @@ describe("the two spellings of a two-tool route", () => {
     // contend: a potato claims it as a chain hop in the same tick a coated
     // breast wants it as a forward. The loser must wait at the flour tool —
     // never spill onto the grid, and never be lost.
-    const s = sim(
+    const s = chainedSim(
       {
         queueString: "13%9",
-        customerString: "0;0;0;{c2:{g1:112}}|0;0;0;{c2:{g1:108}}",
+        customerString: "0;0;0;{c2:{g1:29}}|0;0;0;{c2:{g1:25}}",
       },
       { instantFlights: false },
     );
@@ -191,13 +216,13 @@ describe("the two spellings of a two-tool route", () => {
     // The potato hopped first (tools advance in graph order) and reserved the
     // fryer slot; the coated breast found nothing free.
     expect(s.flights.map((f) => f.kind)).toEqual(["tool-to-tool"]);
-    expect(s.flights[0].ing).toBe(ing("potato"));
-    expect(s.tools[tool("flour")].slots[0].item?.ing).toBe(ing("chicken-breast"));
+    expect(s.flights[0].ing).toBe(chainedIng("potato"));
+    expect(s.tools[chainedTool("flour")].slots[0].item?.ing).toBe(chainedIng("chicken-breast"));
     expect(s.grid.every((c) => c.kind === "empty")).toBe(true);
 
     s.completeAllFlights();
     s.tick(1); // the fryer empties this tick, so the forward now gets through
-    expect(s.flights.some((f) => f.ing === ing("chicken-breast-flour-coated"))).toBe(true);
+    expect(s.flights.some((f) => f.ing === chainedIng("chicken-breast-flour-coated"))).toBe(true);
     s.completeAllFlights();
     s.runToEnd();
     expect(s.status).toBe("won");
@@ -206,7 +231,7 @@ describe("the two spellings of a two-tool route", () => {
 
 describe("slot gates", () => {
   it("holds a topping back until the dish's base is in place", () => {
-    const s = sim({ queueString: "1,0", customerString: "0;0;0;{c0:100.{g0:101}}" });
+    const s = sim({ queueString: "1,0", customerString: "0;0;0;{c0:17.{g0:18}}" });
     s.pick(0); // patty first — its slot is gated on the bun
     s.tick(4);
     const dish = s.active[0].dishes[0];
@@ -219,7 +244,7 @@ describe("slot gates", () => {
   });
 
   it("serves a base immediately — it gates on nothing", () => {
-    const s = sim({ queueString: "0", customerString: "0;0;0;{c0:100}" });
+    const s = sim({ queueString: "0", customerString: "0;0;0;{c0:17}" });
     s.pick(0);
     s.tick(2);
     expect(s.status).toBe("won");
@@ -229,7 +254,7 @@ describe("slot gates", () => {
 
   it("tracks quantity per slot, not per ingredient", () => {
     // Two patties are two slots. Filling one must not satisfy the other.
-    const s = sim({ queueString: "0,1,1", customerString: "0;0;0;{c0:100.{g0:101.101}}" });
+    const s = sim({ queueString: "0,1,1", customerString: "0;0;0;{c0:17.{g0:18.18}}" });
     const dish = s.active[0].dishes[0];
     expect(dish.order.slots).toHaveLength(3);
     s.pick(0);
@@ -247,7 +272,7 @@ describe("multi-use ingredients", () => {
   it("lands a usageNum ingredient on the grid and spends one use per serve", () => {
     // cheese-sauce has usageNum 3, so it must NOT direct-serve: the other two
     // uses would be thrown away.
-    const s = sim({ queueString: "13,16", customerString: "0;0;0;{c2:{g1:112}.{g2:16}}" });
+    const s = sim({ queueString: "13,16", customerString: "0;0;0;{c2:{g1:29}.{g2:16}}" });
     s.pick(0); // potato -> 2 fries, one serves the base slot
     s.tick(3);
     s.pick(0); // cheese sauce needs no tool
@@ -260,7 +285,7 @@ describe("multi-use ingredients", () => {
 
 describe("dirty objects", () => {
   it("reads the dirty object off the composite, not off a source-id scan", () => {
-    const s = sim({ queueString: "0%7", customerString: "0;0;0;{c0:100},{c1:107}" });
+    const s = sim({ queueString: "0%7", customerString: "0;0;0;{c0:17},{c1:24}" });
     s.pick(0);
     s.pick(1);
     s.runToEnd();
@@ -275,7 +300,7 @@ describe("dirty objects", () => {
   it("stacks same-type dirty dishes and never mixes types", () => {
     const s = sim({
       queueString: "0,0",
-      customerString: "0;0;0;{c0:100}|0;0;0;{c0:100}",
+      customerString: "0;0;0;{c0:17}|0;0;0;{c0:17}",
       serveableSlots: 1,
     });
     s.pick(0);
@@ -291,7 +316,7 @@ describe("dirty objects", () => {
   it("lets a staff customer clear stacks", () => {
     const s = sim({
       queueString: "0,0",
-      customerString: "0;0;0;{c0:100}|1;0;0;;2|0;0;0;{c0:100}",
+      customerString: "0;0;0;{c0:17}|1;0;0;;2|0;0;0;{c0:17}",
       serveableSlots: 1,
     });
     s.pick(0);
@@ -305,14 +330,14 @@ describe("dirty objects", () => {
 
 describe("data problems are collected, never thrown", () => {
   it("reports an unknown queue id instead of crashing", () => {
-    const s = sim({ queueString: "999", customerString: "0;0;0;{c0:100}" });
+    const s = sim({ queueString: "999", customerString: "0;0;0;{c0:17}" });
     expect(s.issues).toEqual(['Queue references unknown ingredient id 999']);
     expect(s.pick(0)).toBe(false);
   });
 
   it("reports a dish naming a retired id", () => {
     // c3 is the fried-potato tombstone left by folding potato into the basket.
-    const s = sim({ queueString: "0", customerString: "0;0;0;{c3:112}" });
+    const s = sim({ queueString: "0", customerString: "0;0;0;{c3:29}" });
     expect(s.issues[0]).toContain('was retired (it used to be "fried-potato")');
     expect(s.active[0].dishes[0].order.orderable).toBe(-1);
   });
@@ -320,14 +345,14 @@ describe("data problems are collected, never thrown", () => {
 
 describe("unsatisfiableSlots", () => {
   it("names a slot nothing left on the board could fill", () => {
-    const s = sim({ queueString: "0", customerString: "0;0;0;{c0:100.{g0:101}}" });
+    const s = sim({ queueString: "0", customerString: "0;0;0;{c0:17.{g0:18}}" });
     const stuck = s.unsatisfiableSlots();
     expect(stuck).toHaveLength(1);
     expect(burger.ingName[stuck[0].ing]).toBe("patty-cooked");
   });
 
   it("says nothing while the ingredient is still somewhere in the chain", () => {
-    const s = sim({ queueString: "9", customerString: "0;0;0;{c2:{g1:108}}" }, { instantFlights: false });
+    const s = sim({ queueString: "9", customerString: "0;0;0;{c2:{g1:25}}" }, { instantFlights: false });
     expect(s.unsatisfiableSlots()).toEqual([]);
     s.pick(0);
     s.completeAllFlights();
@@ -338,14 +363,14 @@ describe("unsatisfiableSlots", () => {
 
 describe("pickPolicy: wanted-only", () => {
   it("is OFF by default, so a queue-flow pick still works", () => {
-    const s = sim({ queueString: "5,0", customerString: "0;0;0;{c0:100}" });
+    const s = sim({ queueString: "5,0", customerString: "0;0;0;{c0:17}" });
     // cheese leads only to cheese-sliced, which nobody ordered.
     expect(s.pick(0)).toBe(true);
   });
 
   it("refuses a pick that cannot reach anything wanted when switched on", () => {
     const s = sim(
-      { queueString: "5,0", customerString: "0;0;0;{c0:100}" },
+      { queueString: "5,0", customerString: "0;0;0;{c0:17}" },
       { pickPolicy: "wanted-only" },
     );
     const check = s.canPick(0);
@@ -369,15 +394,18 @@ describe("legacyToGraph — the parity adapter", () => {
 
   it("merges a tool-less raw and its cooked form into ONE vertex", () => {
     // testMap ingredient 2 has no recipe: raw 2 and cooked 2 are the same thing.
-    const merged = doc.vertices.ingredient.find((v) => v.runtimeRawId === 2)!;
-    expect(merged.runtimeCookedId).toBe(2);
+    // Addressed through the adapter's naming scheme rather than a legacy id
+    // stamped on the vertex — the shipped format carries no legacy ids.
+    expect(pickupName(testMap, 2)).toBe(cookedName(2));
+    const merged = doc.vertices.ingredient.find((v) => v.name === cookedName(2))!;
     expect(merged.pickupable).toBe(true);
     expect(merged.servable).toBe(true);
   });
 
   it("keeps a raw that needs a tool separate from its output", () => {
-    const raw = doc.vertices.ingredient.find((v) => v.runtimeRawId === 0)!;
-    const cooked = doc.vertices.ingredient.find((v) => v.runtimeCookedId === 0)!;
+    expect(pickupName(testMap, 0)).toBe(rawName(0));
+    const raw = doc.vertices.ingredient.find((v) => v.name === rawName(0))!;
+    const cooked = doc.vertices.ingredient.find((v) => v.name === cookedName(0))!;
     expect(raw.name).not.toBe(cooked.name);
     expect(raw.servable).toBeUndefined();
     expect(cooked.pickupable).toBeUndefined();

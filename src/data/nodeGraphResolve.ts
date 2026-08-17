@@ -31,7 +31,17 @@ export interface Slot {
   group: string | null;
   /** Ingredients that may fill this slot. Exactly one entry for a fixed slot. */
   options: string[];
-  /** -1 = unlimited. Group-level cap for a choice slot; 1 for a fixed one. */
+  /**
+   * Per-option cap, parallel to `options`; -1 = unlimited.
+   *
+   * This is what replaced the ingredient's own `limitPerDish`. That field said
+   * "at most N of me per dish", which duplicated what the structure already
+   * says: an ingredient sits in exactly one slot (INV-ORDER-REBUILDABLE), so
+   * its per-dish cap IS its cap in that slot. Two places to state one fact is
+   * two places to disagree.
+   */
+  optionMax: number[];
+  /** -1 = unlimited. Group-level cap across ALL options; 1 for a fixed slot. */
   maxQuantity: number;
   /** True when this slot came down a `base` edge — the thing every other slot gates on. */
   isBase: boolean;
@@ -149,21 +159,27 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
 
     const kind = lk.kindOf.get(node);
     if (kind === "ingredient") {
-      acc.push({ kind: "fixed", group: null, options: [node], maxQuantity: 1, isBase });
+      acc.push({ kind: "fixed", group: null, options: [node], optionMax: [1], maxQuantity: 1, isBase });
       visiting.delete(node);
       return;
     }
     if (kind === "group") {
       const leaves: string[] = [];
+      const leafMax: number[] = [];
       for (const opt of lk.optionsOf.get(node) ?? []) {
-        if (lk.kindOf.get(opt.to) === "ingredient") leaves.push(opt.to);
-        else walk(opt.to, isBase); // a nested group or composite becomes its own slots
+        if (lk.kindOf.get(opt.to) === "ingredient") {
+          leaves.push(opt.to);
+          leafMax.push(opt.maxQuantity);
+        } else {
+          walk(opt.to, isBase); // a nested group or composite becomes its own slots
+        }
       }
       if (leaves.length > 0) {
         acc.push({
           kind: "group",
           group: node,
           options: leaves,
+          optionMax: leafMax,
           maxQuantity: lk.groupMax.get(node) ?? -1,
           isBase,
         });

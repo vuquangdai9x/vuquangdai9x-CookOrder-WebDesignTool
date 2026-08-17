@@ -24,6 +24,8 @@
 // a <canvas>: the vertices then render real `ui/icon.ts` artwork and get real
 // focus/context-menu behaviour for free.
 
+import Sortable from "sortablejs";
+
 import { showContextMenu } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { History, bindUndoRedoKeys } from "../history.ts";
@@ -31,6 +33,7 @@ import { cookedIconEl, dirtyIconEl, toolIconEl } from "../icon.ts";
 import { autoLayout, layoutKey } from "./autoLayout.ts";
 import type { Layout } from "./autoLayout.ts";
 import { csvToGraph, graphToCsv } from "../../data/nodeGraphCsv.ts";
+import { reorderToolProcesses } from "../../data/nodeGraphEdit.ts";
 import {
   EDGE_KIND_NAMES,
   NODE_GRAPH_SCHEMA,
@@ -42,20 +45,18 @@ import {
 } from "../../data/nodeGraphSchema.ts";
 import { buildLookup, traceAll } from "../../data/nodeGraphResolve.ts";
 import { validateNodeGraph } from "../../data/nodeGraphValidate.ts";
-import { ID_SPACES, mintId, nextId, renameNode, retireId } from "../../data/nodeIdTable.ts";
+import { ID_SPACES, buildIdIndex, mintId, nextId, renameNode, retireId, reorderIdEntry } from "../../data/nodeIdTable.ts";
+import { createNodeMap, listNodeMaps, loadNodeProject } from "../../data/nodeProject.ts";
 import type { NodeProjectState } from "../../data/nodeProject.ts";
 import type {
   EdgeKindName,
   FieldDef,
+  GraphNote,
   IdSpace,
   NodeGraphMap,
   VertexKindName,
 } from "../../data/nodeGraphTypes.ts";
-import { downloadFile, levelsCsv } from "../../data/sheetSource.ts";
-import { MAP1_DATA } from "../../data/configLoader.ts";
-import { migrateMap } from "../../data/nodeGraphMigrate.ts";
-import type { MigrationReport } from "../../data/nodeGraphMigrate.ts";
-import type { LevelData } from "../../data/mapLoader.ts";
+import { downloadFile } from "../../data/sheetSource.ts";
 
 /** Which id space a vertex kind mints into. */
 const SPACE_OF: Record<VertexKindName, IdSpace> = {
@@ -70,6 +71,27 @@ interface Selection {
   kind: VertexKindName;
   name: string;
 }
+
+const selKey = (target: Selection): string => `${target.kind}:${target.name}`;
+
+/**
+ * Which mouse button drives which gesture. Named because the mapping is the
+ * whole point of the input model and reads as noise otherwise:
+ *
+ *   LEFT on a node      — move it (and everything else selected)
+ *   LEFT on empty space — rubber-band a selection box
+ *   RIGHT anywhere      — pan, INCLUDING over a node, so there is no dead zone
+ *                         a designer can land on and find panning doesn't work
+ *   RIGHT, no drag      — the custom menu for whatever is under the cursor
+ *
+ * The browser's own context menu is suppressed across the whole viewport, so
+ * right-drag can be a pan without a menu flashing up at the end of it.
+ */
+const BUTTON_LEFT = 0;
+const BUTTON_RIGHT = 2;
+
+/** Below this a right-press is a click (menu), above it a drag (pan). */
+const PAN_SLOP_PX = 4;
 
 /**
  * A row drawn inside a node. A tool's rows are its recipes; a composite's are
@@ -103,6 +125,13 @@ interface PortRef {
   row?: NodeRow;
 }
 
+/**
+ * The two derived mapping-table nodes. Not a data-model concept — nothing is
+ * stored under these names; they only label the two views the canvas draws.
+ */
+type TableName = "pickupable" | "orderable";
+const TABLE_NAMES: TableName[] = ["pickupable", "orderable"];
+
 const NODE_W = 190;
 /** Header block height. Port geometry is computed from these, not measured. */
 const NODE_HEAD_H = 46;
@@ -115,10 +144,19 @@ export class MapProcessView {
 
   private history: History<NodeGraphMap>;
   private doc: NodeGraphMap;
+
+  /**
+   * The INSPECTED node — the one the side panel describes. Multi-select needs a
+   * primary because an inspector for six nodes at once is not a useful thing to
+   * render; `selected` below is the set the canvas highlights and drags.
+   */
   private selection: Selection | null = null;
+  /** Every selected node, as `kind:name`. Always contains `selection` when set. */
+  private selected = new Set<string>();
 
   private canvas!: HTMLElement;
   private edgeLayer!: SVGSVGElement;
+  private marquee!: HTMLElement;
   private sidePanel!: HTMLElement;
   private statusBar!: HTMLElement;
   private toolbar!: HTMLElement;
@@ -146,8 +184,10 @@ export class MapProcessView {
     this.statusBar = el("div", { class: "nodegraph-status" });
     this.edgeLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     this.edgeLayer.classList.add("nodegraph-edges");
+    this.marquee = el("div", { class: "nodegraph-marquee" });
+    this.marquee.style.display = "none";
     this.canvas = el("div", { class: "nodegraph-canvas" });
-    this.canvas.append(this.edgeLayer);
+    this.canvas.append(this.edgeLayer, this.marquee);
 
     const viewport = el("div", { class: "nodegraph-viewport" }, [this.canvas]);
     this.sidePanel = el("aside", { class: "nodegraph-side" });
@@ -161,6 +201,7 @@ export class MapProcessView {
 
     bindUndoRedoKeys(section, { undo: () => this.undo(), redo: () => this.redo() });
     this.wireViewportGestures(viewport);
+    this.wireSelectionKeys(section);
 
     // No persisted layout yet — lay the graph out once so the first open is
     // readable rather than a pile of nodes at the origin.
@@ -201,7 +242,8 @@ export class MapProcessView {
     redoBtn.disabled = !this.history.canRedo();
 
     this.toolbar.replaceChildren(
-      el("strong", {}, [this.doc.map.name || this.doc.map.id || "Untitled map"]),
+      this.mapPicker(),
+      button("＋ New map", () => this.newMap(), { title: "Start an empty graph" }),
       button("＋ Add node", (e) => this.addNodeMenu(e), { title: "Create a vertex" }),
       undoBtn,
       redoBtn,
@@ -211,6 +253,78 @@ export class MapProcessView {
       button("⬆ CSV", () => this.importCsv(), { title: "Replace this graph from a CSV file" }),
       button("💾 Save draft", () => this.save(), { class: "primary" }),
     );
+  }
+
+  /**
+   * The map picker.
+   *
+   * Rebuilt on every toolbar render rather than kept as a field, because the
+   * list itself is state: creating a map adds a row, and renaming one in the
+   * inspector changes a label. A cached <select> would go stale in exactly the
+   * moments a designer is looking at it.
+   */
+  private mapPicker(): HTMLElement {
+    const select = el("select", { class: "nodegraph-map-picker", title: "Switch map" }) as HTMLSelectElement;
+    for (const entry of listNodeMaps()) {
+      const option = el("option", { value: entry.id }) as HTMLOptionElement;
+      option.textContent = `${entry.name}${entry.bundled ? "" : " ·"}${entry.hasDraft ? " ✎" : ""}`;
+      option.selected = entry.id === this.project.docId;
+      select.append(option);
+    }
+    select.addEventListener("change", () => this.switchMap(select.value));
+    return select;
+  }
+
+  /**
+   * Open another map.
+   *
+   * Unsaved work is confirmed FIRST, before anything is loaded — switching is
+   * the one gesture here that can silently discard a session's edits, and the
+   * draft of the map being left is only written by an explicit save.
+   */
+  private switchMap(docId: string): void {
+    if (docId === this.project.docId) return;
+    if (this.history.isDirty && !confirm("This map has unsaved changes. Switch anyway and lose them?")) {
+      this.renderToolbar(); // put the <select> back on the map we are still editing
+      return;
+    }
+    this.adopt(loadNodeProject(docId));
+  }
+
+  private newMap(): void {
+    const name = prompt("Name the new map:");
+    if (name === null || name.trim() === "") return;
+    if (this.history.isDirty && !confirm("This map has unsaved changes. Leave it and lose them?")) return;
+    this.adopt(createNodeMap(name));
+  }
+
+  /**
+   * Point the whole view at a different project.
+   *
+   * History is REPLACED, not extended: undo must not walk backwards out of one
+   * map and into another, which would be both meaningless and a way to save the
+   * wrong graph over the wrong draft.
+   */
+  private adopt(next: NodeProjectState): void {
+    this.project.docId = next.docId;
+    this.project.doc = next.doc;
+    this.project.levels = next.levels;
+    this.project.origin = next.origin;
+
+    this.doc = next.doc;
+    this.history = new History<NodeGraphMap>(this.doc, () => this.refreshChrome());
+    this.selection = null;
+    this.selected.clear();
+    this.pan = { x: 0, y: 0 };
+    this.scale = 1;
+
+    if (!this.doc.layout || Object.keys(this.doc.layout).length === 0) {
+      this.doc.layout = autoLayout(this.doc);
+    }
+    this.onPersist();
+    this.renderGraph();
+    this.renderSide();
+    this.refreshChrome();
   }
 
   private save(): void {
@@ -248,6 +362,11 @@ export class MapProcessView {
     // The selection may name a vertex that no longer exists at this point in
     // history; drop it rather than render an inspector for a ghost.
     if (this.selection && !this.vertexAt(this.selection)) this.selection = null;
+    // The multi-selection can go stale the same way — an undone bulk create
+    // leaves keys naming vertices this state does not have.
+    for (const key of [...this.selected]) {
+      if (!this.vertexAt(this.parseSelKey(key))) this.selected.delete(key);
+    }
     this.renderGraph();
     this.renderSide();
     this.refreshChrome();
@@ -270,26 +389,299 @@ export class MapProcessView {
       this.applyTransform();
     });
 
+    // The browser menu is suppressed for the WHOLE viewport, nodes included.
+    // Right-drag is a pan, and a native menu appearing at the end of one would
+    // make panning feel broken. Our own menus are opened from pointerup, where
+    // we can tell a click from a drag.
+    viewport.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    // Right-press is captured at the viewport so it wins over the node's own
+    // pointerdown — panning must work with the cursor anywhere, including on
+    // top of a node.
+    viewport.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (e.button !== BUTTON_RIGHT) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.beginPan(e);
+      },
+      { capture: true },
+    );
+
     viewport.addEventListener("pointerdown", (e) => {
+      if (e.button !== BUTTON_LEFT) return;
+      // Only a press on genuinely empty canvas starts a marquee; a press on a
+      // node is that node's own gesture.
       if (e.target !== viewport && e.target !== this.canvas && e.target !== this.edgeLayer) return;
-      const startX = e.clientX - this.pan.x;
-      const startY = e.clientY - this.pan.y;
+      this.beginMarquee(e);
+    });
+  }
+
+  /**
+   * Right-drag pan. A right press that never moves is a CLICK, and opens the
+   * menu for whatever sits under it — so the same button both pans and opens
+   * menus without the two fighting.
+   */
+  private beginPan(down: PointerEvent): void {
+    const startX = down.clientX - this.pan.x;
+    const startY = down.clientY - this.pan.y;
+    let panned = false;
+
+    const move = (e: PointerEvent) => {
+      if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) > PAN_SLOP_PX) panned = true;
+      if (!panned) return;
+      this.canvas.classList.add("panning");
+      this.pan.x = e.clientX - startX;
+      this.pan.y = e.clientY - startY;
+      this.applyTransform();
+    };
+    const up = (e: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      this.canvas.classList.remove("panning");
+      if (panned) return;
+      const node = (down.target as HTMLElement).closest?.(".nodegraph-node") as HTMLElement | null;
+      const kind = node?.dataset.kind as VertexKindName | undefined;
+      if (node && kind) this.nodeMenu({ kind, name: node.dataset.name ?? "" }, e);
+      else this.canvasMenu(e);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  /**
+   * Left-drag from empty canvas: a rubber-band box that selects everything it
+   * touches on release. A press that never moves is a plain click, and clears
+   * the selection — the gesture a designer reaches for to "get back to nothing".
+   */
+  private beginMarquee(down: PointerEvent): void {
+    const additive = down.shiftKey;
+    const before = new Set(this.selected);
+    const origin = this.canvasPoint(down);
+    let dragged = false;
+
+    const move = (e: PointerEvent) => {
+      const at = this.canvasPoint(e);
+      if (!dragged && Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) <= PAN_SLOP_PX) return;
+      dragged = true;
+
+      const box = {
+        x: Math.min(origin.x, at.x),
+        y: Math.min(origin.y, at.y),
+        w: Math.abs(at.x - origin.x),
+        h: Math.abs(at.y - origin.y),
+      };
+      this.marquee.style.display = "block";
+      this.marquee.style.left = `${box.x}px`;
+      this.marquee.style.top = `${box.y}px`;
+      this.marquee.style.width = `${box.w}px`;
+      this.marquee.style.height = `${box.h}px`;
+
+      // Live feedback: recompute from the ORIGINAL set every move, so dragging
+      // the box back smaller unselects again instead of accumulating.
+      this.selected = additive ? new Set(before) : new Set();
+      for (const target of this.nodesIn(box)) this.selected.add(selKey(target));
+      this.paintSelection();
+    };
+
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      this.marquee.style.display = "none";
+      if (!dragged) {
+        // A bare click on empty space: clear, unless Shift says "keep what I have".
+        if (!additive) this.clearSelection();
+        return;
+      }
+      // The inspector follows the last node the box caught, so a marquee of one
+      // behaves exactly like clicking it.
+      const first = [...this.selected][this.selected.size - 1];
+      this.selection = first ? this.parseSelKey(first) : null;
+      this.renderSide();
+      this.paintSelection();
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  private wireSelectionKeys(section: HTMLElement): void {
+    section.addEventListener("keydown", (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+      // A designer typing in the inspector expects Ctrl+A to select the TEXT.
+      // Stealing it there would make the field unusable.
+      const inField = (e.target as HTMLElement)?.closest("input, textarea, select");
+      if (inField) return;
+
+      const key = e.key.toLowerCase();
+      if (key === "a") {
+        e.preventDefault();
+        this.selectAll();
+      } else if (key === "d") {
+        e.preventDefault();
+        this.clearSelection();
+      }
+    });
+  }
+
+  /** Right-click on empty canvas. The position is captured so the note lands where the menu opened. */
+  private canvasMenu(e: PointerEvent): void {
+    const at = this.canvasPoint(e);
+    showContextMenu(
+      e,
+      [
+        { label: "📝 Add note here", onSelect: () => this.addNote(at) },
+        { label: "＋ Add node", separator: true, onSelect: () => this.addNodeMenu(e) },
+        { label: "▣ Select all", onSelect: () => this.selectAll() },
+        { label: "▢ Deselect all", onSelect: () => this.clearSelection() },
+      ],
+      { title: "Canvas" },
+    );
+  }
+
+  private addNote(at: { x: number; y: number }): void {
+    const text = prompt("Note:");
+    if (text === null || text.trim() === "") return;
+    this.doc = structuredClone(this.doc);
+    if (!this.doc.notes) this.doc.notes = [];
+    this.doc.notes.push({ id: `note-${Date.now().toString(36)}`, x: at.x, y: at.y, text: text.trim() });
+    this.commit("add note", 1);
+  }
+
+  private editNote(id: string): void {
+    const existing = this.doc.notes?.find((n) => n.id === id);
+    if (!existing) return;
+    const text = prompt("Note:", existing.text);
+    if (text === null) return;
+    this.doc = structuredClone(this.doc);
+    // An emptied note is a deleted note — a blank sticky is only clutter.
+    if (text.trim() === "") {
+      this.doc.notes = (this.doc.notes ?? []).filter((n) => n.id !== id);
+      this.commit("delete note", 0, 1);
+      return;
+    }
+    const note = this.doc.notes?.find((n) => n.id === id);
+    if (note) note.text = text.trim();
+    this.commit("edit note");
+  }
+
+  private noteEl(note: GraphNote): HTMLElement {
+    const box = el("div", { class: "nodegraph-note", "data-note": note.id }, [
+      el("span", { class: "nodegraph-note-text" }, [note.text]),
+    ]);
+    box.style.left = `${note.x}px`;
+    box.style.top = `${note.y}px`;
+
+    box.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      this.editNote(note.id);
+    });
+    box.addEventListener("pointerdown", (e) => {
+      if (e.button !== BUTTON_LEFT) return; // right-press belongs to the pan handler
+      e.stopPropagation();
+      const start = { x: note.x, y: note.y };
+      let moved = false;
       const move = (ev: PointerEvent) => {
-        this.pan.x = ev.clientX - startX;
-        this.pan.y = ev.clientY - startY;
-        this.applyTransform();
+        moved = true;
+        const x = start.x + (ev.clientX - e.clientX) / this.scale;
+        const y = start.y + (ev.clientY - e.clientY) / this.scale;
+        box.style.left = `${x}px`;
+        box.style.top = `${y}px`;
+        const live = this.doc.notes?.find((n) => n.id === note.id);
+        if (live) {
+          live.x = x;
+          live.y = y;
+        }
       };
       const up = () => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
+        if (moved) {
+          this.doc = structuredClone(this.doc);
+          this.commit("move note");
+        }
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
-      // Clicking empty space clears the selection — a plain, expected gesture.
-      this.selection = null;
-      this.renderSide();
-      this.renderGraph();
     });
+    return box;
+  }
+
+  /** Pointer position in CANVAS space, undoing the pan/zoom transform. */
+  private canvasPoint(e: { clientX: number; clientY: number }): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: (e.clientX - rect.left) / this.scale, y: (e.clientY - rect.top) / this.scale };
+  }
+
+  /** Every vertex whose box intersects the given canvas-space rectangle. */
+  private nodesIn(box: { x: number; y: number; w: number; h: number }): Selection[] {
+    const hits: Selection[] = [];
+    for (const kind of VERTEX_KIND_NAMES) {
+      for (const vertex of this.doc.vertices[kind]) {
+        const pos = this.positionOf(kind, vertex.name);
+        const h = this.nodeHeight(kind, vertex.name);
+        const overlaps =
+          pos.x < box.x + box.w && pos.x + NODE_W > box.x && pos.y < box.y + box.h && pos.y + h > box.y;
+        if (overlaps) hits.push({ kind, name: vertex.name });
+      }
+    }
+    return hits;
+  }
+
+  private parseSelKey(key: string): Selection {
+    const at = key.indexOf(":");
+    return { kind: key.slice(0, at) as VertexKindName, name: key.slice(at + 1) };
+  }
+
+  // ---------- selection ----------
+
+  /**
+   * Repaint the selection WITHOUT rebuilding the graph.
+   *
+   * Marquee drag touches this on every pointermove, and a full `renderGraph()`
+   * there would rebuild every node and re-lay every edge sixty times a second.
+   * Selection is a class on an existing element, so toggling classes is both
+   * correct and the only version that stays smooth.
+   */
+  private paintSelection(): void {
+    for (const el of this.canvas.querySelectorAll<HTMLElement>(".nodegraph-node")) {
+      const key = `${el.dataset.kind}:${el.dataset.name}`;
+      el.classList.toggle("selected", this.selected.has(key));
+      el.classList.toggle("primary", this.selection !== null && key === selKey(this.selection));
+    }
+    this.refreshChrome();
+  }
+
+  private clearSelection(): void {
+    this.selected.clear();
+    this.selection = null;
+    this.renderSide();
+    this.paintSelection();
+  }
+
+  private selectAll(): void {
+    this.selected = new Set();
+    for (const kind of VERTEX_KIND_NAMES) {
+      for (const vertex of this.doc.vertices[kind]) this.selected.add(selKey({ kind, name: vertex.name }));
+    }
+    this.paintSelection();
+  }
+
+  /** Shift+click semantics: add if absent, remove if present. */
+  private toggleSelected(target: Selection): void {
+    const key = selKey(target);
+    if (this.selected.delete(key)) {
+      if (this.selection && selKey(this.selection) === key) {
+        const next = [...this.selected][this.selected.size - 1];
+        this.selection = next ? this.parseSelKey(next) : null;
+      }
+    } else {
+      this.selected.add(key);
+      this.selection = target;
+    }
+    this.renderSide();
+    this.paintSelection();
   }
 
   private applyTransform(): void {
@@ -312,13 +704,15 @@ export class MapProcessView {
   }
 
   private renderGraph(): void {
-    this.canvas.replaceChildren(this.edgeLayer);
+    this.canvas.replaceChildren(this.edgeLayer, this.marquee);
 
     for (const kind of VERTEX_KIND_NAMES) {
       for (const vertex of this.doc.vertices[kind]) {
         this.canvas.append(this.nodeEl(kind, vertex.name));
       }
     }
+    for (const note of this.doc.notes ?? []) this.canvas.append(this.noteEl(note));
+    this.canvas.append(...TABLE_NAMES.map((name) => this.tableNodeEl(name)));
     this.renderEdges();
     this.applyTransform();
   }
@@ -371,13 +765,14 @@ export class MapProcessView {
   private nodeEl(kind: VertexKindName, name: string): HTMLElement {
     const def = vertexKind(kind);
     const pos = this.positionOf(kind, name);
-    const selected = this.selection?.kind === kind && this.selection.name === name;
+    const selected = this.selected.has(selKey({ kind, name }));
+    const primary = this.selection?.kind === kind && this.selection.name === name;
     const vertex = this.doc.vertices[kind].find((v) => v.name === name) as
-      | { name: string; displayName?: string; orderable?: boolean }
+      | { name: string; displayName?: string; orderable?: boolean; usageNum?: number }
       | undefined;
 
     const node = el("div", {
-      class: `nodegraph-node kind-${kind}${selected ? " selected" : ""}`,
+      class: `nodegraph-node kind-${kind}${selected ? " selected" : ""}${primary ? " primary" : ""}`,
       "data-kind": kind,
       "data-name": name,
     });
@@ -389,6 +784,11 @@ export class MapProcessView {
 
     node.append(
       el("div", { class: "np-head" }, [
+        // The artwork sits in a fixed SQUARE box rather than flowing at its
+        // natural size: source images vary in aspect ratio, and without a fixed
+        // frame a tall one pushes the label around and the header height stops
+        // matching NODE_HEAD_H \u2014 which is what the port geometry is computed
+        // from. A square keeps every node's header identical.
         el("span", { class: "nodegraph-node-icon" }, [this.iconFor(kind, name)]),
         el("span", { class: "nodegraph-node-label" }, [
           el("strong", {}, [vertex?.displayName || name]),
@@ -405,6 +805,23 @@ export class MapProcessView {
       );
     }
 
+    // usageNum > 1 means ONE landed piece fills several dish slots \u2014 it changes
+    // how much a pickup is worth and disables direct-serve, so it belongs on the
+    // node rather than three clicks away in the inspector. 1 is the default and
+    // would be noise on every node.
+    if (kind === "ingredient" && (vertex?.usageNum ?? 1) > 1) {
+      node.append(
+        el(
+          "span",
+          {
+            class: "np-usage",
+            title: `Fills ${vertex?.usageNum} dish slots per landed piece`,
+          },
+          [String(vertex?.usageNum)],
+        ),
+      );
+    }
+
     node.append(
       this.portEl({ kind, name, side: "in" }, "Incoming"),
       this.portEl({ kind, name, side: "out" }, "Drag to wire"),
@@ -418,16 +835,189 @@ export class MapProcessView {
     }
 
     node.addEventListener("pointerdown", (e) => {
+      // Right-press is the viewport's pan gesture, captured before this fires;
+      // let it through untouched.
+      if (e.button !== BUTTON_LEFT) return;
       e.stopPropagation();
       const target = e.target as HTMLElement;
       if (target.closest(".np-port") || target.closest("button")) return; // their own handlers own this
+      if (e.shiftKey) {
+        this.toggleSelected({ kind, name });
+        return;
+      }
       this.beginDrag({ kind, name }, node, e);
     });
-    node.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      this.nodeMenu({ kind, name }, e);
+    return node;
+  }
+
+  // ---------- the mapping tables ----------
+  //
+  // Two nodes that are not vertices and hold no data of their own: they render
+  // what is ALREADY TRUE of the graph. The Pickupable node lists every
+  // ingredient flagged `pickupable`; the Orderable node lists every composite
+  // flagged `orderable`. A wire is drawn to (or from) each one automatically.
+  //
+  // Derived, not authored, and therefore read-only. An earlier version let a
+  // designer add, remove and reorder rows here, which made the same fact
+  // editable in two places — the vertex's own flag and the table's membership —
+  // and the two could disagree with nothing to say which was right. The flag in
+  // the node inspector is now the single switch; toggling it re-renders, and
+  // the wire appears or vanishes to match.
+  //
+  // The NUMBERING those nodes used to own lives in the Id Table panel instead,
+  // where a row's position is its id and reordering is an explicit, confirmed
+  // renumber. Membership and numbering are different questions, and they now
+  // have different homes.
+  //
+  // Permanent by construction rather than by a guard: they are drawn outside
+  // the vertex loops, so no code path can delete them and none has to refuse
+  // to. Their positions live in `layout` under a `table:` prefix, which no
+  // vertex key can collide with (a vertex key is "kind:name", and `table` is
+  // not a vertex kind).
+
+  private tableKey(which: TableName): string {
+    return `table:${which}`;
+  }
+
+  private tablePos(which: TableName): { x: number; y: number } {
+    const stored = this.layout()[this.tableKey(which)];
+    if (stored) return stored;
+    // First open: park them clear to the RIGHT of every vertex. Not at negative
+    // x — the canvas starts unpanned at the origin, and a table off the left
+    // edge would be invisible until the designer thought to pan for it.
+    let right = 0;
+    for (const kind of VERTEX_KIND_NAMES) {
+      for (const vertex of this.doc.vertices[kind]) {
+        right = Math.max(right, this.positionOf(kind, vertex.name).x + NODE_W);
+      }
+    }
+    return { x: right + 120, y: which === "pickupable" ? 40 : 40 + 26 * NODE_ROW_H };
+  }
+
+  /**
+   * The rows of a mapping table: every vertex currently carrying the flag,
+   * in ID ORDER so the row a level string means is where you would look for it.
+   *
+   * A flagged vertex with no id still gets a row — with the id shown as "—".
+   * Hiding it would make a real problem (something pickupable that level data
+   * cannot name) invisible on the canvas; `WARN-UNTABLED-NODE` says the same
+   * thing in the issues list.
+   */
+  private tableRows(which: TableName): { id: number | null; node: string }[] {
+    const ids = buildIdIndex(this.doc.idTable);
+    const space: IdSpace = which === "pickupable" ? "ingredient" : "composite";
+    const flagged =
+      which === "pickupable"
+        ? this.doc.vertices.ingredient.filter((v) => v.pickupable).map((v) => v.name)
+        : this.doc.vertices.composite.filter((v) => v.orderable).map((v) => v.name);
+
+    return flagged
+      .map((node) => ({ id: ids.byNode[space].get(node) ?? null, node }))
+      .sort((a, b) => (a.id ?? Infinity) - (b.id ?? Infinity) || a.node.localeCompare(b.node));
+  }
+
+  private tableNodeEl(which: TableName): HTMLElement {
+    const pos = this.tablePos(which);
+    const rows = this.tableRows(which);
+    const node = el("div", {
+      class: `nodegraph-node nodegraph-table kind-table-${which}`,
+      "data-table": which,
+      title:
+        which === "pickupable"
+          ? "Every ingredient flagged pickupable. Read-only — toggle the flag on the ingredient itself."
+          : "Every composite flagged orderable. Read-only — toggle the flag on the composite itself.",
+    });
+    node.style.left = `${pos.x}px`;
+    node.style.top = `${pos.y}px`;
+    node.style.width = `${NODE_W}px`;
+
+    node.append(
+      el("div", { class: "np-head" }, [
+        el("span", { class: "nodegraph-node-icon" }, [
+          el("span", { class: "icon" }, [which === "pickupable" ? "\u{1F4E5}" : "\u{1F37D}"]),
+        ]),
+        el("span", { class: "nodegraph-node-label" }, [
+          el("strong", {}, [which === "pickupable" ? "Pickupable" : "Orderable"]),
+          el("small", {}, [which === "pickupable" ? "queue id \u2192 ingredient" : "dish id \u2192 orderable"]),
+        ]),
+      ]),
+    );
+
+    const list = el("div", { class: "np-rows np-table-rows" });
+    for (const entry of rows) {
+      const side: "in" | "out" = which === "pickupable" ? "out" : "in";
+      // A port dot, but purely a wire ANCHOR: no pointerdown handler, because
+      // the membership it marks is not something a drag can change.
+      const port = el("span", {
+        class: `np-port np-${side} np-row-port np-port-static`,
+        "data-table": which,
+        "data-table-id": String(entry.id ?? -1),
+        "data-side": side,
+      });
+      const label = el("span", { class: "np-row-label" }, [entry.id === null ? "\u2014" : String(entry.id)]);
+      const value = el("span", { class: "np-row-value" }, [entry.node]);
+      const row = el(
+        "div",
+        {
+          class: `np-row np-table-row${entry.id === null ? " np-table-untabled" : ""}`,
+          ...(entry.id === null
+            ? { title: `"${entry.node}" has no id-table entry, so no level string can name it` }
+            : {}),
+        },
+        which === "pickupable" ? [label, value, port] : [port, label, value],
+      );
+      list.append(row);
+    }
+    if (rows.length === 0) {
+      list.append(
+        el("div", { class: "np-row np-table-empty" }, [
+          el("small", { class: "muted" }, [
+            which === "pickupable" ? "No ingredient is pickupable yet." : "No composite is orderable yet.",
+          ]),
+        ]),
+      );
+    }
+    node.append(list);
+
+    node.addEventListener("pointerdown", (e) => {
+      if (e.button !== BUTTON_LEFT) return;
+      e.stopPropagation();
+      this.beginTableDrag(which, node, e);
     });
     return node;
+  }
+
+  /** The tables move like nodes, but their position is the only thing a drag can change. */
+  private beginTableDrag(which: TableName, node: HTMLElement, down: PointerEvent): void {
+    const start = this.tablePos(which);
+    let moved = false;
+    const move = (e: PointerEvent) => {
+      moved = true;
+      const x = start.x + (e.clientX - down.clientX) / this.scale;
+      const y = start.y + (e.clientY - down.clientY) / this.scale;
+      node.style.left = `${x}px`;
+      node.style.top = `${y}px`;
+      this.layout()[this.tableKey(which)] = { x, y };
+      this.renderEdges();
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (moved) {
+        this.doc = structuredClone(this.doc);
+        this.commit(`move ${which} table`);
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  /** Canvas-space point of one table row's port, found by the row's position in the list. */
+  private tablePortPoint(which: TableName, node: string): { x: number; y: number } {
+    const pos = this.tablePos(which);
+    const at = this.tableRows(which).findIndex((r) => r.node === node);
+    const y = pos.y + NODE_HEAD_H + Math.max(0, at) * NODE_ROW_H + NODE_ROW_H / 2;
+    return { x: which === "pickupable" ? pos.x + NODE_W : pos.x, y };
   }
 
   /** One port dot. An output port starts a wire; an input port is a drop target. */
@@ -511,6 +1101,13 @@ export class MapProcessView {
         maxX = Math.max(maxX, p.x + NODE_W + 80);
         maxY = Math.max(maxY, p.y + this.nodeHeight(kind, vertex.name) + 80);
       }
+    }
+    // The mapping tables are the tallest things on the canvas — one row per id —
+    // so leaving them out of the bounds would clip them and the wires into them.
+    for (const which of TABLE_NAMES) {
+      const p = this.tablePos(which);
+      maxX = Math.max(maxX, p.x + NODE_W + 80);
+      maxY = Math.max(maxY, p.y + NODE_HEAD_H + this.tableRows(which).length * NODE_ROW_H + 80);
     }
     this.canvas.style.width = `${maxX}px`;
     this.canvas.style.height = `${maxY}px`;
@@ -606,14 +1203,45 @@ export class MapProcessView {
         edge.to,
       );
     }
+
+    this.renderTableWires(svgNs, kindOf);
+  }
+
+  /**
+   * The lookup wires: one per live table row, table row ↔ the node it names.
+   *
+   * Drawn in their own pass and their own class because they are NOT graph
+   * edges — nothing in the runtime traverses them. They show the id
+   * indirection, which is a different kind of fact from "this tool cooks that
+   * ingredient", and styling them the same would invite reading them as flow.
+   */
+  private renderTableWires(svgNs: string, kindOf: Map<string, VertexKindName>): void {
+    for (const which of TABLE_NAMES) {
+      for (const entry of this.tableRows(which)) {
+        const kind = kindOf.get(entry.node);
+        if (!kind) continue; // the vertex vanished mid-edit; don't draw a wire to nowhere
+
+        const port = this.tablePortPoint(which, entry.node);
+        const nodeSide = this.portPoint({
+          kind,
+          name: entry.node,
+          side: which === "pickupable" ? "in" : "out",
+        });
+        const [a, b] = which === "pickupable" ? [port, nodeSide] : [nodeSide, port];
+        const dx = Math.max(40, Math.abs(b.x - a.x) / 2);
+        const path = document.createElementNS(svgNs, "path");
+        path.setAttribute("d", `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`);
+        path.setAttribute("class", `nodegraph-edge edge-lookup edge-lookup-${which}`);
+        this.edgeLayer.append(path);
+      }
+    }
   }
 
   private iconFor(kind: VertexKindName, name: string): HTMLElement {
     // Icons resolve through the shell's ambient node icon source, which is
     // keyed by DATA ID — so a vertex with no id table entry yet simply falls
     // back to its emoji, which is the honest thing to show.
-    const entry = this.doc.idTable[SPACE_OF[kind]]?.find((e) => e.node === name);
-    const id = entry?.id ?? -1;
+    const id = this.doc.idTable[SPACE_OF[kind]]?.findIndex((e) => e?.node === name) ?? -1;
     if (kind === "tool") {
       const vertex = this.doc.vertices.tool.find((v) => v.name === name);
       return toolIconEl(
@@ -652,27 +1280,53 @@ export class MapProcessView {
 
   // ---------- gestures ----------
 
-  /** Node drag: ONE history entry, pushed on pointerup, not per pointermove. */
-  private beginDrag(target: Selection, node: HTMLElement, down: PointerEvent): void {
+  /**
+   * Node drag: ONE history entry, pushed on pointerup, not per pointermove.
+   *
+   * Dragging a node that is part of a multi-selection moves the WHOLE
+   * selection, which is the only reason to have multi-select at all. Pressing
+   * an unselected node replaces the selection with it first — matching every
+   * other canvas editor, where grabbing something you had not selected does not
+   * silently carry your old selection along with it.
+   */
+  // `node` is no longer read: the drag moves every selected element, so each
+  // one is looked up by data attribute rather than the pressed element being
+  // special. Kept in the signature so the call site still reads as "drag THIS".
+  private beginDrag(target: Selection, _node: HTMLElement, down: PointerEvent): void {
+    if (!this.selected.has(selKey(target))) {
+      this.selected = new Set([selKey(target)]);
+    }
     this.selection = target;
     this.renderSide();
-    for (const other of this.canvas.querySelectorAll(".nodegraph-node.selected")) {
-      other.classList.remove("selected");
-    }
-    node.classList.add("selected");
+    this.paintSelection();
 
-    const start = this.positionOf(target.kind, target.name);
+    // Snapshot every moving node's start position up front: reading positions
+    // during the drag would compound rounding, and each move must be an
+    // absolute offset from where the gesture began.
+    const moving = [...this.selected].map((key) => {
+      const sel = this.parseSelKey(key);
+      return { sel, start: { ...this.positionOf(sel.kind, sel.name) } };
+    });
     const originX = down.clientX;
     const originY = down.clientY;
     let moved = false;
 
     const move = (e: PointerEvent) => {
-      const x = start.x + (e.clientX - originX) / this.scale;
-      const y = start.y + (e.clientY - originY) / this.scale;
+      const dx = (e.clientX - originX) / this.scale;
+      const dy = (e.clientY - originY) / this.scale;
       moved = true;
-      node.style.left = `${x}px`;
-      node.style.top = `${y}px`;
-      this.layout()[layoutKey(target.kind, target.name)] = { x, y };
+      for (const { sel, start } of moving) {
+        const x = start.x + dx;
+        const y = start.y + dy;
+        this.layout()[layoutKey(sel.kind, sel.name)] = { x, y };
+        const elm = this.canvas.querySelector<HTMLElement>(
+          `.nodegraph-node[data-kind="${sel.kind}"][data-name="${CSS.escape(sel.name)}"]`,
+        );
+        if (elm) {
+          elm.style.left = `${x}px`;
+          elm.style.top = `${y}px`;
+        }
+      }
       this.renderEdges();
     };
     const up = () => {
@@ -680,7 +1334,7 @@ export class MapProcessView {
       window.removeEventListener("pointerup", up);
       if (moved) {
         this.doc = structuredClone(this.doc);
-        this.commit(`move ${target.name}`);
+        this.commit(moving.length > 1 ? `move ${moving.length} nodes` : `move ${target.name}`);
       }
     };
     window.addEventListener("pointermove", move);
@@ -720,6 +1374,10 @@ export class MapProcessView {
       const port = element?.closest<HTMLElement>(".np-port.np-in");
       const node = element?.closest<HTMLElement>(".nodegraph-node");
       if (!port && !node) return;
+
+      // The mapping tables are derived views: their membership follows the
+      // `pickupable` / `orderable` flags, so a wire cannot be dropped onto one.
+      if (element?.closest("[data-table]")) return;
 
       const to: PortRef = port
         ? {
@@ -924,12 +1582,22 @@ export class MapProcessView {
       y: 40 - this.pan.y / this.scale + 40,
     };
     this.selection = { kind, name };
+    this.selected = new Set([selKey(this.selection)]);
     this.commit(`add ${kind} ${name}`, 1);
   }
 
   /** Only vertices a level string can reference need an id. */
+  /**
+   * Only nodes a level string can NAME need an id.
+   *
+   * An ingredient earns one by being servable or pickupable; a composite by
+   * being orderable — those flags are exactly what makes a node reachable from
+   * queue and dish strings. Everything else (groups, tools, dirty objects) is
+   * referenced structurally and always gets one.
+   */
   private needsId(kind: VertexKindName, vertex: Record<string, unknown>): boolean {
     if (kind === "ingredient") return Boolean(vertex.servable || vertex.pickupable);
+    if (kind === "composite") return Boolean(vertex.orderable);
     return true;
   }
 
@@ -966,42 +1634,108 @@ export class MapProcessView {
     retireId(this.doc.idTable, SPACE_OF[target.kind], target.name);
     delete this.layout()[layoutKey(target.kind, target.name)];
     this.selection = null;
+    this.selected.delete(selKey(target));
     this.commit(`delete ${target.kind} ${target.name}`, 0, removed);
   }
 
   /** Level names whose strings still resolve through this vertex's id. */
   private levelsReferencing(target: Selection): string[] {
-    const entry = this.doc.idTable[SPACE_OF[target.kind]]?.find((e) => e.node === target.name);
-    if (!entry) return [];
-    const token =
-      target.kind === "composite" ? `{c${entry.id}:` : target.kind === "group" ? `{g${entry.id}:` : null;
+    const id = this.doc.idTable[SPACE_OF[target.kind]]?.findIndex((e) => e?.node === target.name) ?? -1;
+    if (id === -1) return [];
+    return this.levelsUsingId(SPACE_OF[target.kind], id);
+  }
+
+  /**
+   * Level names whose strings index into `id` of `space`.
+   *
+   * Deliberately over-inclusive for the ingredient space: a bare number in a
+   * queue or dish string has no marker saying which space it belongs to, so
+   * this matches any standalone occurrence. Over-reporting inflates a warning;
+   * under-reporting would let a renumber quietly break a level.
+   */
+  private levelsUsingId(space: IdSpace, id: number): string[] {
+    const token = space === "composite" ? `{c${id}:` : space === "group" ? `{g${id}:` : null;
+    const bare = new RegExp(`(^|[^0-9])${id}([^0-9]|$)`);
     const out: string[] = [];
     for (const level of this.project.levels) {
-      if (token && level.customerString.includes(token)) {
-        out.push(level.name);
+      if (token) {
+        if (level.customerString.includes(token)) out.push(level.name);
         continue;
       }
-      if (target.kind === "ingredient") {
-        const idPattern = new RegExp(`(^|[^0-9])${entry.id}([^0-9]|$)`);
-        if (idPattern.test(level.customerString) || idPattern.test(level.queueString)) out.push(level.name);
-      }
+      if (space !== "ingredient") continue; // tool/dirty ids appear in no level string
+      if (bare.test(level.customerString) || bare.test(level.queueString)) out.push(level.name);
     }
     return out;
   }
 
   private nodeMenu(target: Selection, e: MouseEvent): void {
+    // Right-clicking inside a multi-selection acts on the whole selection;
+    // right-clicking outside it means "I mean this one", so the selection
+    // collapses to it first.
+    const inSelection = this.selected.has(selKey(target));
+    if (!inSelection) this.select(target);
+    const count = this.selected.size;
+    const many = inSelection && count > 1;
+
     showContextMenu(
       e,
       [
         { label: "✎ Inspect", onSelect: () => this.select(target) },
+        { label: "⧉ Duplicate", onSelect: () => this.duplicateVertex(target) },
         {
-          label: "⧉ Duplicate",
-          onSelect: () => this.duplicateVertex(target),
+          label: many ? `✕ Delete ${count} nodes` : "✕ Delete",
+          danger: true,
+          separator: true,
+          onSelect: () => (many ? this.deleteSelection() : this.deleteVertex(target)),
         },
-        { label: "✕ Delete", danger: true, separator: true, onSelect: () => this.deleteVertex(target) },
       ],
-      { title: target.name },
+      { title: many ? `${count} nodes selected` : target.name },
     );
+  }
+
+  /**
+   * Delete every selected vertex as ONE undo entry.
+   *
+   * Not a loop over `deleteVertex` — that would prompt once per node and push
+   * one history entry each, so a half-undone bulk delete would be reachable.
+   */
+  private deleteSelection(): void {
+    const targets = [...this.selected].map((key) => this.parseSelKey(key));
+    const used = targets.flatMap((t) => this.levelsReferencing(t));
+    const unique = [...new Set(used)];
+    const warning =
+      unique.length > 0
+        ? `${targets.length} node(s) are still referenced by ${unique.length} level(s): ${unique.slice(0, 5).join(", ")}${unique.length > 5 ? "…" : ""}.\n\nDeleting tombstones their ids, so those levels will fail validation until you fix them.\n\nDelete anyway?`
+        : `Delete ${targets.length} nodes and every edge touching them?`;
+    if (!confirm(warning)) return;
+
+    this.doc = structuredClone(this.doc);
+    const names = new Set(targets.map((t) => t.name));
+    let removed = 0;
+
+    for (const target of targets) {
+      const list = this.doc.vertices[target.kind] as { name: string }[];
+      const at = list.findIndex((v) => v.name === target.name);
+      if (at === -1) continue;
+      list.splice(at, 1);
+      removed++;
+      retireId(this.doc.idTable, SPACE_OF[target.kind], target.name);
+      delete this.layout()[layoutKey(target.kind, target.name)];
+    }
+
+    for (const kind of EDGE_KIND_NAMES) {
+      const edges = this.doc.edges[kind] as { from: string; to: string }[];
+      const before = edges.length;
+      this.doc.edges[kind] = edges.filter((e) => !names.has(e.from) && !names.has(e.to)) as never;
+      removed += before - (this.doc.edges[kind] as unknown[]).length;
+    }
+    for (const edge of this.doc.edges.process) {
+      edge.inputs = edge.inputs.filter((input) => !names.has(input));
+    }
+
+    this.selected.clear();
+    this.selection = null;
+    this.commit(`delete ${targets.length} nodes`, 0, removed);
   }
 
   private duplicateVertex(target: Selection): void {
@@ -1018,11 +1752,13 @@ export class MapProcessView {
     const at = this.positionOf(target.kind, target.name);
     this.layout()[layoutKey(target.kind, name)] = { x: at.x + 24, y: at.y + 24 };
     this.selection = { kind: target.kind, name };
+    this.selected = new Set([selKey(this.selection)]);
     this.commit(`duplicate ${target.name}`, 1);
   }
 
   private select(target: Selection): void {
     this.selection = target;
+    this.selected = new Set([selKey(target)]);
     this.renderGraph();
     this.renderSide();
   }
@@ -1040,75 +1776,8 @@ export class MapProcessView {
       this.inspectorPanel(),
       this.issuesPanel(),
       this.tracePanel(),
-      this.migrationPanel(),
       this.idTablePanel(),
     );
-  }
-
-  /**
-   * The migration, run INSIDE the tool against the graph as it stands now.
-   *
-   * Deliberately not a build step: the migration has to be re-runnable as the
-   * graph grows, and its report — which dishes could not be placed, which ids
-   * no vertex claims — is a review artefact a designer needs to see next to the
-   * graph that caused it. The "Download levels CSV" button produces exactly the
-   * file that gets committed under config/nodegraph/levels/, which is the same
-   * export-then-commit loop the rest of this tool uses.
-   */
-  private migrationPanel(): HTMLElement {
-    const body = el("div", { class: "nodegraph-panel-body" });
-    let result: { levels: LevelData[]; report: MigrationReport };
-    try {
-      result = migrateMap(MAP1_DATA, this.doc);
-    } catch (err) {
-      body.append(el("p", { class: "nodegraph-bad" }, [`Migration failed: ${(err as Error).message}`]));
-      return this.panel("Migration", body);
-    }
-    const { levels, report } = result;
-
-    const line = (label: string, value: string, bad = false) =>
-      el("div", { class: `nodegraph-idrow${bad ? " " : ""}` }, [
-        el("span", { class: bad ? "nodegraph-bad" : "" }, [`${label}: ${value}`]),
-      ]);
-
-    body.append(
-      line("levels", String(levels.length)),
-      line("ids in use with no vertex", String(report.unmappedInUse.length), report.unmappedInUse.length > 0),
-      line("dishes not placed", String(report.unplacedDishes.length), report.unplacedDishes.length > 0),
-      line("vertices with no legacy counterpart", String(report.newVertices.length)),
-    );
-
-    for (const unmapped of report.unmappedInUse.slice(0, 6)) {
-      body.append(
-        el("div", { class: "nodegraph-issue bad" }, [
-          el("strong", {}, [`${unmapped.space} id ${unmapped.id}`]),
-          el("span", {}, [`used by level(s) ${unmapped.levels.join(", ")} but no vertex claims it`]),
-        ]),
-      );
-    }
-    for (const unplaced of report.unplacedDishes.slice(0, 6)) {
-      body.append(
-        el("div", { class: "nodegraph-issue warn" }, [
-          el("strong", {}, [`level ${unplaced.levelId}, customer ${unplaced.customer + 1}`]),
-          el("span", {}, [unplaced.reason]),
-        ]),
-      );
-    }
-    if (report.newVertices.length > 0) {
-      body.append(el("small", { class: "muted" }, [`new: ${report.newVertices.join(", ")}`]));
-    }
-
-    body.append(
-      button("⬇ Download levels CSV", () => {
-        downloadFile(`${this.doc.map.id || "graph"}-levels.csv`, levelsCsv({ ...MAP1_DATA, levels }));
-      }, { title: "The file to commit under config/nodegraph/levels/" }),
-      button("↻ Re-migrate into this session", () => {
-        if (!confirm("Replace the node levels in this session with a fresh migration?")) return;
-        this.project.levels = levels;
-        this.onPersist();
-      }),
-    );
-    return this.panel("Migration", body);
   }
 
   private inspectorPanel(): HTMLElement {
@@ -1212,6 +1881,23 @@ export class MapProcessView {
       wrap.append(el("small", { class: "muted" }, ['Use "＋ process" on the node to add one.']));
       return wrap;
     }
+
+    // Recipe order is not cosmetic: `advanceTools` walks a tool's processes in
+    // graph order, so which recipe claims a free slot first is decided here.
+    // That is why reordering is a real edit with a real undo entry, and why the
+    // node's own rows have to follow — a designer must be able to see the order
+    // they just set without opening the inspector to check.
+    const list = el("div", { class: "nodegraph-recipe-list" });
+    Sortable.create(list, {
+      animation: 120,
+      handle: ".nodegraph-recipe-grip",
+      onEnd: (e) => {
+        if (e.oldIndex === undefined || e.newIndex === undefined || e.oldIndex === e.newIndex) return;
+        this.reorderProcess(tool, e.oldIndex, e.newIndex);
+      },
+    });
+    wrap.append(list);
+
     for (const { edge, index } of rows) {
       const numberField = (label: string, value: number | undefined, apply: (n: number | undefined) => void) => {
         const input = el("input", { type: "number", value: value === undefined ? "" : String(value) }) as HTMLInputElement;
@@ -1224,8 +1910,9 @@ export class MapProcessView {
         });
         return el("label", { class: "inline-field" }, [label, input]);
       };
-      wrap.append(
+      list.append(
         el("div", { class: "nodegraph-recipe-row" }, [
+          el("span", { class: "nodegraph-recipe-grip", title: "Drag to reorder" }, ["⠿"]),
           el("code", {}, [`${edge.inputs.join("+") || "?"} → ${edge.to || "?"}`]),
           numberField("amount", edge.amount, (n) => {
             this.doc.edges.process[index].amount = n ?? 1;
@@ -1238,6 +1925,21 @@ export class MapProcessView {
       );
     }
     return wrap;
+  }
+
+  /**
+   * Move one of a tool's recipes, by position WITHIN THAT TOOL.
+   *
+   * The permutation lives in `data/nodeGraphEdit.ts` so it can be tested without
+   * a DOM; this is only the gesture-to-commit wiring. A no-op drop returns the
+   * same object, which is how a drag dropped where it started avoids pushing an
+   * undo entry.
+   */
+  private reorderProcess(tool: string, from: number, to: number): void {
+    const next = reorderToolProcesses(this.doc, tool, from, to);
+    if (next === this.doc) return;
+    this.doc = next;
+    this.commit(`reorder ${tool} recipes`);
   }
 
   private edgesTouching(name: string): { kind: EdgeKindName; from: string; to: string }[] {
@@ -1340,10 +2042,19 @@ export class MapProcessView {
     if (value === undefined) delete editing[field.name];
     else editing[field.name] = value;
 
-    // Making an ingredient servable/pickupable is what makes it addressable
-    // from level data, so that is when it earns an id.
-    if (target.kind === "ingredient" && (field.name === "servable" || field.name === "pickupable")) {
-      if (this.needsId(target.kind, editing)) mintId(this.doc.idTable, "ingredient", target.name);
+    // A flag that makes a node addressable from level data is what earns it an
+    // id — servable/pickupable for an ingredient, orderable for a composite.
+    // Minting here rather than on create means the id space only ever holds
+    // things a level string can actually name.
+    //
+    // These are also exactly the flags the two mapping-table nodes derive their
+    // membership from, so the wires redraw with them: `commit()` re-renders the
+    // graph, and the tables are rebuilt from the flags on every render.
+    const addressability =
+      (target.kind === "ingredient" && (field.name === "servable" || field.name === "pickupable")) ||
+      (target.kind === "composite" && field.name === "orderable");
+    if (addressability && this.needsId(target.kind, editing)) {
+      mintId(this.doc.idTable, SPACE_OF[target.kind], target.name);
     }
     this.commit(`set ${target.name}.${field.name}`);
   }
@@ -1419,19 +2130,41 @@ export class MapProcessView {
     return this.panel("Traceback", body);
   }
 
+  /**
+   * The id table, one reorderable list per space.
+   *
+   * A row's POSITION is the number level strings carry, so dragging a row is a
+   * renumber, not a re-sort — every id from the smaller of the two positions
+   * onward changes meaning. That is a real thing a designer may want (rebuild
+   * the queue alphabet), so it is allowed; it is also destructive to committed
+   * data, so it is confirmed first with the affected level count in hand.
+   */
   private idTablePanel(): HTMLElement {
     const body = el("div", { class: "nodegraph-panel-body nodegraph-idtable" });
     for (const space of ID_SPACES) {
       const entries = this.doc.idTable[space] ?? [];
+      const list = el("div", { class: "nodegraph-idrows" });
+      Sortable.create(list, {
+        animation: 120,
+        handle: ".nodegraph-idgrip",
+        onEnd: (e) => {
+          if (e.oldIndex === undefined || e.newIndex === undefined) return;
+          this.reorderIdRow(space, e.oldIndex, e.newIndex);
+        },
+      });
+      entries.forEach((entry, id) => {
+        list.append(
+          el("div", { class: `nodegraph-idrow${entry?.node ? "" : " retired"}` }, [
+            el("span", { class: "nodegraph-idgrip", title: "Drag to reorder — this renumbers" }, ["⠿"]),
+            el("code", {}, [String(id)]),
+            el("span", {}, [entry?.node ?? `${entry?.retired ?? "?"} (retired)`]),
+          ]),
+        );
+      });
       body.append(
         el("div", { class: "nodegraph-idspace" }, [
           el("strong", {}, [`${space} (next ${nextId(this.doc.idTable, space)})`]),
-          ...entries.map((entry) =>
-            el("div", { class: `nodegraph-idrow${entry.node === null ? " retired" : ""}` }, [
-              el("code", {}, [String(entry.id)]),
-              el("span", {}, [entry.node ?? `${entry.retired ?? "?"} (retired)`]),
-            ]),
-          ),
+          list,
         ]),
       );
     }
@@ -1458,12 +2191,42 @@ export class MapProcessView {
     return this.panel("Id table", body);
   }
 
+  /**
+   * Move a row within its id space. Confirms first, because everything from
+   * `min(from,to)` onward is renumbered and every level string indexing into
+   * that range starts meaning something else.
+   */
+  private reorderIdRow(space: IdSpace, from: number, to: number): void {
+    if (from === to) return;
+    const rows = this.doc.idTable[space] ?? [];
+    const affected = new Set<string>();
+    for (let id = Math.min(from, to); id < rows.length; id++) {
+      for (const name of this.levelsUsingId(space, id)) affected.add(name);
+    }
+    if (
+      affected.size > 0 &&
+      !confirm(
+        `Moving this row renumbers the ${space} ids from ${Math.min(from, to)} onward.
+
+` +
+          `${affected.size} committed level(s) index into that range and will start meaning something different.
+
+Continue?`,
+      )
+    ) {
+      this.renderSide(); // put the dragged row back where it was
+      return;
+    }
+    this.doc = { ...this.doc, idTable: reorderIdEntry(this.doc.idTable, space, from, to) };
+    this.commit(`reorder ${space} id ${from} → ${to}`);
+  }
+
   private untabledNodes(): Selection[] {
     const out: Selection[] = [];
     for (const kind of VERTEX_KIND_NAMES) {
       for (const vertex of this.doc.vertices[kind] as unknown as Record<string, unknown>[]) {
         if (!this.needsId(kind, vertex)) continue;
-        const has = this.doc.idTable[SPACE_OF[kind]]?.some((e) => e.node === vertex.name);
+        const has = this.doc.idTable[SPACE_OF[kind]]?.some((e) => e?.node === vertex.name);
         if (!has) out.push({ kind, name: String(vertex.name) });
       }
     }
@@ -1517,6 +2280,7 @@ export class MapProcessView {
         this.doc = doc;
         this.doc.layout = autoLayout(this.doc);
         this.selection = null;
+        this.selected.clear();
         this.commit(`import ${file.name}`);
       };
       reader.readAsText(file);

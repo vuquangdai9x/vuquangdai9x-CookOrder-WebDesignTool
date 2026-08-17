@@ -1,36 +1,120 @@
 {
   "_note": "Drives the Recipe Graph editor. The tool reads this file to build its creatable-vertex palette, the inspector fields for a selected vertex/edge, the legal wiring matrix, and the invariant list it checks after every mutation — nothing about the node kinds is hardcoded in TypeScript beyond the field-type primitives. Adding a vertex kind or a property is a data edit here, not a code change. Map data files (burger.json, ...) are validated against this.",
   "schemaVersion": 1,
-
   "fieldTypes": [
-    { "type": "string", "widget": "text" },
-    { "type": "int", "widget": "number", "step": 1 },
-    { "type": "number", "widget": "number" },
-    { "type": "bool", "widget": "checkbox" },
-    { "type": "enum", "widget": "select", "note": "options listed per-field" },
-    { "type": "ref", "widget": "vertex-picker", "note": "name of another vertex; refKinds restricts which" },
-    { "type": "ref[]", "widget": "vertex-multi-picker" },
-    { "type": "int[]", "widget": "number-list" },
-    { "type": "string[]", "widget": "text-list", "note": "free-form strings, e.g. asset paths" }
+    {
+      "type": "string",
+      "widget": "text"
+    },
+    {
+      "type": "int",
+      "widget": "number",
+      "step": 1
+    },
+    {
+      "type": "number",
+      "widget": "number"
+    },
+    {
+      "type": "bool",
+      "widget": "checkbox"
+    },
+    {
+      "type": "enum",
+      "widget": "select",
+      "note": "options listed per-field"
+    },
+    {
+      "type": "ref",
+      "widget": "vertex-picker",
+      "note": "name of another vertex; refKinds restricts which"
+    },
+    {
+      "type": "ref[]",
+      "widget": "vertex-multi-picker"
+    },
+    {
+      "type": "int[]",
+      "widget": "number-list"
+    },
+    {
+      "type": "string[]",
+      "widget": "text-list",
+      "note": "free-form strings, e.g. asset paths"
+    }
   ],
-
   "mapFields": [
-    { "name": "id", "type": "string", "required": true, "description": "Stable map id, matches the runtime map folder (e.g. \"burger\")." },
-    { "name": "name", "type": "string", "required": true, "description": "Display name." },
-    { "name": "gridWidth", "type": "int", "required": true, "min": 1, "description": "Prep-grid columns. Fixed for every level in the map." },
-    { "name": "gridHeight", "type": "int", "required": true, "min": 1, "description": "Prep-grid rows." },
-    { "name": "dirtyStackHeight", "type": "int", "required": true, "min": 1, "description": "How many dirty objects stack in one grid cell before it overflows and the level is lost." },
-    { "name": "visibleRows", "type": "int", "required": true, "min": 1, "description": "Queue rows shown in Play: 1 interactable front row plus previews." },
-    { "name": "customerAvatars", "type": "string[]", "description": "Bundled avatar paths (relative to src/assets/) Play mode draws behind each customer card; one is picked at random per customer." }
+    {
+      "name": "id",
+      "type": "string",
+      "required": true,
+      "description": "Stable map id, matches the runtime map folder (e.g. \"burger\")."
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "required": true,
+      "description": "Display name."
+    },
+    {
+      "name": "gridWidth",
+      "type": "int",
+      "required": true,
+      "min": 1,
+      "description": "Prep-grid columns. Fixed for every level in the map."
+    },
+    {
+      "name": "gridHeight",
+      "type": "int",
+      "required": true,
+      "min": 1,
+      "description": "Prep-grid rows."
+    },
+    {
+      "name": "dirtyStackHeight",
+      "type": "int",
+      "required": true,
+      "min": 1,
+      "description": "How many dirty objects stack in one grid cell before it overflows and the level is lost."
+    },
+    {
+      "name": "visibleRows",
+      "type": "int",
+      "required": true,
+      "min": 1,
+      "description": "Queue rows shown in Play: 1 interactable front row plus previews."
+    },
+    {
+      "name": "customerAvatars",
+      "type": "string[]",
+      "description": "Bundled avatar paths (relative to src/assets/) Play mode draws behind each customer card; one is picked at random per customer."
+    },
+    {
+      "name": "idTable",
+      "type": "string",
+      "description": "The five id spaces (ingredient, composite, group, tool, dirty), each an ORDERED list. A row's INDEX is the number level data carries: idTable.ingredient[13] is what a queue digit 13 picks up, and idTable.composite[0] is what a dish's {c0: names. There is no stored id field — the position is the id. Reordering a space therefore renumbers it and re-aims every level string that indexed into it; the editor confirms first. A row is { node } or, once retired, { node: null, retired } — retired rows are kept in place so later rows never shift."
+    }
   ],
-
   "_idTableNote": "Sits beside `map` in a map document, NOT inside it — see nodeIdTable.ts. Every integer in a queue, grid or customer string is a DATA ID resolved through this table to a node name; level data never references graph structure. Five spaces (ingredient/composite/group/tool/dirty) because the bracketed dish format names composites and groups by id too ({c0:...} and {g0:...}). Three rules keep committed levels safe as the graph changes: ids are APPEND-ONLY and never reused; deleting a node TOMBSTONES its entry (node: null, old name in `retired`) so a stale reference is a loud error rather than a silent repoint; renaming touches only the `node` field, so the id — and every level using it — is unaffected.",
   "idTableEntryFields": [
-    { "name": "id", "type": "int", "required": true, "min": 0, "description": "The number that appears in level strings. Assign-once, never reused." },
-    { "name": "node", "type": "string", "description": "Vertex name this id resolves to. Absent/null marks a tombstone." },
-    { "name": "retired", "type": "string", "description": "The name this id used to point at. Set together with a null `node`, for diagnostics." }
+    {
+      "name": "id",
+      "type": "int",
+      "required": true,
+      "min": 0,
+      "description": "The number that appears in level strings. Assign-once, never reused."
+    },
+    {
+      "name": "node",
+      "type": "string",
+      "description": "Vertex name this id resolves to. Absent/null marks a tombstone."
+    },
+    {
+      "name": "retired",
+      "type": "string",
+      "description": "The name this id used to point at. Set together with a null `node`, for diagnostics."
+    }
   ],
-
   "vertexKinds": [
     {
       "kind": "ingredient",
@@ -38,20 +122,65 @@
       "color": "#6bbf59",
       "description": "Any concrete item that can sit in a queue, on the prep grid, or in a dish. A pickupable ingredient is a graph leaf; everything else must be produced by exactly one process edge.",
       "fields": [
-        { "name": "name", "type": "string", "required": true, "unique": true, "description": "Graph-unique key. Referenced by every edge." },
-        { "name": "displayName", "type": "string", "required": true, "description": "Shown to designers and players." },
-        { "name": "pickupable", "type": "bool", "default": false, "description": "Comes off the ingredient queue. Marks this vertex as a graph leaf — a traceback terminates here." },
-        { "name": "servable", "type": "bool", "default": false, "description": "Can occupy a dish slot. Purely raw items (bun, potato) are not; their processed outputs are." },
-        { "name": "usageNum", "type": "int", "default": 1, "min": 1, "description": "How many dish slots ONE landed piece can fill before it is consumed. >1 is a shared sauce (chili bowl 2, cheese sauce 3). Note >1 also disables the skip-the-grid direct-serve path in the runtime." },
-        { "name": "limitPerDish", "type": "int", "default": 0, "min": 0, "description": "Max copies one dish order may call for. 0 = no limit. Bases and one-per-dish toppings use 1." },
-        { "name": "numSlices", "type": "int", "default": 1, "min": 1, "description": "Sheet-side multiplicity for the raw item. Informational; the authoritative yield is the process edge's `amount`." },
-        { "name": "price", "type": "int", "default": 0, "min": 0, "description": "Economy value from the ingredient table." },
-        { "name": "code", "type": "string", "description": "Unity-facing string id." },
-        { "name": "emoji", "type": "string", "description": "Fallback glyph when no artwork resolves." },
-        { "name": "localImage", "type": "string", "description": "Bundled asset path relative to src/assets/." },
-        { "name": "fileId", "type": "string", "description": "Google Drive artwork id." },
-        { "name": "runtimeRawId", "type": "int", "description": "Id in the map's ingredients table, when this vertex exists there. Kept so a future compiler can round-trip." },
-        { "name": "runtimeCookedId", "type": "int", "description": "Id in the map's cookedIngredients table, when this vertex exists there." }
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "description": "Graph-unique key. Referenced by every edge."
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "required": true,
+          "description": "Shown to designers and players."
+        },
+        {
+          "name": "pickupable",
+          "type": "bool",
+          "default": false,
+          "description": "Comes off the ingredient queue. Marks this vertex as a graph leaf — a traceback terminates here."
+        },
+        {
+          "name": "servable",
+          "type": "bool",
+          "default": false,
+          "description": "Can occupy a dish slot. Purely raw items (bun, potato) are not; their processed outputs are."
+        },
+        {
+          "name": "usageNum",
+          "type": "int",
+          "default": 1,
+          "min": 1,
+          "description": "How many dish slots ONE landed piece can fill before it is consumed. >1 is a shared sauce (chili bowl 2, cheese sauce 3). Note >1 also disables the skip-the-grid direct-serve path in the runtime."
+        },
+        {
+          "name": "price",
+          "type": "int",
+          "default": 0,
+          "min": 0,
+          "description": "Economy value from the ingredient table."
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "description": "Unity-facing string id."
+        },
+        {
+          "name": "emoji",
+          "type": "string",
+          "description": "Fallback glyph when no artwork resolves."
+        },
+        {
+          "name": "localImage",
+          "type": "string",
+          "description": "Bundled asset path relative to src/assets/."
+        },
+        {
+          "name": "fileId",
+          "type": "string",
+          "description": "Google Drive artwork id."
+        }
       ]
     },
     {
@@ -60,15 +189,53 @@
       "color": "#f0a441",
       "description": "A cooking station. Holds numSlots items at once; each finishes after cookingTime seconds. Owns no recipe data itself — each recipe is one outgoing process edge.",
       "fields": [
-        { "name": "name", "type": "string", "required": true, "unique": true },
-        { "name": "displayName", "type": "string", "required": true },
-        { "name": "numSlots", "type": "int", "required": true, "min": 1, "description": "How many items cook here simultaneously. The per-tool stack capacity." },
-        { "name": "cookingTime", "type": "number", "required": true, "min": 0, "description": "Default seconds per item; a process edge may override it." },
-        { "name": "upgradeCosts", "type": "int[]", "description": "Coin cost per upgrade step, indexed from level 1." },
-        { "name": "emoji", "type": "string" },
-        { "name": "localImage", "type": "string" },
-        { "name": "fileId", "type": "string" },
-        { "name": "runtimeToolId", "type": "int" }
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "numSlots",
+          "type": "int",
+          "required": true,
+          "min": 1,
+          "description": "How many items cook here simultaneously. The per-tool stack capacity."
+        },
+        {
+          "name": "cookingTime",
+          "type": "number",
+          "required": true,
+          "min": 0,
+          "description": "Default seconds per item; a process edge may override it."
+        },
+        {
+          "name": "upgradeCosts",
+          "type": "int[]",
+          "description": "Coin cost per upgrade step, indexed from level 1."
+        },
+        {
+          "name": "emoji",
+          "type": "string"
+        },
+        {
+          "name": "localImage",
+          "type": "string"
+        },
+        {
+          "name": "fileId",
+          "type": "string"
+        },
+        {
+          "name": "runtimeToolId",
+          "type": "int",
+          "legacyBridge": true
+        }
       ]
     },
     {
@@ -77,9 +244,23 @@
       "color": "#5aa7e0",
       "description": "A reusable choice set referenced as a composite's base or topping, or nested as another group's option. A group always picks a multiset; `maxQuantity` is the only knob. There is deliberately no SINGLE kind — 'exactly one' is maxQuantity 1, which removes a whole class of 'which rule wins' questions.",
       "fields": [
-        { "name": "name", "type": "string", "required": true, "unique": true },
-        { "name": "displayName", "type": "string", "required": true },
-        { "name": "maxQuantity", "type": "int", "default": -1, "description": "Total picks allowed across all options. -1 = unlimited (which makes the enclosing orderable's variant count unbounded — see the resolver); 1 = the old SINGLE, exactly one option chosen." }
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "maxQuantity",
+          "type": "int",
+          "default": -1,
+          "description": "Total picks allowed across all options. -1 = unlimited (which makes the enclosing orderable's variant count unbounded — see the resolver); 1 = the old SINGLE, exactly one option chosen."
+        }
       ]
     },
     {
@@ -88,10 +269,29 @@
       "color": "#e0d34a",
       "description": "A base plus an optional topping — the assembled thing a customer receives. A composite may itself be another composite's base, so assemblies nest.",
       "fields": [
-        { "name": "name", "type": "string", "required": true, "unique": true },
-        { "name": "displayName", "type": "string", "required": true },
-        { "name": "orderable", "type": "bool", "default": false, "description": "A customer may order this. Marks a graph root — the tracer starts here." },
-        { "name": "toppingRequired", "type": "bool", "default": false, "description": "The topping slot must be filled. False = a bare base is a legal order (plain fries). Checked when a designer authors a dish and honoured by the customer auto-generator, which fills the slot rather than leaving it empty." }
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "orderable",
+          "type": "bool",
+          "default": false,
+          "description": "A customer may order this. Marks a graph root — the tracer starts here."
+        },
+        {
+          "name": "toppingRequired",
+          "type": "bool",
+          "default": false,
+          "description": "The topping slot must be filled. False = a bare base is a legal order (plain fries). Checked when a designer authors a dish and honoured by the customer auto-generator, which fills the slot rather than leaving it empty."
+        }
       ]
     },
     {
@@ -100,38 +300,97 @@
       "color": "#9a9ba1",
       "description": "Left on the prep grid when a customer holding the linked composite leaves. Absent = the map's generic dirty dish.",
       "fields": [
-        { "name": "name", "type": "string", "required": true, "unique": true },
-        { "name": "displayName", "type": "string", "required": true },
-        { "name": "emoji", "type": "string" },
-        { "name": "localImage", "type": "string" },
-        { "name": "fileId", "type": "string" },
-        { "name": "runtimeDirtyId", "type": "int" }
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "emoji",
+          "type": "string"
+        },
+        {
+          "name": "localImage",
+          "type": "string"
+        },
+        {
+          "name": "fileId",
+          "type": "string"
+        },
+        {
+          "name": "runtimeDirtyId",
+          "type": "int",
+          "legacyBridge": true
+        }
       ]
     }
   ],
-
   "edgeKinds": [
     {
       "kind": "process",
       "label": "Processes into",
       "style": "solid",
-      "from": ["tool"],
-      "to": ["ingredient"],
+      "from": [
+        "tool"
+      ],
+      "to": [
+        "ingredient"
+      ],
       "description": "One recipe row: the tool turns `inputs` into the target ingredient. The single most important edge — INV-UNIQUE-PRODUCER caps it at one per target, which is what makes a backward trace deterministic.",
       "maxIncomingPerTarget": 1,
       "fields": [
-        { "name": "inputs", "type": "ref[]", "refKinds": ["ingredient"], "required": true, "minItems": 1, "description": "Ingredients consumed. Modelled as a list so multi-input recipes stay expressible; every current recipe uses exactly one." },
-        { "name": "amount", "type": "int", "required": true, "min": 1, "default": 1, "description": "Pieces produced per pickup. A chopping board yielding 2 drops two pieces on the grid at once." },
-        { "name": "duration", "type": "number", "min": 0, "description": "Overrides the tool's cookingTime for this recipe only." },
-        { "name": "chainTools", "type": "ref[]", "refKinds": ["tool"], "description": "Extra tools visited in order after the source tool, before the output appears. Produces NO intermediate item and never touches the grid (potato: cutting board, then fryer, then 2 fries)." }
+        {
+          "name": "inputs",
+          "type": "ref[]",
+          "refKinds": [
+            "ingredient"
+          ],
+          "required": true,
+          "minItems": 1,
+          "description": "Ingredients consumed. Modelled as a list so multi-input recipes stay expressible; every current recipe uses exactly one."
+        },
+        {
+          "name": "amount",
+          "type": "int",
+          "required": true,
+          "min": 1,
+          "default": 1,
+          "description": "Pieces produced per pickup. A chopping board yielding 2 drops two pieces on the grid at once."
+        },
+        {
+          "name": "duration",
+          "type": "number",
+          "min": 0,
+          "description": "Overrides the tool's cookingTime for this recipe only."
+        },
+        {
+          "name": "chainTools",
+          "type": "ref[]",
+          "refKinds": [
+            "tool"
+          ],
+          "description": "Extra tools visited in order after the source tool, before the output appears. Produces NO intermediate item and never touches the grid (potato: cutting board, then fryer, then 2 fries)."
+        }
       ]
     },
     {
       "kind": "base",
       "label": "Base is",
       "style": "solid",
-      "from": ["composite"],
-      "to": ["ingredient", "group", "composite"],
+      "from": [
+        "composite"
+      ],
+      "to": [
+        "ingredient",
+        "group",
+        "composite"
+      ],
       "description": "What the assembly is built on. Must be present in the dish before any topping can be served onto it.",
       "maxOutgoingPerSource": 1,
       "fields": []
@@ -140,8 +399,14 @@
       "kind": "topping",
       "label": "Topping is",
       "style": "dashed",
-      "from": ["composite"],
-      "to": ["ingredient", "group", "composite"],
+      "from": [
+        "composite"
+      ],
+      "to": [
+        "ingredient",
+        "group",
+        "composite"
+      ],
       "description": "What may go on the base. Optional — a composite with no topping edge is just its base.",
       "maxOutgoingPerSource": 1,
       "fields": []
@@ -150,48 +415,154 @@
       "kind": "option",
       "label": "Option",
       "style": "solid",
-      "from": ["group"],
-      "to": ["ingredient", "group", "composite"],
+      "from": [
+        "group"
+      ],
+      "to": [
+        "ingredient",
+        "group",
+        "composite"
+      ],
       "description": "One choice within a group. Nesting a group inside a group is legal but must stay acyclic.",
       "fields": [
-        { "name": "maxQuantity", "type": "int", "default": -1, "description": "Max copies of THIS option, independent of the group total. -1 = unlimited. A group capped at 3 whose cheese option is capped at 1 allows three toppings but only one of them cheese." }
+        {
+          "name": "maxQuantity",
+          "type": "int",
+          "default": -1,
+          "description": "Max copies of THIS option, independent of the group total. -1 = unlimited. A group capped at 3 whose cheese option is capped at 1 allows three toppings but only one of them cheese."
+        }
       ]
     },
     {
       "kind": "leavesDirty",
       "label": "Leaves behind",
       "style": "dotted",
-      "from": ["composite"],
-      "to": ["dirty"],
+      "from": [
+        "composite"
+      ],
+      "to": [
+        "dirty"
+      ],
       "description": "The dirty object a served customer leaves. Omit for the map's generic dirty dish.",
       "maxOutgoingPerSource": 1,
       "fields": []
     }
   ],
-
   "invariants": [
-    { "id": "INV-REF", "severity": "error", "description": "Every edge endpoint and every ref field names a vertex declared in the same map." },
-    { "id": "INV-IDTABLE-UNIQUE", "severity": "error", "description": "Within each id space, ids are unique and non-negative, and no two live entries claim the same node name. A tombstone must record the name it retired." },
-    { "id": "INV-IDTABLE-RESOLVES", "severity": "error", "description": "Every non-tombstone id-table entry names a vertex that exists and is of that space's kind." },
-    { "id": "INV-NO-RETIRED-IN-USE", "severity": "error", "description": "No level string references a tombstoned id. Checked against the level dataset, so deleting a node that levels still use fails loudly instead of silently repointing them." },
-    { "id": "INV-ORDER-REBUILDABLE", "severity": "error", "description": "Each servable ingredient maps to exactly one slot across the flattened slot tree: it appears in no more than one slot of a composite (C1) and is hosted by no more than one orderable (C2). This is what lets a legacy flat dish be re-bracketed losslessly during migration. Nesting depth is NOT a violation — nested composites flatten cleanly; slot ambiguity is the hazard." },
-    { "id": "INV-DISH-SINGLE-ORDERABLE", "severity": "error", "description": "Every member of a dish belongs to the composite its outermost bracket names. The bracket format makes the shape single-orderable by construction; this catches a member smuggled into a bracket it does not belong to, e.g. a soda cup inside a burger." },
-    { "id": "INV-INTERMEDIATE-AMOUNT", "severity": "error", "description": "A process edge producing a non-servable intermediate must have amount 1. Amounts above 1 would leave half a batch forwarded and half stranded." },
-    { "id": "INV-UNIQUE-PRODUCER", "severity": "error", "description": "At most one process edge targets any ingredient. An ingredient with no producer must be pickupable." },
-    { "id": "INV-ACYCLIC", "severity": "error", "description": "No cycles in process/base/topping/option edges." },
-    { "id": "INV-NAMESPACE", "severity": "error", "description": "Vertex names are unique across ALL kinds — base/topping/option edges resolve into one shared namespace." },
-    { "id": "INV-TRACEABLE", "severity": "error", "description": "Every distinct leaf reachable from an orderable composite bottoms out at a pickupable ingredient." },
-    { "id": "INV-BASE-REQUIRED", "severity": "error", "description": "Every composite has exactly one base edge." },
-    { "id": "INV-GROUP-NONEMPTY", "severity": "error", "description": "Every group has at least one option edge." },
-    { "id": "INV-TOPPING-REQUIRED", "severity": "error", "description": "A composite marked toppingRequired actually has a topping edge to require. Marking it without one makes every order of that composite unfillable." },
-    { "id": "INV-SERVABLE", "severity": "error", "description": "Anything reachable as a base or topping leaf is marked servable." },
-    { "id": "WARN-ORPHAN-OUTPUT", "severity": "warning", "description": "An ingredient produced by a tool but consumed by nothing and not reachable from any orderable." },
-    { "id": "WARN-UNUSED-PICKUP", "severity": "warning", "description": "A pickupable ingredient no orderable reaches." },
-    { "id": "WARN-UNREACHED-COMPOSITE", "severity": "warning", "description": "A composite no orderable reaches." },
-    { "id": "WARN-UNBOUNDED", "severity": "warning", "description": "An orderable's concrete-variant count is unbounded because a MULTIPLE group on its path is uncapped. Expected for build-your-own items; stated so it is a choice, not an accident." },
-    { "id": "WARN-EMPTY-TOOL", "severity": "warning", "description": "A tool with no process edges." },
-    { "id": "WARN-DEGENERATE-CHOICE", "severity": "warning", "description": "A group with exactly one option and no room for repeats — the choice is not a choice." },
-    { "id": "WARN-UNTABLED-NODE", "severity": "warning", "description": "A pickupable or servable ingredient — or an orderable composite, or a group reachable from one — with no id-table entry. It cannot be referenced by level data until an id is minted." },
-    { "id": "WARN-MULTI-INPUT", "severity": "warning", "description": "A process edge with more than one input. The data keeps the list, but the v1 simulation reads only inputs[0]." }
+    {
+      "id": "INV-REF",
+      "severity": "error",
+      "description": "Every edge endpoint and every ref field names a vertex declared in the same map."
+    },
+    {
+      "id": "INV-IDTABLE-UNIQUE",
+      "severity": "error",
+      "description": "Within an id space, no two rows name the same node. Duplicate IDS are impossible by construction — an id is an array index."
+    },
+    {
+      "id": "INV-IDTABLE-RESOLVES",
+      "severity": "error",
+      "description": "Every non-tombstone id-table entry names a vertex that exists and is of that space's kind."
+    },
+    {
+      "id": "INV-NO-RETIRED-IN-USE",
+      "severity": "error",
+      "description": "No level string references a tombstoned id. Checked against the level dataset, so deleting a node that levels still use fails loudly instead of silently repointing them."
+    },
+    {
+      "id": "INV-ORDER-REBUILDABLE",
+      "severity": "error",
+      "description": "Each servable ingredient maps to exactly one slot across the flattened slot tree: it appears in no more than one slot of a composite (C1) and is hosted by no more than one orderable (C2). This is what lets a legacy flat dish be re-bracketed losslessly during migration. Nesting depth is NOT a violation — nested composites flatten cleanly; slot ambiguity is the hazard."
+    },
+    {
+      "id": "INV-DISH-SINGLE-ORDERABLE",
+      "severity": "error",
+      "description": "Every member of a dish belongs to the composite its outermost bracket names. The bracket format makes the shape single-orderable by construction; this catches a member smuggled into a bracket it does not belong to, e.g. a soda cup inside a burger."
+    },
+    {
+      "id": "INV-INTERMEDIATE-AMOUNT",
+      "severity": "error",
+      "description": "A process edge producing a non-servable intermediate must have amount 1. Amounts above 1 would leave half a batch forwarded and half stranded."
+    },
+    {
+      "id": "INV-UNIQUE-PRODUCER",
+      "severity": "error",
+      "description": "At most one process edge targets any ingredient. An ingredient with no producer must be pickupable."
+    },
+    {
+      "id": "INV-ACYCLIC",
+      "severity": "error",
+      "description": "No cycles in process/base/topping/option edges."
+    },
+    {
+      "id": "INV-NAMESPACE",
+      "severity": "error",
+      "description": "Vertex names are unique across ALL kinds — base/topping/option edges resolve into one shared namespace."
+    },
+    {
+      "id": "INV-TRACEABLE",
+      "severity": "error",
+      "description": "Every distinct leaf reachable from an orderable composite bottoms out at a pickupable ingredient."
+    },
+    {
+      "id": "INV-BASE-REQUIRED",
+      "severity": "error",
+      "description": "Every composite has exactly one base edge."
+    },
+    {
+      "id": "INV-GROUP-NONEMPTY",
+      "severity": "error",
+      "description": "Every group has at least one option edge."
+    },
+    {
+      "id": "INV-TOPPING-REQUIRED",
+      "severity": "error",
+      "description": "A composite marked toppingRequired actually has a topping edge to require. Marking it without one makes every order of that composite unfillable."
+    },
+    {
+      "id": "INV-SERVABLE",
+      "severity": "error",
+      "description": "Anything reachable as a base or topping leaf is marked servable."
+    },
+    {
+      "id": "WARN-ORPHAN-OUTPUT",
+      "severity": "warning",
+      "description": "An ingredient produced by a tool but consumed by nothing and not reachable from any orderable."
+    },
+    {
+      "id": "WARN-UNUSED-PICKUP",
+      "severity": "warning",
+      "description": "A pickupable ingredient no orderable reaches."
+    },
+    {
+      "id": "WARN-UNREACHED-COMPOSITE",
+      "severity": "warning",
+      "description": "A composite no orderable reaches."
+    },
+    {
+      "id": "WARN-UNBOUNDED",
+      "severity": "warning",
+      "description": "An orderable's concrete-variant count is unbounded because a MULTIPLE group on its path is uncapped. Expected for build-your-own items; stated so it is a choice, not an accident."
+    },
+    {
+      "id": "WARN-EMPTY-TOOL",
+      "severity": "warning",
+      "description": "A tool with no process edges."
+    },
+    {
+      "id": "WARN-DEGENERATE-CHOICE",
+      "severity": "warning",
+      "description": "A group with exactly one option and no room for repeats — the choice is not a choice."
+    },
+    {
+      "id": "WARN-UNTABLED-NODE",
+      "severity": "warning",
+      "description": "A pickupable or servable ingredient — or an orderable composite, or a group reachable from one — with no id-table entry. It cannot be referenced by level data until an id is minted."
+    },
+    {
+      "id": "WARN-MULTI-INPUT",
+      "severity": "warning",
+      "description": "A process edge with more than one input. The data keeps the list, but the v1 simulation reads only inputs[0]."
+    }
   ]
 }

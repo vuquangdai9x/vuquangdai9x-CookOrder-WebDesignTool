@@ -87,15 +87,23 @@ describe("generateNodeCustomers", () => {
     }
   });
 
-  it("honours limitPerDish", () => {
+  it("honours each option's own cap", () => {
+    // The cap now lives on the slot's option edge, not on the ingredient —
+    // one fact, one place. See Slot.optionMax.
     for (const customer of customers) {
       for (const dish of customer.dishes) {
         const { order } = resolveOrder(ix, dish, ids);
-        const counts = new Map<number, number>();
-        for (const slot of order.slots) counts.set(slot.ing, (counts.get(slot.ing) ?? 0) + 1);
-        for (const [ing, count] of counts) {
-          const limit = ix.limitPerDish[ing];
-          if (limit > 0) expect(count, ix.ingName[ing]).toBeLessThanOrEqual(limit);
+        const perSlotIng = new Map<string, number>();
+        for (const slot of order.slots) {
+          const key = `${slot.slot}:${slot.ing}`;
+          perSlotIng.set(key, (perSlotIng.get(key) ?? 0) + 1);
+        }
+        for (const [key, count] of perSlotIng) {
+          const [slotIndex, ing] = key.split(":").map(Number);
+          const slot = ix.slotsOfComposite[order.orderable][slotIndex];
+          const at = slot.options.indexOf(ing);
+          const cap = at === -1 ? -1 : (slot.optionMax[at] ?? -1);
+          if (cap > 0) expect(count, ix.ingName[ing]).toBeLessThanOrEqual(cap);
         }
       }
     }
@@ -154,7 +162,7 @@ describe("toppingRequired", () => {
     const ix2 = buildIndex(required());
     const ids2 = orderIdIndex(ix2);
     // {c2:{g1:112}} — a fried basket holding only potato, no sauce.
-    const { issues } = resolveOrder(ix2, parseNodeCustomers("0;0;0;{c2:{g1:112}}")[0].dishes[0], ids2);
+    const { issues } = resolveOrder(ix2, parseNodeCustomers("0;0;0;{c2:{g1:29}}")[0].dishes[0], ids2);
     expect(issues.map((i) => i.kind)).toContain("missing-topping");
   });
 
@@ -163,7 +171,7 @@ describe("toppingRequired", () => {
     const ids2 = orderIdIndex(ix2);
     const { issues } = resolveOrder(
       ix2,
-      parseNodeCustomers("0;0;0;{c2:{g1:112}.{g2:16}}")[0].dishes[0],
+      parseNodeCustomers("0;0;0;{c2:{g1:29}.{g2:16}}")[0].dishes[0],
       ids2,
     );
     expect(issues).toEqual([]);

@@ -641,11 +641,11 @@ function customerCard(
           const wrap = el("div", { class: "ctx-swap" });
           wrap.append(
             addPickerGrid(
-              slot.options.map((option) => ({
+              slot.options.map((option, at) => ({
                 id: option,
                 label: ix.doc.vertices.ingredient[option]?.displayName ?? ix.ingName[option],
                 icon: iconFor(ix, ids, option),
-                limit: ix.limitPerDish[option] || undefined,
+                limit: (slot.optionMax[at] ?? -1) > 0 ? slot.optionMax[at] : undefined,
               })),
               counts,
               (option) => {
@@ -746,11 +746,11 @@ function slotPicker(
         `${label} — ${held.length}/${capacity === Number.POSITIVE_INFINITY ? "∞" : capacity}`,
       ]),
       addPickerGrid(
-        slot.options.map((option) => ({
+        slot.options.map((option, at) => ({
           id: option,
           label: ix.doc.vertices.ingredient[option]?.displayName ?? ix.ingName[option],
           icon: iconFor(ix, ids, option),
-          limit: ix.limitPerDish[option] || undefined,
+          limit: (slot.optionMax[at] ?? -1) > 0 ? slot.optionMax[at] : undefined,
         })),
         counts,
         (option) => {
@@ -871,11 +871,11 @@ function slotEditor(
 
     grid.replaceChildren(
       addPickerGrid(
-        slot.options.map((option) => ({
+        slot.options.map((option, at) => ({
           id: option,
           label: ix.doc.vertices.ingredient[option]?.displayName ?? ix.ingName[option],
           icon: iconFor(ix, ids, option),
-          limit: ix.limitPerDish[option] || undefined,
+          limit: (slot.optionMax[at] ?? -1) > 0 ? slot.optionMax[at] : undefined,
         })),
         counts,
         (option) => {

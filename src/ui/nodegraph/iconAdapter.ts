@@ -56,7 +56,7 @@ export function nodeIconSource(doc: NodeGraphMap): NodeIconSource {
       // Legacy-shaped fields icon.ts never reads; present so the type holds.
       code: vertex.code ?? vertex.name,
       price: vertex.price ?? 0,
-      numSlices: vertex.numSlices ?? 1,
+      numSlices: 1, // icon.ts never reads it; the real yield comes from the process chain
     });
   }
 

@@ -315,6 +315,10 @@ function mount(target: Mode, main: HTMLElement): void {
     case "mapproc": {
       const view = new MapProcessView(main, node, () => {
         saveNodeDraft();
+        // Map Process can switch the open MAP under us, and the selected level
+        // belongs to whichever map was open before. Re-anchor it rather than
+        // carry an id that names nothing in the new map's dataset.
+        if (!node.levels.some((l) => l.id === nodeLevelId)) nodeLevelId = node.levels[0]?.id ?? 1;
         void render();
       });
       dirtyProviders.push(() => view.isDirty);

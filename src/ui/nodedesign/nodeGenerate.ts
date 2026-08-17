@@ -106,14 +106,10 @@ function buildDish(
     if (held[slotIndex] >= capacityOf(slot, maxDishSlots)) return false;
     // Per-dish limits are a property of the ingredient, so an option already at
     // its limit is simply not a candidate any more.
-    const eligible = slot.options.filter((option) => {
-      const limit = ix.limitPerDish[option];
+    const eligible = slot.options.filter((option, at) => {
+      const limit = slot.optionMax[at] ?? -1;
       if (limit <= 0) return true;
-      let used = 0;
-      for (let s = 0; s < slots.length; s++) {
-        if (slots[s].options.includes(option)) used += countOf(root, containers, s, option, ix, ids);
-      }
-      return used < limit;
+      return countOf(root, containers, slotIndex, option, ix, ids) < limit;
     });
     const pick = weightedPick(eligible, weightOf, rand);
     if (pick === null) return false;

@@ -3,6 +3,7 @@ import burgerJson from "./config/nodegraph/burger.json";
 import { csvToGraph, graphToCsv, splitCsvLine } from "./nodeGraphCsv.ts";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 import { validateNodeGraph } from "./nodeGraphValidate.ts";
+import { chainedPotato } from "../core/nodeTestFixtures.ts";
 
 const burger = burgerJson as unknown as NodeGraphMap;
 
@@ -40,8 +41,10 @@ describe("round-trip", () => {
 
   it("preserves the id table, tombstones included", () => {
     expect(norm(doc.idTable)).toEqual(norm(burger.idTable));
-    const tombstone = doc.idTable.composite.find((e) => e.node === null);
-    expect(tombstone).toMatchObject({ id: 3, node: null, retired: "fried-potato" });
+    // The id is the row's POSITION, so a tombstone is checked by where it sits.
+    const at = doc.idTable.composite.findIndex((e) => e.node === null);
+    expect(at).toBe(3);
+    expect(doc.idTable.composite[at]).toMatchObject({ node: null, retired: "fried-potato" });
   });
 
   it("preserves the map header", () => {
@@ -65,8 +68,16 @@ describe("the CSV is generated from the schema, not hand-written", () => {
   it("writes lists with | and booleans as TRUE/FALSE", () => {
     const bun = text.split("\n").find((l) => l.startsWith("VERTEX,ingredient,bun,"));
     expect(bun).toContain("TRUE");
-    const potato = text.split("\n").find((l) => l.startsWith("EDGE,process,cutting-board,potato-fried"));
-    expect(potato).toContain("fryer"); // chainTools, a single-item list
+
+    // A chainTools edge, whether or not burger.json currently spells one that
+    // way — the point under test is the LIST encoding, not which route uses it.
+    const edge = graphToCsv(chainedPotato(burger))
+      .split("\n")
+      .find((l) => l.startsWith("EDGE,process,cutting-board,potato-fried"));
+    expect(edge).toContain("fryer"); // chainTools, a single-item list
+
+    // And a multi-item list separates on the pipe.
+    expect(splitCsvLine("EDGE,process,a,b,x|y,1")[4].split("|")).toEqual(["x", "y"]);
   });
 });
 
@@ -98,7 +109,7 @@ describe("totality on garbage — a designer must never lose the other 400 rows"
   it("reports a non-integer id and an unknown id space", () => {
     const { issues } = csvToGraph("#IDTABLE,space,id,node,retired\nIDTABLE,ingredient,x,bun,\nIDTABLE,sauce,1,x,");
     expect(issues.map((i) => i.message)).toEqual([
-      'Id "x" is not an integer',
+      'Id "x" is not a non-negative integer',
       'Unknown id space "sauce"',
     ]);
   });

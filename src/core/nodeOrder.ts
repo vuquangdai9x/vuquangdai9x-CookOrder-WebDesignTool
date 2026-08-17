@@ -158,7 +158,12 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
 
       const used = (usedPerIng.get(ing) ?? 0) + 1;
       usedPerIng.set(ing, used);
-      const limit = ix.limitPerDish[ing];
+      // The cap lives on the slot's own option, not on the ingredient: an
+      // ingredient fills exactly one slot, so its per-dish limit IS its cap
+      // there. See Slot.optionMax.
+      const indexed = slotTree[slot];
+      const at = indexed?.options.indexOf(ing) ?? -1;
+      const limit = at === -1 ? -1 : (indexed.optionMax[at] ?? -1);
       if (limit > 0 && used > limit) {
         issues.push({ kind: "over-limit", ingredient: name, limit, used });
       }

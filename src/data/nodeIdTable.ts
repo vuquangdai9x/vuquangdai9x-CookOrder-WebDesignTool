@@ -3,27 +3,34 @@
 // Every integer in a queue, grid or customer string is a DATA ID, not a node.
 // Resolving it goes through this table: `dataId -> node name -> vertex`.
 // Nothing in the level data references graph structure, which is what lets a
-// designer add, remove and rename nodes without silently repointing levels
-// that are already committed.
+// designer rename nodes without silently repointing levels already committed.
 //
-// Three rules make that safe, and each one kills a specific failure:
+// **The id IS the row's position.** `idTable.ingredient[13]` is what a queue
+// digit `13` picks up; `idTable.composite[0]` is what a dish's `{c0:` names.
+// There is deliberately no stored `id` field: a position and a number that are
+// supposed to agree are two places to disagree, and the one that loses is
+// always the one the level strings actually used.
 //
-//   Append-only  — a new node takes the next free id; ids are NEVER reused.
-//                  Kills: a deleted id later handed to a different node,
-//                  silently changing every old level that used it.
-//   Tombstones   — deleting keeps the entry with `node: null` + the old name.
-//                  Kills: silent repointing. A level still referencing it is a
-//                  loud validation error naming the level and the dead node.
-//   Free rename  — only the `node` field changes; the id is untouched.
-//                  Kills: renaming patty-cooked -> beef-patty invalidating
-//                  every burger level.
+// The consequence, stated plainly: REORDERING A SPACE RENUMBERS IT, and every
+// committed level string indexing into it starts meaning something else. That
+// is a real editing power (a designer can renumber the queue alphabet), not an
+// accident — the editor confirms before doing it, naming how many levels are
+// affected.
+//
+// Two rules keep the rest safe:
+//
+//   Tombstones   — deleting a node sets its slot to `{ node: null, retired }`
+//                  rather than splicing it out. Splicing would shift every row
+//                  after it and silently renumber ids nobody asked to change.
+//   Free rename  — only the `node` field changes; the slot stays put, so
+//                  renaming patty-cooked -> beef-patty invalidates nothing.
 //
 // This module owns BOTH directions and is the only way from a string to a
 // vertex — there is deliberately no second path that could disagree with it.
 //
 // Pure: no DOM, no config imports, fully unit-testable.
 
-import type { IdEntry, IdSpace, IdTable } from "./nodeGraphTypes.ts";
+import type { IdSpace, IdTable } from "./nodeGraphTypes.ts";
 
 export const ID_SPACES: IdSpace[] = ["ingredient", "composite", "group", "tool", "dirty"];
 
@@ -31,7 +38,7 @@ export const ID_SPACES: IdSpace[] = ["ingredient", "composite", "group", "tool",
 export interface IdIndex {
   byId: Record<IdSpace, Map<number, string>>;
   byNode: Record<IdSpace, Map<string, number>>;
-  /** Retired ids, so a reference to one can be reported as retired rather than merely unknown. */
+  /** Retired ids, so a reference to one reads as retired rather than merely unknown. */
   retired: Record<IdSpace, Map<number, string>>;
 }
 
@@ -55,6 +62,7 @@ export function normalizeIdTable(raw: Partial<IdTable> | undefined): IdTable {
   return out;
 }
 
+/** Build the two-way index. The array index of each entry is its data id. */
 export function buildIdIndex(table: IdTable): IdIndex {
   const byId = {} as IdIndex["byId"];
   const byNode = {} as IdIndex["byNode"];
@@ -63,14 +71,16 @@ export function buildIdIndex(table: IdTable): IdIndex {
     byId[space] = new Map();
     byNode[space] = new Map();
     retired[space] = new Map();
-    for (const entry of table[space] ?? []) {
-      if (entry.node === null || entry.node === undefined) {
-        retired[space].set(entry.id, entry.retired ?? "");
-        continue;
+    (table[space] ?? []).forEach((entry, id) => {
+      if (!entry || entry.node === null || entry.node === undefined) {
+        retired[space].set(id, entry?.retired ?? "");
+        return;
       }
-      byId[space].set(entry.id, entry.node);
-      byNode[space].set(entry.node, entry.id);
-    }
+      byId[space].set(id, entry.node);
+      // First row wins on a duplicate name; INV-IDTABLE-UNIQUE reports it
+      // rather than this silently picking the later one.
+      if (!byNode[space].has(entry.node)) byNode[space].set(entry.node, id);
+    });
   }
   return { byId, byNode, retired };
 }
@@ -85,7 +95,7 @@ export function idOf(ix: IdIndex, space: IdSpace, node: string): number | null {
   return ix.byNode[space].get(node) ?? null;
 }
 
-/** True when this id was deliberately retired — distinguishes "dead" from "never existed" in error messages. */
+/** True when this id was deliberately retired — distinguishes "dead" from "never existed". */
 export function isRetired(ix: IdIndex, space: IdSpace, id: number): boolean {
   return ix.retired[space].has(id);
 }
@@ -96,52 +106,62 @@ export function retiredName(ix: IdIndex, space: IdSpace, id: number): string | n
 }
 
 /**
- * Next id for a space: one past the highest ever issued, INCLUDING tombstones.
- * Counting tombstones is the whole point — an id is never reissued, so a
- * level string can never silently start meaning something else.
+ * The id the next minted node would take: one past the last row, tombstones
+ * included. Appending is the only allocation that changes nothing else.
  */
 export function nextId(table: IdTable, space: IdSpace): number {
-  let max = -1;
-  for (const entry of table[space] ?? []) if (entry.id > max) max = entry.id;
-  return max + 1;
+  return (table[space] ?? []).length;
 }
 
 /**
- * Assigns `node` the next free id and returns it. Idempotent: a node that
- * already holds an id keeps it, so calling this on every save is harmless.
- * Mutates `table`.
+ * Appends `node` and returns its id. Idempotent: a node that already holds a
+ * slot keeps it, so calling this on every save is harmless. Mutates `table`.
  */
 export function mintId(table: IdTable, space: IdSpace, node: string): number {
-  const existing = (table[space] ??= []).find((e) => e.node === node);
-  if (existing) return existing.id;
-  const id = nextId(table, space);
-  table[space].push({ id, node });
-  return id;
+  const existing = (table[space] ??= []).findIndex((e) => e?.node === node);
+  if (existing !== -1) return existing;
+  table[space].push({ node });
+  return table[space].length - 1;
 }
 
 /**
- * Tombstones the entry for `node`: the id stays, `node` becomes null, and the
- * old name is kept in `retired`. A no-op when the node has no entry.
- * Mutates `table`. Returns the retired id, or null when there was nothing to retire.
+ * Tombstones `node`'s slot: the row stays at its index, `node` becomes null,
+ * and the old name is kept in `retired`. The row is NOT removed — removing it
+ * would shift every later row down and renumber ids nobody touched.
+ * Returns the retired id, or null when there was nothing to retire.
  */
 export function retireId(table: IdTable, space: IdSpace, node: string): number | null {
-  const entry = (table[space] ?? []).find((e) => e.node === node);
-  if (!entry) return null;
-  entry.retired = node;
-  entry.node = null;
-  return entry.id;
+  const at = (table[space] ?? []).findIndex((e) => e?.node === node);
+  if (at === -1) return null;
+  table[space][at] = { node: null, retired: node };
+  return at;
 }
 
 /**
- * Points an existing id at a new node name — the rename path. The id is
+ * Points an existing slot at a new node name — the rename path. The index is
  * untouched, so every level string referencing it keeps working. Returns false
- * when `from` has no entry (nothing to rename). Mutates `table`.
+ * when `from` has no slot. Mutates `table`.
  */
 export function renameNode(table: IdTable, space: IdSpace, from: string, to: string): boolean {
-  const entry = (table[space] ?? []).find((e) => e.node === from);
-  if (!entry) return false;
-  entry.node = to;
+  const at = (table[space] ?? []).findIndex((e) => e?.node === from);
+  if (at === -1) return false;
+  table[space][at] = { ...table[space][at], node: to };
   return true;
+}
+
+/**
+ * Moves a row within its space. THIS RENUMBERS: every id from
+ * min(from,to) onward changes meaning, and so does every level string that
+ * used one. Callers are expected to confirm first — see the editor's
+ * `confirmRenumber`. Returns a new table; the input is not mutated.
+ */
+export function reorderIdEntry(table: IdTable, space: IdSpace, from: number, to: number): IdTable {
+  const rows = table[space] ?? [];
+  if (from === to || from < 0 || to < 0 || from >= rows.length || to >= rows.length) return table;
+  const next = { ...table, [space]: [...rows] };
+  const [moved] = next[space].splice(from, 1);
+  next[space].splice(to, 0, moved);
+  return next;
 }
 
 export interface IdTableIssue {
@@ -152,46 +172,44 @@ export interface IdTableIssue {
 }
 
 /**
- * Structural checks that don't need the graph: duplicate ids, duplicate node
- * names, negative ids, a tombstone that still names a node. Graph-aware checks
- * (does this name exist? is it the right kind?) live in nodeGraphValidate.ts,
- * which has the vertices to check against.
+ * Structural checks that don't need the graph: a duplicate node name, a
+ * tombstone with no recorded history, a hole. Graph-aware checks (does this
+ * name exist? is it the right kind?) live in nodeGraphValidate.ts, which has
+ * the vertices to check against.
+ *
+ * Duplicate IDS are impossible now — an id is an array index — which is the
+ * main thing the positional model buys.
  */
 export function validateIdTable(table: IdTable): IdTableIssue[] {
   const issues: IdTableIssue[] = [];
   for (const space of ID_SPACES) {
-    const seenIds = new Map<number, IdEntry>();
     const seenNodes = new Map<string, number>();
-    for (const entry of table[space] ?? []) {
-      if (!Number.isInteger(entry.id) || entry.id < 0) {
-        issues.push({ space, id: entry.id, message: `Id must be a non-negative integer, got ${entry.id}.` });
-      }
-      if (seenIds.has(entry.id)) {
-        issues.push({ space, id: entry.id, message: `Duplicate id ${entry.id} in the ${space} space.` });
-      } else {
-        seenIds.set(entry.id, entry);
+    (table[space] ?? []).forEach((entry, id) => {
+      if (!entry) {
+        issues.push({ space, id, message: `Id ${id} in the ${space} space is a hole; use a tombstone instead.` });
+        return;
       }
       if (entry.node === null || entry.node === undefined) {
         if (!entry.retired) {
           issues.push({
             space,
-            id: entry.id,
-            message: `Id ${entry.id} is a tombstone but records no retired name — its history is lost.`,
+            id,
+            message: `Id ${id} is a tombstone but records no retired name — its history is lost.`,
           });
         }
-        continue;
+        return;
       }
       const prior = seenNodes.get(entry.node);
       if (prior !== undefined) {
         issues.push({
           space,
           node: entry.node,
-          message: `"${entry.node}" is claimed by both id ${prior} and id ${entry.id}; a node may hold only one id.`,
+          message: `"${entry.node}" is claimed by both id ${prior} and id ${id}; a node may hold only one id.`,
         });
       } else {
-        seenNodes.set(entry.node, entry.id);
+        seenNodes.set(entry.node, id);
       }
-    }
+    });
   }
   return issues;
 }

@@ -83,11 +83,14 @@ export function graphToCsv(doc: NodeGraphMap): string {
     for (const row of rows) lines.push(csvRow(["EDGE", kind, ...fields.map((f) => row[f])]));
   }
 
+  // The `id` column is the row's INDEX, written out explicitly rather than left
+  // implicit in row order: a spreadsheet does not guarantee row order, and here
+  // the index IS the id, so losing it would silently repoint every level string.
   lines.push(csvRow(["#IDTABLE", ...ID_FIELDS]));
   for (const space of ID_SPACES) {
-    for (const entry of doc.idTable[space] ?? []) {
-      lines.push(csvRow(["IDTABLE", space, entry.id, entry.node ?? "", entry.retired ?? ""]));
-    }
+    (doc.idTable[space] ?? []).forEach((entry, id) => {
+      lines.push(csvRow(["IDTABLE", space, id, entry.node ?? "", entry.retired ?? ""]));
+    });
   }
 
   return lines.join("\n");
@@ -285,16 +288,19 @@ export function csvToGraph(text: string): CsvImportResult {
         return;
       }
       const id = Number(get("id"));
-      if (!Number.isInteger(id)) {
-        issues.push({ line: lineNo, message: `Id "${get("id")}" is not an integer` });
+      if (!Number.isInteger(id) || id < 0) {
+        issues.push({ line: lineNo, message: `Id "${get("id")}" is not a non-negative integer` });
         return;
       }
       const node = get("node");
       const retired = get("retired");
-      const entry: IdEntry = node === "" ? { id, node: null } : { id, node };
-      // A tombstone keeps the name it used to point at, for diagnostics.
-      if (node === "" && retired !== "") entry.retired = retired;
-      doc.idTable[space].push(entry);
+      const entry: IdEntry = node === "" ? { node: null, retired: retired || "?" } : { node };
+      // Index-addressed, so a row out of order or a gap in the file still lands
+      // in the right slot. Gaps become tombstones, which is the honest reading:
+      // the id is spent, and shifting later rows up would renumber them.
+      const rows = doc.idTable[space];
+      while (rows.length <= id) rows.push({ node: null, retired: "?" });
+      rows[id] = entry;
       return;
     }
 

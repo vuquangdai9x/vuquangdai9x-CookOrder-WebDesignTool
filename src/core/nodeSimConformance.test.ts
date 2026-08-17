@@ -8,7 +8,7 @@
 // `sim.test.ts` is never edited. If a case here fails, the port is wrong.
 
 import { describe, expect, it } from "vitest";
-import { legacyLevelToNode, legacyToGraph } from "./legacyToGraph.ts";
+import { cookedName, dirtyName, legacyLevelToNode, legacyToGraph, pickupName } from "./legacyToGraph.ts";
 import { buildIndex } from "./nodeIndex.ts";
 import type { GraphIndex } from "./nodeIndex.ts";
 import { DIRTY_DISH_ID, NodeSimulation } from "./nodeSim.ts";
@@ -45,17 +45,17 @@ function bind(o: Strings, map: MapDef = testMap, options: NodeSimOptions = {}): 
   if (projected.unplaced.length > 0) {
     throw new Error(`fixture dish could not be placed: ${JSON.stringify(projected.unplaced)}`);
   }
-  const find = (pred: (v: { runtimeRawId?: number; runtimeCookedId?: number }) => boolean) => {
-    const i = doc.vertices.ingredient.findIndex(pred);
-    if (i === -1) throw new Error("no such ingredient in the projected graph");
+  const find = (name: string) => {
+    const i = doc.vertices.ingredient.findIndex((v) => v.name === name);
+    if (i === -1) throw new Error(`no ingredient "${name}" in the projected graph`);
     return i;
   };
   return {
     sim: new NodeSimulation(ix, projected.level, options),
     ix,
-    ck: (id) => find((v) => v.runtimeCookedId === id),
-    rw: (id) => find((v) => v.runtimeRawId === id),
-    dt: (id) => doc.vertices.dirty.findIndex((v) => v.runtimeDirtyId === id),
+    ck: (id) => find(cookedName(id)),
+    rw: (id) => find(pickupName(map, id)),
+    dt: (id) => doc.vertices.dirty.findIndex((v) => v.name === dirtyName(id)),
   };
 }
 

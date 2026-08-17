@@ -57,27 +57,43 @@ export interface MigrationReport {
 /** A level whose three strings speak the new id space. Structurally identical to LevelData. */
 export type NodeLevelData = LevelData;
 
-export function buildMigration(doc: NodeGraphMap): IdMigration {
+/**
+ * Which vertex each legacy id became. Supplied by the CALLER.
+ *
+ * This used to be read back off `runtimeRawId`/`runtimeCookedId` fields stamped
+ * on every ingredient vertex — which put a legacy concern into the shipped map
+ * format, where an authored map carried fields only this module ever read. The
+ * mapping is knowledge the adapter that built the graph already has, so it is
+ * passed in rather than smuggled through the data.
+ */
+export interface LegacyNames {
+  raw: Map<number, string>;
+  cooked: Map<number, string>;
+  tool: Map<number, string>;
+  dirty: Map<number, string>;
+}
+
+export function buildMigration(doc: NodeGraphMap, names: LegacyNames): IdMigration {
   const ids = buildIdIndex(doc.idTable);
   const migration: IdMigration = { raw: new Map(), cooked: new Map(), tool: new Map(), dirty: new Map() };
 
-  for (const vertex of doc.vertices.ingredient) {
-    const newId = ids.byNode.ingredient.get(vertex.name);
-    if (newId === undefined) continue;
-    // A vertex may carry BOTH — ice is legacy raw 8 and cooked 8. Both legacy
-    // spaces then point at the one new id, which is exactly the merge the new
-    // single ingredient space is for.
-    if (vertex.runtimeRawId !== undefined) migration.raw.set(vertex.runtimeRawId, newId);
-    if (vertex.runtimeCookedId !== undefined) migration.cooked.set(vertex.runtimeCookedId, newId);
-  }
-  for (const vertex of doc.vertices.tool) {
-    const newId = ids.byNode.tool.get(vertex.name);
-    if (newId !== undefined && vertex.runtimeToolId !== undefined) migration.tool.set(vertex.runtimeToolId, newId);
-  }
-  for (const vertex of doc.vertices.dirty) {
-    const newId = ids.byNode.dirty.get(vertex.name);
-    if (newId !== undefined && vertex.runtimeDirtyId !== undefined) migration.dirty.set(vertex.runtimeDirtyId, newId);
-  }
+  const fill = (
+    from: Map<number, string>,
+    into: Map<number, number>,
+    space: "ingredient" | "tool" | "dirty",
+  ) => {
+    for (const [legacyId, node] of from) {
+      const newId = ids.byNode[space].get(node);
+      if (newId !== undefined) into.set(legacyId, newId);
+    }
+  };
+  // A vertex may appear in BOTH raw and cooked — ice is legacy raw 8 and cooked
+  // 8. Both legacy spaces then point at the one new id, which is exactly the
+  // merge the single ingredient space exists for.
+  fill(names.raw, migration.raw, "ingredient");
+  fill(names.cooked, migration.cooked, "ingredient");
+  fill(names.tool, migration.tool, "tool");
+  fill(names.dirty, migration.dirty, "dirty");
   return migration;
 }
 
@@ -262,8 +278,12 @@ export function migrateLevel(level: LevelData, migration: IdMigration, rec: Reco
   };
 }
 
-export function migrateMap(legacy: MapData, doc: NodeGraphMap): { levels: NodeLevelData[]; report: MigrationReport } {
-  const migration = buildMigration(doc);
+export function migrateMap(
+  legacy: MapData,
+  doc: NodeGraphMap,
+  names: LegacyNames,
+): { levels: NodeLevelData[]; report: MigrationReport } {
+  const migration = buildMigration(doc, names);
   const rec = buildRecogniser(doc);
   const ids = buildIdIndex(doc.idTable);
 
@@ -289,18 +309,19 @@ export function migrateMap(legacy: MapData, doc: NodeGraphMap): { levels: NodeLe
   }
 
   const remaps: MigrationReport["remaps"] = [];
-  for (const vertex of doc.vertices.ingredient) {
-    const to = ids.byNode.ingredient.get(vertex.name);
-    if (to === undefined) continue;
-    if (vertex.runtimeRawId !== undefined) remaps.push({ space: "raw", from: vertex.runtimeRawId, to, node: vertex.name });
-    if (vertex.runtimeCookedId !== undefined) {
-      remaps.push({ space: "cooked", from: vertex.runtimeCookedId, to, node: vertex.name });
+  const claimed = new Set<string>();
+  for (const [space, from] of [["raw", names.raw], ["cooked", names.cooked]] as const) {
+    for (const [legacyId, node] of from) {
+      const to = ids.byNode.ingredient.get(node);
+      if (to === undefined) continue;
+      remaps.push({ space, from: legacyId, to, node });
+      claimed.add(node);
     }
   }
 
-  const newVertices = doc.vertices.ingredient
-    .filter((v) => v.runtimeRawId === undefined && v.runtimeCookedId === undefined)
-    .map((v) => v.name);
+  // A vertex the legacy map has no counterpart for. Derived from what the
+  // caller's mapping claims rather than from a field on the vertex.
+  const newVertices = doc.vertices.ingredient.filter((v) => !claimed.has(v.name)).map((v) => v.name);
 
   return {
     levels,

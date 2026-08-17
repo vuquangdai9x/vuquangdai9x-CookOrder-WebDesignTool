@@ -1,10 +1,28 @@
+// What survives of the legacy migration, and why the rest went.
+//
+// This module used to migrate Map 1 onto the AUTHORED burger graph. That only
+// worked while every ingredient in `burger.json` carried `runtimeRawId` /
+// `runtimeCookedId` — legacy ids stored in the shipped map format purely so
+// this code could read them back out. Those fields are gone, and with them the
+// ability to migrate onto a hand-authored map: an authored map has no legacy
+// counterpart to migrate FROM, and its levels now come from the committed CSV.
+//
+// What remains is real and still used: `legacyLevelToNode` (the conformance and
+// parity harness) projects a legacy `LevelConfig` onto an ADAPTER-produced
+// graph, and that needs exactly the pieces tested below — the id mapping, the
+// flat-list-to-bracket-tree recogniser, and the grid-cell remap.
+//
+// The mapping is now passed IN rather than read off the vertices, so the tests
+// run against `legacyToGraph(MAP1_DATA)`, which has a legacy counterpart by
+// construction.
+
 import { describe, expect, it } from "vitest";
 import { parseCustomers, parseQueues } from "../core/parser.ts";
 import { parseNodeCustomers } from "../core/nodeParser.ts";
-import burgerJson from "./config/nodegraph/burger.json";
 import { MAP1_DATA } from "./configLoader.ts";
+import { cookedName, legacyNamesOf, legacyToGraph, pickupName, rawName } from "../core/legacyToGraph.ts";
+import { toMapDef } from "./mapLoader.ts";
 import { buildIdIndex } from "./nodeIdTable.ts";
-import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 import {
   buildMigration,
   buildRecogniser,
@@ -12,42 +30,69 @@ import {
   migrateMap,
   recogniseDish,
 } from "./nodeGraphMigrate.ts";
+import { buildLookup, slotIndex } from "./nodeGraphResolve.ts";
 
-const doc = burgerJson as unknown as NodeGraphMap;
+const map1 = toMapDef(MAP1_DATA);
+const doc = legacyToGraph(map1);
+const names = legacyNamesOf(doc);
 const ids = buildIdIndex(doc.idTable);
-const migrated = migrateMap(MAP1_DATA, doc);
+const migrated = migrateMap(MAP1_DATA, doc, names);
+
+describe("legacyNamesOf — recovering the mapping from the graph itself", () => {
+  /**
+   * The property that replaced the stored fields. The adapter's naming scheme
+   * IS the mapping, so it can be read back with nothing kept in the data.
+   */
+  it("recovers every legacy id the adapter emitted", () => {
+    for (const raw of map1.rawIngredients) {
+      expect(names.raw.get(raw.id), `raw ${raw.id}`).toBe(pickupName(map1, raw.id));
+    }
+    for (const cooked of map1.cookedIngredients) {
+      expect(names.cooked.get(cooked.id), `cooked ${cooked.id}`).toBe(cookedName(cooked.id));
+    }
+  });
+
+  it("returns nothing for an authored graph, which has no legacy counterpart", () => {
+    const authored = legacyNamesOf({
+      ...doc,
+      vertices: { ...doc.vertices, ingredient: [{ name: "bun", displayName: "Bun", pickupable: true }] },
+    });
+    expect(authored.raw.size).toBe(0);
+    expect(authored.cooked.size).toBe(0);
+  });
+});
 
 describe("buildMigration — legacy id -> node name -> new data id", () => {
-  const migration = buildMigration(doc);
+  const migration = buildMigration(doc, names);
 
   it("keeps raw and cooked as separate input spaces", () => {
-    // Legacy raw 0 is `bun`; legacy cooked 0 is `bun-sliced`. Merging them
-    // would silently turn every queued bun into a sliced one.
-    expect(ids.byId.ingredient.get(migration.raw.get(0)!)).toBe("bun");
-    expect(ids.byId.ingredient.get(migration.cooked.get(0)!)).toBe("bun-sliced");
+    // Legacy raw 0 and cooked 0 are DIFFERENT things — a bun and a sliced bun.
+    // Merging the two spaces would silently turn every queued bun into a
+    // sliced one, which is why they are migrated through separate maps.
+    expect(ids.byId.ingredient.get(migration.raw.get(0)!)).toBe(rawName(0));
+    expect(ids.byId.ingredient.get(migration.cooked.get(0)!)).toBe(cookedName(0));
     expect(migration.raw.get(0)).not.toBe(migration.cooked.get(0));
   });
 
   it("converges a dual-role ingredient on ONE new id", () => {
-    // ice is legacy raw 8 AND cooked 8 — pickupable and servable. In the new
-    // single ingredient space that stops being a special case.
-    for (const [rawId, cookedId] of [
-      [8, 8], // ice
-      [14, 14], // chili-bowl
-      [16, 16], // cheese-sauce
-    ]) {
-      expect(migration.raw.get(rawId)).toBe(migration.cooked.get(cookedId));
+    // A raw with no recipe IS its cooked form. Both legacy spaces then point at
+    // one new id — exactly the merge the single ingredient space exists for.
+    const merged = map1.rawIngredients.filter((r) => pickupName(map1, r.id) === cookedName(r.id));
+    expect(merged.length, "no dual-role ingredient in Map 1 to test").toBeGreaterThan(0);
+    for (const raw of merged) {
+      expect(migration.raw.get(raw.id), `raw ${raw.id}`).toBe(migration.cooked.get(raw.id));
     }
   });
 
   it("maps tools and dirty objects too", () => {
-    expect(ids.byId.tool.get(migration.tool.get(0)!)).toBe("griddle");
-    expect(ids.byId.tool.get(migration.tool.get(3)!)).toBe("fryer");
-    expect(ids.byId.dirty.get(migration.dirty.get(2)!)).toBe("dirty-chick-box");
+    for (const tool of map1.tools) {
+      expect(ids.byId.tool.get(migration.tool.get(tool.id)!), `tool ${tool.id}`).toBeDefined();
+    }
+    expect(migration.dirty.size).toBe(map1.dirtyObjects?.length ?? 0);
   });
 });
 
-describe("the Phase 2 gate", () => {
+describe("the migration gate", () => {
   it("maps every id actually used by any authored level", () => {
     expect(migrated.report.unmappedInUse).toEqual([]);
   });
@@ -56,13 +101,10 @@ describe("the Phase 2 gate", () => {
     expect(migrated.levels).toHaveLength(MAP1_DATA.levels.length);
   });
 
-  it("reports exactly the four coated intermediates as new vertices", () => {
-    expect(migrated.report.newVertices.sort()).toEqual([
-      "chicken-breast-flour-coated",
-      "chicken-nugget-flour-coated",
-      "chicken-thigh-flour-coated",
-      "chicken-wing-flour-coated",
-    ]);
+  it("reports no new vertices — the adapter graph mirrors legacy exactly", () => {
+    // Contrast with an authored graph, which may add intermediates legacy never
+    // had. Built from the legacy map, every vertex has a counterpart.
+    expect(migrated.report.newVertices).toEqual([]);
   });
 
   it("every migrated customer string re-parses under the new grammar", () => {
@@ -79,147 +121,89 @@ describe("the Phase 2 gate", () => {
     });
   });
 
-  it("leaves queue strings byte-identical, since raw ids seeded the table 1:1", () => {
-    migrated.levels.forEach((level, i) => {
-      expect(level.queueString, level.name).toBe(MAP1_DATA.levels[i].queueString);
-    });
-  });
-
-  it("leaves grid strings byte-identical, since no level uses an ingredient-slot cell", () => {
-    // Grid cell effects are global with ONE exception — the ingredient-slot
-    // cell's raw id, which migrateGridCells() remaps. Map 1 authors none today,
-    // so the strings come through unchanged; the test below pins the remap
-    // itself so that stays true by construction rather than by luck.
-    migrated.levels.forEach((level, i) => {
-      expect(level.gridString).toBe(MAP1_DATA.levels[i].gridString);
-    });
-  });
-
-  it("remaps the ingredient-slot cell's raw id, which is NOT a global id", () => {
-    const migration = buildMigration(doc);
-    const { cells } = migrateGridCells(
-      [{ effects: [{ effectId: 3, params: [1, 2] }] }, { effects: [{ effectId: 1, params: [] }] }],
-      migration,
-    );
-    // Legacy raw 1 is `patty`; its new data id is whatever the table minted.
-    expect(cells[0].effects[0].params).toEqual([migration.raw.get(1), 2]);
-    expect(ids.byId.ingredient.get(cells[0].effects[0].params[0])).toBe("patty");
-    // A blocked cell carries no ingredient id and is left exactly as it was.
-    expect(cells[1].effects[0].params).toEqual([]);
-  });
-});
-
-describe("re-bracketing legacy flat dishes", () => {
-  it("turns a flat burger into a bracket tree", () => {
-    // Level 1's first customer orders cooked [0,1] = sliced bun + cooked patty.
-    expect(migrated.levels[0].customerString.startsWith("0;0;0;{c0:100.{g0:101}}")).toBe(true);
-  });
-
-  it("preserves quantity as repetition", () => {
-    // ...;0.1.1.1 = bun + 3 patties.
-    expect(migrated.levels[0].customerString).toContain("{c0:100.{g0:101.101.101}}");
-  });
-
   it("preserves customer count and per-customer fields", () => {
     migrated.levels.forEach((level, i) => {
       const before = parseCustomers(MAP1_DATA.levels[i].customerString);
       const after = parseNodeCustomers(level.customerString);
-      expect(after, level.name).toHaveLength(before.length);
-      after.forEach((c, ci) => {
-        expect([c.typeId, c.waitTime, c.weatherEff]).toEqual([
-          before[ci].typeId,
-          before[ci].waitTime,
-          before[ci].weatherEff,
-        ]);
+      expect(after).toHaveLength(before.length);
+      after.forEach((customer, c) => {
+        expect(customer.typeId, `${level.name} c${c}`).toBe(before[c].typeId);
+        expect(customer.waitTime, `${level.name} c${c}`).toBe(before[c].waitTime);
+        expect(customer.staffAmount ?? 0, `${level.name} c${c}`).toBe(before[c].staffAmount ?? 0);
       });
     });
   });
 
-  it("keeps a staff customer's empty dish list and staffAmount", () => {
-    const staffLevel = migrated.levels.find((l) => l.customerString.includes(";1;"));
-    if (!staffLevel) return;
-    expect(() => parseNodeCustomers(staffLevel.customerString)).not.toThrow();
+  /**
+   * A latent defect worth keeping pinned: cell effect 3 carries a RAW
+   * INGREDIENT ID inside the grid string. It is not a global id, so it has to
+   * be remapped like any other — and it is the one grid value that does.
+   */
+  it("remaps the ingredient-slot cell's raw id, which is NOT a global id", () => {
+    const migration = buildMigration(doc, names);
+    const { cells } = migrateGridCells(
+      [{ effects: [{ effectId: 3, params: [1, 2] }] }, { effects: [{ effectId: 1, params: [] }] }],
+      migration,
+    );
+    expect(cells[0].effects[0].params).toEqual([migration.raw.get(1), 2]);
+    // Every other effect passes through untouched.
+    expect(cells[1].effects[0].params).toEqual([]);
   });
 });
 
-describe("recogniseDish", () => {
+describe("recogniseDish — the flat list to bracket tree recogniser", () => {
   const rec = buildRecogniser(doc);
-  const id = (node: string): number => {
-    const i = ids.byNode.ingredient.get(node);
-    if (i === undefined) throw new Error(`no id for ${node}`);
-    return i;
+  const lk = buildLookup(doc);
+  const { slotOf } = slotIndex(lk);
+  const place = new Map<number, { composite: string; slot: number }>();
+  for (const [ingredient, at] of slotOf) {
+    const id = ids.byNode.ingredient.get(ingredient);
+    if (id !== undefined) place.set(id, { composite: at.orderable, slot: at.slot });
+  }
+
+  /** The ids of one orderable's base and a topping, whatever they are in this map. */
+  const anyOrderable = () => {
+    for (const [id, at] of place) {
+      const sibling = [...place].find(([other, o]) => other !== id && o.composite === at.composite);
+      if (sibling) return { a: id, b: sibling[0], composite: at.composite };
+    }
+    return null;
   };
 
-  it("places the base first and groups the rest", () => {
-    const result = recogniseDish(rec, [id("patty-cooked"), id("bun-sliced"), id("tomato-sliced")]);
-    expect("dish" in result).toBe(true);
-    if (!("dish" in result)) return;
-    expect(result.dish.root.id).toBe(0); // burger
-    expect(result.dish.root.members[0]).toEqual({ kind: "ingredient", id: id("bun-sliced") });
-  });
-
   it("refuses a dish spanning two orderables rather than guessing", () => {
-    const result = recogniseDish(rec, [id("bun-sliced"), id("soda-cup")]);
-    expect("error" in result).toBe(true);
-    if ("error" in result) expect(result.error).toMatch(/must be one orderable/);
+    const composites = new Set([...place.values()].map((p) => p.composite));
+    expect(composites.size, "need two orderables to test the refusal").toBeGreaterThan(1);
+    const [first, second] = [...composites];
+    const a = [...place].find(([, p]) => p.composite === first)![0];
+    const b = [...place].find(([, p]) => p.composite === second)![0];
+    expect("error" in recogniseDish(rec, [a, b])).toBe(true);
   });
 
   it("refuses an ingredient with no slot", () => {
-    const result = recogniseDish(rec, [999]);
-    expect("error" in result).toBe(true);
-    if ("error" in result) expect(result.error).toMatch(/no slot for ingredient/);
-  });
-});
-
-/**
- * A pre-existing defect in the LEGACY level data, surfaced by the migration and
- * then fixed in the graph.
- *
- * Eight dishes are exactly [13, 16] — fried potato plus cheese sauce. In the
- * runtime, cheese sauce (cooked 16) declares `baseId: [9,10,11,12]`, the four
- * fried CHICKEN cuts; fried potato is 13 and is not among them. So
- * `baseRequirementMet` could never be satisfied and those dishes could never
- * complete — the legacy simulation serves 0 of 14 customers on level 1_17 and
- * stalls rather than losing.
- *
- * The graph fixes it by making `potato-fried` a fifth option of
- * fried-basket-bases, so the sauces apply to it like any other base. These
- * tests pin both halves: the defect really did exist in the runtime data, and
- * the graph really does resolve it.
- */
-describe("legacy data defect, and its fix in the graph", () => {
-  it("the legacy runtime genuinely could not satisfy those dishes", () => {
-    const sauce = MAP1_DATA.cookedIngredients.find((c) => c.id === 16)!;
-    const bases = Array.isArray(sauce.baseId) ? sauce.baseId : [sauce.baseId];
-    expect(bases).toEqual([9, 10, 11, 12]);
-    expect(bases).not.toContain(13); // fried potato — the dish could never complete
+    const unknown = Math.max(...place.keys()) + 1000;
+    expect("error" in recogniseDish(rec, [unknown])).toBe(true);
   });
 
-  it("those dishes exist, in three levels", () => {
-    const affected = new Set<number>();
-    let count = 0;
-    for (const level of MAP1_DATA.levels) {
-      for (const customer of parseCustomers(level.customerString)) {
-        for (const dish of customer.dishes) {
-          if ([...dish.cookedIds].sort((a, b) => a - b).join(",") === "13,16") {
-            affected.add(level.id);
-            count++;
-          }
-        }
-      }
+  it("places every member of a single-orderable dish", () => {
+    const pair = anyOrderable();
+    expect(pair, "need one orderable with two members").not.toBeNull();
+    const result = recogniseDish(rec, [pair!.a, pair!.b]);
+    expect("error" in result ? result.error : "").toBe("");
+  });
+
+  it("preserves quantity as repetition", () => {
+    const pair = anyOrderable()!;
+    const result = recogniseDish(rec, [pair.a, pair.b, pair.b]);
+    expect("error" in result ? result.error : "").toBe("");
+    if ("dish" in result) {
+      // Three members in, three members out — repetition is how quantity is
+      // written, so a duplicate must survive rather than being deduplicated.
+      const count = (node: { members: unknown[] }): number =>
+        node.members.reduce<number>(
+          (n, m) => n + (typeof m === "object" && m !== null && "members" in m ? count(m as never) : 1),
+          0,
+        );
+      expect(count(result.dish.root)).toBe(3);
     }
-    expect(count).toBe(8);
-    expect([...affected].sort((a, b) => a - b)).toEqual([17, 18, 20]);
-  });
-
-  it("every dish now places — nothing is left for hand-review", () => {
-    expect(migrated.report.unplacedDishes).toEqual([]);
-  });
-
-  it("migrates them to a fried basket with a potato base and a cheese-sauce topping", () => {
-    // burger.json ids: c2 = fried-basket, g1 = bases, g2 = sauces,
-    // 112 = potato-fried, 16 = cheese-sauce.
-    const level17 = migrated.levels.find((l) => l.id === 17)!;
-    expect(level17.customerString).toContain("{c2:{g1:112}.{g2:16}}");
   });
 });

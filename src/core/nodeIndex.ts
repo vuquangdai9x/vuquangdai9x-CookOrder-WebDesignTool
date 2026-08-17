@@ -36,6 +36,8 @@ export interface IndexedSlot {
   /** Dense group index, or -1 for a fixed slot. */
   group: number;
   options: number[];
+  /** Per-option cap, parallel to `options`; -1 = unlimited. See Slot.optionMax. */
+  optionMax: number[];
   maxQuantity: number;
   isBase: boolean;
 }
@@ -85,7 +87,6 @@ export interface GraphIndex {
 
   // --- per-ingredient scalars, hoisted out of .find() ---
   usageNum: Int32Array;
-  limitPerDish: Int32Array;
   servable: Uint8Array;
   pickupable: Uint8Array;
 }
@@ -111,12 +112,10 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
 
   const n = ingName.length;
   const usageNum = new Int32Array(n);
-  const limitPerDish = new Int32Array(n);
   const servable = new Uint8Array(n);
   const pickupable = new Uint8Array(n);
   doc.vertices.ingredient.forEach((v, i) => {
     usageNum[i] = v.usageNum ?? 1;
-    limitPerDish[i] = v.limitPerDish ?? 0;
     servable[i] = v.servable ? 1 : 0;
     pickupable[i] = v.pickupable ? 1 : 0;
   });
@@ -207,13 +206,24 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
   for (let i = 0; i < n; i++) computeReach(i, new Set());
 
   // Assembly: slot trees per composite, in dense indices.
-  const toIndexed = (slot: Slot): IndexedSlot => ({
-    kind: slot.kind,
-    group: slot.group === null ? -1 : (groupByName.get(slot.group) ?? -1),
-    options: slot.options.map((o) => ingByName.get(o)).filter((i): i is number => i !== undefined),
-    maxQuantity: slot.maxQuantity,
-    isBase: slot.isBase,
-  });
+  const toIndexed = (slot: Slot): IndexedSlot => {
+    const options: number[] = [];
+    const optionMax: number[] = [];
+    slot.options.forEach((name, at) => {
+      const dense = ingByName.get(name);
+      if (dense === undefined) return; // INV-REF reports the dangling name
+      options.push(dense);
+      optionMax.push(slot.optionMax[at] ?? -1);
+    });
+    return {
+      kind: slot.kind,
+      group: slot.group === null ? -1 : (groupByName.get(slot.group) ?? -1),
+      options,
+      optionMax,
+      maxQuantity: slot.maxQuantity,
+      isBase: slot.isBase,
+    };
+  };
   const slotsOfComposite = compositeName.map((name) => slotsOf(lookup, name).map(toIndexed));
 
   const { slotOf: slotOfName } = slotIndex(lookup);
@@ -257,7 +267,6 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
     slotOf,
     dirtyOf,
     usageNum,
-    limitPerDish,
     servable,
     pickupable,
   };

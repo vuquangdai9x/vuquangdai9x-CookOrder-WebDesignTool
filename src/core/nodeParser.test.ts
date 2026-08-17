@@ -64,8 +64,8 @@ describe("dish round-trip", () => {
   });
 
   it("handles multi-digit ids", () => {
-    expect(dishIngredientIds(parseDish("{c12:117.{g34:100}}"))).toEqual([117, 100]);
-    expect(serializeDish(parseDish("{c12:117.{g34:100}}"))).toBe("{c12:117.{g34:100}}");
+    expect(dishIngredientIds(parseDish("{c12:117.{g34:234}}"))).toEqual([117, 234]);
+    expect(serializeDish(parseDish("{c12:117.{g34:234}}"))).toBe("{c12:117.{g34:234}}");
   });
 
   it("enumerates nested brackets outermost first", () => {

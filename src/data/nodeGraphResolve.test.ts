@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import burgerJson from "./config/nodegraph/burger.json";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 import { buildLookup, chainOf, depthOf, slotIndex, slotsOf, traceAll, traceOrderable } from "./nodeGraphResolve.ts";
+import { chainedPotato } from "../core/nodeTestFixtures.ts";
 
 const burger = burgerJson as unknown as NodeGraphMap;
 const lk = buildLookup(burger);
@@ -73,11 +74,14 @@ describe("traceOrderable — burger.json expectations", () => {
 
 describe("the two spellings of a two-tool route", () => {
   it("potato is ONE step with chainTools — no intermediate item", () => {
-    const chain = chainOf(lk, "potato-fried");
-    expect(chain).toMatchObject({ node: "potato-fried", tool: "cutting-board", amount: 2, chainTools: ["fryer"] });
+    // Derived from whatever burger.json says today, so re-authoring the route in
+    // the editor cannot break a test about the chainTools spelling.
+    const collapsed = buildLookup(chainedPotato(burger));
+    const chain = chainOf(collapsed, "potato-fried");
+    expect(chain).toMatchObject({ node: "potato-fried", tool: "cutting-board", chainTools: ["fryer"] });
     expect(chain.inputs).toHaveLength(1);
     expect(chain.inputs[0]).toEqual({ node: "potato", inputs: [] }); // pickupable, terminates
-    expect(depthOf(lk, "potato-fried")).toBe(1);
+    expect(depthOf(collapsed, "potato-fried")).toBe(1);
   });
 
   it("chicken is TWO steps through a real coated intermediate", () => {
