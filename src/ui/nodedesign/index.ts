@@ -23,8 +23,7 @@ import { button, el } from "../dom.ts";
 import { estimateDifficulty } from "../design/estimateDifficulty.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
 import { createGridSection } from "../design/gridSection.ts";
-import { createQueueSection, toQueueDraft } from "../design/queueSection.ts";
-import { openAutoGenerateQueueDialog } from "../design/autoGenerateQueueDialog.ts";
+import { createQueueSection, startQueueAutoGenerate, toQueueDraft } from "../design/queueSection.ts";
 import { generateNodeQueueLanes } from "./nodeQueueGenerate.ts";
 import type { QueueDraft, QueueSectionDeps } from "../design/queueSection.ts";
 import type { Section } from "../design/section.ts";
@@ -126,6 +125,20 @@ export class NodeDesignView {
       currentGrid: () => this.grid.draft,
       onSaved: saved,
       currentEstimate: () => this.estimate,
+      // The one part of the reused queue section that cannot come through
+      // verbatim. `deps.map` is the lossy projection, where a multi-input
+      // recipe has already collapsed to its first ingredient — generating from
+      // it would queue ground coffee and never a cup. Supplying this covers
+      // BOTH entry points: the section's own Auto Generate button and the
+      // chain from the customer generator.
+      generateLanes: (laneCount, shuffleRange) =>
+        generateNodeQueueLanes({
+          ix: this.projected.ix,
+          ids: orderIdIndex(this.projected.ix),
+          customers: this.customers.draft,
+          laneCount,
+          shuffleRange,
+        }),
     };
 
     this.customers = createNodeCustomerSection({
@@ -154,7 +167,7 @@ export class NodeDesignView {
             saved();
             // Chain into the queue's own Auto Generate, exactly as legacy does,
             // so regenerating customers doesn't leave the queue out of sync.
-            this.autoGenerateQueue(true);
+            startQueueAutoGenerate(this.queues, this.queueDeps, true);
           },
         }),
     });
@@ -178,45 +191,6 @@ export class NodeDesignView {
   }
 
   /** Rebuilds the wrapper around the three existing sections, keeping their drafts. */
-  /**
-   * Queue auto-generation, routed through the NODE generator.
-   *
-   * Legacy's runs off the projected MapDef, where a multi-input recipe has
-   * already collapsed to its first input — so it would queue ground coffee and
-   * no cups, and every coffee machine would sit half-filled forever. This walks
-   * the graph instead; see nodeQueueGenerate.ts.
-   *
-   * The dialog itself is legacy's, unchanged: the shuffle controls and the
-   * curve cache mean the same thing in both modes, and forking them would only
-   * create two places for "shuffle range 3" to drift apart.
-   */
-  private autoGenerateQueue(skipOverwriteConfirm = false): void {
-    if (!skipOverwriteConfirm && !confirm("Auto-generate overwrites every lane. Continue?")) return;
-    openAutoGenerateQueueDialog({
-      level: this.level,
-      onGenerate: (shuffleRange) => {
-        const before = this.queues.draft.queues.reduce((n, q) => n + q.length, 0);
-        const lanes = generateNodeQueueLanes({
-          ix: this.projected.ix,
-          ids: orderIdIndex(this.projected.ix),
-          customers: this.customers.draft,
-          laneCount: Math.max(1, this.queues.draft.queues.length),
-          shuffleRange,
-        });
-        const after = lanes.reduce((n, l) => n + l.length, 0);
-        // Rebuilt through toQueueDraft so every item gets the `_cid` identity
-        // the section tracks drags and groups by. Authored groups do not
-        // survive a full regeneration.
-        this.queues.draft = toQueueDraft({
-          queues: lanes.map((lane) => lane.map((id) => ({ kind: "ingredient", id, effects: [] }))),
-          groups: [],
-        });
-        this.queues.commit("Auto-generate queue", after, before);
-        this.onChange();
-      },
-    });
-  }
-
   private renderLayout(): void {
     this.root.replaceChildren(
       this.mapSettingsBar(),

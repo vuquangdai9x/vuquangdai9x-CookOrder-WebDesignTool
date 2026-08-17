@@ -14,6 +14,7 @@ import type {
   EffectInstance,
   GlobalDefs,
   GridCellConfig,
+  Id,
   MapDef,
   QueueGroup,
   QueueGroupKind,
@@ -65,6 +66,18 @@ export interface QueueSectionDeps {
    * "Show pickup order" overlay.
    */
   currentEstimate?(): EstimateResult | null;
+  /**
+   * Replaces lane generation for Auto Generate. Omitted by legacy Design, which
+   * keeps `generateQueueLanes` and its exact behaviour.
+   *
+   * The node editor supplies one because a MapDef recipe has a single `in`: a
+   * multi-input recipe has already collapsed to its first ingredient by the
+   * time it reaches here, so generating from `deps.map` would queue ground
+   * coffee and no cups. It reuses this SECTION wholesale — the button, the
+   * dialog, the draft plumbing — so the generator is the one part that has to
+   * be swappable rather than forked.
+   */
+  generateLanes?(laneCount: number, shuffleRange: ShuffleRangeSpec): Id[][];
 }
 
 /**
@@ -1164,15 +1177,17 @@ function runAutoGenerate(
   shuffleRange: ShuffleRangeSpec,
 ): void {
   const laneCount = Math.max(1, draft.queues.length);
-  const lanes = generateQueueLanes({
-    customers: deps.currentCustomers(),
-    tools: deps.map.tools,
-    // usageNum lives here: a multi-use item needs fewer pickups than it has
-    // dish slots, and leaving this out over-supplies the level.
-    cookedIngredients: deps.map.cookedIngredients,
-    laneCount,
-    shuffleRange,
-  });
+  const lanes = deps.generateLanes
+    ? deps.generateLanes(laneCount, shuffleRange)
+    : generateQueueLanes({
+        customers: deps.currentCustomers(),
+        tools: deps.map.tools,
+        // usageNum lives here: a multi-use item needs fewer pickups than it has
+        // dish slots, and leaving this out over-supplies the level.
+        cookedIngredients: deps.map.cookedIngredients,
+        laneCount,
+        shuffleRange,
+      });
 
   const before = draft.queues.reduce((n, q) => n + q.length, 0);
   const after = lanes.reduce((n, l) => n + l.length, 0);
