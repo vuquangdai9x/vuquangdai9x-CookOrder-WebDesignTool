@@ -13,7 +13,7 @@
 // and would be measuring the divergence rather than the port.
 
 import { describe, expect, it } from "vitest";
-import burgerJson from "../data/config/nodegraph/burger.json";
+import burgerJson from "../data/config/nodegraph/maps/Graph-1-Burger.json";
 import { MAP1_DATA } from "../data/configLoader.ts";
 import { toMapDef } from "../data/mapLoader.ts";
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";

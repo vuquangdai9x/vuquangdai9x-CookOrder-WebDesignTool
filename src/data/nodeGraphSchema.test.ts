@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import burgerJson from "./config/nodegraph/burger.json";
+import burgerJson from "./config/nodegraph/maps/Graph-1-Burger.json";
 import type { NodeGraphMap, VertexKindName } from "./nodeGraphTypes.ts";
 import {
   EDGE_KIND_NAMES,

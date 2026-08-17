@@ -19,7 +19,7 @@ Two kinds of file, deliberately separate:
 | File | Role |
 |---|---|
 | `src/data/config/nodegraph/schema.json` | **Drives the tool.** Vertex kinds, their editable fields, the legal wiring matrix, the invariant list. |
-| `src/data/config/nodegraph/burger.json` | **Map data.** One file per map, validated against the schema. Written already, from the current runtime config. |
+| `src/data/config/nodegraph/maps/Graph-{index}-{Name}.json` | **Map data.** One file per map, validated against the schema. The folder is scanned at startup to build the map list; level data sits beside it as `LevelData-{index}-{Name}.csv`, joined by index. Files that do not match the convention are skipped with a console warning. |
 
 The split is the point: the editor hardcodes only the field-type primitives (`string`, `int`, `bool`, `enum`, `ref`, …). Everything else — which vertex kinds exist, what properties each has, which edges may connect what, which rules are errors vs. warnings — is read from `schema.json` at load. Adding a property or a whole node kind is a data edit, not a code change.
 

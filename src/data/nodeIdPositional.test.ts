@@ -8,8 +8,8 @@
 // mean what it meant before.
 
 import { describe, expect, it } from "vitest";
-import burgerJson from "./config/nodegraph/burger.json";
-import burgerLevelsCsv from "./config/nodegraph/levels/burger-levels.csv?raw";
+import burgerJson from "./config/nodegraph/maps/Graph-1-Burger.json";
+import burgerLevelsCsv from "./config/nodegraph/maps/LevelData-1-Burger.csv?raw";
 import { buildIndex } from "../core/nodeIndex.ts";
 import { NodeSimulation } from "../core/nodeSim.ts";
 import { parseNodeCustomers } from "../core/nodeParser.ts";

@@ -21,8 +21,8 @@
 // contention is actually observed.
 
 import { describe, expect, it } from "vitest";
-import burgerJson from "../data/config/nodegraph/burger.json";
-import burgerLevelsCsv from "../data/config/nodegraph/levels/burger-levels.csv?raw";
+import burgerJson from "../data/config/nodegraph/maps/Graph-1-Burger.json";
+import burgerLevelsCsv from "../data/config/nodegraph/maps/LevelData-1-Burger.csv?raw";
 import { importLevelsCsv } from "../data/sheetSource.ts";
 import { MAP1_DATA } from "../data/configLoader.ts";
 import { toMapDef } from "../data/mapLoader.ts";

@@ -14,7 +14,7 @@
 // damage rather than asserting it.
 
 import { describe, expect, it } from "vitest";
-import burgerJson from "./config/nodegraph/burger.json";
+import burgerJson from "./config/nodegraph/maps/Graph-1-Burger.json";
 import { buildIndex } from "../core/nodeIndex.ts";
 import { orderIdIndex, resolveOrder } from "../core/nodeOrder.ts";
 import { parseNodeCustomers } from "../core/nodeParser.ts";

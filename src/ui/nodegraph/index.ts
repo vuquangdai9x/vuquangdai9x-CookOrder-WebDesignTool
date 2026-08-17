@@ -57,6 +57,7 @@ import type {
   VertexKindName,
 } from "../../data/nodeGraphTypes.ts";
 import { downloadFile } from "../../data/sheetSource.ts";
+import { parseGraphJson, vertexCount } from "../../data/nodeGraphJson.ts";
 
 /** Which id space a vertex kind mints into. */
 const SPACE_OF: Record<VertexKindName, IdSpace> = {
@@ -249,6 +250,7 @@ export class MapProcessView {
       redoBtn,
       button("⤢ Auto layout", () => this.applyAutoLayout(), { title: "Re-run the layered layout" }),
       button("⬇ JSON", () => this.exportJson(), { title: "Download this graph as JSON" }),
+      button("⬆ JSON", () => this.importJson(), { title: "Replace this graph from a JSON file" }),
       button("⬇ CSV", () => this.exportCsv(), { title: "Download this graph as CSV" }),
       button("⬆ CSV", () => this.importCsv(), { title: "Replace this graph from a CSV file" }),
       button("💾 Save draft", () => this.save(), { class: "primary" }),
@@ -2307,6 +2309,50 @@ Continue?`,
     // export diffs clean against the file it came from.
     const text = JSON.stringify(this.doc, null, 2);
     downloadFile(`${this.doc.map.id || "graph"}.json`, text, "application/json");
+  }
+
+  /**
+   * Replace the open graph from a JSON file — the counterpart to "⬇ JSON".
+   *
+   * Layout is only recomputed when the file brings none, so re-importing an
+   * export keeps the positions the designer arranged. A file that parses to
+   * zero vertices changes nothing: it is almost always the wrong file, and
+   * wiping the graph for it would be a destructive answer to a typo.
+   */
+  private importJson(): void {
+    const input = el("input", { type: "file", accept: ".json,application/json" }) as HTMLInputElement;
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const { doc, issues } = parseGraphJson(String(reader.result));
+        if (!doc) {
+          alert(`${file.name} could not be read.\n\n${issues.join("\n")}\n\nNothing was changed.`);
+          return;
+        }
+        const count = vertexCount(doc);
+        if (count === 0) {
+          alert(`No nodes found in ${file.name}. Nothing was changed.`);
+          return;
+        }
+        const summary = issues.length
+          ? `\n\n${issues.length} thing(s) were repaired on the way in:\n` +
+            issues.slice(0, 8).map((i) => `  ${i}`).join("\n") +
+            (issues.length > 8 ? "\n  …" : "")
+          : "";
+        if (!confirm(`Replace the current graph with ${count} nodes from ${file.name}?${summary}`)) {
+          return;
+        }
+        this.doc = doc;
+        if (Object.keys(this.doc.layout ?? {}).length === 0) this.doc.layout = autoLayout(this.doc);
+        this.selection = null;
+        this.selected.clear();
+        this.commit(`import ${file.name}`);
+      };
+      reader.readAsText(file);
+    });
+    input.click();
   }
 
   private exportCsv(): void {

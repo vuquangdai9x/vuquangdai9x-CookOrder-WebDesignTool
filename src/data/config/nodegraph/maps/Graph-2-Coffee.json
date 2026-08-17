@@ -1,0 +1,808 @@
+{
+  "schemaVersion": 1,
+  "map": {
+    "id": "coffee",
+    "name": "Coffee",
+    "gridWidth": 5,
+    "gridHeight": 2,
+    "dirtyStackHeight": 3,
+    "visibleRows": 3
+  },
+  "idTable": {
+    "ingredient": [
+      "coffee-bean",
+      "cup",
+      "teacup",
+      "ice",
+      "milk",
+      "whiping-choco",
+      "whiping-cream",
+      "sprinkle",
+      "blueberry",
+      "strawberry",
+      "kiwi",
+      "cupcake",
+      "donut",
+      "donut-bar",
+      "donut-fried",
+      "pineapple",
+      "kiwi-sliced",
+      "strawberry-sliced",
+      "pineapple-sliced",
+      "donut-bar-fried",
+      "donut-8-fried",
+      "donut-8",
+      "coffee-teacup-hot",
+      "coffee-cup-cool",
+      "cupcake-baked"
+    ],
+    "composite": [
+      "cool-coffee-with-milk",
+      "hot-coffee-latte",
+      "cool-coffee-with-milk-ice",
+      "cool-coffee-with-cream",
+      "cupcake-with-cream",
+      "donut-with-topping"
+    ],
+    "group": [
+      "whipings",
+      "toppings",
+      "fruits",
+      "single-donut-fried"
+    ],
+    "tool": [
+      "coffee-grinder",
+      "coffee-machine",
+      "cutting-board",
+      "baker",
+      "fryer"
+    ],
+    "dirty": []
+  },
+  "vertices": {
+    "ingredient": [
+      {
+        "name": "coffee-bean",
+        "displayName": "Coffee Bean",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥜",
+        "localImage": "Map2-coffee/ingredients/coffee-bean.png"
+      },
+      {
+        "name": "coffee-grinded",
+        "displayName": "coffee-grinded",
+        "pickupable": false,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧂",
+        "localImage": "Map2-coffee/ingredients/coffee-grinded.png"
+      },
+      {
+        "name": "cup",
+        "displayName": "cup",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥤",
+        "localImage": "Map2-coffee/ingredients/cup.png"
+      },
+      {
+        "name": "teacup",
+        "displayName": "teacup",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "☕",
+        "localImage": "Map2-coffee/ingredients/teacup.png"
+      },
+      {
+        "name": "ice",
+        "displayName": "ice",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧊",
+        "localImage": "Map2-coffee/ingredients/ice.png"
+      },
+      {
+        "name": "milk",
+        "displayName": "milk",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 2,
+        "price": 0,
+        "emoji": "🍼",
+        "localImage": "Map2-coffee/ingredients/milk.png"
+      },
+      {
+        "name": "coffee-cup-cool",
+        "displayName": "coffee-cup-cool",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥤",
+        "localImage": "Map2-coffee/ingredients/coffee-cup-cool.png"
+      },
+      {
+        "name": "coffee-teacup-hot",
+        "displayName": "coffee-teacup-hot",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "☕",
+        "localImage": "Map2-coffee/ingredients/coffee-cup-hot.png"
+      },
+      {
+        "name": "whiping-cream",
+        "displayName": "whiping-cream",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/whipping-cream.png"
+      },
+      {
+        "name": "whiping-choco",
+        "displayName": "whiping-choco",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/whipping-choco.png"
+      },
+      {
+        "name": "sprinkle",
+        "displayName": "sprinkle",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 2,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/sprinkle.png"
+      },
+      {
+        "name": "pineapple-sliced",
+        "displayName": "pineapple-sliced",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍍",
+        "localImage": "Map2-coffee/ingredients/pineapple-sliced.png"
+      },
+      {
+        "name": "pineapple",
+        "displayName": "pineapple",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍍🍍",
+        "localImage": "Map2-coffee/ingredients/pineapple.png"
+      },
+      {
+        "name": "blueberry",
+        "displayName": "blueberry",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 2,
+        "price": 0,
+        "emoji": "🔵",
+        "localImage": "Map2-coffee/ingredients/blueberry.png"
+      },
+      {
+        "name": "strawberry",
+        "displayName": "strawberry",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍓🍓",
+        "localImage": "Map2-coffee/ingredients/strawberry.png"
+      },
+      {
+        "name": "strawberry-sliced",
+        "displayName": "strawberry-sliced",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍓",
+        "localImage": "Map2-coffee/ingredients/strawberry-sliced.png"
+      },
+      {
+        "name": "kiwi",
+        "displayName": "kiwi",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥝🥝",
+        "localImage": "Map2-coffee/ingredients/kiwi.png"
+      },
+      {
+        "name": "kiwi-sliced",
+        "displayName": "kiwi-sliced",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥝",
+        "localImage": "Map2-coffee/ingredients/kiwi-sliced.png"
+      },
+      {
+        "name": "cupcake",
+        "displayName": "cupcake",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧁",
+        "localImage": "Map2-coffee/ingredients/cupcake.png"
+      },
+      {
+        "name": "cupcake-baked",
+        "displayName": "cupcake-baked",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧁",
+        "localImage": "Map2-coffee/ingredients/cupcake-baked.png"
+      },
+      {
+        "name": "donut",
+        "displayName": "donut",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/donut.png"
+      },
+      {
+        "name": "donut-8",
+        "displayName": "donut-8",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/donut-8.png"
+      },
+      {
+        "name": "donut-bar",
+        "displayName": "donut-bar",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/donut-bar.png"
+      },
+      {
+        "name": "donut-fried",
+        "displayName": "donut-fried",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/donut-fried.png"
+      },
+      {
+        "name": "donut-8-fried",
+        "displayName": "donut-8-fried",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/donut-8-fried.png"
+      },
+      {
+        "name": "donut-bar-fried",
+        "displayName": "donut-bar-fried",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/donut-bar-fried.png"
+      }
+    ],
+    "tool": [
+      {
+        "name": "coffee-grinder",
+        "displayName": "coffee-grinder",
+        "numSlots": 1,
+        "cookingTime": 1,
+        "upgradeCosts": [],
+        "localImage": "Map2-coffee/tools/grinder.png"
+      },
+      {
+        "name": "coffee-machine",
+        "displayName": "coffee-machine",
+        "numSlots": 1,
+        "cookingTime": 1,
+        "upgradeCosts": [],
+        "localImage": "Map2-coffee/tools/coffee-machine_3.png"
+      },
+      {
+        "name": "cutting-board",
+        "displayName": "cutting-board",
+        "numSlots": 1,
+        "cookingTime": 2,
+        "emoji": "🔪",
+        "upgradeCosts": [],
+        "localImage": "Map2-coffee/tools/cutting-board.png"
+      },
+      {
+        "name": "baker",
+        "displayName": "baker",
+        "numSlots": 1,
+        "cookingTime": 3,
+        "localImage": "Map2-coffee/tools/baking-oven.png"
+      },
+      {
+        "name": "fryer",
+        "displayName": "fryer",
+        "numSlots": 1,
+        "cookingTime": 1,
+        "localImage": "Map2-coffee/tools/fryer.png"
+      }
+    ],
+    "group": [
+      {
+        "name": "whipings",
+        "displayName": "whipings",
+        "maxQuantity": 1
+      },
+      {
+        "name": "toppings",
+        "displayName": "toppings",
+        "maxQuantity": 1
+      },
+      {
+        "name": "fruits",
+        "displayName": "fruits",
+        "maxQuantity": 4
+      },
+      {
+        "name": "single-donut-fried",
+        "displayName": "single-donut-fried",
+        "maxQuantity": 1
+      }
+    ],
+    "composite": [
+      {
+        "name": "cool-coffee-with-milk",
+        "displayName": "cool-coffee-with-milk",
+        "orderable": false,
+        "toppingRequired": false
+      },
+      {
+        "name": "hot-coffee-latte",
+        "displayName": "hot-coffee-latte",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "cool-coffee-with-cream",
+        "displayName": "cool-coffee-with-cream",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "cool-coffee-with-milk-ice",
+        "displayName": "cool-coffee-with-milk-ice",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "whiping-cream-with-topping",
+        "displayName": "whiping-cream-with-topping",
+        "orderable": false,
+        "toppingRequired": false
+      },
+      {
+        "name": "cupcake-with-cream",
+        "displayName": "cupcake-with-cream",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "donut-with-topping",
+        "displayName": "donut-with-topping",
+        "orderable": true,
+        "toppingRequired": false
+      }
+    ],
+    "dirty": []
+  },
+  "edges": {
+    "process": [
+      {
+        "from": "coffee-grinder",
+        "to": "coffee-grinded",
+        "inputs": [
+          "coffee-bean"
+        ],
+        "amount": 1
+      },
+      {
+        "from": "coffee-machine",
+        "to": "coffee-cup-cool",
+        "inputs": [
+          "coffee-grinded",
+          "cup"
+        ],
+        "amount": 1
+      },
+      {
+        "from": "coffee-machine",
+        "to": "coffee-teacup-hot",
+        "inputs": [
+          "coffee-grinded",
+          "teacup"
+        ],
+        "amount": 1
+      },
+      {
+        "from": "cutting-board",
+        "to": "kiwi-sliced",
+        "inputs": [
+          "kiwi"
+        ],
+        "amount": 2
+      },
+      {
+        "from": "cutting-board",
+        "to": "strawberry-sliced",
+        "inputs": [
+          "strawberry"
+        ],
+        "amount": 2
+      },
+      {
+        "from": "cutting-board",
+        "to": "pineapple-sliced",
+        "inputs": [
+          "pineapple"
+        ],
+        "amount": 3
+      },
+      {
+        "from": "baker",
+        "to": "cupcake-baked",
+        "inputs": [
+          "cupcake"
+        ],
+        "amount": 1
+      },
+      {
+        "from": "fryer",
+        "to": "donut-fried",
+        "inputs": [
+          "donut"
+        ],
+        "amount": 1
+      },
+      {
+        "from": "fryer",
+        "to": "donut-8-fried",
+        "inputs": [
+          "donut-8"
+        ],
+        "amount": 1
+      },
+      {
+        "from": "fryer",
+        "to": "donut-bar-fried",
+        "inputs": [
+          "donut-bar"
+        ],
+        "amount": 1
+      }
+    ],
+    "base": [
+      {
+        "from": "cool-coffee-with-milk",
+        "to": "coffee-cup-cool"
+      },
+      {
+        "from": "hot-coffee-latte",
+        "to": "coffee-teacup-hot"
+      },
+      {
+        "from": "cool-coffee-with-milk-ice",
+        "to": "cool-coffee-with-milk"
+      },
+      {
+        "from": "cool-coffee-with-cream",
+        "to": "cool-coffee-with-milk"
+      },
+      {
+        "from": "whiping-cream-with-topping",
+        "to": "whipings"
+      },
+      {
+        "from": "cupcake-with-cream",
+        "to": "cupcake-baked"
+      },
+      {
+        "from": "donut-with-topping",
+        "to": "single-donut-fried"
+      }
+    ],
+    "topping": [
+      {
+        "from": "cool-coffee-with-milk",
+        "to": "milk"
+      },
+      {
+        "from": "hot-coffee-latte",
+        "to": "milk"
+      },
+      {
+        "from": "cool-coffee-with-milk-ice",
+        "to": "ice"
+      },
+      {
+        "from": "whiping-cream-with-topping",
+        "to": "toppings"
+      },
+      {
+        "from": "cool-coffee-with-cream",
+        "to": "whiping-cream-with-topping"
+      },
+      {
+        "from": "cupcake-with-cream",
+        "to": "whiping-cream-with-topping"
+      },
+      {
+        "from": "donut-with-topping",
+        "to": "fruits"
+      }
+    ],
+    "option": [
+      {
+        "from": "whipings",
+        "to": "whiping-cream",
+        "maxQuantity": -1
+      },
+      {
+        "from": "whipings",
+        "to": "whiping-choco",
+        "maxQuantity": -1
+      },
+      {
+        "from": "toppings",
+        "to": "sprinkle",
+        "maxQuantity": -1
+      },
+      {
+        "from": "toppings",
+        "to": "fruits",
+        "maxQuantity": -1
+      },
+      {
+        "from": "fruits",
+        "to": "kiwi-sliced",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fruits",
+        "to": "strawberry-sliced",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fruits",
+        "to": "pineapple-sliced",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fruits",
+        "to": "blueberry",
+        "maxQuantity": 1
+      },
+      {
+        "from": "single-donut-fried",
+        "to": "donut-fried",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-donut-fried",
+        "to": "donut-8-fried",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-donut-fried",
+        "to": "donut-bar-fried",
+        "maxQuantity": -1
+      }
+    ],
+    "leavesDirty": []
+  },
+  "layout": {
+    "table:pickupable": {
+      "x": -601.4101307999999,
+      "y": -684.1277603999995
+    },
+    "table:orderable": {
+      "x": 2247.199125616134,
+      "y": -557.4057858947192
+    },
+    "ingredient:coffee-bean": {
+      "x": 81.06392045454544,
+      "y": 69.421875
+    },
+    "ingredient:coffee-grinded": {
+      "x": 85.609375,
+      "y": 266.681875
+    },
+    "tool:coffee-grinder": {
+      "x": 84.609375,
+      "y": 141.421875
+    },
+    "ingredient:cup": {
+      "x": 195.10937500000014,
+      "y": 489.23187499999995
+    },
+    "ingredient:teacup": {
+      "x": 171.74937500000016,
+      "y": 606.6418749999999
+    },
+    "ingredient:ice": {
+      "x": 867.5033748283373,
+      "y": 247.1748817138685
+    },
+    "ingredient:milk": {
+      "x": 864.4648463795558,
+      "y": 359.6849573641694
+    },
+    "tool:coffee-machine": {
+      "x": 513.5466623757104,
+      "y": 474.9282417644152
+    },
+    "ingredient:coffee-cup-cool": {
+      "x": 863.8364997863765,
+      "y": 494.12748840331994
+    },
+    "ingredient:coffee-teacup-hot": {
+      "x": 872.8364997863766,
+      "y": 611.2874884033198
+    },
+    "composite:cool-coffee-with-milk": {
+      "x": 1248.4593750000001,
+      "y": 353.98187500000006
+    },
+    "composite:hot-coffee-latte": {
+      "x": 1242.5215378841674,
+      "y": 560.9547698217971
+    },
+    "ingredient:whiping-cream": {
+      "x": 604.892898559569,
+      "y": -14.553512573242152
+    },
+    "ingredient:whiping-choco": {
+      "x": 605.892898559569,
+      "y": 79.44648742675767
+    },
+    "group:whipings": {
+      "x": 886.8929138183578,
+      "y": 32.44647216796869
+    },
+    "composite:cool-coffee-with-milk-ice": {
+      "x": 1690.1959075927698,
+      "y": 202.98248291015582
+    },
+    "composite:cool-coffee-with-cream": {
+      "x": 1685.2309051132174,
+      "y": -37.812514160156105
+    },
+    "composite:whiping-cream-with-topping": {
+      "x": 1392.945898437497,
+      "y": -215.9575042724606
+    },
+    "group:toppings": {
+      "x": 1139.6458984374974,
+      "y": -279.8575042724603
+    },
+    "group:fruits": {
+      "x": 904.445898437498,
+      "y": -535.9575042724605
+    },
+    "ingredient:sprinkle": {
+      "x": 800.0148984374982,
+      "y": -182.88850427246018
+    },
+    "ingredient:pineapple-sliced": {
+      "x": 646.3458984374984,
+      "y": -519.4574707031237
+    },
+    "ingredient:pineapple": {
+      "x": 52.245898437499974,
+      "y": -485.6574707031241
+    },
+    "ingredient:blueberry": {
+      "x": 655.3458984375,
+      "y": -440.5574707031243
+    },
+    "ingredient:strawberry": {
+      "x": 53.24589843749999,
+      "y": -566.0574707031238
+    },
+    "ingredient:strawberry-sliced": {
+      "x": 646.1458984374984,
+      "y": -595.7574707031235
+    },
+    "tool:cutting-board": {
+      "x": 349.04589843749915,
+      "y": -651.2575378417953
+    },
+    "ingredient:kiwi": {
+      "x": 48.0458984375001,
+      "y": -678.3575378417953
+    },
+    "ingredient:kiwi-sliced": {
+      "x": 648.3458984374984,
+      "y": -682.3575378417953
+    },
+    "ingredient:cupcake": {
+      "x": -116.96524978970342,
+      "y": -959.2544462517151
+    },
+    "tool:baker": {
+      "x": 195.2988993453831,
+      "y": -1007.5733000769592
+    },
+    "ingredient:cupcake-baked": {
+      "x": 642.424537090298,
+      "y": -932.4036204275442
+    },
+    "composite:cupcake-with-cream": {
+      "x": 1677.47582672119,
+      "y": -417.629978637695
+    },
+    "ingredient:donut": {
+      "x": -88.4446630924864,
+      "y": -1394.576767077575
+    },
+    "ingredient:donut-8": {
+      "x": -102.28074462890616,
+      "y": -1304.4644873046866
+    },
+    "ingredient:donut-bar": {
+      "x": -101.07074462890617,
+      "y": -1210.0844873046865
+    },
+    "tool:fryer": {
+      "x": 323.63925537109344,
+      "y": -1340.7644873046863
+    },
+    "ingredient:donut-fried": {
+      "x": 668.815336907513,
+      "y": -1406.8767670775749
+    },
+    "ingredient:donut-8-fried": {
+      "x": 676.9592553710933,
+      "y": -1309.3044873046865
+    },
+    "ingredient:donut-bar-fried": {
+      "x": 673.3292553710932,
+      "y": -1182.2544873046866
+    },
+    "group:single-donut-fried": {
+      "x": 1063.9082976304612,
+      "y": -1271.0588439355452
+    },
+    "composite:donut-with-topping": {
+      "x": 1542.3283291778384,
+      "y": -993.9107301110822
+    }
+  },
+  "notes": []
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import burgerJson from "./config/nodegraph/burger.json";
-import burgerLevelsCsv from "./config/nodegraph/levels/burger-levels.csv?raw";
+import burgerJson from "./config/nodegraph/maps/Graph-1-Burger.json";
+import burgerLevelsCsv from "./config/nodegraph/maps/LevelData-1-Burger.csv?raw";
 import { importLevelsCsv } from "./sheetSource.ts";
 import { nodeAsMapDef, nodeLevelAsLevelConfig } from "./nodeGraphToMapDef.ts";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";

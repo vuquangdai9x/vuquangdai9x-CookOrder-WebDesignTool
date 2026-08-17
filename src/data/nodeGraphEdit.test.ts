@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import burgerJson from "./config/nodegraph/burger.json";
+import burgerJson from "./config/nodegraph/maps/Graph-1-Burger.json";
 import { reorderToolProcesses } from "./nodeGraphEdit.ts";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 

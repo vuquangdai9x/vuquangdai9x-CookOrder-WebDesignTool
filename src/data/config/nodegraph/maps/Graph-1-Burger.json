@@ -52,8 +52,7 @@
     "composite": [
       "burger",
       "soda",
-      "fried-basket",
-      "potato-basket"
+      "fried-basket"
     ],
     "group": [
       "burger-toppings",
@@ -495,12 +494,6 @@
         "name": "fried-basket",
         "displayName": "Fried Basket",
         "orderable": true
-      },
-      {
-        "name": "potato-basket",
-        "displayName": "Potato Basket",
-        "orderable": true,
-        "toppingRequired": false
       }
     ],
     "dirty": [
@@ -508,14 +501,14 @@
         "name": "dirty-plate",
         "displayName": "Dirty Plate",
         "emoji": "🍽",
-        "localImage": "Map1-burger/map1-burger-dirty-plate.png",
+        "localImage": "Map1-burger/dirty-objects/map1-burger-dirty-plate.png",
         "runtimeDirtyId": 0
       },
       {
         "name": "dirty-cup",
         "displayName": "Dirty Cup",
         "emoji": "🥤",
-        "localImage": "Map1-burger/mpa1-burger-dirty-cup.png",
+        "localImage": "Map1-burger/dirty-objects/mpa1-burger-dirty-cup.png",
         "runtimeDirtyId": 1
       },
       {
@@ -694,10 +687,6 @@
       {
         "from": "fried-basket",
         "to": "fried-basket-bases"
-      },
-      {
-        "from": "potato-basket",
-        "to": "potato-fried"
       }
     ],
     "topping": [
@@ -712,10 +701,6 @@
       {
         "from": "fried-basket",
         "to": "fried-basket-sauces"
-      },
-      {
-        "from": "potato-basket",
-        "to": "cheese-sauce"
       }
     ],
     "option": [
@@ -779,6 +764,11 @@
         "from": "fried-basket-sauces",
         "to": "cheese-sauce",
         "maxQuantity": 1
+      },
+      {
+        "from": "fried-basket-bases",
+        "to": "potato-fried",
+        "maxQuantity": -1
       }
     ],
     "leavesDirty": [
@@ -910,8 +900,8 @@
       "y": 788.4690742157001
     },
     "ingredient:potato-fried": {
-      "x": 1068.8898445299994,
-      "y": -38.2097164299995
+      "x": 1041.0231899999994,
+      "y": -31.778949999999504
     },
     "ingredient:soda-cup": {
       "x": 877.1865198129998,
@@ -970,8 +960,8 @@
       "y": 518.0988956246997
     },
     "group:fried-basket-sauces": {
-      "x": 1359.1948321499997,
-      "y": 206.32421670000008
+      "x": 1327.0409999999997,
+      "y": 56.27300000000011
     },
     "composite:soda": {
       "x": 1571.0914503304994,
@@ -986,24 +976,16 @@
       "y": 589.2180487892997
     },
     "composite:fried-basket": {
-      "x": 1614.82283215,
-      "y": -131.71282237999986
+      "x": 1584,
+      "y": -135.99999999999986
     },
     "dirty:dirty-chick-box": {
-      "x": 1949.03073002,
-      "y": -107.28717761999988
+      "x": 1859,
+      "y": -102.99999999999989
     },
     "ingredient:potato_sliced": {
       "x": 389.5156202922801,
       "y": -65.76573925718988
-    },
-    "table:pickupable": {
-      "x": -1020.1115097974815,
-      "y": 194.83278384827008
-    },
-    "composite:potato-basket": {
-      "x": 1618.817392280644,
-      "y": 17.8717332324609
     }
   }
 }
