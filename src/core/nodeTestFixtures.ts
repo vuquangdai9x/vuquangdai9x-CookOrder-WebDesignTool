@@ -22,7 +22,7 @@ import type { NodeGraphMap, ProcessEdge } from "../data/nodeGraphTypes.ts";
 export function collapseToChainTools(doc: NodeGraphMap, intermediate: string): NodeGraphMap {
   const clone = structuredClone(doc);
   const produces = clone.edges.process.find((e) => e.to === intermediate);
-  const consumes = clone.edges.process.find((e) => e.inputs.includes(intermediate));
+  const consumes = clone.edges.process.find((e) => e.inputs.some((i) => i.ingredient === intermediate));
   if (!produces || !consumes) {
     throw new Error(`"${intermediate}" is not a two-edge intermediate in this graph`);
   }
@@ -56,7 +56,7 @@ export function expandChainTools(doc: NodeGraphMap, output: string): NodeGraphMa
   const template = clone.vertices.ingredient.find((v) => v.name === output);
 
   const built: ProcessEdge[] = [];
-  let input = original.inputs[0];
+  let input = original.inputs[0].ingredient;
   for (let hop = 0; hop < hops.length; hop++) {
     const last = hop === hops.length - 1;
     const to = last ? output : `${output}__hop${hop}`;
@@ -74,7 +74,7 @@ export function expandChainTools(doc: NodeGraphMap, output: string): NodeGraphMa
     built.push({
       from: hops[hop],
       to,
-      inputs: [input],
+      inputs: [{ ingredient: input, slot: 0 }],
       // All the yield rides on the final hop, so `terminalYield` is preserved.
       amount: last ? (original.amount ?? 1) : 1,
       ...(original.duration !== undefined && last ? { duration: original.duration } : {}),

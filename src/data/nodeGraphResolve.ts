@@ -109,9 +109,9 @@ export function buildLookup(doc: NodeGraphMap): GraphLookup {
     // reported by the validator. Resolving must stay total on invalid data.
     if (!producerOf.has(edge.to)) producerOf.set(edge.to, edge);
     for (const input of edge.inputs) {
-      const list = consumersOf.get(input) ?? [];
+      const list = consumersOf.get(input.ingredient) ?? [];
       list.push(edge);
-      consumersOf.set(input, list);
+      consumersOf.set(input.ingredient, list);
     }
   }
 
@@ -217,7 +217,7 @@ export function chainOf(lk: GraphLookup, node: string, visiting = new Set<string
     amount: edge.amount,
     duration: edge.duration,
     chainTools: edge.chainTools?.length ? edge.chainTools : undefined,
-    inputs: edge.inputs.map((i) => chainOf(lk, i, next)),
+    inputs: edge.inputs.map((i) => chainOf(lk, i.ingredient, next)),
   };
 }
 
@@ -228,7 +228,7 @@ export function depthOf(lk: GraphLookup, node: string, visiting = new Set<string
   if (!edge) return 0;
   const next = new Set(visiting).add(node);
   let deepest = 0;
-  for (const input of edge.inputs) deepest = Math.max(deepest, depthOf(lk, input, next));
+  for (const input of edge.inputs) deepest = Math.max(deepest, depthOf(lk, input.ingredient, next));
   // A chainTools route visits several tools but produces one item, so it still
   // counts as one step — matching the runtime, where nothing lands mid-chain.
   return deepest + 1;
@@ -246,7 +246,7 @@ function leavesOf(lk: GraphLookup, node: string, out: Set<string>, bad: Set<stri
     return;
   }
   const next = new Set(visiting).add(node);
-  for (const input of edge.inputs) leavesOf(lk, input, out, bad, next);
+  for (const input of edge.inputs) leavesOf(lk, input.ingredient, out, bad, next);
 }
 
 /**

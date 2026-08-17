@@ -317,7 +317,12 @@
       {
         "name": "coffee-grinder",
         "displayName": "coffee-grinder",
-        "numSlots": 1,
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
         "cookingTime": 1,
         "upgradeCosts": [],
         "localImage": "Map2-coffee/tools/grinder.png"
@@ -325,7 +330,16 @@
       {
         "name": "coffee-machine",
         "displayName": "coffee-machine",
-        "numSlots": 1,
+        "slotConfigs": [
+          {
+            "name": "ground-coffee-container",
+            "slot": 1
+          },
+          {
+            "name": "cup-slot",
+            "slot": 1
+          }
+        ],
         "cookingTime": 1,
         "upgradeCosts": [],
         "localImage": "Map2-coffee/tools/coffee-machine_3.png"
@@ -333,7 +347,12 @@
       {
         "name": "cutting-board",
         "displayName": "cutting-board",
-        "numSlots": 1,
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
         "cookingTime": 2,
         "emoji": "🔪",
         "upgradeCosts": [],
@@ -342,14 +361,24 @@
       {
         "name": "baker",
         "displayName": "baker",
-        "numSlots": 1,
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
         "cookingTime": 3,
         "localImage": "Map2-coffee/tools/baking-oven.png"
       },
       {
         "name": "fryer",
         "displayName": "fryer",
-        "numSlots": 1,
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
         "cookingTime": 1,
         "localImage": "Map2-coffee/tools/fryer.png"
       }
@@ -428,7 +457,10 @@
         "from": "coffee-grinder",
         "to": "coffee-grinded",
         "inputs": [
-          "coffee-bean"
+          {
+            "ingredient": "coffee-bean",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -436,8 +468,14 @@
         "from": "coffee-machine",
         "to": "coffee-cup-cool",
         "inputs": [
-          "coffee-grinded",
-          "cup"
+          {
+            "ingredient": "coffee-grinded",
+            "slot": 0
+          },
+          {
+            "ingredient": "cup",
+            "slot": 1
+          }
         ],
         "amount": 1
       },
@@ -445,8 +483,14 @@
         "from": "coffee-machine",
         "to": "coffee-teacup-hot",
         "inputs": [
-          "coffee-grinded",
-          "teacup"
+          {
+            "ingredient": "coffee-grinded",
+            "slot": 0
+          },
+          {
+            "ingredient": "teacup",
+            "slot": 1
+          }
         ],
         "amount": 1
       },
@@ -454,7 +498,10 @@
         "from": "cutting-board",
         "to": "kiwi-sliced",
         "inputs": [
-          "kiwi"
+          {
+            "ingredient": "kiwi",
+            "slot": 0
+          }
         ],
         "amount": 2
       },
@@ -462,7 +509,10 @@
         "from": "cutting-board",
         "to": "strawberry-sliced",
         "inputs": [
-          "strawberry"
+          {
+            "ingredient": "strawberry",
+            "slot": 0
+          }
         ],
         "amount": 2
       },
@@ -470,7 +520,10 @@
         "from": "cutting-board",
         "to": "pineapple-sliced",
         "inputs": [
-          "pineapple"
+          {
+            "ingredient": "pineapple",
+            "slot": 0
+          }
         ],
         "amount": 3
       },
@@ -478,7 +531,10 @@
         "from": "baker",
         "to": "cupcake-baked",
         "inputs": [
-          "cupcake"
+          {
+            "ingredient": "cupcake",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -486,7 +542,10 @@
         "from": "fryer",
         "to": "donut-fried",
         "inputs": [
-          "donut"
+          {
+            "ingredient": "donut",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -494,7 +553,10 @@
         "from": "fryer",
         "to": "donut-8-fried",
         "inputs": [
-          "donut-8"
+          {
+            "ingredient": "donut-8",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -502,7 +564,10 @@
         "from": "fryer",
         "to": "donut-bar-fried",
         "inputs": [
-          "donut-bar"
+          {
+            "ingredient": "donut-bar",
+            "slot": 0
+          }
         ],
         "amount": 1
       }

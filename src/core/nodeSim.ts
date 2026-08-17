@@ -57,8 +57,8 @@ import type {
   QueueGroupKind,
   QueueItem,
 } from "./types.ts";
-import type { GraphIndex, ProcessStep } from "./nodeIndex.ts";
-import { reachesAny } from "./nodeIndex.ts";
+import type { GraphIndex, ProcessStep, ToolSlotLayout } from "./nodeIndex.ts";
+import { flatSlot, inputPoint, reachesAny } from "./nodeIndex.ts";
 import type { NodeCustomerConfig } from "./nodeParser.ts";
 import type { OrderIssue, ResolvedOrder } from "./nodeOrder.ts";
 import { describeIssue, orderIdIndex, resolveOrder } from "./nodeOrder.ts";
@@ -112,8 +112,15 @@ export interface NodeToolState {
   index: number;
   name: string;
   displayName: string;
+  /**
+   * Total addressable positions — every lane of every slot point. Still one
+   * flat array, exactly as when a tool was a bare `numSlots`; `layout` says
+   * what each index means.
+   */
   numSlots: number;
   slots: NodeToolSlotState[];
+  /** The tool's slot points and the flat index of each point/lane pair. */
+  layout: ToolSlotLayout;
 }
 
 export type NodeCellContent =
@@ -325,8 +332,12 @@ export class NodeSimulation {
       index,
       name: def.name,
       displayName: def.displayName,
-      numSlots: def.numSlots,
-      slots: Array.from({ length: def.numSlots }, () => ({ item: null }) as NodeToolSlotState),
+      numSlots: ix.toolSlots[index].flat.length,
+      slots: Array.from(
+        { length: ix.toolSlots[index].flat.length },
+        () => ({ item: null }) as NodeToolSlotState,
+      ),
+      layout: ix.toolSlots[index],
     }));
     this.grid = level.grid.map(() => ({ kind: "empty" }) as NodeCellContent);
     this.pending = level.customers.map((config, index) => ({
@@ -930,13 +941,119 @@ export class NodeSimulation {
     return flight;
   }
 
-  private freeSlot(tool: number): number {
-    const state = this.tools[tool];
-    if (!state) return -1;
-    for (let i = 0; i < state.slots.length; i++) {
-      if (!state.slots[i].item && !this.reservedSlots.has(`${tool}:${i}`)) return i;
+  /** Flat slot indices belonging to one lane, in point order. */
+  private laneSlots(state: NodeToolState, lane: number): number[] {
+    const out: number[] = [];
+    state.layout.flat.forEach((addr, flat) => {
+      if (addr.lane === lane) out.push(flat);
+    });
+    return out;
+  }
+
+  /**
+   * Which recipe a lane is working towards, resolved from EVERY item present.
+   *
+   * `recipeForInput` cannot answer this on a multi-input tool: ground coffee is
+   * the first input of both the hot and the cool drink, so the coffee alone
+   * names neither — the cup or teacup beside it decides. So this matches the
+   * set of items against the tool's recipes and prefers a fully-satisfied one.
+   *
+   * Returns null when nothing present fits any recipe, which is what a chain
+   * hop looks like: it carries its own route and the destination owns no recipe
+   * for it.
+   */
+  private stepForLane(state: NodeToolState, lane: number): ProcessStep | null {
+    const present: { point: number; ing: number }[] = [];
+    for (const flat of this.laneSlots(state, lane)) {
+      const item = state.slots[flat].item;
+      if (item) present.push({ point: state.layout.flat[flat].point, ing: item.ing });
     }
-    return -1;
+    if (present.length === 0) return null;
+
+    let partial: ProcessStep | null = null;
+    for (const step of this.ix.stepsOfTool[state.index] ?? []) {
+      const fits = present.every((p) => step.inputs.some((i) => i.ing === p.ing && i.point === p.point));
+      if (!fits) continue;
+      // Complete beats partial: a lane holding coffee + teacup satisfies the
+      // hot recipe outright, while the cool one merely "fits" on the coffee.
+      if (step.inputs.every((i) => present.some((p) => p.ing === i.ing && p.point === i.point))) {
+        return step;
+      }
+      partial ??= step;
+    }
+    return partial;
+  }
+
+  /** Whether every point a step names holds its ingredient in this lane. */
+  private laneReady(state: NodeToolState, lane: number, step: ProcessStep): boolean {
+    return step.inputs.every((input) => {
+      const flat = flatSlot(state.layout, input.point, lane);
+      return flat !== -1 && state.slots[flat].item?.ing === input.ing;
+    });
+  }
+
+  /**
+   * A free position for `ing` at `tool`, honouring slot points.
+   *
+   * `point` is where this ingredient belongs — derived from the step for a real
+   * recipe, forced to 0 for a chain hop, whose destination owns no recipe for
+   * the item it receives.
+   *
+   * Lane choice is the part that matters. A multi-input tool must PREFER a lane
+   * already holding part of the same job: put the coffee in lane 0 and the cup
+   * in lane 1 and neither ever completes, even though the machine looks full.
+   * So partially-filled compatible lanes are tried first, most-filled first,
+   * and only then a completely empty one.
+   */
+  private freeSlotFor(tool: number, ing: number, point = this.pointFor(tool, ing)): number {
+    const state = this.tools[tool];
+    if (!state || point < 0) return -1;
+
+    const taken = (flat: number) =>
+      Boolean(state.slots[flat].item) || this.reservedSlots.has(`${tool}:${flat}`);
+
+    const candidates: { flat: number; filled: number }[] = [];
+    for (let lane = 0; lane < state.layout.laneCount; lane++) {
+      const flat = flatSlot(state.layout, point, lane);
+      if (flat === -1 || taken(flat)) continue;
+
+      // How much of a job this lane already holds, and whether what is there
+      // can coexist with `ing` — a lane committed to a different recipe is not
+      // a candidate at all, or the two would deadlock each other.
+      //
+      // Asked as "does SOME recipe accept all of this together?", including the
+      // incoming item. Resolving the lane's recipe first and then testing
+      // against it is wrong: ground coffee alone fits both drinks, so picking
+      // one arbitrarily would reject the teacup that decides it is the hot one.
+      const others = this.laneSlots(state, lane).filter((f) => f !== flat && state.slots[f].item);
+      if (others.length > 0) {
+        const present = others.map((f) => ({
+          point: state.layout.flat[f].point,
+          ing: state.slots[f].item!.ing,
+        }));
+        present.push({ point, ing });
+        const fits = (this.ix.stepsOfTool[tool] ?? []).some((step) =>
+          present.every((p) => step.inputs.some((i) => i.ing === p.ing && i.point === p.point)),
+        );
+        if (!fits) continue;
+      }
+      candidates.push({ flat, filled: others.length });
+    }
+
+    candidates.sort((a, b) => b.filled - a.filled || a.flat - b.flat);
+    return candidates[0]?.flat ?? -1;
+  }
+
+  /** The slot point `ing` enters at `tool`, or 0 when the tool owns no recipe for it. */
+  private pointFor(tool: number, ing: number): number {
+    for (const step of this.ix.stepsOfTool[tool] ?? []) {
+      const at = inputPoint(step, ing);
+      if (at !== -1) return at;
+    }
+    // A chain hop: the destination has no recipe, so the item simply occupies
+    // the tool's first point. INV-INPUT-SLOT-STABLE keeps the branch above from
+    // being ambiguous when a recipe does exist.
+    return 0;
   }
 
   private reserveSlot(tool: number, slot: number): { tool: number; slot: number } {
@@ -1121,7 +1238,7 @@ export class NodeSimulation {
 
   /**
    * Works out where every item of a pick would go, using the same
-   * freeSlot()/reserveCell() helpers pick() uses, in the same order. A pick of
+   * freeSlotFor()/reserveCell() helpers pick() uses, in the same order. A pick of
    * more than one item (a combined block or a linked chain) may always spill
    * onto the grid, even under "Block the pick" — parking the overflow is
    * inherent to those mechanics.
@@ -1168,7 +1285,7 @@ export class NodeSimulation {
         continue;
       }
 
-      const slot = this.freeSlot(step.tool);
+      const slot = this.freeSlotFor(step.tool, cell.ing);
       if (slot !== -1) {
         this.reserveSlot(step.tool, slot);
         reservedSlots.push({ tool: step.tool, slot });
@@ -1298,35 +1415,62 @@ export class NodeSimulation {
 
   // ---------- tools ----------
 
+  /**
+   * Cooking runs per LANE, not per slot.
+   *
+   * That is the whole multi-input rule: a lane holding only the ground coffee
+   * does not tick at all — its timer starts when the cup lands beside it, and
+   * both items then advance together, so the elapsed values stay equal and the
+   * minimum is the job's true age. On completion the lane empties as one.
+   *
+   * A single-input tool has one point, so every lane holds exactly one item and
+   * this reduces to exactly the old per-slot behaviour.
+   */
   private advanceTools(dt: number): void {
     for (const tool of this.tools) {
-      tool.slots.forEach((slot, slotIndex) => {
-        if (!slot.item) return;
-        slot.item.elapsed += dt;
-        if (slot.item.elapsed < slot.item.duration) return;
+      for (let lane = 0; lane < tool.layout.laneCount; lane++) {
+        const filled = this.laneSlots(tool, lane).filter((f) => tool.slots[f].item);
+        if (filled.length === 0) continue;
+
+        const lead = tool.slots[filled[0]].item!;
+        const leadSlot = filled[0];
+        const step = lead.chain ? null : this.stepForLane(tool, lane);
+
+        // Waiting for the other input. Nothing ages, so an ingredient parked
+        // in a machine does not silently burn while its partner is in the queue.
+        if (step && !this.laneReady(tool, lane, step)) continue;
+
+        for (const f of filled) tool.slots[f].item!.elapsed += dt;
+        const elapsed = Math.min(...filled.map((f) => tool.slots[f].item!.elapsed));
+        if (elapsed < lead.duration) continue;
+
+        const clearLane = () => {
+          for (const f of filled) tool.slots[f].item = null;
+        };
 
         // --- spelling 1: chainTools. One recipe, several tools, NO intermediate
         // item. Hop to the next tool instead of producing output, waiting for a
         // free slot there if needed (retried every tick). Verbatim legacy.
-        const chain = slot.item.chain;
+        const chain = lead.chain;
         if (chain && chain.remaining.length > 0) {
           const nextTool = chain.remaining[0];
-          const nextSlot = this.freeSlot(nextTool);
-          if (nextSlot === -1) return;
+          // A chain hop lands at the destination's first point: that tool owns
+          // no recipe for what it is receiving.
+          const nextSlot = this.freeSlotFor(nextTool, lead.ing, 0);
+          if (nextSlot === -1) continue;
           this.reserveSlot(nextTool, nextSlot);
           this.launch({
             kind: "tool-to-tool",
-            ing: slot.item.ing,
-            fromTool: { tool: tool.index, slot: slotIndex },
+            ing: lead.ing,
+            fromTool: { tool: tool.index, slot: leadSlot },
             toTool: { tool: nextTool, slot: nextSlot },
             chain: { remaining: chain.remaining.slice(1), out: chain.out, amount: chain.amount },
           });
-          slot.item = null;
-          return;
+          clearLane();
+          continue;
         }
 
-        const step = this.ix.recipeForInput[slot.item.ing];
-        const out = chain?.out ?? step?.out ?? slot.item.ing;
+        const out = chain?.out ?? step?.out ?? lead.ing;
         const amount = chain?.amount ?? step?.amount ?? 1;
 
         // --- spelling 2: a real intermediate vertex. An output auto-forwards
@@ -1336,30 +1480,31 @@ export class NodeSimulation {
         // so this forwards once rather than looping over `amount`.
         const onward = this.forwardStepFor(out);
         if (onward) {
-          const nextSlot = this.freeSlot(onward.tool);
-          if (nextSlot === -1) return; // destination busy — stall and retry next tick
+          const nextSlot = this.freeSlotFor(onward.tool, out);
+          if (nextSlot === -1) continue; // destination busy — stall and retry next tick
           this.reserveSlot(onward.tool, nextSlot);
           this.launch({
             kind: "tool-to-tool",
             ing: out,
-            fromTool: { tool: tool.index, slot: slotIndex },
+            fromTool: { tool: tool.index, slot: leadSlot },
             toTool: { tool: onward.tool, slot: nextSlot },
             // No chain: the destination owns a real recipe for this input.
           });
-          slot.item = null;
-          return;
+          clearLane();
+          continue;
         }
 
-        // The slot empties as the output leaves; each unit flies separately —
+        // The lane empties as the output leaves; each unit flies separately —
         // straight to a customer already waiting for it when there is one,
         // skipping the grid; otherwise it lands on the grid as usual.
+        let overflowed = false;
         for (let n = 0; n < amount; n++) {
           const target = this.findServeTarget(out);
           if (target) {
             this.launch({
               kind: "tool-to-customer",
               ing: out,
-              fromTool: { tool: tool.index, slot: slotIndex },
+              fromTool: { tool: tool.index, slot: leadSlot },
               toCustomer: target,
             });
             continue;
@@ -1367,17 +1512,19 @@ export class NodeSimulation {
           const cell = this.reserveCell();
           if (cell === -1) {
             this.lose("grid-overflow", "No free grid cell for a cooked ingredient");
-            return;
+            overflowed = true;
+            break;
           }
           this.launch({
             kind: "tool-to-grid",
             ing: out,
-            fromTool: { tool: tool.index, slot: slotIndex },
+            fromTool: { tool: tool.index, slot: leadSlot },
             toCell: cell,
           });
         }
-        slot.item = null;
-      });
+        if (overflowed) return;
+        clearLane();
+      }
       if (this.status !== "playing") return;
     }
   }
@@ -1509,7 +1656,7 @@ export class NodeSimulation {
       if (content.kind !== "raw" || this.reservedCells.has(cell)) continue;
       const step = this.ix.recipeForInput[content.ing];
       if (!step) continue;
-      const slot = this.freeSlot(step.tool);
+      const slot = this.freeSlotFor(step.tool, content.ing);
       if (slot === -1) continue;
       this.reservedCells.add(cell);
       this.launch({

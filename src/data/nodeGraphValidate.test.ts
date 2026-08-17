@@ -79,7 +79,7 @@ describe("INV-ORDER-REBUILDABLE — one ingredient, two slots of one composite",
 describe("graph structure invariants", () => {
   it("INV-UNIQUE-PRODUCER: two tools producing one ingredient", () => {
     const doc = clone();
-    doc.edges.process.push({ from: "griddle", to: "bun-sliced", inputs: ["bun"], amount: 1 });
+    doc.edges.process.push({ from: "griddle", to: "bun-sliced", inputs: [{ ingredient: "bun", slot: 0 }], amount: 1 });
     const { errors } = validateNodeGraph(doc);
     const issue = errors.find((e) => e.invariantId === "INV-UNIQUE-PRODUCER");
     expect(issue!.message).toContain("bun-sliced");
@@ -104,7 +104,7 @@ describe("graph structure invariants", () => {
 
   it("INV-REF: an edge whose endpoint is the wrong kind", () => {
     const doc = clone();
-    doc.edges.process.push({ from: "burger", to: "bun-sliced", inputs: ["bun"], amount: 1 });
+    doc.edges.process.push({ from: "burger", to: "bun-sliced", inputs: [{ ingredient: "bun", slot: 0 }], amount: 1 });
     const { errors } = validateNodeGraph(doc);
     expect(errors.some((e) => e.invariantId === "INV-REF" && e.message.includes("which is a composite"))).toBe(true);
   });
@@ -120,7 +120,7 @@ describe("graph structure invariants", () => {
     const doc = clone();
     // Make bun-sliced require itself, via a tool consuming its own output.
     doc.edges.process = doc.edges.process.map((e) =>
-      e.to === "bun-sliced" ? { ...e, inputs: ["bun-sliced"] } : e,
+      e.to === "bun-sliced" ? { ...e, inputs: [{ ingredient: "bun-sliced", slot: 0 }] } : e,
     );
     const { errors } = validateNodeGraph(doc);
     expect(ids(errors)).toContain("INV-ACYCLIC");
@@ -165,7 +165,7 @@ describe("graph structure invariants", () => {
   it("WARN-MULTI-INPUT: a recipe with more than one input survives as data but is flagged", () => {
     const doc = clone();
     doc.edges.process = doc.edges.process.map((e) =>
-      e.to === "patty-cooked" ? { ...e, inputs: ["patty", "cheese"] } : e,
+      e.to === "patty-cooked" ? { ...e, inputs: [{ ingredient: "patty", slot: 0 }, { ingredient: "cheese", slot: 0 }] } : e,
     );
     const { errors, warnings } = validateNodeGraph(doc);
     expect(ids(warnings)).toContain("WARN-MULTI-INPUT");
@@ -231,7 +231,7 @@ describe("warnings", () => {
 
   it("WARN-EMPTY-TOOL: a tool with no recipes", () => {
     const doc = clone();
-    doc.vertices.tool.push({ name: "idle-tool", displayName: "Idle", numSlots: 1, cookingTime: 1 });
+    doc.vertices.tool.push({ name: "idle-tool", displayName: "Idle", slotConfigs: [{ name: "Slot", slot: 1 }], cookingTime: 1 });
     doc.idTable.tool.push("idle-tool");
     const { warnings } = validateNodeGraph(doc);
     expect(warnings.find((w) => w.invariantId === "WARN-EMPTY-TOOL")!.message).toContain("idle-tool");

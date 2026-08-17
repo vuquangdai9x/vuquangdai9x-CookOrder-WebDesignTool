@@ -903,32 +903,48 @@ export class NodePlayView {
         return false;
       });
 
-      const slots = el("div", { class: "tool-slots" });
-      tool.slots.forEach((slot, i) => {
-        const bar = el("div", { class: "bar" });
-        if (slot.item) {
-          bar.style.width = `${Math.min(100, (slot.item.elapsed / slot.item.duration) * 100)}%`;
+      // Slot POINTS are visible when a tool has more than one: a coffee machine
+      // that needs a cup should say so, or a half-filled machine reads as
+      // broken rather than waiting. A single-point tool renders exactly as
+      // before — an unlabelled row of slots.
+      const multiPoint = tool.layout.points.length > 1;
+      const slots = el("div", { class: `tool-slots${multiPoint ? " multi-point" : ""}` });
+      tool.layout.points.forEach((point, pointIndex) => {
+        const group = multiPoint ? el("div", { class: "slot-point" }) : slots;
+        if (multiPoint) {
+          group.append(el("span", { class: "slot-point-name" }, [point.name]));
+          slots.append(group);
         }
-        this.barEls.set(`${tool.index}:${i}`, bar);
-        const node = el("div", {
-          class: `tool-slot${slot.item ? " busy" : ""}`,
-          "data-slot": `${tool.index}:${i}`,
-        });
-        if (slot.item) {
-          const dataId = this.projected.dataIdOf.get(slot.item.ing);
-          node.append(el("span", { class: "slot-item" }, [
-            dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : ingredientIconEl(dataId, 96),
-          ]));
+        for (let lane = 0; lane < point.lanes; lane++) {
+          const i = tool.layout.flat.findIndex((a) => a.point === pointIndex && a.lane === lane);
+          if (i === -1) continue;
+          const slot = tool.slots[i];
+          const bar = el("div", { class: "bar" });
+          if (slot.item) {
+            bar.style.width = `${Math.min(100, (slot.item.elapsed / slot.item.duration) * 100)}%`;
+          }
+          this.barEls.set(`${tool.index}:${i}`, bar);
+          const node = el("div", {
+            class: `tool-slot${slot.item ? " busy" : ""}`,
+            "data-slot": `${tool.index}:${i}`,
+            title: multiPoint ? `${point.name} · lane ${lane + 1}` : "",
+          });
+          if (slot.item) {
+            const dataId = this.projected.dataIdOf.get(slot.item.ing);
+            node.append(el("span", { class: "slot-item" }, [
+              dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : ingredientIconEl(dataId, 96),
+            ]));
+          }
+          node.append(el("div", { class: "bar-track" }, [bar]));
+          group.append(node);
         }
-        node.append(el("div", { class: "bar-track" }, [bar]));
-        slots.append(node);
       });
 
       const def = this.projected.map.tools.find((t) => t.name === tool.displayName);
       const toolEl = el("div", {
         class: `tool${unused ? " unused" : ""}`,
         title:
-          `${tool.displayName} — ${tool.numSlots} slot(s)` +
+          `${tool.displayName} — ${tool.layout.points.map((p) => `${p.name} ×${p.lanes}`).join(", ")}` +
           (unused ? " — no ingredient in this level needs it" : ""),
       }, [
         el("div", { class: "tool-head" }, [

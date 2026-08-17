@@ -36,6 +36,8 @@ import type {
 import { ID_SPACES } from "./nodeIdTable.ts";
 
 const LIST_SEP = "|";
+/** Separates a slot-point record's name from its number: `cup-slot:1`. */
+const PAIR_SEP = ":";
 const ID_FIELDS = ["space", "id", "node"];
 const MAP_FIELDS = [
   "id",
@@ -49,10 +51,30 @@ const MAP_FIELDS = [
 
 // ---------- writing ----------
 
+/**
+ * `{name, slot}` records ride in one cell as `name:slot`, so the CSV stays one
+ * row per edge or vertex — the shape the whole format rests on. Splitting slot
+ * points across their own row type would make a hand-edited file far easier to
+ * get half-right.
+ */
+function recordCell(value: Record<string, unknown>): string | null {
+  if (typeof value.name === "string" && typeof value.slot === "number") {
+    return `${value.name}${PAIR_SEP}${value.slot}`;
+  }
+  if (typeof value.ingredient === "string" && typeof value.slot === "number") {
+    return `${value.ingredient}${PAIR_SEP}${value.slot}`;
+  }
+  return null;
+}
+
 function csvCell(value: unknown): string {
   if (value === undefined || value === null) return "";
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
-  const text = Array.isArray(value) ? value.join(LIST_SEP) : String(value);
+  const text = Array.isArray(value)
+    ? value
+        .map((v) => (v && typeof v === "object" ? (recordCell(v as Record<string, unknown>) ?? String(v)) : String(v)))
+        .join(LIST_SEP)
+    : String(value);
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
@@ -150,6 +172,23 @@ function coerce(field: FieldDef, raw: string): unknown {
     case "int[]": {
       const parts = text.split(LIST_SEP).filter((p) => p !== "");
       return field.type === "int[]" ? parts.map(Number).filter(Number.isFinite) : parts;
+    }
+    case "slotConfig[]":
+    case "processInput[]": {
+      const key = field.type === "slotConfig[]" ? "name" : "ingredient";
+      // A missing number defaults to 1 lane / point 0 rather than dropping the
+      // row: a half-typed cell should still produce a usable tool.
+      const fallback = field.type === "slotConfig[]" ? 1 : 0;
+      return text
+        .split(LIST_SEP)
+        .filter((p) => p.trim() !== "")
+        .map((part) => {
+          const at = part.lastIndexOf(PAIR_SEP);
+          const label = (at === -1 ? part : part.slice(0, at)).trim();
+          const n = at === -1 ? NaN : Number(part.slice(at + 1));
+          return { [key]: label, slot: Number.isFinite(n) ? n : fallback };
+        })
+        .filter((row) => row[key] !== "");
     }
     default:
       return text;

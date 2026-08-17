@@ -105,6 +105,20 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
     if (route) routes.set(dense, route);
   }
 
+  /**
+   * Every addressable position of a tool, across all its slot points.
+   *
+   * Legacy `CookingToolDef` has one flat `numSlots` and single-input recipes,
+   * so slot POINTS are exactly the part of the model this projection cannot
+   * express. Summing is the honest collapse — a coffee machine with a coffee
+   * point and a cup point does hold two things — but it does overstate
+   * throughput to any legacy-shaped reader, which is why the node simulation
+   * never consumes this projection. It exists for the Design UI's icons,
+   * labels and grid dimensions.
+   */
+  const totalSlots = (vertex: (typeof doc.vertices.tool)[number]): number =>
+    (vertex.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1;
+
   const tools: CookingToolDef[] = doc.vertices.tool.map((vertex, dense) => {
     const recipes: ToolRecipe[] = [];
     for (const [pickup, route] of routes) {
@@ -127,7 +141,8 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
       icon: vertex.emoji ?? "🍳",
       ...(vertex.fileId ? { fileId: vertex.fileId } : {}),
       ...(vertex.localImage ? { localImage: vertex.localImage } : {}),
-      numSlots: vertex.numSlots,
+      // Legacy ToolDef has one flat count, so every point's lanes are summed.
+      numSlots: totalSlots(vertex),
       cookingTime: vertex.cookingTime,
       recipes,
       ...(vertex.upgradeCosts ? { upgradeCosts: vertex.upgradeCosts } : {}),

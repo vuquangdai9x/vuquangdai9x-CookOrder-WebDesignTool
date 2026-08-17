@@ -54,6 +54,7 @@ import type {
   GraphNote,
   IdSpace,
   NodeGraphMap,
+  ToolSlotConfig,
   VertexKindName,
 } from "../../data/nodeGraphTypes.ts";
 import { downloadFile } from "../../data/sheetSource.ts";
@@ -1093,7 +1094,7 @@ export class MapProcessView {
     const edge = this.doc.edges.process[row.processIndex];
     return el("div", { class: "np-row np-row-process" }, [
       this.portEl({ kind, name, side: "in", row }, "Wire an ingredient in as this recipe's input"),
-      el("span", { class: "np-row-label" }, [edge?.inputs.join(" + ") || "(no input)"]),
+      el("span", { class: "np-row-label" }, [this.inputSummary(row.processIndex) || "(no input)"]),
       el("span", { class: "np-row-arrow" }, ["\u2192"]),
       el("span", { class: "np-row-value" }, [edge?.to || "(no output)"]),
       button("\u2715", () => this.removeProcessRow(row.processIndex), {
@@ -1102,6 +1103,20 @@ export class MapProcessView {
       }),
       this.portEl({ kind, name, side: "out", row }, "Wire this recipe's output to an ingredient"),
     ]);
+  }
+
+  /** "coffee-grinded @ground-coffee-container + cup @cup-slot" — inputs with their points. */
+  private inputSummary(processIndex: number): string {
+    const edge = this.doc.edges.process[processIndex];
+    if (!edge) return "";
+    const points = this.doc.vertices.tool.find((v) => v.name === edge.from)?.slotConfigs ?? [];
+    return edge.inputs
+      .map((input) =>
+        // The point is only worth naming when there is more than one; on a
+        // single-point tool it is noise on every row.
+        points.length > 1 ? `${input.ingredient} @${points[input.slot]?.name ?? input.slot}` : input.ingredient,
+      )
+      .join(" + ");
   }
 
   private renderEdges(): void {
@@ -1157,9 +1172,9 @@ export class MapProcessView {
       if (kindOf.get(edge.from) !== "tool") return;
       const row: NodeRow = { type: "process", processIndex: index };
       for (const input of edge.inputs) {
-        if (!kindOf.has(input)) continue;
+        if (!kindOf.has(input.ingredient)) continue;
         draw(
-          { kind: "ingredient", name: input, side: "out" },
+          { kind: "ingredient", name: input.ingredient, side: "out" },
           { kind: "tool", name: edge.from, side: "in", row },
           "process",
           edge.from,
@@ -1266,7 +1281,7 @@ export class MapProcessView {
           icon: vertex?.emoji ?? "🍳",
           fileId: vertex?.fileId,
           localImage: vertex?.localImage,
-          numSlots: vertex?.numSlots ?? 1,
+          numSlots: (vertex?.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1,
           cookingTime: vertex?.cookingTime ?? 1,
           recipes: [],
         },
@@ -1429,12 +1444,15 @@ export class MapProcessView {
       }
       const edge = this.doc.edges.process[to.row.processIndex];
       if (!edge) return;
-      if (edge.inputs.includes(from.name)) {
+      if (edge.inputs.some((i) => i.ingredient === from.name)) {
         this.flashStatus(`"${from.name}" is already an input of that recipe`);
         return;
       }
       this.doc = structuredClone(this.doc);
-      this.doc.edges.process[to.row.processIndex].inputs.push(from.name);
+      // A newly wired input lands in the tool's first slot point; the inspector
+      // dropdown is where it gets moved, since only the designer knows where a
+      // cup belongs versus the coffee.
+      this.doc.edges.process[to.row.processIndex].inputs.push({ ingredient: from.name, slot: 0 });
       this.commit(`${from.name} → ${to.name} recipe`, 1);
       return;
     }
@@ -1602,7 +1620,7 @@ export class MapProcessView {
     // Required numeric fields with no declared default would otherwise land as
     // undefined and read as NaN in the sim.
     if (kind === "tool") {
-      fresh.numSlots = fresh.numSlots ?? 1;
+      fresh.slotConfigs = fresh.slotConfigs ?? [{ name: "Slot", slot: 1 }];
       fresh.cookingTime = fresh.cookingTime ?? 1;
     }
     (this.doc.vertices[kind] as unknown as Record<string, unknown>[]).push(fresh);
@@ -1700,7 +1718,7 @@ export class MapProcessView {
     }
     // A process edge may also NAME it as an input.
     for (const edge of this.doc.edges.process) {
-      edge.inputs = edge.inputs.filter((input) => input !== target.name);
+      edge.inputs = edge.inputs.filter((input) => input.ingredient !== target.name);
     }
 
     removeId(this.doc.idTable, SPACE_OF[target.kind], target.name);
@@ -1789,7 +1807,7 @@ export class MapProcessView {
       removed += before - (this.doc.edges[kind] as unknown[]).length;
     }
     for (const edge of this.doc.edges.process) {
-      edge.inputs = edge.inputs.filter((input) => !names.has(input));
+      edge.inputs = edge.inputs.filter((input) => !names.has(input.ingredient));
     }
 
     this.selected.clear();
@@ -1972,7 +1990,18 @@ export class MapProcessView {
       list.append(
         el("div", { class: "nodegraph-recipe-row" }, [
           el("span", { class: "nodegraph-recipe-grip", title: "Drag to reorder" }, ["⠿"]),
-          el("code", {}, [`${edge.inputs.join("+") || "?"} → ${edge.to || "?"}`]),
+          el("code", {}, [`${this.inputSummary(index) || "?"} → ${edge.to || "?"}`]),
+          // One dropdown per input, naming the tool's slot points. Only shown
+          // when the tool actually HAS a choice — a single-point tool would
+          // otherwise get a select with one option in every recipe row.
+          ...((this.doc.vertices.tool.find((v) => v.name === tool)?.slotConfigs?.length ?? 1) > 1
+            ? edge.inputs.map((input, at) =>
+                el("label", { class: "inline-field" }, [
+                  input.ingredient,
+                  this.processInputSlotPicker(index, at),
+                ]),
+              )
+            : []),
           numberField("amount", edge.amount, (n) => {
             this.doc.edges.process[index].amount = n ?? 1;
           }),
@@ -2025,6 +2054,12 @@ export class MapProcessView {
     const label = el("label", {}, [field.name + (field.required ? " *" : "")]);
     if (field.description) label.title = field.description;
 
+    // Slot points are a list of records, not a scalar — the generic widgets
+    // below cannot express "name plus lane count, reorderable".
+    if (field.type === "slotConfig[]") {
+      return el("div", { class: "nodegraph-field slots" }, [label, this.slotConfigEditor(target)]);
+    }
+
     let input: HTMLInputElement | HTMLSelectElement;
     if (field.type === "bool") {
       input = el("input", { type: "checkbox" }) as HTMLInputElement;
@@ -2064,6 +2099,135 @@ export class MapProcessView {
     }
 
     return el("div", { class: "nodegraph-field" }, [label, input]);
+  }
+
+  /**
+   * The tool's slot POINTS: one row per point, each a name and a lane count.
+   *
+   * Renaming a point is safe on its own — recipes address points by INDEX, so a
+   * name is only ever a label. Removing one is not, which is why the delete
+   * button repoints every recipe input that referenced a later point; without
+   * that, deleting point 0 would silently slide every recipe's input onto the
+   * wrong slot.
+   */
+  private slotConfigEditor(target: Selection): HTMLElement {
+    const vertex = this.doc.vertices.tool.find((v) => v.name === target.name);
+    const rows = el("div", { class: "slot-rows" });
+    const configs = vertex?.slotConfigs ?? [];
+
+    configs.forEach((config, index) => {
+      const name = el("input", { type: "text", value: config.name }) as HTMLInputElement;
+      name.addEventListener("blur", () => {
+        if (name.value.trim() === config.name) return;
+        this.editSlotConfigs(target, (list) => {
+          list[index] = { ...list[index], name: name.value.trim() || `Slot ${index + 1}` };
+        }, `rename slot point on ${target.name}`);
+      });
+
+      const lanes = el("input", { type: "number", min: "1", value: String(config.slot) }) as HTMLInputElement;
+      lanes.title = "Parallel positions at this point — two lanes runs two jobs at once";
+      lanes.addEventListener("blur", () => {
+        const n = Math.max(1, Math.floor(Number(lanes.value) || 1));
+        if (n === config.slot) return;
+        this.editSlotConfigs(target, (list) => {
+          list[index] = { ...list[index], slot: n };
+        }, `${target.name} slot lanes`);
+      });
+
+      const remove = button("✕", () => this.removeSlotPoint(target, index), {
+        class: "danger",
+        title: "Remove this slot point",
+      }) as HTMLButtonElement;
+      // The last point cannot go: a tool with none could never hold anything,
+      // and the failure would surface as a level that silently never cooks.
+      remove.disabled = configs.length <= 1;
+
+      rows.append(
+        el("div", { class: "slot-row" }, [
+          el("span", { class: "slot-index" }, [String(index)]),
+          name,
+          lanes,
+          remove,
+        ]),
+      );
+    });
+
+    rows.append(
+      button("＋ Add slot point", () =>
+        this.editSlotConfigs(target, (list) => {
+          list.push({ name: `Slot ${list.length + 1}`, slot: 1 });
+        }, `add slot point to ${target.name}`),
+      { class: "slot-add" }),
+    );
+    return rows;
+  }
+
+  private editSlotConfigs(
+    target: Selection,
+    mutate: (list: ToolSlotConfig[]) => void,
+    label: string,
+  ): void {
+    this.doc = structuredClone(this.doc);
+    const vertex = this.doc.vertices.tool.find((v) => v.name === target.name);
+    if (!vertex) return;
+    vertex.slotConfigs = vertex.slotConfigs ?? [];
+    mutate(vertex.slotConfigs);
+    this.commit(label);
+  }
+
+  /**
+   * Drops a slot point and keeps every recipe pointing at the same PLACE.
+   *
+   * Inputs that named the removed point fall back to 0 — they have to go
+   * somewhere, and 0 always exists. Inputs after it shift down by one, which is
+   * the whole reason this is not just a splice: leaving them alone would move
+   * every one of them onto its neighbour's point.
+   */
+  private removeSlotPoint(target: Selection, index: number): void {
+    const users = this.doc.edges.process.filter(
+      (e) => e.from === target.name && e.inputs.some((i) => i.slot === index),
+    );
+    if (users.length > 0) {
+      const names = users.map((e) => e.to).join(", ");
+      if (!confirm(`${users.length} recipe(s) use this slot point (${names}).\n\nThey will fall back to slot 0. Continue?`)) {
+        return;
+      }
+    }
+    this.doc = structuredClone(this.doc);
+    const vertex = this.doc.vertices.tool.find((v) => v.name === target.name);
+    if (!vertex || (vertex.slotConfigs?.length ?? 0) <= 1) return;
+    vertex.slotConfigs.splice(index, 1);
+    for (const edge of this.doc.edges.process) {
+      if (edge.from !== target.name) continue;
+      edge.inputs = edge.inputs.map((i) => ({
+        ...i,
+        slot: i.slot === index ? 0 : i.slot > index ? i.slot - 1 : i.slot,
+      }));
+    }
+    this.commit(`remove slot point from ${target.name}`);
+  }
+
+  /**
+   * Per-input slot dropdown for a recipe, listing the source tool's points BY
+   * NAME. The stored value is the index — a name is a label the designer can
+   * change without repointing anything.
+   */
+  private processInputSlotPicker(processIndex: number, inputIndex: number): HTMLElement {
+    const edge = this.doc.edges.process[processIndex];
+    const tool = this.doc.vertices.tool.find((v) => v.name === edge?.from);
+    const select = el("select", { class: "slot-picker" }) as HTMLSelectElement;
+    (tool?.slotConfigs ?? [{ name: "Slot", slot: 1 }]).forEach((config, at) => {
+      select.append(el("option", { value: String(at) }, [`${at} · ${config.name}`]));
+    });
+    select.value = String(edge?.inputs[inputIndex]?.slot ?? 0);
+    select.addEventListener("change", () => {
+      this.doc = structuredClone(this.doc);
+      const input = this.doc.edges.process[processIndex]?.inputs[inputIndex];
+      if (!input) return;
+      input.slot = Number(select.value) || 0;
+      this.commit(`${input.ingredient} → slot ${select.value}`);
+    });
+    return select;
   }
 
   private commitField(target: Selection, field: FieldDef, value: unknown): void {
@@ -2127,7 +2291,7 @@ export class MapProcessView {
       }
     }
     for (const edge of this.doc.edges.process) {
-      edge.inputs = edge.inputs.map((input) => (input === from ? to : input));
+      edge.inputs = edge.inputs.map((i) => (i.ingredient === from ? { ...i, ingredient: to } : i));
     }
     for (const edge of this.doc.edges.process) {
       if (edge.chainTools) edge.chainTools = edge.chainTools.map((t) => (t === from ? to : t));

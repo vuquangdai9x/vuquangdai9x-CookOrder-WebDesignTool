@@ -71,7 +71,7 @@ export function nodeIconSource(doc: NodeGraphMap): NodeIconSource {
       icon: vertex.emoji ?? "🍳",
       ...(vertex.fileId ? { fileId: vertex.fileId } : {}),
       ...(vertex.localImage ? { localImage: vertex.localImage } : {}),
-      numSlots: vertex.numSlots,
+      numSlots: (vertex.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1,
       cookingTime: vertex.cookingTime,
       recipes: [],
     });

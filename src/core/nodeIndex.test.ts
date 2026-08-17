@@ -96,7 +96,7 @@ describe("producerOf / recipeForInput", () => {
     expect(ix.producerOf[ing("bun")]).toBeNull();
     const step = ix.producerOf[ing("bun-sliced")]!;
     expect(ix.toolName[step.tool]).toBe("cutting-board");
-    expect(step.inputs.map(nameOf)).toEqual(["bun"]);
+    expect(step.inputs.map((i) => nameOf(i.ing))).toEqual(["bun"]);
   });
 
   it("folds the tool's cookingTime into each step's duration", () => {

@@ -42,7 +42,9 @@ export function computeDepths(doc: NodeGraphMap): Map<string, number> {
 
   const producerOf = new Map<string, { tool: string; inputs: string[] }>();
   for (const edge of doc.edges.process) {
-    if (!producerOf.has(edge.to)) producerOf.set(edge.to, { tool: edge.from, inputs: edge.inputs });
+    if (!producerOf.has(edge.to)) {
+      producerOf.set(edge.to, { tool: edge.from, inputs: edge.inputs.map((i) => i.ingredient) });
+    }
   }
   const optionsOf = new Map<string, string[]>();
   for (const edge of doc.edges.option) {
@@ -78,7 +80,7 @@ export function computeDepths(doc: NodeGraphMap): Map<string, number> {
       // fryer to the right of the flour step that feeds it.
       for (const edge of doc.edges.process) {
         if (edge.from !== name) continue;
-        for (const input of edge.inputs) value = Math.max(value, 1 + of(input));
+        for (const input of edge.inputs) value = Math.max(value, 1 + of(input.ingredient));
       }
     } else if (kind === "group") {
       for (const option of optionsOf.get(name) ?? []) value = Math.max(value, 1 + of(option));

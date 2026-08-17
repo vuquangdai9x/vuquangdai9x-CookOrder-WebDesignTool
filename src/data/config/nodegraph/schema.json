@@ -41,6 +41,46 @@
       "type": "string[]",
       "widget": "text-list",
       "note": "free-form strings, e.g. asset paths"
+    },
+    {
+      "type": "slotConfig[]",
+      "widget": "slot-config-list",
+      "itemFields": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "slot",
+          "type": "int",
+          "required": true,
+          "min": 1,
+          "default": 1
+        }
+      ]
+    },
+    {
+      "type": "processInput[]",
+      "widget": "process-input-list",
+      "note": "slot is rendered as a dropdown of the source tool's slotConfig names",
+      "itemFields": [
+        {
+          "name": "ingredient",
+          "type": "ref",
+          "refKinds": [
+            "ingredient"
+          ],
+          "required": true
+        },
+        {
+          "name": "slot",
+          "type": "int",
+          "required": true,
+          "min": 0,
+          "default": 0
+        }
+      ]
     }
   ],
   "mapFields": [
@@ -201,11 +241,11 @@
           "required": true
         },
         {
-          "name": "numSlots",
-          "type": "int",
+          "name": "slotConfigs",
+          "type": "slotConfig[]",
           "required": true,
-          "min": 1,
-          "description": "How many items cook here simultaneously. The per-tool stack capacity."
+          "minItems": 1,
+          "description": "The tool's slot POINTS. Each is a named place an ingredient goes, with `slot` parallel positions (lanes). A single-input tool has one point whose `slot` is the old numSlots. A multi-input tool has one point per ingredient - a coffee machine holds ground coffee in one and a cup in another, and brews only once both are filled."
         },
         {
           "name": "cookingTime",
@@ -347,13 +387,10 @@
       "fields": [
         {
           "name": "inputs",
-          "type": "ref[]",
-          "refKinds": [
-            "ingredient"
-          ],
+          "type": "processInput[]",
           "required": true,
           "minItems": 1,
-          "description": "Ingredients consumed. Modelled as a list so multi-input recipes stay expressible; every current recipe uses exactly one."
+          "description": "Ingredients consumed, each with the tool slot POINT it goes into. `slot` indexes the source tool's slotConfigs. Every point named here must be filled before the recipe runs."
         },
         {
           "name": "amount",
@@ -563,6 +600,21 @@
       "id": "WARN-MULTI-INPUT",
       "severity": "warning",
       "description": "A process edge with more than one input. The data keeps the list, but the v1 simulation reads only inputs[0]."
+    },
+    {
+      "id": "INV-INPUT-SLOT-RANGE",
+      "severity": "error",
+      "description": "Every process input's `slot` indexes a real entry of the source tool's slotConfigs. An out-of-range point can never be filled, so the recipe would silently never run."
+    },
+    {
+      "id": "INV-INPUT-SLOT-STABLE",
+      "severity": "error",
+      "description": "One ingredient always enters a given tool at the same point, across every recipe of that tool. Dispatch routes an incoming pickup by ingredient, so two recipes disagreeing about where it goes makes the destination undecidable."
+    },
+    {
+      "id": "WARN-UNEVEN-LANES",
+      "severity": "warning",
+      "description": "A multi-input recipe whose points have different lane counts. Only the shared lanes can ever pair up; the surplus lanes of the wider point can be filled but never completed."
     }
   ]
 }

@@ -204,7 +204,10 @@ export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): 
   const tool: ToolVertex[] = map.tools.map((t) => ({
     name: toolName(t.id),
     displayName: t.name,
-    numSlots: t.numSlots,
+    // Legacy tools are single-input, so each becomes ONE slot point whose
+    // lane count is the old numSlots — the shape that reproduces legacy
+    // behaviour exactly, which is what the parity test depends on.
+    slotConfigs: [{ name: "Slot", slot: t.numSlots }],
     cookingTime: t.cookingTime,
     runtimeToolId: t.id,
     ...(t.upgradeCosts ? { upgradeCosts: t.upgradeCosts } : {}),
@@ -216,7 +219,7 @@ export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): 
     t.recipes.map((r) => ({
       from: toolName(t.id),
       to: ensureCooked(r.out).name,
-      inputs: [pickupVertex.get(r.in) ?? rawName(r.in)],
+      inputs: [{ ingredient: pickupVertex.get(r.in) ?? rawName(r.in), slot: 0 }],
       amount: r.amount,
       ...(r.chainTools?.length ? { chainTools: r.chainTools.map(toolName) } : {}),
     })),

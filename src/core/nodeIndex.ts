@@ -13,14 +13,25 @@
 
 import { buildLookup, slotIndex, slotsOf } from "../data/nodeGraphResolve.ts";
 import type { GraphLookup, Slot } from "../data/nodeGraphResolve.ts";
-import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
+import type { NodeGraphMap, ToolVertex } from "../data/nodeGraphTypes.ts";
+
+/** One consumed ingredient and the tool slot point it enters, in dense indices. */
+export interface StepInput {
+  ing: number;
+  /** Index into the tool's slotConfigs. */
+  point: number;
+}
 
 /** One recipe, with the tool's default duration already folded in. */
 export interface ProcessStep {
   /** Dense tool index. */
   tool: number;
-  /** Dense ingredient indices. v1 reads inputs[0]; the list survives for later. */
-  inputs: number[];
+  /**
+   * Every ingredient consumed, with its slot point. A recipe with more than one
+   * runs only when ALL of their points hold an item in the same lane — see
+   * `NodeSimulation.laneReady`.
+   */
+  inputs: StepInput[];
   /** Dense ingredient index produced. */
   out: number;
   amount: number;
@@ -28,6 +39,50 @@ export interface ProcessStep {
   duration: number;
   /** Extra tools visited in order, producing no intermediate item. */
   chainTools: number[];
+}
+
+/**
+ * A tool's slot points flattened into addressable positions.
+ *
+ * The sim keeps ONE flat array of slots per tool — unchanged from when a tool
+ * was just `numSlots` — and this says what each flat index means. Flat order is
+ * point-major: every lane of point 0, then every lane of point 1. A job holds
+ * the same LANE across every point it needs, which is what makes "which cup
+ * pairs with which coffee" a fact rather than a guess.
+ */
+export interface ToolSlotLayout {
+  points: { name: string; lanes: number }[];
+  /** Per flat slot index, which point and lane it is. */
+  flat: { point: number; lane: number }[];
+  /** Widest point — the number of jobs the tool can hold when every point is that wide. */
+  laneCount: number;
+}
+
+/** Flatten a tool's slotConfigs into per-slot addresses. */
+export function toolSlotLayout(tool: ToolVertex): ToolSlotLayout {
+  const points = (tool.slotConfigs ?? []).map((c) => ({
+    name: c.name || "Slot",
+    lanes: Math.max(1, Math.floor(c.slot) || 1),
+  }));
+  // A tool with no configured points still needs one, or nothing could ever
+  // cook there and the failure would show up as a silent stall.
+  if (points.length === 0) points.push({ name: "Slot", lanes: 1 });
+
+  const flat: { point: number; lane: number }[] = [];
+  points.forEach((p, point) => {
+    for (let lane = 0; lane < p.lanes; lane++) flat.push({ point, lane });
+  });
+  return { points, flat, laneCount: Math.max(...points.map((p) => p.lanes)) };
+}
+
+/** The flat slot index for a point/lane pair, or -1 when that lane does not exist. */
+export function flatSlot(layout: ToolSlotLayout, point: number, lane: number): number {
+  return layout.flat.findIndex((s) => s.point === point && s.lane === lane);
+}
+
+/** Which slot point an ingredient enters for a given step; -1 when the step does not take it. */
+export function inputPoint(step: ProcessStep, ing: number): number {
+  return step.inputs.find((i) => i.ing === ing)?.point ?? -1;
 }
 
 /** A resolved choice point of an orderable, in dense indices. */
@@ -63,6 +118,17 @@ export interface GraphIndex {
   producerOf: (ProcessStep | null)[];
   /** The process edge consuming this ingredient; null = nothing takes it further. */
   recipeForInput: (ProcessStep | null)[];
+  /**
+   * Every recipe a tool owns, by dense tool index.
+   *
+   * `recipeForInput` cannot answer "what is this lane making?" on a multi-input
+   * tool: ground coffee is the first input of BOTH the hot and the cool drink,
+   * so it names neither until the cup beside it says which. Resolution is by the
+   * whole set of items present in a lane — see `stepForLane`.
+   */
+  stepsOfTool: ProcessStep[][];
+  /** Slot points per tool, resolved once: `slotConfigs`, flattened into lanes. */
+  toolSlots: ToolSlotLayout[];
   /**
    * Following recipeForInput until the output is servable or nothing consumes
    * it. What a pickup ACTUALLY becomes — the estimator must score against this,
@@ -129,14 +195,22 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
 
   const producerOf: (ProcessStep | null)[] = new Array(n).fill(null);
   const recipeForInput: (ProcessStep | null)[] = new Array(n).fill(null);
+  // Every recipe a tool owns. A multi-input tool needs this to work out WHICH
+  // of its recipes a partly-filled lane is heading for: a coffee machine holds
+  // ground coffee for both the hot and the cool drink, so the coffee alone does
+  // not name the job — the cup or teacup beside it does.
+  const stepsOfTool: ProcessStep[][] = doc.vertices.tool.map(() => []);
 
   for (const edge of doc.edges.process) {
     const tool = toolByName.get(edge.from);
     const out = ingByName.get(edge.to);
     if (tool === undefined || out === undefined) continue; // INV-REF reports it
     const inputs = edge.inputs
-      .map((name) => ingByName.get(name))
-      .filter((i): i is number => i !== undefined);
+      .map((input) => {
+        const ing = ingByName.get(input.ingredient);
+        return ing === undefined ? null : { ing, point: input.slot ?? 0 };
+      })
+      .filter((i): i is StepInput => i !== null);
     const step: ProcessStep = {
       tool,
       inputs,
@@ -149,8 +223,13 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
     };
     // First writer wins; a second producer is an INV-UNIQUE-PRODUCER error.
     if (producerOf[out] === null) producerOf[out] = step;
-    for (const input of inputs) if (recipeForInput[input] === null) recipeForInput[input] = step;
+    for (const input of inputs) {
+      if (recipeForInput[input.ing] === null) recipeForInput[input.ing] = step;
+      stepsOfTool[tool].push(step);
+    }
   }
+  // Deduplicated: a step is pushed once per input above.
+  for (let t = 0; t < stepsOfTool.length; t++) stepsOfTool[t] = [...new Set(stepsOfTool[t])];
 
   // Follow recipeForInput until the output is servable (it lands on the grid)
   // or nothing consumes it. Memoized, with a visiting guard so cyclic data
@@ -271,6 +350,8 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
     dirtyByName,
     producerOf,
     recipeForInput,
+    stepsOfTool,
+    toolSlots: doc.vertices.tool.map(toolSlotLayout),
     terminalOutput,
     terminalYield,
     chainDepth,

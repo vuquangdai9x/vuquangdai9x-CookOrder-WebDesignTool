@@ -11,11 +11,11 @@ const interleaved = (): NodeGraphMap => ({
   edges: {
     ...structuredClone(burger.edges),
     process: [
-      { from: "a", to: "a1", inputs: ["x"], amount: 1 },
-      { from: "b", to: "b1", inputs: ["y"], amount: 1 },
-      { from: "a", to: "a2", inputs: ["x"], amount: 1 },
-      { from: "b", to: "b2", inputs: ["y"], amount: 1 },
-      { from: "a", to: "a3", inputs: ["x"], amount: 1 },
+      { from: "a", to: "a1", inputs: [{ ingredient: "x", slot: 0 }], amount: 1 },
+      { from: "b", to: "b1", inputs: [{ ingredient: "y", slot: 0 }], amount: 1 },
+      { from: "a", to: "a2", inputs: [{ ingredient: "x", slot: 0 }], amount: 1 },
+      { from: "b", to: "b2", inputs: [{ ingredient: "y", slot: 0 }], amount: 1 },
+      { from: "a", to: "a3", inputs: [{ ingredient: "x", slot: 0 }], amount: 1 },
     ],
   },
 });

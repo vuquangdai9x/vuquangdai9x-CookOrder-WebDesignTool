@@ -148,7 +148,7 @@ describe("nesting is not the hazard", () => {
         { name: "mid", displayName: "Mid", servable: true },
         { name: "top", displayName: "Top", pickupable: true, servable: true },
       ],
-      tool: [{ name: "t1", displayName: "T1", numSlots: 1, cookingTime: 1 }],
+      tool: [{ name: "t1", displayName: "T1", slotConfigs: [{ name: "Slot", slot: 1 }], cookingTime: 1 }],
       group: [],
       composite: [
         { name: "outer", displayName: "Outer", orderable: true },
@@ -158,7 +158,7 @@ describe("nesting is not the hazard", () => {
       dirty: [],
     },
     edges: {
-      process: [{ from: "t1", to: "mid", inputs: ["leaf"], amount: 1 }],
+      process: [{ from: "t1", to: "mid", inputs: [{ ingredient: "leaf", slot: 0 }], amount: 1 }],
       base: [
         { from: "outer", to: "middle" },
         { from: "middle", to: "inner" },

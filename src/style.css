@@ -3815,3 +3815,62 @@ td input {
 }
 
 .nodegraph-idgrip:active { cursor: grabbing; }
+
+/* ---------- Slot points (Map Process inspector + node Play) ---------- */
+
+/* One row per slot point: index, name, lane count, remove. */
+.nodegraph-field.slots {
+  flex-direction: column;
+  align-items: stretch;
+}
+.slot-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.slot-row {
+  display: grid;
+  /* The name takes the slack; index, lanes and the X stay at their natural size. */
+  grid-template-columns: auto 1fr 4.5rem auto;
+  gap: 6px;
+  align-items: center;
+}
+.slot-row .slot-index {
+  font: 600 0.75rem/1 ui-monospace, monospace;
+  opacity: 0.6;
+  min-width: 1.2em;
+  text-align: right;
+}
+.slot-add {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+.slot-picker {
+  max-width: 12rem;
+}
+
+/* A multi-point tool groups its lanes under each point's name, so a machine
+   waiting on its second input reads as waiting rather than broken. */
+.tool-slots.multi-point {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.tool-slots.multi-point .slot-point {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.tool-slots.multi-point .slot-point-name {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+  text-align: center;
+  /* Never let a long point name widen the tool past its share of the row. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

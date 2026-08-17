@@ -25,7 +25,11 @@ export type FieldType =
   | "ref"
   | "ref[]"
   | "int[]"
-  | "string[]";
+  | "string[]"
+  // Lists of records, each with its own bespoke inspector widget: a tool's slot
+  // points, and a recipe's inputs with the point each enters.
+  | "slotConfig[]"
+  | "processInput[]";
 
 export interface FieldDef {
   name: string;
@@ -126,11 +130,31 @@ export interface IngredientVertex {
   fileId?: string;
 }
 
+/**
+ * One slot POINT of a tool: a named place an ingredient goes, with `slot`
+ * parallel positions.
+ *
+ * This is what replaced a flat `numSlots`. A single-input tool has one point
+ * whose `slot` is the old count. A multi-input tool has one point per
+ * ingredient — a coffee machine holds ground coffee in one point and a cup in
+ * another — and the recipe only runs once every point it names is filled.
+ *
+ * The parallel positions are called LANES throughout the sim. A job occupies
+ * the same lane across every point it needs, which is what makes "which cup
+ * goes with which coffee" answerable rather than arbitrary.
+ */
+export interface ToolSlotConfig {
+  /** Shown in the inspector's slot dropdowns. */
+  name: string;
+  /** Parallel positions at this point. Two lanes means two jobs at once. */
+  slot: number;
+}
+
 export interface ToolVertex {
   name: string;
   displayName: string;
-  /** Items cooking here simultaneously. */
-  numSlots: number;
+  /** The tool's slot points, in the order the inspector lists them. */
+  slotConfigs: ToolSlotConfig[];
   /** Default seconds per item; a process edge may override it. */
   cookingTime: number;
   upgradeCosts?: number[];
@@ -186,12 +210,23 @@ export interface VertexSets {
 
 // ---------- edges ----------
 
+/** One ingredient a recipe consumes, and which of the tool's slot points it goes into. */
+export interface ProcessInput {
+  ingredient: string;
+  /** Index into the source tool's `slotConfigs`. */
+  slot: number;
+}
+
 /** One recipe row. At most one may target any ingredient — that cap is what makes a backward trace deterministic. */
 export interface ProcessEdge {
   from: string; // tool
   to: string; // ingredient produced
-  /** A list so multi-input recipes stay expressible; every current recipe uses exactly one. */
-  inputs: string[];
+  /**
+   * Ingredients consumed, each with the tool slot POINT it enters. `slot`
+   * indexes the source tool's `slotConfigs`; every point named here must be
+   * filled before the recipe runs.
+   */
+  inputs: ProcessInput[];
   /** Pieces produced per pickup. */
   amount: number;
   /** Overrides the tool's cookingTime for this recipe only. */

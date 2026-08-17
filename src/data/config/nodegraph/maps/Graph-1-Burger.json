@@ -396,7 +396,12 @@
       {
         "name": "griddle",
         "displayName": "Griddle",
-        "numSlots": 2,
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 2
+          }
+        ],
         "cookingTime": 3,
         "upgradeCosts": [
           0,
@@ -410,7 +415,12 @@
       {
         "name": "coca-machine",
         "displayName": "Coca Machine",
-        "numSlots": 1,
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
         "cookingTime": 2,
         "upgradeCosts": [
           0,
@@ -424,7 +434,12 @@
       {
         "name": "cutting-board",
         "displayName": "Cutting Board",
-        "numSlots": 1,
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
         "cookingTime": 1,
         "upgradeCosts": [
           0,
@@ -438,7 +453,12 @@
       {
         "name": "fryer",
         "displayName": "Fryer",
-        "numSlots": 1,
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
         "cookingTime": 1,
         "upgradeCosts": [
           0,
@@ -451,7 +471,12 @@
       {
         "name": "flour",
         "displayName": "Flour",
-        "numSlots": 1,
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
         "cookingTime": 1,
         "upgradeCosts": [
           0,
@@ -526,7 +551,10 @@
         "from": "griddle",
         "to": "patty-cooked",
         "inputs": [
-          "patty"
+          {
+            "ingredient": "patty",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -534,7 +562,10 @@
         "from": "griddle",
         "to": "egg-cooked",
         "inputs": [
-          "egg"
+          {
+            "ingredient": "egg",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -542,7 +573,10 @@
         "from": "coca-machine",
         "to": "soda-cup",
         "inputs": [
-          "cup"
+          {
+            "ingredient": "cup",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -550,7 +584,10 @@
         "from": "cutting-board",
         "to": "bun-sliced",
         "inputs": [
-          "bun"
+          {
+            "ingredient": "bun",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -558,7 +595,10 @@
         "from": "cutting-board",
         "to": "tomato-sliced",
         "inputs": [
-          "tomato"
+          {
+            "ingredient": "tomato",
+            "slot": 0
+          }
         ],
         "amount": 2
       },
@@ -566,7 +606,10 @@
         "from": "cutting-board",
         "to": "lettuce-sliced",
         "inputs": [
-          "lettuce"
+          {
+            "ingredient": "lettuce",
+            "slot": 0
+          }
         ],
         "amount": 2
       },
@@ -574,7 +617,10 @@
         "from": "cutting-board",
         "to": "onion-sliced",
         "inputs": [
-          "onion"
+          {
+            "ingredient": "onion",
+            "slot": 0
+          }
         ],
         "amount": 2
       },
@@ -582,7 +628,10 @@
         "from": "cutting-board",
         "to": "cheese-sliced",
         "inputs": [
-          "cheese"
+          {
+            "ingredient": "cheese",
+            "slot": 0
+          }
         ],
         "amount": 3
       },
@@ -590,7 +639,10 @@
         "from": "cutting-board",
         "to": "chive-sliced",
         "inputs": [
-          "chive"
+          {
+            "ingredient": "chive",
+            "slot": 0
+          }
         ],
         "amount": 2
       },
@@ -598,7 +650,10 @@
         "from": "flour",
         "to": "chicken-breast-flour-coated",
         "inputs": [
-          "chicken-breast"
+          {
+            "ingredient": "chicken-breast",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -606,7 +661,10 @@
         "from": "flour",
         "to": "chicken-wing-flour-coated",
         "inputs": [
-          "chicken-wing"
+          {
+            "ingredient": "chicken-wing",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -614,7 +672,10 @@
         "from": "flour",
         "to": "chicken-thigh-flour-coated",
         "inputs": [
-          "chicken-thigh"
+          {
+            "ingredient": "chicken-thigh",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -622,7 +683,10 @@
         "from": "flour",
         "to": "chicken-nugget-flour-coated",
         "inputs": [
-          "chicken-nugget"
+          {
+            "ingredient": "chicken-nugget",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -630,7 +694,10 @@
         "from": "fryer",
         "to": "chicken-breast-fried",
         "inputs": [
-          "chicken-breast-flour-coated"
+          {
+            "ingredient": "chicken-breast-flour-coated",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -638,7 +705,10 @@
         "from": "fryer",
         "to": "chicken-wing-fried",
         "inputs": [
-          "chicken-wing-flour-coated"
+          {
+            "ingredient": "chicken-wing-flour-coated",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -646,7 +716,10 @@
         "from": "fryer",
         "to": "chicken-thigh-fried",
         "inputs": [
-          "chicken-thigh-flour-coated"
+          {
+            "ingredient": "chicken-thigh-flour-coated",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -654,7 +727,10 @@
         "from": "fryer",
         "to": "chicken-nugget-fried",
         "inputs": [
-          "chicken-nugget-flour-coated"
+          {
+            "ingredient": "chicken-nugget-flour-coated",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -662,7 +738,10 @@
         "from": "cutting-board",
         "to": "potato_sliced",
         "inputs": [
-          "potato"
+          {
+            "ingredient": "potato",
+            "slot": 0
+          }
         ],
         "amount": 1
       },
@@ -670,7 +749,10 @@
         "from": "fryer",
         "to": "potato-fried",
         "inputs": [
-          "potato_sliced"
+          {
+            "ingredient": "potato_sliced",
+            "slot": 0
+          }
         ],
         "amount": 1
       }

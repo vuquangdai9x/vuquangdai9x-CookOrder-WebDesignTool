@@ -45,7 +45,7 @@ describe("computeDepths", () => {
   it("returns rather than recursing forever on a cycle", () => {
     const cyclic = structuredClone(burger);
     cyclic.edges.process = cyclic.edges.process.map((e) =>
-      e.to === "bun-sliced" ? { ...e, inputs: ["bun-sliced"] } : e,
+      e.to === "bun-sliced" ? { ...e, inputs: [{ ingredient: "bun-sliced", slot: 0 }] } : e,
     );
     expect(() => computeDepths(cyclic)).not.toThrow();
   });

@@ -76,6 +76,7 @@ export function validateNodeGraph(doc: NodeGraphMap): GraphValidation {
   checkComposites(doc, lk, add);
   checkGroups(doc, add);
   checkIntermediates(doc, lk, add);
+  checkSlotPoints(doc, add);
   checkTraceable(doc, lk, add);
   checkRebuildable(lk, add);
   checkIdTable(doc, lk, add);
@@ -123,7 +124,9 @@ function checkRefs(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
     const edge = { kind: "process", from: e.from, to: e.to };
     check(e.from, ["tool"], "A process edge's source", edge);
     check(e.to, ["ingredient"], "A process edge's output", edge);
-    for (const input of e.inputs) check(input, ["ingredient"], `Process ${e.from}->${e.to} input`, edge);
+    for (const input of e.inputs) {
+      check(input.ingredient, ["ingredient"], `Process ${e.from}->${e.to} input`, edge);
+    }
     for (const tool of e.chainTools ?? []) check(tool, ["tool"], `Process ${e.from}->${e.to} chainTool`, edge);
   }
   for (const kind of ["base", "topping"] as const) {
@@ -180,7 +183,7 @@ function checkAcyclic(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
     next.set(from, list);
   };
   // Production flows output -> input (backward walk direction).
-  for (const e of doc.edges.process) for (const input of e.inputs) push(e.to, input);
+  for (const e of doc.edges.process) for (const input of e.inputs) push(e.to, input.ingredient);
   for (const e of doc.edges.base) push(e.from, e.to);
   for (const e of doc.edges.topping) push(e.from, e.to);
   for (const e of doc.edges.option) push(e.from, e.to);
@@ -301,6 +304,64 @@ function checkIntermediates(doc: NodeGraphMap, lk: GraphLookup, add: Add): void 
   void lk;
 }
 
+/**
+ * The three slot-point rules. All of them fail SILENTLY at runtime if unchecked
+ * — a recipe that simply never runs, or a pickup routed to the wrong place —
+ * which is exactly the class of bug that is expensive to find by playing.
+ */
+function checkSlotPoints(doc: NodeGraphMap, add: Add): void {
+  const toolOf = new Map(doc.vertices.tool.map((t) => [t.name, t]));
+
+  // INV-INPUT-SLOT-STABLE is per (tool, ingredient): dispatch routes an
+  // incoming pickup by ingredient alone, so the point must not depend on which
+  // recipe of that tool happens to be consulted.
+  const pointOf = new Map<string, { point: number; via: string }>();
+
+  for (const edge of doc.edges.process) {
+    const tool = toolOf.get(edge.from);
+    if (!tool) continue; // INV-REF reports the missing tool
+    const points = tool.slotConfigs ?? [];
+    const where = { kind: "process" as const, from: edge.from, to: edge.to };
+
+    for (const input of edge.inputs) {
+      if (input.slot < 0 || input.slot >= points.length) {
+        add(
+          "INV-INPUT-SLOT-RANGE",
+          `Recipe ${edge.from} → ${edge.to}: "${input.ingredient}" is assigned to slot ${input.slot}, but ${edge.from} has ${points.length} slot point(s). It can never be filled, so this recipe would never run.`,
+          { edge: where },
+        );
+        continue;
+      }
+      const key = `${edge.from} ${input.ingredient}`;
+      const seen = pointOf.get(key);
+      if (seen && seen.point !== input.slot) {
+        add(
+          "INV-INPUT-SLOT-STABLE",
+          `"${input.ingredient}" enters ${edge.from} at slot ${seen.point} in the ${seen.via} recipe but slot ${input.slot} in the ${edge.to} recipe. A pickup is routed by ingredient, so its destination must not depend on which recipe is consulted.`,
+          { edge: where },
+        );
+      } else if (!seen) {
+        pointOf.set(key, { point: input.slot, via: edge.to });
+      }
+    }
+
+    // WARN-UNEVEN-LANES: a job holds the same lane across every point it needs,
+    // so a point wider than its partners has lanes that can be filled and never
+    // paired — the machine looks busy while nothing completes.
+    const used = [...new Set(edge.inputs.map((i) => i.slot))].filter((p) => points[p]);
+    if (used.length > 1) {
+      const lanes = used.map((p) => Math.max(1, points[p].slot));
+      if (Math.min(...lanes) !== Math.max(...lanes)) {
+        add(
+          "WARN-UNEVEN-LANES",
+          `Recipe ${edge.from} → ${edge.to} spans slot points with different lane counts (${used.map((p) => `${points[p].name}=${points[p].slot}`).join(", ")}). Only ${Math.min(...lanes)} job(s) can ever pair up; the extra lanes fill but never complete.`,
+          { edge: where },
+        );
+      }
+    }
+  }
+}
+
 function checkTraceable(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
   for (const orderable of lk.orderables) {
     const trace = traceOrderable(lk, orderable);
@@ -416,7 +477,7 @@ function checkWarnings(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
       if (edge) {
         reached.add(edge.from);
         for (const tool of edge.chainTools ?? []) reached.add(tool);
-        edge.inputs.forEach(walk);
+        edge.inputs.forEach((i) => walk(i.ingredient));
       }
       return;
     }
