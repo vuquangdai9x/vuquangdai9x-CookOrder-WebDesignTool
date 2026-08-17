@@ -45,7 +45,6 @@ export type OrderIssue =
   | { kind: "unknown-composite"; id: number }
   | { kind: "unknown-group"; id: number }
   | { kind: "unknown-ingredient"; id: number }
-  | { kind: "retired-id"; space: "ingredient" | "composite" | "group"; id: number; was: string }
   /** INV-DISH-SINGLE-ORDERABLE: a member that belongs to a different composite. */
   | { kind: "foreign-member"; ingredient: string; belongsTo: string; foundIn: string }
   /** A member placed in a group that is not part of this composite. */
@@ -69,12 +68,7 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
 
   const compositeName = ids.byId.composite.get(dish.root.id);
   if (compositeName === undefined) {
-    const was = ids.retired.composite.get(dish.root.id);
-    issues.push(
-      was !== undefined
-        ? { kind: "retired-id", space: "composite", id: dish.root.id, was }
-        : { kind: "unknown-composite", id: dish.root.id },
-    );
+    issues.push({ kind: "unknown-composite", id: dish.root.id });
     return { order: { orderable: -1, slots: [], dirty: -1 }, issues };
   }
   const orderable = ix.compositeByName.get(compositeName) ?? -1;
@@ -103,14 +97,10 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
       // are present here too.)
       const groupName = node.kind === "group" ? ids.byId.group.get(node.id) : ids.byId.composite.get(node.id);
       if (groupName === undefined) {
-        const was =
-          node.kind === "group" ? ids.retired.group.get(node.id) : ids.retired.composite.get(node.id);
         issues.push(
-          was !== undefined
-            ? { kind: "retired-id", space: node.kind === "group" ? "group" : "composite", id: node.id, was }
-            : node.kind === "group"
-              ? { kind: "unknown-group", id: node.id }
-              : { kind: "unknown-composite", id: node.id },
+          node.kind === "group"
+            ? { kind: "unknown-group", id: node.id }
+            : { kind: "unknown-composite", id: node.id },
         );
       } else if (node.kind === "group") {
         const groupIndex = ix.groupByName.get(groupName);
@@ -127,12 +117,7 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
       }
       const name = ids.byId.ingredient.get(member.id);
       if (name === undefined) {
-        const was = ids.retired.ingredient.get(member.id);
-        issues.push(
-          was !== undefined
-            ? { kind: "retired-id", space: "ingredient", id: member.id, was }
-            : { kind: "unknown-ingredient", id: member.id },
-        );
+        issues.push({ kind: "unknown-ingredient", id: member.id });
         continue;
       }
       const ing = ix.ingByName.get(name);
@@ -146,11 +131,14 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
         // INV-DISH-SINGLE-ORDERABLE: this ingredient belongs to some other
         // composite (or none). Record it and keep going — the order still
         // resolves, minus this member.
-        const home = ix.slotOf[ing];
+        // An ingredient may legitimately belong to SEVERAL composites (a
+        // shared sauce); name them all, or the message points at one arbitrary
+        // home and reads as though the others do not exist.
+        const homes = [...new Set((ix.placesOf[ing] ?? []).map((p) => ix.compositeName[p.orderable]))];
         issues.push({
           kind: "foreign-member",
           ingredient: name,
-          belongsTo: home ? ix.compositeName[home.orderable] : "(no orderable)",
+          belongsTo: homes.length > 0 ? homes.join(" / ") : "(no orderable)",
           foundIn: compositeName,
         });
         continue;
@@ -211,8 +199,6 @@ export function describeIssue(issue: OrderIssue): string {
       return `No group has id ${issue.id}.`;
     case "unknown-ingredient":
       return `No ingredient has id ${issue.id}.`;
-    case "retired-id":
-      return `${issue.space} id ${issue.id} was retired (it used to be "${issue.was}").`;
     case "foreign-member":
       return `"${issue.ingredient}" belongs to ${issue.belongsTo}, but appears inside ${issue.foundIn}.`;
     case "wrong-group":

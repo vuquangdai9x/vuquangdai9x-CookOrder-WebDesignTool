@@ -472,7 +472,7 @@
     {
       "id": "INV-ORDER-REBUILDABLE",
       "severity": "error",
-      "description": "Each servable ingredient maps to exactly one slot across the flattened slot tree: it appears in no more than one slot of a composite (C1) and is hosted by no more than one orderable (C2). This is what lets a legacy flat dish be re-bracketed losslessly during migration. Nesting depth is NOT a violation — nested composites flatten cleanly; slot ambiguity is the hazard."
+      "description": "One ingredient must not be offered by two slots of the SAME composite: resolveOrder maps ingredient to slot per composite with the last write winning, so a dish authored into one slot silently resolves into the other, carrying a gate that can never open. Sharing an ingredient across two DIFFERENT orderables is allowed — a bracket dish names its composite, so lookup is scoped to it. That case was once an error (\"C2\") only because the retired legacy flat-list recogniser could not tell the composites apart."
     },
     {
       "id": "INV-DISH-SINGLE-ORDERABLE",

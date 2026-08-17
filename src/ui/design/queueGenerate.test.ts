@@ -27,6 +27,57 @@ function customer(dishCookedIds: number[][]): CustomerConfig {
   };
 }
 
+/**
+ * A map whose cooked ids carry usageNum, so one landed piece serves several
+ * dish slots — cheese sauce (3) and chili bowl (2) in the real burger map.
+ */
+const multiUseMap = {
+  ...testMap,
+  cookedIngredients: testMap.cookedIngredients.map((c) =>
+    c.id === 2 ? { ...c, usageNum: 3 } : c.id === 0 ? { ...c, usageNum: 2 } : c,
+  ),
+};
+
+describe("usageNum — one pickup can cover several dish slots", () => {
+  /**
+   * The bug this pins: the generator counted a multi-use item once per SLOT,
+   * so a level asking for three servings of a usageNum-3 sauce queued three
+   * pickups and two of them were never consumed.
+   */
+  it("queues ONE pickup for three slots of a usageNum-3 ingredient", () => {
+    const customers = [customer([[2, 2, 2]])];
+    expect(trueOrderRawSequence(customers, multiUseMap.tools, multiUseMap.cookedIngredients)).toEqual([2]);
+  });
+
+  it("queues a second pickup only once the first is spent", () => {
+    const customers = [customer([[2, 2, 2, 2]])]; // 4 slots, usageNum 3
+    expect(trueOrderRawSequence(customers, multiUseMap.tools, multiUseMap.cookedIngredients)).toEqual([2, 2]);
+  });
+
+  it("multiplies with the tool yield: pieces x uses per pickup", () => {
+    // cooked 0 comes from a 1:1 recipe and has usageNum 2, so one pickup of
+    // raw 0 covers two slots.
+    const customers = [customer([[0, 0]])];
+    expect(trueOrderRawSequence(customers, multiUseMap.tools, multiUseMap.cookedIngredients)).toEqual([0]);
+  });
+
+  it("leaves a usageNum-1 ingredient exactly as before", () => {
+    const customers = [customer([[1], [1]])];
+    expect(trueOrderRawSequence(customers, multiUseMap.tools, multiUseMap.cookedIngredients)).toEqual([1, 1]);
+  });
+
+  it("draws down uses per COOKED id, not per raw — two outputs sharing a raw stay separate", () => {
+    // A pickup banked for cooked 2 must not satisfy a slot wanting cooked 1.
+    const customers = [customer([[2, 1, 2]])];
+    expect(trueOrderRawSequence(customers, multiUseMap.tools, multiUseMap.cookedIngredients)).toEqual([2, 1]);
+  });
+
+  it("over-queues when the cooked defs are withheld — the old behaviour, as a contrast", () => {
+    const customers = [customer([[2, 2, 2]])];
+    expect(trueOrderRawSequence(customers, multiUseMap.tools)).toEqual([2, 2, 2]);
+  });
+});
+
 describe("trueOrderRawSequence", () => {
   it("emits one raw pickup per cooked-id occurrence for a 1:1 recipe", () => {
     const customers = [customer([[0]]), customer([[0], [1]])];

@@ -12,7 +12,7 @@ const resolve = (s: string) => resolveOrder(ix, parseDish(s), ids);
 const named = (r: ReturnType<typeof resolve>) =>
   r.order.slots.map((s) => `${ix.ingName[s.ing]}@${s.slot}/gate${s.gate}`);
 
-// Ids from burger.json's table: composites c0-c2 (c3 is a tombstone),
+// Ids from burger.json's table: composites c0-c2,
 // groups g0-g2, raws 0-16, processed 100+.
 const BURGER = "{c0:17.{g0:18.18.19}}"; // bun + 2 patty + 1 tomato
 const SODA = "{c1:24.8}"; // soda cup + ice
@@ -102,16 +102,13 @@ describe("total on bad ids", () => {
     expect(named(r)).toEqual(["bun-sliced@0/gate-1"]);
   });
 
-  it("distinguishes a RETIRED id from one that never existed", () => {
-    const withTombstone = structuredClone(doc);
-    // The id is the row's POSITION, so a pushed tombstone takes the next index.
-    const retiredId = withTombstone.idTable.ingredient.length;
-    withTombstone.idTable.ingredient.push({ node: null, retired: "old-sauce" });
-    const ix2 = buildIndex(withTombstone);
-    const r = resolveOrder(ix2, parseDish(`{c0:17.{g0:${retiredId}}}`), orderIdIndex(ix2));
-    expect(describeIssue(r.issues[0])).toBe(
-      `ingredient id ${retiredId} was retired (it used to be "old-sauce").`,
-    );
+  it("reports an id past the end of the table as simply unknown", () => {
+    // There are no tombstones: a deleted node's row is removed outright, so a
+    // level string still carrying its id now names whatever slid into that
+    // slot — or, past the end, nothing at all. "Unknown" is the whole story.
+    const beyond = doc.idTable.ingredient.length;
+    const r = resolve(`{c0:17.{g0:${beyond}}}`);
+    expect(describeIssue(r.issues[0])).toBe(`No ingredient has id ${beyond}.`);
   });
 
   it("never throws on a structurally valid but semantically wrong dish", () => {

@@ -45,7 +45,7 @@ import {
 } from "../../data/nodeGraphSchema.ts";
 import { buildLookup, traceAll } from "../../data/nodeGraphResolve.ts";
 import { validateNodeGraph } from "../../data/nodeGraphValidate.ts";
-import { ID_SPACES, buildIdIndex, mintId, nextId, renameNode, retireId, reorderIdEntry } from "../../data/nodeIdTable.ts";
+import { ID_SPACES, buildIdIndex, mintId, nextId, removeId, renameNode, reorderIdEntry } from "../../data/nodeIdTable.ts";
 import { createNodeMap, listNodeMaps, loadNodeProject } from "../../data/nodeProject.ts";
 import type { NodeProjectState } from "../../data/nodeProject.ts";
 import type {
@@ -441,7 +441,13 @@ export class MapProcessView {
       window.removeEventListener("pointerup", up);
       this.canvas.classList.remove("panning");
       if (panned) return;
-      const node = (down.target as HTMLElement).closest?.(".nodegraph-node") as HTMLElement | null;
+      const target = down.target as HTMLElement;
+      const note = target.closest?.(".nodegraph-note") as HTMLElement | null;
+      if (note?.dataset.note) {
+        this.noteMenu(note.dataset.note, e);
+        return;
+      }
+      const node = target.closest?.(".nodegraph-node") as HTMLElement | null;
       const kind = node?.dataset.kind as VertexKindName | undefined;
       if (node && kind) this.nodeMenu({ kind, name: node.dataset.name ?? "" }, e);
       else this.canvasMenu(e);
@@ -532,7 +538,14 @@ export class MapProcessView {
       e,
       [
         { label: "📝 Add note here", onSelect: () => this.addNote(at) },
-        { label: "＋ Add node", separator: true, onSelect: () => this.addNodeMenu(e) },
+        {
+          label: "＋ Add node…",
+          separator: true,
+          // Deferred a frame: showContextMenu tears the current menu down on
+          // select, and that teardown would immediately close a replacement
+          // opened synchronously inside the same click.
+          onSelect: () => setTimeout(() => this.addNodeMenu(e, at), 0),
+        },
         { label: "▣ Select all", onSelect: () => this.selectAll() },
         { label: "▢ Deselect all", onSelect: () => this.clearSelection() },
       ],
@@ -1241,7 +1254,7 @@ export class MapProcessView {
     // Icons resolve through the shell's ambient node icon source, which is
     // keyed by DATA ID — so a vertex with no id table entry yet simply falls
     // back to its emoji, which is the honest thing to show.
-    const id = this.doc.idTable[SPACE_OF[kind]]?.findIndex((e) => e?.node === name) ?? -1;
+    const id = this.doc.idTable[SPACE_OF[kind]]?.indexOf(name) ?? -1;
     if (kind === "tool") {
       const vertex = this.doc.vertices.tool.find((v) => v.name === name);
       return toolIconEl(
@@ -1543,18 +1556,37 @@ export class MapProcessView {
 
   // ---------- create / delete ----------
 
-  private addNodeMenu(e: MouseEvent): void {
+  /** `at` places the new node where the gesture happened; omitted, it lands near the view's origin. */
+  private addNodeMenu(e: MouseEvent, at?: { x: number; y: number }): void {
     showContextMenu(
       e,
       NODE_GRAPH_SCHEMA.vertexKinds.map((k) => ({
         label: `＋ ${k.label}`,
-        onSelect: () => this.addVertex(k.kind),
+        onSelect: () => this.addVertex(k.kind, at),
       })),
       { title: "Add node" },
     );
   }
 
-  private addVertex(kind: VertexKindName): void {
+  private noteMenu(id: string, e: MouseEvent): void {
+    showContextMenu(
+      e,
+      [
+        { label: "✎ Edit note", onSelect: () => this.editNote(id) },
+        { label: "✕ Delete note", danger: true, separator: true, onSelect: () => this.deleteNote(id) },
+      ],
+      { title: "Note" },
+    );
+  }
+
+  private deleteNote(id: string): void {
+    if (!(this.doc.notes ?? []).some((n) => n.id === id)) return;
+    this.doc = structuredClone(this.doc);
+    this.doc.notes = (this.doc.notes ?? []).filter((n) => n.id !== id);
+    this.commit("delete note", 0, 1);
+  }
+
+  private addVertex(kind: VertexKindName, at?: { x: number; y: number }): void {
     const base = `new-${kind}`;
     let name = base;
     let n = 1;
@@ -1577,7 +1609,7 @@ export class MapProcessView {
     // the id table and the graph disagreeing.
     if (this.needsId(kind, fresh)) mintId(this.doc.idTable, SPACE_OF[kind], name);
 
-    this.layout()[layoutKey(kind, name)] = {
+    this.layout()[layoutKey(kind, name)] = at ?? {
       x: 40 - this.pan.x / this.scale + 40,
       y: 40 - this.pan.y / this.scale + 40,
     };
@@ -1601,13 +1633,51 @@ export class MapProcessView {
     return true;
   }
 
+  /**
+   * The one confirmation both delete paths share.
+   *
+   * Deleting a node REMOVES its id-table row, and because the id is the row's
+   * position that shifts every later id down — so the damage is not just "the
+   * levels that named this node", it is every level indexing at or past the
+   * lowest row being removed. Reporting only the direct references would badly
+   * understate it.
+   */
+  private confirmDelete(targets: Selection[]): boolean {
+    const affected = new Set<string>();
+    let lowest = Infinity;
+    for (const target of targets) {
+      const space = SPACE_OF[target.kind];
+      const id = this.doc.idTable[space]?.indexOf(target.name) ?? -1;
+      if (id === -1) continue;
+      lowest = Math.min(lowest, id);
+      for (const name of this.levelsUsingId(space, id)) affected.add(name);
+    }
+    if (lowest !== Infinity) {
+      // Everything after the lowest removed row renumbers too.
+      for (const target of targets) {
+        const space = SPACE_OF[target.kind];
+        const rows = this.doc.idTable[space] ?? [];
+        for (let id = lowest; id < rows.length; id++) {
+          for (const name of this.levelsUsingId(space, id)) affected.add(name);
+        }
+        break;
+      }
+    }
+
+    const what = targets.length === 1 ? `"${targets[0].name}"` : `${targets.length} nodes`;
+    if (affected.size === 0) return confirm(`Delete ${what} and every edge touching it?`);
+    const names = [...affected];
+    return confirm(
+      `Delete ${what} and every edge touching it?
+
+` +
+        `Removing an id row renumbers every id after it, so ${affected.size} committed level(s) ` +
+        `will start meaning something different: ${names.slice(0, 5).join(", ")}${names.length > 5 ? "…" : ""}.`,
+    );
+  }
+
   private deleteVertex(target: Selection): void {
-    const usedBy = this.levelsReferencing(target);
-    const warning =
-      usedBy.length > 0
-        ? `"${target.name}" is still referenced by ${usedBy.length} level(s): ${usedBy.slice(0, 5).join(", ")}${usedBy.length > 5 ? "…" : ""}.\n\nDeleting it tombstones its id, so those levels will fail validation until you fix them.\n\nDelete anyway?`
-        : `Delete "${target.name}" and every edge touching it?`;
-    if (!confirm(warning)) return;
+    if (!this.confirmDelete([target])) return;
 
     this.doc = structuredClone(this.doc);
     const list = this.doc.vertices[target.kind] as { name: string }[];
@@ -1631,18 +1701,11 @@ export class MapProcessView {
       edge.inputs = edge.inputs.filter((input) => input !== target.name);
     }
 
-    retireId(this.doc.idTable, SPACE_OF[target.kind], target.name);
+    removeId(this.doc.idTable, SPACE_OF[target.kind], target.name);
     delete this.layout()[layoutKey(target.kind, target.name)];
     this.selection = null;
     this.selected.delete(selKey(target));
     this.commit(`delete ${target.kind} ${target.name}`, 0, removed);
-  }
-
-  /** Level names whose strings still resolve through this vertex's id. */
-  private levelsReferencing(target: Selection): string[] {
-    const id = this.doc.idTable[SPACE_OF[target.kind]]?.findIndex((e) => e?.node === target.name) ?? -1;
-    if (id === -1) return [];
-    return this.levelsUsingId(SPACE_OF[target.kind], id);
   }
 
   /**
@@ -1701,13 +1764,7 @@ export class MapProcessView {
    */
   private deleteSelection(): void {
     const targets = [...this.selected].map((key) => this.parseSelKey(key));
-    const used = targets.flatMap((t) => this.levelsReferencing(t));
-    const unique = [...new Set(used)];
-    const warning =
-      unique.length > 0
-        ? `${targets.length} node(s) are still referenced by ${unique.length} level(s): ${unique.slice(0, 5).join(", ")}${unique.length > 5 ? "…" : ""}.\n\nDeleting tombstones their ids, so those levels will fail validation until you fix them.\n\nDelete anyway?`
-        : `Delete ${targets.length} nodes and every edge touching them?`;
-    if (!confirm(warning)) return;
+    if (!this.confirmDelete(targets)) return;
 
     this.doc = structuredClone(this.doc);
     const names = new Set(targets.map((t) => t.name));
@@ -1719,7 +1776,7 @@ export class MapProcessView {
       if (at === -1) continue;
       list.splice(at, 1);
       removed++;
-      retireId(this.doc.idTable, SPACE_OF[target.kind], target.name);
+      removeId(this.doc.idTable, SPACE_OF[target.kind], target.name);
       delete this.layout()[layoutKey(target.kind, target.name)];
     }
 
@@ -2152,12 +2209,12 @@ export class MapProcessView {
           this.reorderIdRow(space, e.oldIndex, e.newIndex);
         },
       });
-      entries.forEach((entry, id) => {
+      entries.forEach((node, id) => {
         list.append(
-          el("div", { class: `nodegraph-idrow${entry?.node ? "" : " retired"}` }, [
+          el("div", { class: "nodegraph-idrow" }, [
             el("span", { class: "nodegraph-idgrip", title: "Drag to reorder — this renumbers" }, ["⠿"]),
             el("code", {}, [String(id)]),
-            el("span", {}, [entry?.node ?? `${entry?.retired ?? "?"} (retired)`]),
+            el("span", {}, [node]),
           ]),
         );
       });
@@ -2226,7 +2283,7 @@ Continue?`,
     for (const kind of VERTEX_KIND_NAMES) {
       for (const vertex of this.doc.vertices[kind] as unknown as Record<string, unknown>[]) {
         if (!this.needsId(kind, vertex)) continue;
-        const has = this.doc.idTable[SPACE_OF[kind]]?.some((e) => e?.node === vertex.name);
+        const has = this.doc.idTable[SPACE_OF[kind]]?.includes(String(vertex.name));
         if (!has) out.push({ kind, name: String(vertex.name) });
       }
     }

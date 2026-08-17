@@ -6,15 +6,13 @@ import {
   createIdTable,
   ID_SPACES,
   idOf,
-  isRetired,
   mintId,
   nextId,
   nodeOf,
   normalizeIdTable,
+  removeId,
   renameNode,
   reorderIdEntry,
-  retireId,
-  retiredName,
   validateIdTable,
 } from "./nodeIdTable.ts";
 
@@ -24,10 +22,9 @@ describe("id table — round trip", () => {
   it("resolves every burger.json entry in both directions, by POSITION", () => {
     const ix = buildIdIndex(burger.idTable);
     for (const space of ID_SPACES) {
-      burger.idTable[space].forEach((entry, id) => {
-        if (entry.node === null) return;
-        expect(nodeOf(ix, space, id)).toBe(entry.node);
-        expect(idOf(ix, space, entry.node)).toBe(id);
+      burger.idTable[space].forEach((node, id) => {
+        expect(nodeOf(ix, space, id)).toBe(node);
+        expect(idOf(ix, space, node)).toBe(id);
       });
     }
   });
@@ -69,7 +66,7 @@ describe("id table — round trip", () => {
 
 describe("id table — the rules that keep committed levels safe", () => {
   const table = (): IdTable => ({
-    ingredient: [{ node: "bun" }, { node: "patty" }],
+    ingredient: ["bun", "patty"],
     composite: [],
     group: [],
     tool: [],
@@ -89,43 +86,32 @@ describe("id table — the rules that keep committed levels safe", () => {
     expect(t.ingredient).toHaveLength(2);
   });
 
-  it("APPEND: a retired slot is never reused, so old data can't silently repoint", () => {
-    const t = table();
-    retireId(t, "ingredient", "patty"); // frees the NAME, not the slot
-    expect(nextId(t, "ingredient")).toBe(2); // NOT 1
-    expect(mintId(t, "ingredient", "something-else")).toBe(2);
-  });
-
   /**
-   * The property the whole positional model rests on: a delete must not shift
-   * the rows after it. Splicing would renumber every later id and silently
-   * repoint every level string that used one.
+   * There are no tombstones. Removing a row splices it out, so every id after
+   * it shifts down — the same renumber a reorder causes, and confirmed the
+   * same way at the call site. This pins that it really does shift, because a
+   * half-measure (leave a hole) would be worse than either choice.
    */
-  it("TOMBSTONE: retiring keeps the row in place, so later ids do not move", () => {
+  it("REMOVE renumbers: every later id shifts down by one", () => {
     const t = table();
-    t.ingredient.push({ node: "tomato" });
-    retireId(t, "ingredient", "patty");
-    expect(t.ingredient).toHaveLength(3);
+    t.ingredient.push("tomato");
+    expect(removeId(t, "ingredient", "patty")).toBe(1);
+    expect(t.ingredient).toEqual(["bun", "tomato"]);
     const ix = buildIdIndex(t);
-    expect(nodeOf(ix, "ingredient", 0)).toBe("bun");
-    expect(nodeOf(ix, "ingredient", 1)).toBeNull();
-    expect(nodeOf(ix, "ingredient", 2)).toBe("tomato"); // did NOT slide down to 1
+    expect(nodeOf(ix, "ingredient", 1)).toBe("tomato"); // slid down from 2
+    expect(nodeOf(ix, "ingredient", 2)).toBeNull();
   });
 
-  it("TOMBSTONE: a retired id resolves to null and remembers what it was", () => {
+  it("REMOVE: the freed id is reused by the next mint, because nothing reserves it", () => {
     const t = table();
-    expect(retireId(t, "ingredient", "patty")).toBe(1);
-    const ix = buildIdIndex(t);
-    expect(nodeOf(ix, "ingredient", 1)).toBeNull();
-    expect(isRetired(ix, "ingredient", 1)).toBe(true);
-    expect(retiredName(ix, "ingredient", 1)).toBe("patty");
-    // An id that never existed is distinguishable from one that was retired.
-    expect(isRetired(ix, "ingredient", 99)).toBe(false);
+    removeId(t, "ingredient", "patty");
+    expect(nextId(t, "ingredient")).toBe(1);
+    expect(mintId(t, "ingredient", "tomato")).toBe(1);
   });
 
-  it("TOMBSTONE: retiring an absent node is a no-op, not a throw", () => {
+  it("REMOVE: removing an absent node is a no-op, not a throw", () => {
     const t = table();
-    expect(retireId(t, "ingredient", "never-existed")).toBeNull();
+    expect(removeId(t, "ingredient", "never-existed")).toBeNull();
     expect(t.ingredient).toHaveLength(2);
   });
 
@@ -141,7 +127,7 @@ describe("id table — the rules that keep committed levels safe", () => {
 
 describe("reorderIdEntry — the one edit that deliberately RENUMBERS", () => {
   const table = (): IdTable => ({
-    ingredient: [{ node: "bun" }, { node: "patty" }, { node: "tomato" }],
+    ingredient: ["bun", "patty", "tomato"],
     composite: [],
     group: [],
     tool: [],
@@ -159,7 +145,7 @@ describe("reorderIdEntry — the one edit that deliberately RENUMBERS", () => {
   it("does not mutate the table it was handed", () => {
     const before = table();
     reorderIdEntry(before, "ingredient", 0, 2);
-    expect(before.ingredient.map((e) => e.node)).toEqual(["bun", "patty", "tomato"]);
+    expect(before.ingredient).toEqual(["bun", "patty", "tomato"]);
   });
 
   it("returns the SAME table for a no-op or an out-of-range move", () => {
@@ -175,14 +161,14 @@ describe("reorderIdEntry — the one edit that deliberately RENUMBERS", () => {
     const before = table();
     const there = reorderIdEntry(before, "ingredient", 0, 2);
     const back = reorderIdEntry(there, "ingredient", 2, 0);
-    expect(back.ingredient.map((e) => e.node)).toEqual(before.ingredient.map((e) => e.node));
+    expect(back.ingredient).toEqual(before.ingredient);
   });
 
   it("leaves every OTHER space untouched", () => {
     const t = table();
-    t.tool = [{ node: "griddle" }, { node: "fryer" }];
+    t.tool = ["griddle", "fryer"];
     const next = reorderIdEntry(t, "ingredient", 0, 2);
-    expect(next.tool.map((e) => e.node)).toEqual(["griddle", "fryer"]);
+    expect(next.tool).toEqual(["griddle", "fryer"]);
   });
 });
 
@@ -194,15 +180,15 @@ describe("id table — total on bad input", () => {
   });
 
   it("fills in spaces the JSON omitted", () => {
-    const t = normalizeIdTable({ ingredient: [{ node: "bun" }] });
+    const t = normalizeIdTable({ ingredient: ["bun"] });
     for (const space of ID_SPACES) expect(Array.isArray(t[space])).toBe(true);
     expect(t.ingredient).toHaveLength(1);
   });
 
   it("does not alias the input", () => {
-    const partial: Partial<IdTable> = { ingredient: [{ node: "bun" }] };
+    const partial: Partial<IdTable> = { ingredient: ["bun"] };
     const t = normalizeIdTable(partial);
-    t.ingredient.push({ node: "patty" });
+    t.ingredient.push("patty");
     expect(partial.ingredient).toHaveLength(1);
   });
 });
@@ -217,26 +203,19 @@ describe("validateIdTable", () => {
    */
   it("flags two rows claiming the same node", () => {
     const t = base();
-    t.ingredient = [{ node: "bun" }, { node: "bun" }];
+    t.ingredient = ["bun", "bun"];
     expect(validateIdTable(t)[0].message).toMatch(/claimed by both id 0 and id 1/);
   });
 
-  it("flags a tombstone that forgot what it retired", () => {
+  it("flags an empty row, which would be an id that names nothing", () => {
     const t = base();
-    t.ingredient = [{ node: null }];
-    expect(validateIdTable(t)[0].message).toMatch(/records no retired name/);
-  });
-
-  it("flags a hole, which would otherwise read as an id that means nothing", () => {
-    const t = base();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    t.ingredient = [{ node: "bun" }, undefined as any, { node: "tomato" }];
-    expect(validateIdTable(t)[0].message).toMatch(/is a hole/);
+    t.ingredient = ["bun", "", "tomato"];
+    expect(validateIdTable(t)[0].message).toMatch(/names nothing/);
   });
 
   it("accepts a well-formed table", () => {
     const t = base();
-    t.ingredient = [{ node: "bun" }, { node: null, retired: "patty" }, { node: "tomato" }];
+    t.ingredient = ["bun", "patty", "tomato"];
     expect(validateIdTable(t)).toEqual([]);
   });
 });

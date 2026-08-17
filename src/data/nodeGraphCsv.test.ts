@@ -39,12 +39,12 @@ describe("round-trip", () => {
     }
   });
 
-  it("preserves the id table, tombstones included", () => {
+  it("preserves the id table, position for position", () => {
     expect(norm(doc.idTable)).toEqual(norm(burger.idTable));
-    // The id is the row's POSITION, so a tombstone is checked by where it sits.
-    const at = doc.idTable.composite.findIndex((e) => e.node === null);
-    expect(at).toBe(3);
-    expect(doc.idTable.composite[at]).toMatchObject({ node: null, retired: "fried-potato" });
+    // The id IS the row's position, so round-tripping has to preserve order,
+    // not just membership — a reordered table means different levels.
+    expect(doc.idTable.ingredient).toEqual(burger.idTable.ingredient);
+    expect(doc.idTable.composite).toEqual(burger.idTable.composite);
   });
 
   it("preserves the map header", () => {
@@ -62,7 +62,7 @@ describe("the CSV is generated from the schema, not hand-written", () => {
   it("declares columns in a #-prefixed row for each section", () => {
     expect(text).toContain("#VERTEX,ingredient,name,");
     expect(text).toContain("#EDGE,process,from,to,inputs,");
-    expect(text).toContain("#IDTABLE,space,id,node,retired");
+    expect(text).toContain("#IDTABLE,space,id,node");
   });
 
   it("writes lists with | and booleans as TRUE/FALSE", () => {
@@ -107,7 +107,7 @@ describe("totality on garbage — a designer must never lose the other 400 rows"
   });
 
   it("reports a non-integer id and an unknown id space", () => {
-    const { issues } = csvToGraph("#IDTABLE,space,id,node,retired\nIDTABLE,ingredient,x,bun,\nIDTABLE,sauce,1,x,");
+    const { issues } = csvToGraph("#IDTABLE,space,id,node\nIDTABLE,ingredient,x,bun\nIDTABLE,sauce,1,x");
     expect(issues.map((i) => i.message)).toEqual([
       'Id "x" is not a non-negative integer',
       'Unknown id space "sauce"',

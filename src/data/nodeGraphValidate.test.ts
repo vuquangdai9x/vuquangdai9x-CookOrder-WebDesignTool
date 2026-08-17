@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import burgerJson from "./config/nodegraph/burger.json";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 import { validateNodeGraph } from "./nodeGraphValidate.ts";
+import { validateIdTable } from "./nodeIdTable.ts";
 
 const burger = burgerJson as unknown as NodeGraphMap;
 const clone = (): NodeGraphMap => structuredClone(burger);
@@ -34,8 +35,8 @@ describe("burger.json is clean", () => {
   });
 });
 
-describe("INV-ORDER-REBUILDABLE — the two ways a flat dish stops being re-bracketable", () => {
-  it("C1: an ingredient offered by two slots of ONE composite", () => {
+describe("INV-ORDER-REBUILDABLE — one ingredient, two slots of one composite", () => {
+  it("flags an ingredient offered by two slots of ONE composite", () => {
     const doc = clone();
     // bun-sliced is already burger's fixed base; also offer it as a topping.
     doc.edges.option.push({ from: "burger-toppings", to: "bun-sliced", maxQuantity: -1 });
@@ -43,18 +44,22 @@ describe("INV-ORDER-REBUILDABLE — the two ways a flat dish stops being re-brac
     const issue = errors.find((e) => e.invariantId === "INV-ORDER-REBUILDABLE");
     expect(issue).toBeDefined();
     expect(issue!.message).toContain("bun-sliced");
-    expect(issue!.message).toContain("two slots of one composite (C1)");
+    expect(issue!.message).toContain("two slots of one composite");
   });
 
-  it("C2: an ingredient hosted by two different orderables", () => {
+  /**
+   * The relaxation, pinned. Sharing one ingredient between two orderables was
+   * an error ("C2") because the retired flat-list recogniser could not tell
+   * which composite a bare id belonged to. A bracket dish names its composite,
+   * so resolution is scoped and the sharing is unambiguous — this is what lets
+   * a fried potato and a fried basket offer the same sauce.
+   */
+  it("ALLOWS an ingredient hosted by two different orderables", () => {
     const doc = clone();
     // ice is soda's topping; also offer it among burger's toppings.
     doc.edges.option.push({ from: "burger-toppings", to: "ice", maxQuantity: -1 });
     const { errors } = validateNodeGraph(doc);
-    const issue = errors.find((e) => e.invariantId === "INV-ORDER-REBUILDABLE");
-    expect(issue).toBeDefined();
-    expect(issue!.message).toContain("ice");
-    expect(issue!.message).toContain("two orderables (C2)");
+    expect(errors.filter((e) => e.invariantId === "INV-ORDER-REBUILDABLE")).toEqual([]);
   });
 
   it("nesting alone is NOT a violation — depth is not the hazard", () => {
@@ -65,7 +70,7 @@ describe("INV-ORDER-REBUILDABLE — the two ways a flat dish stops being re-brac
       c.name === "burger" ? { ...c, orderable: false } : c,
     );
     doc.edges.base.push({ from: "meal", to: "burger" });
-    doc.idTable.composite.push({ node: "meal" });
+    doc.idTable.composite.push("meal");
     const { errors } = validateNodeGraph(doc);
     expect(errors.filter((e) => e.invariantId === "INV-ORDER-REBUILDABLE")).toEqual([]);
   });
@@ -141,7 +146,7 @@ describe("graph structure invariants", () => {
     const doc = clone();
     doc.vertices.ingredient.push({ name: "unobtainium", displayName: "Unobtainium", servable: true });
     doc.edges.option.push({ from: "burger-toppings", to: "unobtainium", maxQuantity: -1 });
-    doc.idTable.ingredient.push({ node: "unobtainium" });
+    doc.idTable.ingredient.push("unobtainium");
     const { errors } = validateNodeGraph(doc);
     expect(errors.find((e) => e.invariantId === "INV-TRACEABLE")!.message).toContain("unobtainium");
   });
@@ -171,37 +176,40 @@ describe("graph structure invariants", () => {
 describe("id table invariants", () => {
   it("INV-IDTABLE-RESOLVES: an entry naming a vertex that does not exist", () => {
     const doc = clone();
-    doc.idTable.ingredient.push({ node: "no-such-node" });
+    doc.idTable.ingredient.push("no-such-node");
     const { errors } = validateNodeGraph(doc);
     expect(errors.find((e) => e.invariantId === "INV-IDTABLE-RESOLVES")!.message).toContain("no-such-node");
   });
 
   it("INV-IDTABLE-RESOLVES: an entry pointing at the wrong kind", () => {
     const doc = clone();
-    doc.idTable.ingredient.push({ node: "griddle" });
+    doc.idTable.ingredient.push("griddle");
     const { errors } = validateNodeGraph(doc);
     expect(errors.find((e) => e.invariantId === "INV-IDTABLE-RESOLVES")!.message).toContain("which is a tool");
   });
 
   it("INV-IDTABLE-UNIQUE: a duplicate id", () => {
     const doc = clone();
-    doc.idTable.ingredient.push({ node: "bun-sliced" });
+    doc.idTable.ingredient.push("bun-sliced");
     const { errors } = validateNodeGraph(doc);
     expect(ids(errors)).toContain("INV-IDTABLE-UNIQUE");
   });
 
   it("WARN-UNTABLED-NODE: a servable ingredient with no id", () => {
     const doc = clone();
-    doc.idTable.ingredient = doc.idTable.ingredient.filter((e) => e.node !== "patty-cooked");
+    doc.idTable.ingredient = doc.idTable.ingredient.filter((node) => node !== "patty-cooked");
     const { warnings } = validateNodeGraph(doc);
     expect(warnings.find((w) => w.invariantId === "WARN-UNTABLED-NODE")!.message).toContain("patty-cooked");
   });
 
-  it("a tombstoned id is not treated as an unresolved reference", () => {
+  it("an EMPTY id row is reported, since it is an id that names nothing", () => {
+    // There are no tombstones any more, so a blank row is not a legitimate
+    // "retired" state to skip past — it is a hole, and level data indexing
+    // into it would resolve to nothing.
     const doc = clone();
-    doc.idTable.ingredient.push({ node: null, retired: "long-gone" });
-    const { errors } = validateNodeGraph(doc);
-    expect(errors.filter((e) => e.invariantId.startsWith("INV-IDTABLE"))).toEqual([]);
+    doc.idTable.ingredient.push("");
+    const messages = validateIdTable(doc.idTable).map((i) => i.message);
+    expect(messages.some((m) => /names nothing/.test(m))).toBe(true);
   });
 });
 
@@ -216,7 +224,7 @@ describe("warnings", () => {
   it("WARN-UNUSED-PICKUP: a pickupable no orderable reaches", () => {
     const doc = clone();
     doc.vertices.ingredient.push({ name: "spare", displayName: "Spare", pickupable: true });
-    doc.idTable.ingredient.push({ node: "spare" });
+    doc.idTable.ingredient.push("spare");
     const { warnings } = validateNodeGraph(doc);
     expect(warnings.find((w) => w.invariantId === "WARN-UNUSED-PICKUP")!.message).toContain("spare");
   });
@@ -224,7 +232,7 @@ describe("warnings", () => {
   it("WARN-EMPTY-TOOL: a tool with no recipes", () => {
     const doc = clone();
     doc.vertices.tool.push({ name: "idle-tool", displayName: "Idle", numSlots: 1, cookingTime: 1 });
-    doc.idTable.tool.push({ node: "idle-tool" });
+    doc.idTable.tool.push("idle-tool");
     const { warnings } = validateNodeGraph(doc);
     expect(warnings.find((w) => w.invariantId === "WARN-EMPTY-TOOL")!.message).toContain("idle-tool");
   });

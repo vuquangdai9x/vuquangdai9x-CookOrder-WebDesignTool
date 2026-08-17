@@ -898,12 +898,7 @@ export class NodeSimulation {
       if (item.kind !== "ingredient") return -1;
       const name = this.ids.byId.ingredient.get(item.id);
       if (name === undefined) {
-        const was = this.ids.retired.ingredient.get(item.id);
-        this.issues.push(
-          was !== undefined
-            ? `Queue references retired ingredient id ${item.id} (was "${was}")`
-            : `Queue references unknown ingredient id ${item.id}`,
-        );
+        this.issues.push(`Queue references unknown ingredient id ${item.id}`);
         return -1;
       }
       const ing = this.ix.ingByName.get(name);

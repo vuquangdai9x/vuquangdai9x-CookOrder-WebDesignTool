@@ -337,23 +337,31 @@ function checkTraceable(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
 }
 
 /**
- * The condition that makes a legacy flat dish re-bracketable: every servable
- * ingredient must map to exactly one slot. C1 is two slots of one composite,
- * C2 is slots of two different orderables — both make the bracket structure
- * unrecoverable from a bare multiset.
+ * One ingredient must not be offered by two slots of the SAME composite.
+ *
+ * `resolveOrder` maps ingredient -> slot per composite, last write winning, so
+ * a dish that authored the item into slot 0 silently resolves into slot 1 —
+ * carrying a gate that will never open. Measured, not assumed: putting
+ * cheese-sauce into both the fried basket's base group and its sauce group
+ * makes `{c2:{g1:16}}` resolve to `slot 1, gate 0` instead of the base slot.
+ *
+ * Sharing across two DIFFERENT orderables is deliberately allowed, and used to
+ * be flagged here as "C2". The bracket format names the composite, so lookup
+ * is scoped to it: a sauce offered by both a fried basket and a fried potato
+ * resolves correctly in each, with the right slot, gate and dirty object. C2
+ * only ever constrained the flat-list recogniser used by the legacy migration,
+ * which is retired — keeping it would forbid a shared sauce for no live reason.
  *
  * Nesting depth is deliberately NOT checked: nested composites flatten into
  * the slot list cleanly, so depth is not the hazard. Slot ambiguity is.
  */
 function checkRebuildable(lk: GraphLookup, add: Add): void {
-  const { ambiguous } = slotIndex(lk);
-  for (const [ingredient, places] of ambiguous) {
-    const orderables = new Set(places.map((p) => p.orderable));
+  const { ambiguousWithinComposite } = slotIndex(lk);
+  for (const [ingredient, places] of ambiguousWithinComposite) {
     const detail = places.map((p) => `${p.orderable} slot ${p.slot}`).join(", ");
-    const which = orderables.size > 1 ? "two orderables (C2)" : "two slots of one composite (C1)";
     add(
       "INV-ORDER-REBUILDABLE",
-      `"${ingredient}" can fill ${which}: ${detail}. A dish naming it would be ambiguous.`,
+      `"${ingredient}" can fill two slots of one composite: ${detail}. A dish naming it would resolve into the wrong slot.`,
       { vertexKind: "ingredient", vertexName: ingredient },
     );
   }
@@ -365,18 +373,18 @@ function checkIdTable(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
   }
   for (const space of ID_SPACES) {
     // The id is the row's index — see nodeIdTable.ts's header.
-    (doc.idTable[space] ?? []).forEach((entry, id) => {
-      if (!entry || entry.node === null || entry.node === undefined) return;
-      const kind = lk.kindOf.get(entry.node);
+    (doc.idTable[space] ?? []).forEach((node, id) => {
+      if (!node) return; // validateIdTable reports an empty row
+      const kind = lk.kindOf.get(node);
       if (!kind) {
         add(
           "INV-IDTABLE-RESOLVES",
-          `Id ${id} in the ${space} space names "${entry.node}", which is not declared in this map.`,
+          `Id ${id} in the ${space} space names "${node}", which is not declared in this map.`,
         );
       } else if (!SPACE_KINDS[space].includes(kind)) {
         add(
           "INV-IDTABLE-RESOLVES",
-          `Id ${id} in the ${space} space names "${entry.node}", which is a ${kind} — this space accepts ${SPACE_KINDS[space].join(", ")}.`,
+          `Id ${id} in the ${space} space names "${node}", which is a ${kind} — this space accepts ${SPACE_KINDS[space].join(", ")}.`,
         );
       }
     });

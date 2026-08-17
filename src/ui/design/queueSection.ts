@@ -1167,6 +1167,9 @@ function runAutoGenerate(
   const lanes = generateQueueLanes({
     customers: deps.currentCustomers(),
     tools: deps.map.tools,
+    // usageNum lives here: a multi-use item needs fewer pickups than it has
+    // dish slots, and leaving this out over-supplies the level.
+    cookedIngredients: deps.map.cookedIngredients,
     laneCount,
     shuffleRange,
   });

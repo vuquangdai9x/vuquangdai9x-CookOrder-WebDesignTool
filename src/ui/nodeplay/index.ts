@@ -14,10 +14,14 @@
 // ingredient indices, and "wanted" is computed from the graph's terminal
 // output instead of `resolveCookedId`.
 //
-// Scope, stated plainly: transfers resolve instantly here (`instantFlights`)
-// rather than being animated cell-to-cell, and the booster bar, Save Me and the
-// bot runner are not wired up. Those were on the plan's cut list; each is
-// reachable through `NodeSimulation`'s already-compatible surface.
+// Transfers ANIMATE, exactly as legacy does: `instantFlights` is off, so every
+// hand-off is a flight the view flies cell-to-cell and only commits on arrival
+// (see dispatchFlights). The end-of-level panel, the Save Me offer and the
+// booster bar are all here too, driven straight off `NodeSimulation`'s
+// already-compatible surface.
+//
+// Still out of scope: the bot runner, which is a playtesting panel rather than
+// gameplay, and the queue-group rope overlay.
 
 import { button, el } from "../dom.ts";
 import {
@@ -29,10 +33,12 @@ import {
   statusIconEl,
   toolIconEl,
   customerTypeIconEl,
+  boosterIconEl,
 } from "../icon.ts";
 import { localImageUrl } from "../localImages.ts";
 import { CELL_COLOR_LOCK, CELL_INGREDIENT_SLOT, EFFECT_FREEZE, EFFECT_HOLDING_KEY } from "../../core/effects.ts";
-import { KEY_COLORS } from "../../data/configLoader.ts";
+import { BOOSTER_PARAMS, GLOBAL_DEFS, KEY_COLORS } from "../../data/configLoader.ts";
+import { DIRTY_DISH_ID } from "../../core/sim.ts";
 import { NodeSimulation } from "../../core/nodeSim.ts";
 import type { NodeCustomerState, NodeQueueCell } from "../../core/nodeSim.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
@@ -44,6 +50,9 @@ import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import type { NodeProjectState } from "../../data/nodeProject.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
+import { centerOf, EffectsLayer } from "../play/effectsLayer.ts";
+import type { Point } from "../play/effectsLayer.ts";
+import type { NodeFlight } from "../../core/nodeSim.ts";
 
 /** Same per-tool tints the legacy tool strip uses, so the two read identically. */
 const TOOL_COLORS = [
@@ -63,6 +72,21 @@ const SPEEDS = [
 
 const TICK_MS = 100;
 
+/**
+ * Flight kinds that land on (and fill) a customer's dish chip: the two
+ * grid/backpack-sourced kinds, plus the two direct-serve kinds that skip the
+ * grid entirely. All four need chip-specific targeting and an arrival flash
+ * rather than a generic landing at the card's centre.
+ */
+function fillsDishChip(kind: NodeFlight["kind"]): boolean {
+  return (
+    kind === "grid-to-customer" ||
+    kind === "backpack-to-customer" ||
+    kind === "tool-to-customer" ||
+    kind === "queue-to-customer"
+  );
+}
+
 export class NodePlayView {
   private root: HTMLElement;
   private project: NodeProjectState;
@@ -81,6 +105,32 @@ export class NodePlayView {
   private paused = false;
   private toolbarFolded = false;
   private customerAvatarByIndex = new Map<number, string>();
+
+  // ---------- flight animation ----------
+  //
+  // The sim gates every hand-off behind completeFlight(), so a view can either
+  // resolve them instantly (what this did) or animate the trip and commit on
+  // arrival (what legacy does, and what this does now). `instantFlights` is
+  // off, so nothing moves in the model until the animation lands — which is
+  // exactly what makes the movement readable rather than a teleport.
+  private fx = new EffectsLayer();
+  /** Flight ids already being animated, so a frame never launches one twice. */
+  private animating = new Set<number>();
+  /**
+   * Where the tiles a pick just consumed actually were. They leave the DOM
+   * before the flights are dispatched, so the click handler stashes their
+   * positions — one per flight, in dispatch order, so a group pick's N flights
+   * each start from their own tile instead of all sharing the first.
+   */
+  private pendingPickOrigins: Point[] = [];
+
+  // ---------- boosters ----------
+  private boostersEl!: HTMLElement;
+  private boosterCharges: number[] = [];
+  /** Ingredient Pick armed: every row becomes pickable until one is spent. */
+  private ingredientPickMode = false;
+  /** Set once the player declines Save Me, so the plain failure overlay takes over. */
+  private saveMeDeclined = false;
 
   // ---------- tier diffing ----------
   //
@@ -124,12 +174,40 @@ export class NodePlayView {
     this.stopClock();
   }
 
+  /**
+   * Queue rows shown per column: the map's default, unless Ingredient Pick is
+   * armed — which widens the window so any row can be taken.
+   */
   private get windowRows(): number {
-    return this.project.doc.map.visibleRows || 3;
+    return this.ingredientPickMode
+      ? BOOSTER_PARAMS.numRowPick
+      : this.project.doc.map.visibleRows || 3;
   }
 
   private get speedFactor(): number {
     return SPEEDS.find((s) => s.id === this.speedId)?.factor ?? 1;
+  }
+
+  /**
+   * Skip is instant, not merely fast: flights are committed the moment they
+   * are created rather than animated. Animating at 30x would be a blur nobody
+   * can read, and each 420ms trip would still gate the hand-off behind it.
+   */
+  private get skipMode(): boolean {
+    return this.speedId === "skip";
+  }
+
+  /**
+   * The id `dirtyIconEl` wants for a flight's dirty object.
+   *
+   * The dense dirty index is passed straight through, matching how the grid
+   * cell renderer already draws a dirty stack — the icon layer's dirty list is
+   * built in the same order, so the two agree. A missing id falls back to the
+   * generic dish, which is what the sim itself uses for a composite with no
+   * `leavesDirty` edge.
+   */
+  private dirtyDataId(dense: number | undefined): number {
+    return dense === undefined || dense < 0 ? DIRTY_DISH_ID : dense;
   }
 
   // ---------- lifecycle ----------
@@ -140,7 +218,15 @@ export class NodePlayView {
       this.root.replaceChildren(el("p", {}, ["This graph has no levels yet."]));
       return;
     }
-    this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level));
+    // instantFlights OFF: this view animates every transfer and commits it in
+    // the landing callback. With it on, the sim would resolve each hand-off
+    // the moment it was created and there would be nothing left to animate.
+    this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level), { instantFlights: false });
+    this.animating.clear();
+    this.pendingPickOrigins = [];
+    this.boosterCharges = [...(this.level.boosterCharges ?? [3, 3, 3, 3])];
+    this.ingredientPickMode = false;
+    this.saveMeDeclined = false;
     this.paused = false;
     this.mount();
     this.startClock();
@@ -155,7 +241,11 @@ export class NodePlayView {
    */
   private mount(): void {
     this.page = el("div", { class: "play-page" });
-    this.root.replaceChildren(this.weatherLayer(), this.toolbar(), this.page);
+    this.boostersEl = this.boostersBar();
+    // The boosters bar is a SIBLING of `.play-page`, not a child: the page has
+    // a fixed height with three sized tiers, so a fourth child would shrink
+    // them instead of sitting below.
+    this.root.replaceChildren(this.weatherLayer(), this.toolbar(), this.page, this.boostersEl);
     this.fullRender();
   }
 
@@ -220,11 +310,15 @@ export class NodePlayView {
     this.timer = window.setInterval(() => {
       if (this.paused) return;
       if (this.sim.status !== "playing") {
-        this.stopClock();
+        // Keep draining flights after the verdict: the last serve's item is
+        // still mid-air, and stopping here would leave it frozen on screen.
+        this.dispatchFlights();
+        if (this.animating.size === 0) this.stopClock();
         this.syncPage();
         return;
       }
       this.sim.tick((TICK_MS / 1000) * this.speedFactor);
+      this.dispatchFlights();
       this.syncPage();
     }, TICK_MS);
   }
@@ -274,10 +368,195 @@ export class NodePlayView {
     this.patchLiveValues();
   }
 
+  /**
+   * Launches an animation for every flight the sim has created and not yet
+   * had committed. The sim's own state does not change until `.then()` calls
+   * `completeFlight`, so what the player sees and what the model believes stay
+   * in step.
+   */
+  private dispatchFlights(): void {
+    // A snapshot, not a live view: completeFlight() splices sim.flights, and
+    // iterating the array being spliced skips whichever flight shifts into the
+    // just-visited slot — which would then linger unresolved into a later tick.
+    for (const flight of [...this.sim.flights]) {
+      if (this.animating.has(flight.id)) continue;
+
+      // A customer can be promoted from pending and served in the same tick,
+      // before syncPage() has rebuilt the tier — until then their card is
+      // still the masked "?" one. Hold the flight rather than land an
+      // ingredient on a mystery card; this retries every tick.
+      if (fillsDishChip(flight.kind)) {
+        const card = this.page.querySelector(`[data-customer="${flight.toCustomer!.index}"]`);
+        if (card?.classList.contains("mystery")) continue;
+      }
+
+      this.animating.add(flight.id);
+
+      if (this.skipMode) {
+        this.sim.completeFlight(flight.id);
+        this.animating.delete(flight.id);
+        continue;
+      }
+
+      const from = this.flightOrigin(flight);
+      const to = this.flightTarget(flight);
+      if (!from || !to) {
+        // Nothing on screen to fly between — commit directly rather than
+        // stall the hand-off on a missing element.
+        this.sim.completeFlight(flight.id);
+        this.animating.delete(flight.id);
+        continue;
+      }
+
+      const payload = el("div", { class: `fx-item${flight.ing < 0 ? " dirty" : ""}` }, [
+        this.flightIcon(flight),
+      ]);
+
+      // The exact chip this flight fills, captured now so the arrival flash
+      // can be applied to THAT element once it lands.
+      const dataId = flight.ing >= 0 ? this.projected.dataIdOf.get(flight.ing) : undefined;
+      const targetChip =
+        fillsDishChip(flight.kind) && dataId !== undefined
+          ? this.page.querySelector<HTMLElement>(
+              `[data-customer="${flight.toCustomer!.index}"] [data-dish-ingredient="${dataId}"]:not(.filled)`,
+            )
+          : null;
+
+      // The sim only clears the source cell when the flight lands, but
+      // visually the item should leave the grid as it takes off — otherwise it
+      // sits in the cell for the whole trip beside its own flying copy.
+      if (flight.kind === "grid-to-customer" && flight.fromCell !== undefined) {
+        this.page.querySelector(`[data-cell="${flight.fromCell}"] .cell-main`)?.remove();
+      }
+
+      const durationMs = 420 / Math.max(1, this.speedFactor);
+      void this.settled(this.fx.fly(payload, from, to, { durationMs }), durationMs + 400)
+        .then(() => this.onFlightLanded(flight, to, targetChip))
+        .then(() => {
+          this.sim.completeFlight(flight.id);
+          this.animating.delete(flight.id);
+          this.syncPage();
+        });
+    }
+  }
+
+  /**
+   * Resolves when `work` does, or when `afterMs` elapses — whichever is first.
+   *
+   * A flight's arrival is what COMMITS the hand-off, so an animation that
+   * never finishes is not a cosmetic problem: the item is stuck in transit,
+   * its tool slot stays reserved, and picks that need that slot are refused
+   * forever. `Element.animate()` does not advance while the page is not being
+   * composited (a background tab, a hidden pane), and `anim.finished` then
+   * never settles — so the timeout is the difference between "the animation
+   * was skipped" and "the game deadlocked".
+   */
+  private settled(work: Promise<void>, afterMs: number): Promise<void> {
+    return Promise.race([
+      work,
+      new Promise<void>((resolve) =>
+        setTimeout(() => {
+          // fly() removes its own flier in the `finished` handler, which never
+          // runs in this case — so sweep the ones that are provably not moving.
+          // Checked per element rather than clearing the layer, so a flight
+          // that IS animating normally is never yanked off screen.
+          this.sweepStalledFliers();
+          resolve();
+        }, Math.max(50, afterMs)),
+      ),
+    ]);
+  }
+
+  /** Removes fliers with no running animation — see `settled`. */
+  private sweepStalledFliers(): void {
+    for (const flier of document.querySelectorAll<HTMLElement>(".fx-layer .fx-flier")) {
+      const running = flier.getAnimations().some((a) => a.playState === "running");
+      if (!running) flier.remove();
+    }
+  }
+
+  /** The artwork a flight carries: a dirty dish, a raw pickup, or a cooked item. */
+  private flightIcon(flight: NodeFlight): HTMLElement {
+    if (flight.ing < 0) return dirtyIconEl(this.dirtyDataId(flight.dirtyId), 96);
+    const dataId = this.projected.dataIdOf.get(flight.ing);
+    if (dataId === undefined) return el("span", { class: "icon" }, ["\u2754"]);
+    // A raw pickup in transit to a tool still looks like its raw self; every
+    // other kind is carrying the finished item.
+    const raw =
+      flight.kind === "queue-to-tool" ||
+      flight.kind === "grid-to-tool" ||
+      (flight.kind === "queue-to-grid" && flight.raw);
+    return raw ? ingredientIconEl(dataId, 96) : cookedIconEl(dataId, 96);
+  }
+
+  /**
+   * Per-kind landing feedback, played BEFORE the flight is committed — so it
+   * marks this arrival (the chip is still unfilled, the stack still on the
+   * grid) rather than reading as a generic after-the-fact effect.
+   */
+  private onFlightLanded(flight: NodeFlight, at: Point, targetChip: HTMLElement | null): Promise<void> {
+    if (this.skipMode) return Promise.resolve();
+    if (fillsDishChip(flight.kind) && targetChip) {
+      this.fx.burst(at, 8);
+      targetChip.classList.add("arrival-flash");
+      // Flash while still unfilled, then let completeFlight dim it.
+      return new Promise((resolve) => setTimeout(resolve, 160));
+    }
+    if (flight.kind === "dirty-to-staff") this.fx.burst(at, 8);
+    return Promise.resolve();
+  }
+
+  private flightOrigin(flight: NodeFlight): Point | null {
+    if (flight.fromCustomer !== undefined) {
+      const card = this.page.querySelector(`[data-customer="${flight.fromCustomer}"]`);
+      return card ? centerOf(card) : null;
+    }
+    if (flight.fromCell !== undefined) {
+      const cell = this.page.querySelector(`[data-cell="${flight.fromCell}"]`);
+      return cell ? centerOf(cell) : null;
+    }
+    if (flight.fromTool) {
+      const slot = this.page.querySelector(`[data-slot="${flight.fromTool.tool}:${flight.fromTool.slot}"]`);
+      return slot ? centerOf(slot) : null;
+    }
+    // A queue flight starts at the tile the pick consumed — already gone from
+    // the DOM, so the click handler stashed its position.
+    if (this.pendingPickOrigins.length > 0) return this.pendingPickOrigins.shift()!;
+    const lane = this.page.querySelector(".queue-lanes.play .queue-tile.top");
+    return lane ? centerOf(lane) : null;
+  }
+
+  private flightTarget(flight: NodeFlight): Point | null {
+    if (flight.toTool) {
+      const slot = this.page.querySelector(`[data-slot="${flight.toTool.tool}:${flight.toTool.slot}"]`);
+      return slot ? centerOf(slot) : null;
+    }
+    if (flight.toCell !== undefined) {
+      const cell = this.page.querySelector(`[data-cell="${flight.toCell}"]`);
+      return cell ? centerOf(cell) : null;
+    }
+    if (flight.toCustomer) {
+      const card = this.page.querySelector(`[data-customer="${flight.toCustomer.index}"]`);
+      if (!card) return null;
+      const dataId = flight.ing >= 0 ? this.projected.dataIdOf.get(flight.ing) : undefined;
+      if (fillsDishChip(flight.kind) && dataId !== undefined) {
+        // Aim at the specific unfilled chip this item satisfies, so the flash
+        // and burst land exactly on the matching ingredient position.
+        const chip = card.querySelector(`[data-dish-ingredient="${dataId}"]:not(.filled)`);
+        if (chip) return centerOf(chip);
+      }
+      return centerOf(card);
+    }
+    return null;
+  }
+
   private syncOverlay(): void {
-    const shouldShow = this.sim.status !== "playing";
+    // Wait for every still-flying item to land: the panel is opaque and
+    // full-page, so popping it up the instant the verdict lands would hide
+    // whatever is mid-air behind it instead of letting it arrive.
+    const shouldShow = this.sim.status !== "playing" && this.animating.size === 0;
     if (shouldShow && !this.overlayEl) {
-      this.overlayEl = this.overlay();
+      this.overlayEl = this.canOfferSaveMe() ? this.saveMeOverlay() : this.overlay();
       this.page.append(this.overlayEl);
     } else if (!shouldShow && this.overlayEl) {
       this.overlayEl.remove();
@@ -699,21 +978,22 @@ export class NodePlayView {
           !hidden && cell.ing >= 0 && needed.has(this.ix.terminalOutput[cell.ing]);
         const tile = this.queueTile(cell, {
           top: isTop,
-          preview: !isTop,
+          // With Ingredient Pick armed every row is live, so nothing is a
+          // greyed-out "preview" and nothing is disabled.
+          preview: !isTop && !this.ingredientPickMode,
           wanted,
-          disabled: isTop && !check.ok,
+          disabled: isTop && !this.ingredientPickMode && !check.ok,
           group: groupKind,
           hidden,
         });
         tile.dataset.qx = String(x);
         tile.dataset.qy = String(y);
-        if (isTop) {
+        if (this.ingredientPickMode) {
+          tile.title = "Pick this ingredient";
+          tile.addEventListener("click", () => this.performPick(x, y, true));
+        } else if (isTop) {
           tile.title = check.reason ?? "Pick this ingredient";
-          if (check.ok) {
-            tile.addEventListener("click", () => {
-              if (sim.pick(x)) this.syncPage();
-            });
-          }
+          if (check.ok) tile.addEventListener("click", () => this.performPick(x, y, false));
         }
         tiles.append(tile);
       }
@@ -725,6 +1005,36 @@ export class NodePlayView {
       el("h2", {}, ["Ingredient queues — click the top tile to pick"]),
       lanes,
     ]);
+  }
+
+  /**
+   * One pick, from the top row or — with Ingredient Pick armed — from any row.
+   *
+   * The tiles' on-screen positions are captured BEFORE the pick, because the
+   * pick removes them and a flight's origin has to be where the player
+   * actually clicked. The booster's charge is spent here rather than when it
+   * was armed, so arming and cancelling costs nothing.
+   */
+  private performPick(x: number, y: number, viaBooster: boolean): void {
+    const cells = viaBooster ? this.sim.pickTargetsAt(x, y) : this.sim.pickTargets(x);
+    this.pendingPickOrigins = cells
+      .map((c) => this.page.querySelector(`.queue-tile[data-qx="${c.x}"][data-qy="${c.y}"]`))
+      .filter((node): node is Element => node !== null)
+      .map(centerOf);
+
+    const ok = viaBooster ? this.sim.pickAt(x, y) : this.sim.pick(x);
+    if (!ok) {
+      this.pendingPickOrigins = [];
+      return;
+    }
+    if (viaBooster) {
+      this.boosterCharges[1] = Math.max(0, (this.boosterCharges[1] ?? 0) - 1);
+      this.ingredientPickMode = false;
+      this.rebuildQueuesTier();
+      this.refreshBoosters();
+    }
+    this.dispatchFlights();
+    this.syncPage();
   }
 
   private queueTile(
@@ -784,19 +1094,171 @@ export class NodePlayView {
     return tile;
   }
 
+  /**
+   * The end-of-level panel, matching the legacy one button for button: the
+   * last event's message, the served/time line, "Next Level" when one exists
+   * and the level was won, and Restart.
+   */
   private overlay(): HTMLElement {
     const sim = this.sim;
     const won = sim.status === "won";
-    return el("div", { class: `play-overlay ${won ? "won" : "lost"}` }, [
-      el("div", { class: "overlay-panel" }, [
-        el("h2", {}, [won ? "🎉 Level complete" : "💥 Level failed"]),
-        el("p", {}, [
-          won
-            ? `All ${sim.totalCustomers} customers served in ${sim.time.toFixed(1)}s.`
-            : `${sim.loseReason ?? "unknown"} — ${sim.servedCount}/${sim.totalCustomers} served.`,
-        ]),
-        button("⟲ Try again", () => this.restart(), { class: "primary" }),
+    const next = won ? this.nextLevel() : null;
+    return el("div", { class: `overlay ${won ? "won" : "lost"}` }, [
+      el("h2", {}, [won ? "\u{1F389} Level complete" : "\u{1F4A5} Level failed"]),
+      el("p", {}, [sim.events.at(-1)?.message ?? ""]),
+      el("p", { class: "sub" }, [
+        `Served ${sim.servedCount}/${sim.totalCustomers} \u00b7 ${sim.time.toFixed(1)}s`,
+      ]),
+      el("div", { class: "overlay-actions" }, [
+        ...(next
+          ? [button(`\u25B6 Next Level: ${next.name}`, () => this.onSelectLevel(next.id), { class: "primary" })]
+          : []),
+        button("\u27F2 Restart", () => this.restart(), { class: next ? "" : "primary" }),
       ]),
     ]);
   }
+
+  /** The level after this one in the project's list, or null if this is the last. */
+  private nextLevel(): LevelData | null {
+    const i = this.project.levels.findIndex((l) => l.id === this.level.id);
+    return i !== -1 ? (this.project.levels[i + 1] ?? null) : null;
+  }
+
+  /** One-more-chance offer on loss — see canOfferSaveMe()/handleSaveMe(). */
+  private saveMeOverlay(): HTMLElement {
+    const sim = this.sim;
+    return el("div", { class: "overlay lost save-me" }, [
+      el("h2", {}, ["\u{1F4A5} Level failed"]),
+      el("p", {}, [sim.events.at(-1)?.message ?? ""]),
+      backpackIconEl(64),
+      el("p", { class: "sub" }, [
+        "Save Me: collapse the grid's ingredients into your backpack and keep playing.",
+      ]),
+      el("div", { class: "overlay-actions" }, [
+        button("\u{1F392} Save Me", () => this.handleSaveMe(), { class: "primary" }),
+        button("Give Up", () => {
+          this.saveMeDeclined = true;
+          this.overlayEl?.remove();
+          this.overlayEl = null;
+          this.syncOverlay();
+        }),
+      ]),
+    ]);
+  }
+
+  /** Whether the Save Me offer, rather than the plain failure panel, shows on this loss. */
+  private canOfferSaveMe(): boolean {
+    const cap = BOOSTER_PARAMS.saveMeCount;
+    return this.sim.status === "lost" && !this.saveMeDeclined && (cap < 0 || this.sim.saveMeUsed < cap);
+  }
+
+  /**
+   * Captures every swept cell's on-screen position BEFORE `saveMe()` clears
+   * them, then flies a backpack icon from each into the new backpack cell.
+   * Purely cosmetic — the state change already happened synchronously, so this
+   * does not gate on a Flight the way a normal transfer does.
+   */
+  private handleSaveMe(): void {
+    const origins: Point[] = [];
+    for (let i = 0; i < this.sim.grid.length; i++) {
+      const content = this.sim.grid[i];
+      if (content.kind !== "cooked" && content.kind !== "raw") continue;
+      const cellMain = this.page.querySelector(`[data-cell="${i}"] .cell-main`);
+      if (cellMain) origins.push(centerOf(cellMain));
+    }
+
+    if (!this.sim.saveMe(BOOSTER_PARAMS.saveMeCount)) return;
+
+    this.fullRender();
+    this.refreshBoosters();
+    this.startClock();
+
+    const at = this.sim.grid.findIndex((c) => c.kind === "backpack");
+    const backpack = at !== -1 ? this.page.querySelector(`[data-cell="${at}"]`) : null;
+    if (!backpack || origins.length === 0 || this.skipMode) return;
+    const to = centerOf(backpack);
+    for (const from of origins) {
+      void this.fx.fly(el("div", { class: "fx-item" }, [backpackIconEl(64)]), from, to, {
+        durationMs: 480,
+      });
+    }
+  }
+
+  // ---------- boosters ----------
+
+  private boostersBar(): HTMLElement {
+    const row = el("div", { class: "boosters-row" });
+    GLOBAL_DEFS.boosters.forEach((def, id) => {
+      const charges = this.boosterCharges[id] ?? 0;
+      const armed = id === 1 && this.ingredientPickMode;
+      const btn = button("", () => this.useBooster(id), {
+        class: `booster-btn${armed ? " armed" : ""}`,
+        title: armed ? "Cancel Ingredient Pick" : def.description,
+      }) as HTMLButtonElement;
+      btn.disabled = !armed && (charges <= 0 || this.sim.status !== "playing" || this.ingredientPickMode);
+      btn.append(
+        boosterIconEl(id, 48),
+        el("span", { class: "booster-name" }, [armed ? "Cancel pick" : def.name]),
+        el("span", { class: "booster-charge" }, [`\u00d7${charges}`]),
+      );
+      row.append(btn);
+    });
+    return el("section", { class: "play-section boosters-bar" }, [el("h2", {}, ["Boosters"]), row]);
+  }
+
+  /** Rebuild-and-replace: the bar changes on its own clicks or a pick, never per tick. */
+  private refreshBoosters(): void {
+    const next = this.boostersBar();
+    this.boostersEl.replaceWith(next);
+    this.boostersEl = next;
+  }
+
+  /**
+   * Shift-up Row, Clean Table and Auto Complete fire immediately and spend a
+   * charge only if they actually changed something. Ingredient Pick instead
+   * ARMS pick mode — its charge is spent by the pick that follows, because
+   * arming and then cancelling should cost nothing.
+   */
+  private useBooster(id: number): void {
+    if (this.sim.status !== "playing") return;
+
+    if (id === 1) {
+      if (this.ingredientPickMode) {
+        this.ingredientPickMode = false;
+      } else {
+        if ((this.boosterCharges[1] ?? 0) <= 0) return;
+        this.ingredientPickMode = true;
+      }
+      this.rebuildQueuesTier();
+      this.refreshBoosters();
+      return;
+    }
+
+    if ((this.boosterCharges[id] ?? 0) <= 0) return;
+    let ok = false;
+    switch (id) {
+      case 0:
+        ok = this.sim.forceShiftUp();
+        break;
+      case 2:
+        ok = this.sim.clearDirtyStacks(BOOSTER_PARAMS.numCleanStack) > 0;
+        break;
+      case 3:
+        ok = this.sim.autoCompleteDish();
+        break;
+    }
+    if (ok) this.boosterCharges[id]--;
+    this.dispatchFlights();
+    this.syncPage();
+    this.refreshBoosters();
+  }
+
+  /** Rebuilds the queues tier unconditionally — arming Ingredient Pick changes `windowRows` without changing sim state. */
+  private rebuildQueuesTier(): void {
+    const next = this.queuesTier();
+    this.queuesEl.replaceWith(next);
+    this.queuesEl = next;
+    this.queuesKey = queuesStructureKey(this.sim);
+  }
+
 }

@@ -9,8 +9,8 @@
 //   VERTEX,ingredient,bun,Bun,TRUE,FALSE,,...
 //   #EDGE,process,from,to,inputs,amount,duration,chainTools
 //   EDGE,process,cutting-board,bun-sliced,bun,1,,
-//   #IDTABLE,space,id,node,retired
-//   IDTABLE,ingredient,0,bun,
+//   #IDTABLE,space,id,node
+//   IDTABLE,ingredient,0,bun
 //
 // Conventions: `|` separates list items (a `,` would collide with the CSV
 // itself), TRUE/FALSE for booleans, blank for absent.
@@ -29,7 +29,6 @@ import {
 import type {
   EdgeKindName,
   FieldDef,
-  IdEntry,
   IdSpace,
   NodeGraphMap,
   VertexKindName,
@@ -37,7 +36,7 @@ import type {
 import { ID_SPACES } from "./nodeIdTable.ts";
 
 const LIST_SEP = "|";
-const ID_FIELDS = ["space", "id", "node", "retired"];
+const ID_FIELDS = ["space", "id", "node"];
 const MAP_FIELDS = [
   "id",
   "name",
@@ -88,8 +87,8 @@ export function graphToCsv(doc: NodeGraphMap): string {
   // the index IS the id, so losing it would silently repoint every level string.
   lines.push(csvRow(["#IDTABLE", ...ID_FIELDS]));
   for (const space of ID_SPACES) {
-    (doc.idTable[space] ?? []).forEach((entry, id) => {
-      lines.push(csvRow(["IDTABLE", space, id, entry.node ?? "", entry.retired ?? ""]));
+    (doc.idTable[space] ?? []).forEach((node, id) => {
+      lines.push(csvRow(["IDTABLE", space, id, node]));
     });
   }
 
@@ -293,14 +292,16 @@ export function csvToGraph(text: string): CsvImportResult {
         return;
       }
       const node = get("node");
-      const retired = get("retired");
-      const entry: IdEntry = node === "" ? { node: null, retired: retired || "?" } : { node };
-      // Index-addressed, so a row out of order or a gap in the file still lands
-      // in the right slot. Gaps become tombstones, which is the honest reading:
-      // the id is spent, and shifting later rows up would renumber them.
+      if (node === "") {
+        issues.push({ line: lineNo, message: `Id ${id} in the ${space} space names nothing` });
+        return;
+      }
+      // Index-addressed, so a row out of order in the file still lands in the
+      // right slot. A gap left by a missing row is reported by validateIdTable
+      // rather than silently closed, which would renumber everything after it.
       const rows = doc.idTable[space];
-      while (rows.length <= id) rows.push({ node: null, retired: "?" });
-      rows[id] = entry;
+      while (rows.length <= id) rows.push("");
+      rows[id] = node;
       return;
     }
 

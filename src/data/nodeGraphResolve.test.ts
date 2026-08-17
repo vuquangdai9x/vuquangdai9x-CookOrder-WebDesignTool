@@ -102,15 +102,28 @@ describe("the two spellings of a two-tool route", () => {
   });
 });
 
-describe("slotIndex — the table that makes a flat dish re-bracketable", () => {
-  it("maps every servable ingredient to exactly one slot, with none ambiguous", () => {
-    const { slotOf, ambiguous } = slotIndex(lk);
-    expect(ambiguous.size).toBe(0);
+describe("slotIndex — where each ingredient may sit", () => {
+  it("places every servable ingredient, with none ambiguous WITHIN a composite", () => {
+    const { slotOf, ambiguousWithinComposite } = slotIndex(lk);
+    // Two slots of ONE composite is the dangerous case and burger has none.
+    // Sharing across two DIFFERENT composites is allowed and not counted here.
+    expect(ambiguousWithinComposite.size).toBe(0);
     const servable = burger.vertices.ingredient.filter((i) => i.servable);
     expect(servable.length).toBe(17);
     for (const ing of servable) {
       expect(slotOf.get(ing.name), `${ing.name} has no slot`).toBeDefined();
     }
+  });
+
+  it("lists EVERY place a shared ingredient may sit, not just the first", () => {
+    // The property that replaced the old C2 ban: an ingredient offered by two
+    // orderables is legal, and callers that need the whole picture (the
+    // base-slot hint, the foreign-member message) read `placesOf`.
+    const shared = structuredClone(burger);
+    shared.edges.option.push({ from: "burger-toppings", to: "ice", maxQuantity: -1 });
+    const { placesOf, ambiguousWithinComposite } = slotIndex(buildLookup(shared));
+    expect(placesOf.get("ice")!.map((p) => p.orderable).sort()).toEqual(["burger", "soda"]);
+    expect(ambiguousWithinComposite.has("ice")).toBe(false);
   });
 
   it("places each ingredient in the orderable that actually offers it", () => {

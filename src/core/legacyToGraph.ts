@@ -45,7 +45,6 @@ import type {
   CompositeVertex,
   DirtyVertex,
   GroupVertex,
-  IdEntry,
   IdSpace,
   IngredientVertex,
   NodeGraphMap,
@@ -310,13 +309,13 @@ export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): 
   }
 
   // ---------- id table ----------
-  const table = (names: string[]): IdEntry[] => names.map((node, id) => ({ id, node }));
-  const idTable: Record<IdSpace, IdEntry[]> = {
-    ingredient: table(ingredient.map((v) => v.name)),
-    composite: table(composite.map((v) => v.name)),
-    group: table(group.map((v) => v.name)),
-    tool: table(tool.map((v) => v.name)),
-    dirty: table(dirty.map((v) => v.name)),
+  // The table is ordered names; a row's index is its id.
+  const idTable: Record<IdSpace, string[]> = {
+    ingredient: ingredient.map((v) => v.name),
+    composite: composite.map((v) => v.name),
+    group: group.map((v) => v.name),
+    tool: tool.map((v) => v.name),
+    dirty: dirty.map((v) => v.name),
   };
 
   return {

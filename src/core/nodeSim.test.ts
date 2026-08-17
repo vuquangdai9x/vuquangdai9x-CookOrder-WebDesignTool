@@ -335,10 +335,13 @@ describe("data problems are collected, never thrown", () => {
     expect(s.pick(0)).toBe(false);
   });
 
-  it("reports a dish naming a retired id", () => {
-    // c3 is the fried-potato tombstone left by folding potato into the basket.
-    const s = sim({ queueString: "0", customerString: "0;0;0;{c3:29}" });
-    expect(s.issues[0]).toContain('was retired (it used to be "fried-potato")');
+  it("reports a dish naming a composite id past the end of the table", () => {
+    // There are no tombstones: a removed row is spliced out, so an id that no
+    // longer exists is simply unknown. The dish still binds — minus its root —
+    // rather than throwing, which is the property that matters here.
+    const beyond = burger.doc.idTable.composite.length;
+    const s = sim({ queueString: "0", customerString: `0;0;0;{c${beyond}:29}` });
+    expect(s.issues[0]).toContain(`No composite has id ${beyond}`);
     expect(s.active[0].dishes[0].order.orderable).toBe(-1);
   });
 });

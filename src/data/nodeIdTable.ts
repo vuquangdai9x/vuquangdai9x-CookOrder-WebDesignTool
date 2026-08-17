@@ -19,11 +19,12 @@
 //
 // Two rules keep the rest safe:
 //
-//   Tombstones   — deleting a node sets its slot to `{ node: null, retired }`
-//                  rather than splicing it out. Splicing would shift every row
-//                  after it and silently renumber ids nobody asked to change.
-//   Free rename  — only the `node` field changes; the slot stays put, so
-//                  renaming patty-cooked -> beef-patty invalidates nothing.
+//   Delete renumbers — removing a row splices it out and shifts every later id
+//                  down. There are no tombstones: a dead slot would be a second
+//                  kind of row for every reader to handle, and the renumber is
+//                  a consequence the designer confirms either way.
+//   Free rename  — the row's position never moves, so renaming
+//                  patty-cooked -> beef-patty invalidates nothing.
 //
 // This module owns BOTH directions and is the only way from a string to a
 // vertex — there is deliberately no second path that could disagree with it.
@@ -34,12 +35,10 @@ import type { IdSpace, IdTable } from "./nodeGraphTypes.ts";
 
 export const ID_SPACES: IdSpace[] = ["ingredient", "composite", "group", "tool", "dirty"];
 
-/** Both directions, precomputed. Rebuild after any mint/retire — it does not track mutations. */
+/** Both directions, precomputed. Rebuild after any mint/remove — it does not track mutations. */
 export interface IdIndex {
   byId: Record<IdSpace, Map<number, string>>;
   byNode: Record<IdSpace, Map<string, number>>;
-  /** Retired ids, so a reference to one reads as retired rather than merely unknown. */
-  retired: Record<IdSpace, Map<number, string>>;
 }
 
 function emptyTable(): IdTable {
@@ -62,27 +61,22 @@ export function normalizeIdTable(raw: Partial<IdTable> | undefined): IdTable {
   return out;
 }
 
-/** Build the two-way index. The array index of each entry is its data id. */
+/** Build the two-way index. The array index of each name is its data id. */
 export function buildIdIndex(table: IdTable): IdIndex {
   const byId = {} as IdIndex["byId"];
   const byNode = {} as IdIndex["byNode"];
-  const retired = {} as IdIndex["retired"];
   for (const space of ID_SPACES) {
     byId[space] = new Map();
     byNode[space] = new Map();
-    retired[space] = new Map();
-    (table[space] ?? []).forEach((entry, id) => {
-      if (!entry || entry.node === null || entry.node === undefined) {
-        retired[space].set(id, entry?.retired ?? "");
-        return;
-      }
-      byId[space].set(id, entry.node);
+    (table[space] ?? []).forEach((node, id) => {
+      if (!node) return; // an empty row; validateIdTable reports it
+      byId[space].set(id, node);
       // First row wins on a duplicate name; INV-IDTABLE-UNIQUE reports it
       // rather than this silently picking the later one.
-      if (!byNode[space].has(entry.node)) byNode[space].set(entry.node, id);
+      if (!byNode[space].has(node)) byNode[space].set(node, id);
     });
   }
-  return { byId, byNode, retired };
+  return { byId, byNode };
 }
 
 /** Node name for a data id, or null when the id is unknown OR retired. Never throws. */
@@ -93,16 +87,6 @@ export function nodeOf(ix: IdIndex, space: IdSpace, id: number): string | null {
 /** Data id for a node name, or null when the node has no id minted yet. Never throws. */
 export function idOf(ix: IdIndex, space: IdSpace, node: string): number | null {
   return ix.byNode[space].get(node) ?? null;
-}
-
-/** True when this id was deliberately retired — distinguishes "dead" from "never existed". */
-export function isRetired(ix: IdIndex, space: IdSpace, id: number): boolean {
-  return ix.retired[space].has(id);
-}
-
-/** The name a retired id used to point at, for diagnostics. */
-export function retiredName(ix: IdIndex, space: IdSpace, id: number): string | null {
-  return ix.retired[space].get(id) ?? null;
 }
 
 /**
@@ -118,22 +102,22 @@ export function nextId(table: IdTable, space: IdSpace): number {
  * slot keeps it, so calling this on every save is harmless. Mutates `table`.
  */
 export function mintId(table: IdTable, space: IdSpace, node: string): number {
-  const existing = (table[space] ??= []).findIndex((e) => e?.node === node);
+  const existing = (table[space] ??= []).indexOf(node);
   if (existing !== -1) return existing;
-  table[space].push({ node });
+  table[space].push(node);
   return table[space].length - 1;
 }
 
 /**
- * Tombstones `node`'s slot: the row stays at its index, `node` becomes null,
- * and the old name is kept in `retired`. The row is NOT removed — removing it
- * would shift every later row down and renumber ids nobody touched.
- * Returns the retired id, or null when there was nothing to retire.
+ * Removes `node`'s row. THIS RENUMBERS: every id after it shifts down by one,
+ * and so does the meaning of every level string that used one. Callers confirm
+ * first — see the editor's delete path. Returns the id the row held, or null
+ * when there was nothing to remove. Mutates `table`.
  */
-export function retireId(table: IdTable, space: IdSpace, node: string): number | null {
-  const at = (table[space] ?? []).findIndex((e) => e?.node === node);
+export function removeId(table: IdTable, space: IdSpace, node: string): number | null {
+  const at = (table[space] ?? []).indexOf(node);
   if (at === -1) return null;
-  table[space][at] = { node: null, retired: node };
+  table[space].splice(at, 1);
   return at;
 }
 
@@ -143,9 +127,9 @@ export function retireId(table: IdTable, space: IdSpace, node: string): number |
  * when `from` has no slot. Mutates `table`.
  */
 export function renameNode(table: IdTable, space: IdSpace, from: string, to: string): boolean {
-  const at = (table[space] ?? []).findIndex((e) => e?.node === from);
+  const at = (table[space] ?? []).indexOf(from);
   if (at === -1) return false;
-  table[space][at] = { ...table[space][at], node: to };
+  table[space][at] = to;
   return true;
 }
 
@@ -172,44 +156,34 @@ export interface IdTableIssue {
 }
 
 /**
- * Structural checks that don't need the graph: a duplicate node name, a
- * tombstone with no recorded history, a hole. Graph-aware checks (does this
- * name exist? is it the right kind?) live in nodeGraphValidate.ts, which has
- * the vertices to check against.
+ * Structural checks that don't need the graph: a duplicate name, an empty row.
+ * Graph-aware checks (does this name exist? is it the right kind?) live in
+ * nodeGraphValidate.ts, which has the vertices to check against.
  *
- * Duplicate IDS are impossible now — an id is an array index — which is the
- * main thing the positional model buys.
+ * Duplicate IDS are impossible — an id is an array index — which is the main
+ * thing the positional model buys.
  */
 export function validateIdTable(table: IdTable): IdTableIssue[] {
   const issues: IdTableIssue[] = [];
   for (const space of ID_SPACES) {
     const seenNodes = new Map<string, number>();
-    (table[space] ?? []).forEach((entry, id) => {
-      if (!entry) {
-        issues.push({ space, id, message: `Id ${id} in the ${space} space is a hole; use a tombstone instead.` });
+    (table[space] ?? []).forEach((node, id) => {
+      if (!node) {
+        issues.push({ space, id, message: `Id ${id} in the ${space} space names nothing.` });
         return;
       }
-      if (entry.node === null || entry.node === undefined) {
-        if (!entry.retired) {
-          issues.push({
-            space,
-            id,
-            message: `Id ${id} is a tombstone but records no retired name — its history is lost.`,
-          });
-        }
-        return;
-      }
-      const prior = seenNodes.get(entry.node);
+      const prior = seenNodes.get(node);
       if (prior !== undefined) {
         issues.push({
           space,
-          node: entry.node,
-          message: `"${entry.node}" is claimed by both id ${prior} and id ${id}; a node may hold only one id.`,
+          node,
+          message: `"${node}" is claimed by both id ${prior} and id ${id}; a node may hold only one id.`,
         });
       } else {
-        seenNodes.set(entry.node, id);
+        seenNodes.set(node, id);
       }
     });
   }
   return issues;
 }
+

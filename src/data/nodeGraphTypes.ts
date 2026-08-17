@@ -97,14 +97,16 @@ export interface NodeGraphSchema {
 
 export type IdSpace = "ingredient" | "composite" | "group" | "tool" | "dirty";
 
-export interface IdEntry {
-  /** null = tombstone: the slot is retired but kept, so later rows never shift. */
-  node: string | null;
-  /** The name this slot used to hold, kept for diagnostics. Set with `node: null`. */
-  retired?: string;
-}
-
-export type IdTable = Record<IdSpace, IdEntry[]>;
+/**
+ * One ordered list of node names per space. The INDEX is the id.
+ *
+ * A plain string array, with no tombstones: deleting a node removes its row and
+ * renumbers everything after it, exactly as reordering does. That is a real
+ * consequence the designer confirms, not something the format hides — and it
+ * keeps the table to one fact per row, so there is no "is this slot dead?"
+ * state for a reader to get wrong.
+ */
+export type IdTable = Record<IdSpace, string[]>;
 
 // ---------- vertices ----------
 

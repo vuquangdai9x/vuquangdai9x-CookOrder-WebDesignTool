@@ -26,12 +26,14 @@ const ids = buildIdIndex(doc.idTable);
 const levels = importLevelsCsv(burgerLevelsCsv);
 
 describe("the id is the row's position", () => {
-  it("resolves each space by index, with no stored id field anywhere", () => {
+  it("resolves each space by index — the table is a plain ordered name list", () => {
     for (const space of ID_SPACES) {
-      doc.idTable[space].forEach((entry, index) => {
-        expect(entry, `${space}[${index}] is a hole`).toBeTruthy();
-        expect(Object.keys(entry).sort()).not.toContain("id");
-        if (entry.node !== null) expect(ids.byId[space].get(index)).toBe(entry.node);
+      doc.idTable[space].forEach((node, index) => {
+        // A row is a bare string: no id field to disagree with the position,
+        // and no tombstone state for a reader to mishandle.
+        expect(typeof node, `${space}[${index}] is not a plain name`).toBe("string");
+        expect(node, `${space}[${index}] is empty`).not.toBe("");
+        expect(ids.byId[space].get(index)).toBe(node);
       });
     }
   });

@@ -17,153 +17,59 @@
   },
   "idTable": {
     "ingredient": [
-      {
-        "node": "bun"
-      },
-      {
-        "node": "patty"
-      },
-      {
-        "node": "tomato"
-      },
-      {
-        "node": "lettuce"
-      },
-      {
-        "node": "onion"
-      },
-      {
-        "node": "cheese"
-      },
-      {
-        "node": "egg"
-      },
-      {
-        "node": "cup"
-      },
-      {
-        "node": "ice"
-      },
-      {
-        "node": "chicken-breast"
-      },
-      {
-        "node": "chicken-wing"
-      },
-      {
-        "node": "chicken-thigh"
-      },
-      {
-        "node": "chicken-nugget"
-      },
-      {
-        "node": "potato"
-      },
-      {
-        "node": "chili-bowl"
-      },
-      {
-        "node": "chive"
-      },
-      {
-        "node": "cheese-sauce"
-      },
-      {
-        "node": "bun-sliced"
-      },
-      {
-        "node": "patty-cooked"
-      },
-      {
-        "node": "tomato-sliced"
-      },
-      {
-        "node": "lettuce-sliced"
-      },
-      {
-        "node": "onion-sliced"
-      },
-      {
-        "node": "cheese-sliced"
-      },
-      {
-        "node": "egg-cooked"
-      },
-      {
-        "node": "soda-cup"
-      },
-      {
-        "node": "chicken-breast-fried"
-      },
-      {
-        "node": "chicken-wing-fried"
-      },
-      {
-        "node": "chicken-thigh-fried"
-      },
-      {
-        "node": "chicken-nugget-fried"
-      },
-      {
-        "node": "potato-fried"
-      },
-      {
-        "node": "chive-sliced"
-      }
+      "bun",
+      "patty",
+      "tomato",
+      "lettuce",
+      "onion",
+      "cheese",
+      "egg",
+      "cup",
+      "ice",
+      "chicken-breast",
+      "chicken-wing",
+      "chicken-thigh",
+      "chicken-nugget",
+      "potato",
+      "chili-bowl",
+      "chive",
+      "cheese-sauce",
+      "bun-sliced",
+      "patty-cooked",
+      "tomato-sliced",
+      "lettuce-sliced",
+      "onion-sliced",
+      "cheese-sliced",
+      "egg-cooked",
+      "soda-cup",
+      "chicken-breast-fried",
+      "chicken-wing-fried",
+      "chicken-thigh-fried",
+      "chicken-nugget-fried",
+      "potato-fried",
+      "chive-sliced"
     ],
     "composite": [
-      {
-        "node": "burger"
-      },
-      {
-        "node": "soda"
-      },
-      {
-        "node": "fried-basket"
-      },
-      {
-        "node": null,
-        "retired": "fried-potato"
-      }
+      "burger",
+      "soda",
+      "fried-basket"
     ],
     "group": [
-      {
-        "node": "burger-toppings"
-      },
-      {
-        "node": "fried-basket-bases"
-      },
-      {
-        "node": "fried-basket-sauces"
-      }
+      "burger-toppings",
+      "fried-basket-bases",
+      "fried-basket-sauces"
     ],
     "tool": [
-      {
-        "node": "griddle"
-      },
-      {
-        "node": "coca-machine"
-      },
-      {
-        "node": "cutting-board"
-      },
-      {
-        "node": "fryer"
-      },
-      {
-        "node": "flour"
-      }
+      "griddle",
+      "coca-machine",
+      "cutting-board",
+      "fryer",
+      "flour"
     ],
     "dirty": [
-      {
-        "node": "dirty-plate"
-      },
-      {
-        "node": "dirty-cup"
-      },
-      {
-        "node": "dirty-chick-box"
-      }
+      "dirty-plate",
+      "dirty-cup",
+      "dirty-chick-box"
     ]
   },
   "vertices": {

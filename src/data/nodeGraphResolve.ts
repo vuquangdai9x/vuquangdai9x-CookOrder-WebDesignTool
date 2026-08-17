@@ -319,33 +319,49 @@ export function traceAll(doc: NodeGraphMap): OrderableTrace[] {
 }
 
 /**
- * Ingredient -> the single slot that may hold it, as `{orderable, slot}`.
+ * Where each ingredient may sit: `placesOf` lists every `{orderable, slot}`,
+ * and `slotOf` names the FIRST — enough for a display hint that only needs one
+ * representative.
  *
- * This is the table that makes a flat legacy dish re-bracketable: if every
- * servable ingredient maps to exactly one slot, the bracket structure is
- * recoverable from a bare multiset of ids. Ingredients appearing in more than
- * one slot are returned separately as `ambiguous` — they are exactly the
- * INV-ORDER-REBUILDABLE violations (C1 within one composite, C2 across two).
+ * `ambiguousWithinComposite` is the one genuinely dangerous case: the same
+ * ingredient offered by two slots of ONE composite. `resolveOrder` maps an
+ * ingredient to a slot per composite, last write winning, so a dish authored
+ * into slot 0 silently resolves into slot 1 — with a gate it can never open.
+ * That is INV-ORDER-REBUILDABLE (C1).
+ *
+ * Sharing an ingredient across two DIFFERENT orderables (once "C2") is NOT
+ * returned here and is no longer an error. The bracket format names the
+ * composite, so resolution is scoped to it and the sharing is unambiguous —
+ * a shared sauce offered by both a fried basket and a fried potato resolves
+ * correctly in each. C2 only ever mattered to the flat-list recogniser the
+ * retired legacy migration used.
  */
 export function slotIndex(lk: GraphLookup): {
   slotOf: Map<string, { orderable: string; slot: number }>;
-  ambiguous: Map<string, { orderable: string; slot: number }[]>;
+  placesOf: Map<string, { orderable: string; slot: number }[]>;
+  ambiguousWithinComposite: Map<string, { orderable: string; slot: number }[]>;
 } {
-  const all = new Map<string, { orderable: string; slot: number }[]>();
+  const placesOf = new Map<string, { orderable: string; slot: number }[]>();
   for (const orderable of lk.orderables) {
     slotsOf(lk, orderable).forEach((slot, index) => {
       for (const option of slot.options) {
-        const list = all.get(option) ?? [];
+        const list = placesOf.get(option) ?? [];
         list.push({ orderable, slot: index });
-        all.set(option, list);
+        placesOf.set(option, list);
       }
     });
   }
   const slotOf = new Map<string, { orderable: string; slot: number }>();
-  const ambiguous = new Map<string, { orderable: string; slot: number }[]>();
-  for (const [ingredient, places] of all) {
-    if (places.length === 1) slotOf.set(ingredient, places[0]);
-    else ambiguous.set(ingredient, places);
+  const ambiguousWithinComposite = new Map<string, { orderable: string; slot: number }[]>();
+  for (const [ingredient, places] of placesOf) {
+    slotOf.set(ingredient, places[0]);
+    const byComposite = new Map<string, number>();
+    for (const place of places) {
+      byComposite.set(place.orderable, (byComposite.get(place.orderable) ?? 0) + 1);
+    }
+    if ([...byComposite.values()].some((n) => n > 1)) {
+      ambiguousWithinComposite.set(ingredient, places);
+    }
   }
-  return { slotOf, ambiguous };
+  return { slotOf, placesOf, ambiguousWithinComposite };
 }

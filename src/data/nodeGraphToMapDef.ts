@@ -267,13 +267,20 @@ function collapsedRoute(
  * property of the choice, not of the item.
  */
 function limitHintFor(ix: GraphIndex, dense: number): { limit: number } | null {
-  const place = ix.slotOf[dense];
-  if (!place) return null;
-  const slot = ix.slotsOfComposite[place.orderable]?.[place.slot];
-  if (!slot) return null;
-  const at = slot.options.indexOf(dense);
-  const cap = at === -1 ? -1 : (slot.optionMax[at] ?? -1);
-  return cap > 0 ? { limit: cap } : null;
+  // A shared ingredient sits in several slots, each free to cap it
+  // differently. Legacy's flat `limit` has one number, so take the LOOSEST —
+  // understating a cap would make the dish editor refuse a dish the runtime
+  // would happily serve.
+  let loosest = 0;
+  for (const place of ix.placesOf[dense] ?? []) {
+    const slot = ix.slotsOfComposite[place.orderable]?.[place.slot];
+    if (!slot) continue;
+    const at = slot.options.indexOf(dense);
+    const cap = at === -1 ? -1 : (slot.optionMax[at] ?? -1);
+    if (cap <= 0) return null; // unlimited somewhere means unlimited here
+    loosest = Math.max(loosest, cap);
+  }
+  return loosest > 0 ? { limit: loosest } : null;
 }
 
 /**
@@ -287,13 +294,21 @@ function baseHintFor(
   dense: number,
   dataIdOf: Map<number, number>,
 ): { baseId: number | number[] } | null {
-  const place = ix.slotOf[dense];
-  if (!place) return null;
-  const slots = ix.slotsOfComposite[place.orderable] ?? [];
-  if (slots[place.slot]?.isBase) return null;
-  const base = slots.find((s) => s.isBase);
-  if (!base) return null;
-  const options = base.options.map((o) => dataIdOf.get(o)).filter((id): id is number => id !== undefined);
-  if (options.length === 0) return null;
-  return { baseId: options.length === 1 ? options[0] : options };
+  // Unioned across every composite that offers this ingredient: a sauce shared
+  // by a fried basket and a fried potato gates on EITHER base, and legacy's
+  // `baseId: Id | Id[]` is already shaped to say exactly that.
+  const options = new Set<number>();
+  for (const place of ix.placesOf[dense] ?? []) {
+    const slots = ix.slotsOfComposite[place.orderable] ?? [];
+    if (slots[place.slot]?.isBase) return null; // it IS a base somewhere: no requirement
+    const base = slots.find((s) => s.isBase);
+    if (!base) continue;
+    for (const option of base.options) {
+      const id = dataIdOf.get(option);
+      if (id !== undefined) options.add(id);
+    }
+  }
+  if (options.size === 0) return null;
+  const list = [...options];
+  return { baseId: list.length === 1 ? list[0] : list };
 }

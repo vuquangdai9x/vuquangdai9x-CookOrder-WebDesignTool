@@ -82,6 +82,13 @@ export interface GraphIndex {
   slotsOfComposite: IndexedSlot[][];
   /** Ingredient -> {orderable, slot}, or undefined when ambiguous/unused. */
   slotOf: (({ orderable: number; slot: number }) | undefined)[];
+  /**
+   * EVERY slot an ingredient may fill, across all orderables. `slotOf` holds
+   * only the first — enough when one representative will do, but a shared
+   * ingredient (one sauce offered by two composites) genuinely has several,
+   * and a caller that unions over them gets the whole truth.
+   */
+  placesOf: ({ orderable: number; slot: number }[])[];
   /** Composite -> dirty index, or -1 for the generic dirty dish. */
   dirtyOf: number[];
 
@@ -226,12 +233,18 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
   };
   const slotsOfComposite = compositeName.map((name) => slotsOf(lookup, name).map(toIndexed));
 
-  const { slotOf: slotOfName } = slotIndex(lookup);
+  const { placesOf: placesOfName } = slotIndex(lookup);
   const slotOf: (({ orderable: number; slot: number }) | undefined)[] = new Array(n).fill(undefined);
-  for (const [ingredient, place] of slotOfName) {
+  const placesOf: ({ orderable: number; slot: number }[])[] = Array.from({ length: n }, () => []);
+  for (const [ingredient, places] of placesOfName) {
     const i = ingByName.get(ingredient);
-    const c = compositeByName.get(place.orderable);
-    if (i !== undefined && c !== undefined) slotOf[i] = { orderable: c, slot: place.slot };
+    if (i === undefined) continue;
+    for (const place of places) {
+      const c = compositeByName.get(place.orderable);
+      if (c === undefined) continue;
+      placesOf[i].push({ orderable: c, slot: place.slot });
+    }
+    slotOf[i] = placesOf[i][0];
   }
 
   const dirtyOf = compositeName.map((name) => {
@@ -265,6 +278,7 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
     orderables,
     slotsOfComposite,
     slotOf,
+    placesOf,
     dirtyOf,
     usageNum,
     servable,
