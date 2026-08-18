@@ -19,6 +19,8 @@ namespace CookingGraph.Editor
         public string sourcePath;
         public string sourceGuid;
         public string sourceHash;
+        public int mapIndex;
+        public string outputFolderFormat;
         [TextArea(4, 20)] public string layoutJson;
         [TextArea(4, 20)] public string notesJson;
         [TextArea(4, 20)] public string previousIdTablesJson;

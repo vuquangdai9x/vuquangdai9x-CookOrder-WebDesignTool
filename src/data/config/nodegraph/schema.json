@@ -217,6 +217,11 @@
           "description": "Bundled asset path relative to src/assets/."
         },
         {
+          "name": "imageURL",
+          "type": "string",
+          "description": "Direct web image URL, used after localImage and before fileId."
+        },
+        {
           "name": "fileId",
           "type": "string",
           "description": "Google Drive artwork id."
@@ -266,6 +271,11 @@
         {
           "name": "localImage",
           "type": "string"
+        },
+        {
+          "name": "imageURL",
+          "type": "string",
+          "description": "Direct web image URL, used after localImage and before fileId."
         },
         {
           "name": "fileId",
@@ -358,6 +368,11 @@
         {
           "name": "localImage",
           "type": "string"
+        },
+        {
+          "name": "imageURL",
+          "type": "string",
+          "description": "Direct web image URL, used after localImage and before fileId."
         },
         {
           "name": "fileId",

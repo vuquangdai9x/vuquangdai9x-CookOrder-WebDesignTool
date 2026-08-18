@@ -59,6 +59,7 @@ import type {
 } from "../../data/nodeGraphTypes.ts";
 import { downloadFile } from "../../data/sheetSource.ts";
 import { parseGraphJson, vertexCount } from "../../data/nodeGraphJson.ts";
+import { noteImageURL } from "./noteImage.ts";
 
 /** Which id space a vertex kind mints into. */
 const SPACE_OF: Record<VertexKindName, IdSpace> = {
@@ -586,6 +587,18 @@ export class MapProcessView {
     const box = el("div", { class: "nodegraph-note", "data-note": note.id }, [
       el("span", { class: "nodegraph-note-text" }, [note.text]),
     ]);
+    const previewURL = noteImageURL(note.text);
+    if (previewURL) {
+      const preview = el("img", {
+        class: "nodegraph-note-image",
+        src: previewURL,
+        alt: "Note image preview",
+        loading: "lazy",
+        draggable: "false",
+      }) as HTMLImageElement;
+      preview.addEventListener("error", () => preview.remove());
+      box.append(preview);
+    }
     box.style.left = `${note.x}px`;
     box.style.top = `${note.y}px`;
 
@@ -1281,6 +1294,7 @@ export class MapProcessView {
           icon: vertex?.emoji ?? "🍳",
           fileId: vertex?.fileId,
           localImage: vertex?.localImage,
+          imageURL: vertex?.imageURL,
           numSlots: (vertex?.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1,
           cookingTime: vertex?.cookingTime ?? 1,
           recipes: [],
@@ -1875,7 +1889,7 @@ export class MapProcessView {
       body.append(this.fieldRow(target, vertex, field));
     }
 
-    // Artwork fields (emoji / localImage / fileId) resolve through the icon
+    // Artwork fields (emoji / localImage / imageURL / fileId) resolve through the icon
     // layer's own load-and-fallback chain, which caches by URL. Editing a path
     // therefore does not repaint on its own — this button forces the redraw so
     // a designer can see whether the path they typed actually resolves.

@@ -39,6 +39,8 @@ export interface RawIngredientDef {
   fileId?: string;
   /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
   localImage?: string;
+  /** Direct web artwork URL, tried after localImage and before fileId. */
+  imageURL?: string;
   /** String code used by the Unity game / sheet (e.g. "burger_bun_raw"). */
   code: string;
   price: number;
@@ -61,6 +63,8 @@ export interface CookedIngredientDef {
   fileId?: string;
   /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
   localImage?: string;
+  /** Direct web artwork URL, tried after localImage and before fileId. */
+  imageURL?: string;
   /**
    * Another cooked ingredient id (or any one of several) that must already be
    * in a dish before this one can be served to it (e.g. Ice needs a Soda Cup
@@ -99,6 +103,8 @@ export interface DirtyObjectDef {
   fileId?: string;
   /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
   localImage?: string;
+  /** Direct web artwork URL, tried after localImage and before fileId. */
+  imageURL?: string;
   sourceCookedId: Id | Id[];
 }
 
@@ -127,6 +133,8 @@ export interface CookingToolDef {
   fileId?: string;
   /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
   localImage?: string;
+  /** Direct web artwork URL, tried after localImage and before fileId. */
+  imageURL?: string;
   numSlots: number;
   cookingTime: number;
   recipes: ToolRecipe[];

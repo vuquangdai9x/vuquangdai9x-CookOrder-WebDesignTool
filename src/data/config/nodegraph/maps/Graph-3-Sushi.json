@@ -1,0 +1,1076 @@
+{
+  "schemaVersion": 1,
+  "map": {
+    "id": "sushi",
+    "name": "sushi",
+    "gridWidth": 4,
+    "gridHeight": 4,
+    "dirtyStackHeight": 3,
+    "visibleRows": 3
+  },
+  "idTable": {
+    "ingredient": [
+      "wasabi",
+      "teacup-empty",
+      "water",
+      "rice",
+      "fish-salmon",
+      "fish-tuna",
+      "fish-roe-orange",
+      "fish-roe-black",
+      "fish-roe-green",
+      "fish-salmon-sliced",
+      "fish-tuna-sliced",
+      "rice-cooked",
+      "seaweed",
+      "avocado",
+      "lemon",
+      "wakame-seasame",
+      "avocado-sliced",
+      "lemon-sliced",
+      "shrimp-boiled",
+      "wasabi-flour",
+      "teacup",
+      "fish-hirame",
+      "fish-mackerel",
+      "fish-hirame-sliced",
+      "fish-mackerel-sliced",
+      "sauce-mayo",
+      "shrimp",
+      "octopus",
+      "octopus-boiled"
+    ],
+    "composite": [
+      "nigiri",
+      "sashimi-with-topping",
+      "sushi-with-topping",
+      "teacup-with-topping",
+      "gunkan-with-roe"
+    ],
+    "group": [
+      "single-fish-roe",
+      "single-sushi-main",
+      "multiple-fish",
+      "sashimi-topping",
+      "sushi-topping"
+    ],
+    "tool": [
+      "cutting-board-fish",
+      "rice-cooker",
+      "teapot",
+      "grater",
+      "cutting-board",
+      "pot"
+    ],
+    "dirty": [
+      "dirty-plate",
+      "dirty-teacup",
+      "dirty-bowl"
+    ]
+  },
+  "vertices": {
+    "ingredient": [
+      {
+        "name": "rice",
+        "displayName": "rice",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "water",
+        "displayName": "water",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "rice-cooked",
+        "displayName": "rice-cooked",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "teacup-empty",
+        "displayName": "teacup-empty",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "teacup",
+        "displayName": "teacup",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "wasabi",
+        "displayName": "wasabi",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "wasabi-flour",
+        "displayName": "wasabi-flour",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-salmon-sliced",
+        "displayName": "fish-salmon-sliced",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-salmon",
+        "displayName": "fish-salmon",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-tuna",
+        "displayName": "fish-tuna",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-tuna-sliced",
+        "displayName": "fish-tuna-sliced",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-roe-orange",
+        "displayName": "fish-roe-orange",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-roe-black",
+        "displayName": "fish-roe-black",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-roe-green",
+        "displayName": "fish-roe-green",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "seaweed",
+        "displayName": "seaweed",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "avocado",
+        "displayName": "avocado",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "avocado-sliced",
+        "displayName": "avocado-sliced",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "lemon",
+        "displayName": "lemon",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "lemon-sliced",
+        "displayName": "lemon-sliced",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "wakame-seasame",
+        "displayName": "wakame-seasame",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "shrimp-boiled",
+        "displayName": "shrimp-boiled",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-hirame",
+        "displayName": "fish-hirame",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-mackerel",
+        "displayName": "fish-mackerel",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-hirame-sliced",
+        "displayName": "fish-hirame-sliced",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "fish-mackerel-sliced",
+        "displayName": "fish-mackerel-sliced",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "sauce-mayo",
+        "displayName": "sauce-mayo",
+        "pickupable": true,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "octopus-boiled",
+        "displayName": "octopus-boiled",
+        "pickupable": false,
+        "servable": true,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "shrimp-sliced",
+        "displayName": "shrimp-sliced",
+        "pickupable": false,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "octopus-sliced",
+        "displayName": "octopus-sliced",
+        "pickupable": false,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "shrimp",
+        "displayName": "shrimp",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      },
+      {
+        "name": "octopus",
+        "displayName": "octopus",
+        "pickupable": true,
+        "servable": false,
+        "usageNum": 1,
+        "price": 0
+      }
+    ],
+    "tool": [
+      {
+        "name": "cutting-board-fish",
+        "displayName": "cutting-board-fish",
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 1
+      },
+      {
+        "name": "rice-cooker",
+        "displayName": "rice-cooker",
+        "slotConfigs": [
+          {
+            "name": "rice",
+            "slot": 1
+          },
+          {
+            "name": "water",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 1
+      },
+      {
+        "name": "teapot",
+        "displayName": "teapot",
+        "slotConfigs": [
+          {
+            "name": "inside",
+            "slot": 1
+          },
+          {
+            "name": "cup-slot",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 1
+      },
+      {
+        "name": "grater",
+        "displayName": "grater",
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 1
+      },
+      {
+        "name": "cutting-board",
+        "displayName": "cutting-board",
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 1
+      },
+      {
+        "name": "pot",
+        "displayName": "pot",
+        "slotConfigs": [
+          {
+            "name": "Slot",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 1
+      }
+    ],
+    "group": [
+      {
+        "name": "single-fish-roe",
+        "displayName": "single-fish-roe",
+        "maxQuantity": 1
+      },
+      {
+        "name": "single-sushi-main",
+        "displayName": "single-sushi-main",
+        "maxQuantity": 1
+      },
+      {
+        "name": "multiple-fish",
+        "displayName": "multiple-fish",
+        "maxQuantity": -1
+      },
+      {
+        "name": "sashimi-topping",
+        "displayName": "sashimi-topping",
+        "maxQuantity": -1
+      },
+      {
+        "name": "sushi-topping",
+        "displayName": "sushi-topping",
+        "maxQuantity": -1
+      }
+    ],
+    "composite": [
+      {
+        "name": "nigiri",
+        "displayName": "nigiri",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "sashimi-with-topping",
+        "displayName": "sashimi-with-topping",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "sushi-with-topping",
+        "displayName": "sushi-with-topping",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "teacup-with-topping",
+        "displayName": "teacup-with-topping",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "sushi",
+        "displayName": "sushi",
+        "orderable": false,
+        "toppingRequired": false
+      },
+      {
+        "name": "seaweed-and-rice",
+        "displayName": "seaweed-and-rice",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "gunkan-with-roe",
+        "displayName": "gunkan-with-roe",
+        "orderable": true,
+        "toppingRequired": false
+      }
+    ],
+    "dirty": [
+      {
+        "name": "dirty-plate",
+        "displayName": "dirty-plate"
+      },
+      {
+        "name": "dirty-teacup",
+        "displayName": "dirty-teacup"
+      },
+      {
+        "name": "dirty-bowl",
+        "displayName": "dirty-bowl"
+      }
+    ]
+  },
+  "edges": {
+    "process": [
+      {
+        "from": "rice-cooker",
+        "to": "rice-cooked",
+        "inputs": [
+          {
+            "ingredient": "rice",
+            "slot": 0
+          },
+          {
+            "ingredient": "water",
+            "slot": 1
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "teapot",
+        "to": "teacup",
+        "inputs": [
+          {
+            "ingredient": "teacup-empty",
+            "slot": 1
+          },
+          {
+            "ingredient": "water",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "grater",
+        "to": "wasabi-flour",
+        "inputs": [
+          {
+            "ingredient": "wasabi",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "cutting-board-fish",
+        "to": "fish-salmon-sliced",
+        "inputs": [
+          {
+            "ingredient": "fish-salmon",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "cutting-board",
+        "to": "avocado-sliced",
+        "inputs": [
+          {
+            "ingredient": "avocado",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "cutting-board-fish",
+        "to": "fish-tuna-sliced",
+        "inputs": [
+          {
+            "ingredient": "fish-tuna",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "cutting-board-fish",
+        "to": "fish-hirame-sliced",
+        "inputs": [
+          {
+            "ingredient": "fish-hirame",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "cutting-board-fish",
+        "to": "fish-mackerel-sliced",
+        "inputs": [
+          {
+            "ingredient": "fish-mackerel",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "cutting-board",
+        "to": "lemon-sliced",
+        "inputs": [
+          {
+            "ingredient": "lemon",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "pot",
+        "to": "shrimp-boiled",
+        "inputs": [
+          {
+            "ingredient": "shrimp-sliced",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "pot",
+        "to": "octopus-boiled",
+        "inputs": [
+          {
+            "ingredient": "octopus-sliced",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "cutting-board-fish",
+        "to": "shrimp-sliced",
+        "inputs": [
+          {
+            "ingredient": "shrimp",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      },
+      {
+        "from": "cutting-board-fish",
+        "to": "octopus-sliced",
+        "inputs": [
+          {
+            "ingredient": "octopus",
+            "slot": 0
+          }
+        ],
+        "amount": 1
+      }
+    ],
+    "base": [
+      {
+        "from": "nigiri",
+        "to": "rice-cooked"
+      },
+      {
+        "from": "sashimi-with-topping",
+        "to": "multiple-fish"
+      },
+      {
+        "from": "teacup-with-topping",
+        "to": "teacup"
+      },
+      {
+        "from": "seaweed-and-rice",
+        "to": "seaweed"
+      },
+      {
+        "from": "sushi",
+        "to": "seaweed-and-rice"
+      },
+      {
+        "from": "sushi-with-topping",
+        "to": "sushi"
+      },
+      {
+        "from": "gunkan-with-roe",
+        "to": "seaweed-and-rice"
+      }
+    ],
+    "topping": [
+      {
+        "from": "nigiri",
+        "to": "single-sushi-main"
+      },
+      {
+        "from": "sashimi-with-topping",
+        "to": "sashimi-topping"
+      },
+      {
+        "from": "teacup-with-topping",
+        "to": "lemon-sliced"
+      },
+      {
+        "from": "seaweed-and-rice",
+        "to": "rice-cooked"
+      },
+      {
+        "from": "sushi",
+        "to": "single-sushi-main"
+      },
+      {
+        "from": "sushi-with-topping",
+        "to": "sushi-topping"
+      },
+      {
+        "from": "gunkan-with-roe",
+        "to": "single-fish-roe"
+      }
+    ],
+    "option": [
+      {
+        "from": "single-fish-roe",
+        "to": "fish-roe-orange",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-fish-roe",
+        "to": "fish-roe-black",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-fish-roe",
+        "to": "fish-roe-green",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-sushi-main",
+        "to": "fish-salmon-sliced",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-sushi-main",
+        "to": "fish-tuna-sliced",
+        "maxQuantity": -1
+      },
+      {
+        "from": "multiple-fish",
+        "to": "fish-salmon-sliced",
+        "maxQuantity": -1
+      },
+      {
+        "from": "multiple-fish",
+        "to": "fish-tuna-sliced",
+        "maxQuantity": -1
+      },
+      {
+        "from": "sashimi-topping",
+        "to": "single-fish-roe",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sashimi-topping",
+        "to": "lemon-sliced",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sashimi-topping",
+        "to": "wakame-seasame",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sashimi-topping",
+        "to": "wasabi-flour",
+        "maxQuantity": 1
+      },
+      {
+        "from": "single-sushi-main",
+        "to": "avocado-sliced",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-sushi-main",
+        "to": "shrimp-boiled",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-sushi-main",
+        "to": "fish-hirame-sliced",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-sushi-main",
+        "to": "fish-mackerel-sliced",
+        "maxQuantity": -1
+      },
+      {
+        "from": "multiple-fish",
+        "to": "fish-hirame-sliced",
+        "maxQuantity": -1
+      },
+      {
+        "from": "multiple-fish",
+        "to": "fish-mackerel-sliced",
+        "maxQuantity": -1
+      },
+      {
+        "from": "sushi-topping",
+        "to": "wakame-seasame",
+        "maxQuantity": -1
+      },
+      {
+        "from": "sushi-topping",
+        "to": "sauce-mayo",
+        "maxQuantity": -1
+      },
+      {
+        "from": "sushi-topping",
+        "to": "wasabi-flour",
+        "maxQuantity": -1
+      },
+      {
+        "from": "multiple-fish",
+        "to": "shrimp-boiled",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-sushi-main",
+        "to": "octopus-boiled",
+        "maxQuantity": -1
+      },
+      {
+        "from": "multiple-fish",
+        "to": "octopus-boiled",
+        "maxQuantity": -1
+      }
+    ],
+    "leavesDirty": [
+      {
+        "from": "teacup-with-topping",
+        "to": "dirty-teacup"
+      },
+      {
+        "from": "sushi-with-topping",
+        "to": "dirty-plate"
+      },
+      {
+        "from": "sashimi-with-topping",
+        "to": "dirty-bowl"
+      },
+      {
+        "from": "gunkan-with-roe",
+        "to": "dirty-plate"
+      },
+      {
+        "from": "nigiri",
+        "to": "dirty-plate"
+      }
+    ]
+  },
+  "layout": {
+    "table:orderable": {
+      "x": 3193.187340999997,
+      "y": 196.20668900000055
+    },
+    "table:pickupable": {
+      "x": -690.3931999999995,
+      "y": 200.88080000000014
+    },
+    "tool:rice-cooker": {
+      "x": 165.61573696411142,
+      "y": -161.76508528307932
+    },
+    "tool:teapot": {
+      "x": 178.4199569641114,
+      "y": -408.5855004821772
+    },
+    "tool:grater": {
+      "x": 285.2912709641111,
+      "y": 1608.6089139178214
+    },
+    "ingredient:rice": {
+      "x": -196.3130493122864,
+      "y": -86.11195934219302
+    },
+    "ingredient:water": {
+      "x": -202.94278068839208,
+      "y": -213.96394596954812
+    },
+    "ingredient:rice-cooked": {
+      "x": 494.1856862322439,
+      "y": -158.57488803654428
+    },
+    "ingredient:teacup-empty": {
+      "x": -210.44080200805635,
+      "y": -338.92495651550246
+    },
+    "ingredient:teacup": {
+      "x": 491.74670756835854,
+      "y": -376.80358256835893
+    },
+    "ingredient:wasabi": {
+      "x": -46.21652485087891,
+      "y": 1641.1881303400858
+    },
+    "ingredient:wasabi-flour": {
+      "x": 720.0799235491196,
+      "y": 1648.8419675400858
+    },
+    "ingredient:fish-salmon-sliced": {
+      "x": 594.1917043491204,
+      "y": 485.7154823400871
+    },
+    "ingredient:fish-salmon": {
+      "x": -168.71289565087864,
+      "y": 472.558449999694
+    },
+    "ingredient:fish-tuna": {
+      "x": -172.4517956508786,
+      "y": 546.4289499996938
+    },
+    "ingredient:fish-tuna-sliced": {
+      "x": 589.9106643491205,
+      "y": 554.8638399996938
+    },
+    "tool:cutting-board-fish": {
+      "x": 212.89725627355955,
+      "y": 518.9130507678216
+    },
+    "tool:cutting-board": {
+      "x": 175.38366496258524,
+      "y": 198.26350386401373
+    },
+    "ingredient:fish-roe-orange": {
+      "x": 467.0998750300773,
+      "y": 1132.0021193068708
+    },
+    "ingredient:fish-roe-black": {
+      "x": 466.3033450300775,
+      "y": 1207.3520993068705
+    },
+    "ingredient:fish-roe-green": {
+      "x": 467.0507750300774,
+      "y": 1284.8050593068704
+    },
+    "group:single-fish-roe": {
+      "x": 772.9627950300768,
+      "y": 1204.2760683068707
+    },
+    "composite:nigiri": {
+      "x": 1892.6051671238365,
+      "y": 250.96781871935994
+    },
+    "ingredient:seaweed": {
+      "x": 494.4268687072752,
+      "y": -50.57258678710936
+    },
+    "ingredient:avocado": {
+      "x": -154.57935048599487,
+      "y": 168.2663464506836
+    },
+    "ingredient:avocado-sliced": {
+      "x": 614.9943404230952,
+      "y": 165.67848645068375
+    },
+    "ingredient:lemon": {
+      "x": -151.18916964282224,
+      "y": 327.7827466691899
+    },
+    "ingredient:lemon-sliced": {
+      "x": 613.8545900571777,
+      "y": 271.65394426918965
+    },
+    "ingredient:wakame-seasame": {
+      "x": 623.9450148307063,
+      "y": 1415.2355142247789
+    },
+    "composite:sashimi-with-topping": {
+      "x": 1919.961592319288,
+      "y": 574.7503524891682
+    },
+    "dirty:dirty-plate": {
+      "x": 2384.075905878906,
+      "y": -116.11977791992192
+    },
+    "dirty:dirty-teacup": {
+      "x": 2395.3494758789057,
+      "y": -489.6905579199215
+    },
+    "dirty:dirty-bowl": {
+      "x": 2350.4264658789057,
+      "y": 674.2226320800778
+    },
+    "composite:teacup-with-topping": {
+      "x": 1895.1581582334154,
+      "y": -549.2850347559446
+    },
+    "composite:seaweed-and-rice": {
+      "x": 941.4935740396484,
+      "y": -242.57240658964832
+    },
+    "composite:sushi": {
+      "x": 1433.0121466396477,
+      "y": -251.82648438964821
+    },
+    "composite:sushi-with-topping": {
+      "x": 1906.0941145185532,
+      "y": -323.2143145429682
+    },
+    "group:single-sushi-main": {
+      "x": 1173.5657682464268,
+      "y": 228.8746429935298
+    },
+    "ingredient:fish-hirame": {
+      "x": -165.50978208520502,
+      "y": 625.1311575042719
+    },
+    "ingredient:fish-mackerel": {
+      "x": -178.819782085205,
+      "y": 702.3291575042717
+    },
+    "ingredient:fish-hirame-sliced": {
+      "x": 593.2022179147948,
+      "y": 622.5111575042716
+    },
+    "ingredient:fish-mackerel-sliced": {
+      "x": 591.8712179147947,
+      "y": 693.0541575042715
+    },
+    "ingredient:sauce-mayo": {
+      "x": 634.3146356201647,
+      "y": 1488.8911201966412
+    },
+    "group:sashimi-topping": {
+      "x": 1277.7123945571775,
+      "y": 1187.6256008691885
+    },
+    "group:sushi-topping": {
+      "x": 1267.9053937605572,
+      "y": 1021.6943592264449
+    },
+    "composite:gunkan-with-roe": {
+      "x": 1905.8745707702615,
+      "y": -49.58084671020502
+    },
+    "group:multiple-fish": {
+      "x": 1179.146675592016,
+      "y": 381.62702630735
+    },
+    "ingredient:shrimp-boiled": {
+      "x": 769.894881846191,
+      "y": 889.7752687871082
+    },
+    "ingredient:octopus-boiled": {
+      "x": 767.8651232374252,
+      "y": 975.8623366060314
+    },
+    "ingredient:shrimp-sliced": {
+      "x": 247.4969558387779,
+      "y": 895.9471215205178
+    },
+    "ingredient:octopus-sliced": {
+      "x": 247.11340211976966,
+      "y": 980.6428239998567
+    },
+    "ingredient:shrimp": {
+      "x": -166.3338646855626,
+      "y": 879.9098756133759
+    },
+    "ingredient:octopus": {
+      "x": -151.7626084872155,
+      "y": 981.6501400761854
+    },
+    "tool:pot": {
+      "x": 520.4659951025379,
+      "y": 889.0559893789042
+    }
+  },
+  "notes": [
+    {
+      "id": "note-msyadt0h",
+      "x": 2147.7406061987294,
+      "y": 176.9711151068111,
+      "text": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRUZHeXRT1ex5OKtBcMOc3eRKhJFoGhwu948EE3B2A8cwJXnm8KSjJiK8E&s=10"
+    },
+    {
+      "id": "note-msybioe5",
+      "x": 2121.99874455078,
+      "y": 657.391530999145,
+      "text": "https://www.justonecookbook.com/wp-content/uploads/2020/09/Salmon-Ikura-Don-7225-I-500x500.jpg"
+    },
+    {
+      "id": "note-msybt6e6",
+      "x": 2129.5573702505467,
+      "y": -143.31946433486908,
+      "text": "https://thumbs.dreamstime.com/b/gunkan-sushi-set-pattern-flying-fish-roe-tobiko-caviar-isolated-black-background-ready-food-banner-text-space-japanese-236174611.jpg"
+    }
+  ]
+}

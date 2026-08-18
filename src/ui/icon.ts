@@ -1,8 +1,8 @@
 // Icon rendering. Every definition row can carry a bundled local image
-// (src/assets/, see localImages.ts), a Google Drive `fileId`, and an emoji.
-// Load order is local -> Drive -> emoji: try the tool's own art first (it's
-// bundled, so there's nothing to wait on), fall back to Drive if there's no
-// local image or it fails to load, and fall back to the emoji if that fails
+// (src/assets/, see localImages.ts), a direct image URL, a Google Drive
+// `fileId`, and an emoji. Load order is local -> URL -> Drive -> emoji.
+// bundled, so there's nothing to wait on), fall back to the direct URL and
+// then Drive if a higher tier is missing or fails, and retain the emoji if all fail
 // too. All tiles/chips/cells render through here, which means a missing or
 // blocked image degrades gracefully in exactly one place.
 
@@ -17,6 +17,8 @@ export interface IconSpec {
   fileId?: string;
   /** Path relative to src/assets/, e.g. "Map1-burger/ingredients/foo.png". */
   localImage?: string;
+  /** Direct artwork URL, tried after localImage and before Google Drive. */
+  imageURL?: string;
 }
 
 /** Drive's thumbnail endpoint serves images cross-origin; `uc?export=view` does not. */
@@ -33,7 +35,8 @@ export const preloadedFileIds = new Set<string>();
 
 /**
  * Renders an icon: local bundled image first (if the row has one and it
- * resolved to a real bundled asset), then the Drive `fileId` fallback, then
+ * resolved to a real bundled asset), then a direct URL, then the Drive
+ * `fileId` fallback, then
  * the emoji. Each tier only takes over if the previous one is missing or
  * fails to load, so a bad/missing local path or a blocked Drive thumbnail
  * degrade gracefully instead of showing a broken image.
@@ -54,15 +57,37 @@ export function iconEl(
       // chain exactly as if there had been no local image at all.
       img.remove();
       wrap.textContent = fallback;
-      attachDriveFallback(wrap, spec, opts, fallback);
+      attachRemoteFallback(wrap, spec, opts, fallback);
     });
     wrap.textContent = "";
     wrap.append(img);
     return wrap;
   }
 
-  attachDriveFallback(wrap, spec, opts, fallback);
+  attachRemoteFallback(wrap, spec, opts, fallback);
   return wrap;
+}
+
+function attachRemoteFallback(
+  wrap: HTMLElement,
+  spec: IconSpec | undefined,
+  opts: { size?: number },
+  fallback: string,
+): void {
+  if (spec?.imageURL) {
+    const img = el("img", {
+      src: spec.imageURL,
+      alt: spec.name,
+      loading: "lazy",
+    }) as HTMLImageElement;
+    img.addEventListener("load", () => {
+      wrap.textContent = "";
+      wrap.append(img);
+    });
+    img.addEventListener("error", () => attachDriveFallback(wrap, spec, opts, fallback));
+    return;
+  }
+  attachDriveFallback(wrap, spec, opts, fallback);
 }
 
 function attachDriveFallback(
@@ -117,9 +142,11 @@ export function setIconMap(map: IconMapSource): void {
 }
 
 const specOf = (
-  def: { name: string; icon: string; fileId?: string; localImage?: string } | undefined,
+  def: { name: string; icon: string; fileId?: string; localImage?: string; imageURL?: string } | undefined,
 ): IconSpec | undefined =>
-  def ? { name: def.name, emoji: def.icon, fileId: def.fileId, localImage: def.localImage } : undefined;
+  def
+    ? { name: def.name, emoji: def.icon, fileId: def.fileId, localImage: def.localImage, imageURL: def.imageURL }
+    : undefined;
 
 const defSpec = (defs: ElementDef[], id: number) => specOf(defs.find((d) => d.id === id));
 
@@ -152,7 +179,13 @@ export const backpackIconEl = (size?: number) =>
 
 export const toolIconEl = (tool: CookingToolDef, size?: number) =>
   iconEl(
-    { name: tool.name, emoji: tool.icon ?? "🍳", fileId: tool.fileId, localImage: tool.localImage },
+    {
+      name: tool.name,
+      emoji: tool.icon ?? "🍳",
+      fileId: tool.fileId,
+      localImage: tool.localImage,
+      imageURL: tool.imageURL,
+    },
     { size, className: "icon-tool" },
   );
 

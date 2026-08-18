@@ -53,6 +53,7 @@ export function nodeIconSource(doc: NodeGraphMap): NodeIconSource {
       icon: vertex.emoji ?? "❔",
       ...(vertex.fileId ? { fileId: vertex.fileId } : {}),
       ...(vertex.localImage ? { localImage: vertex.localImage } : {}),
+      ...(vertex.imageURL ? { imageURL: vertex.imageURL } : {}),
       // Legacy-shaped fields icon.ts never reads; present so the type holds.
       code: vertex.code ?? vertex.name,
       price: vertex.price ?? 0,
@@ -71,6 +72,7 @@ export function nodeIconSource(doc: NodeGraphMap): NodeIconSource {
       icon: vertex.emoji ?? "🍳",
       ...(vertex.fileId ? { fileId: vertex.fileId } : {}),
       ...(vertex.localImage ? { localImage: vertex.localImage } : {}),
+      ...(vertex.imageURL ? { imageURL: vertex.imageURL } : {}),
       numSlots: (vertex.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1,
       cookingTime: vertex.cookingTime,
       recipes: [],
@@ -88,6 +90,7 @@ export function nodeIconSource(doc: NodeGraphMap): NodeIconSource {
       icon: vertex.emoji ?? "🍽",
       ...(vertex.fileId ? { fileId: vertex.fileId } : {}),
       ...(vertex.localImage ? { localImage: vertex.localImage } : {}),
+      ...(vertex.imageURL ? { imageURL: vertex.imageURL } : {}),
       sourceCookedId: -1, // the graph states this with a leavesDirty edge instead
     });
   }

@@ -127,6 +127,7 @@ export interface IngredientVertex {
   code?: string;
   emoji?: string;
   localImage?: string;
+  imageURL?: string;
   fileId?: string;
 }
 
@@ -160,6 +161,7 @@ export interface ToolVertex {
   upgradeCosts?: number[];
   emoji?: string;
   localImage?: string;
+  imageURL?: string;
   fileId?: string;
   runtimeToolId?: number;
 }
@@ -196,6 +198,7 @@ export interface DirtyVertex {
   displayName: string;
   emoji?: string;
   localImage?: string;
+  imageURL?: string;
   fileId?: string;
   runtimeDirtyId?: number;
 }

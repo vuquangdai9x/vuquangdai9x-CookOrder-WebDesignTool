@@ -18,6 +18,7 @@ namespace CookingGraph.Editor
 
     public sealed class CookingGraphEditorWindow : EditorWindow
     {
+        [SerializeField] private CookingGraphGenerationConfig _generationConfig;
         private GraphJsonDocument _document;
         private GraphUndoState _undoState;
         private GraphCanvasElement _canvas;
@@ -84,7 +85,7 @@ namespace CookingGraph.Editor
                 SelectionChanged = SelectNode,
                 NodeMoved = (kind, name, x, y) => Mutate("Move node", () =>
                     _document.Layout[$"{kind}:{name}"] = new JObject { ["x"] = x, ["y"] = y }),
-                ResolveGeneratedAsset = (kind, name) => GraphAssetSynchronizer.ResolveSpriteAsset(_document.MapId, kind, name)
+                ResolveGeneratedAsset = ResolveGeneratedAsset
             };
             split.Add(_canvas);
             _side = new ScrollView(ScrollViewMode.Vertical);
@@ -118,6 +119,15 @@ namespace CookingGraph.Editor
             bar.Add(new ToolbarButton(ShowAddNodeMenu) { text = "Add Node" });
             bar.Add(new ToolbarButton(AutoLayout) { text = "Auto Layout" });
             bar.Add(new ToolbarButton(() => _canvas?.FrameAll()) { text = "Frame All" });
+            var configField = new ObjectField("Output Config") { objectType = typeof(CookingGraphGenerationConfig), value = _generationConfig };
+            configField.tooltip = "Optional generation config. Create one with Assets > Create > Cooking Graph > Generation Config. {0} is mapIndex; {1} is mapId.";
+            configField.style.width = 170;
+            configField.RegisterValueChangedCallback(evt =>
+            {
+                _generationConfig = evt.newValue as CookingGraphGenerationConfig;
+                Refresh();
+            });
+            bar.Add(configField);
             _generateButton = new Button(GenerateOrSync) { text = "Generate Asset" };
             _generateButton.style.marginLeft = 8;
             bar.Add(_generateButton);
@@ -148,8 +158,19 @@ namespace CookingGraph.Editor
             BuildSidePanel();
             if (_generateButton != null)
             {
-                _generateButton.text = GraphAssetSynchronizer.HasGeneratedAssets(_document.MapId) ? "Sync" : "Generate Asset";
-                _generateButton.SetEnabled(!_readOnly && !_issues.Any(issue => issue.Severity == GraphIssueSeverity.Error));
+                try
+                {
+                    _generateButton.text = GraphAssetSynchronizer.HasGeneratedAssets(_document.MapId, _generationConfig) ? "Sync" : "Generate Asset";
+                    _generateButton.tooltip = _generationConfig?.ResolveOutputFolder(_document.MapId)
+                                              ?? GraphAssetSynchronizer.OutputRoot(_document.MapId);
+                    _generateButton.SetEnabled(!_readOnly && !_issues.Any(issue => issue.Severity == GraphIssueSeverity.Error));
+                }
+                catch (Exception exception)
+                {
+                    _generateButton.text = "Invalid Output Config";
+                    _generateButton.tooltip = exception.Message;
+                    _generateButton.SetEnabled(false);
+                }
             }
             UpdateStatus();
         }
@@ -203,7 +224,7 @@ namespace CookingGraph.Editor
                 else root.Add(FieldEditor(node, field, $"Edit {_selectedName}.{field.Name}"));
             }
 
-            var generated = GraphAssetSynchronizer.ResolveSpriteAsset(_document.MapId, _selectedKind, _selectedName);
+            var generated = ResolveGeneratedAsset(_selectedKind, _selectedName);
             var sprite = new ObjectField("Runtime Sprite") { objectType = typeof(Sprite), value = generated?.sprite };
             sprite.SetEnabled(generated != null);
             sprite.tooltip = generated == null ? "Generate assets first; sprites are assigned on generated node assets." : "Editor-only assignment; not written to JSON.";
@@ -537,12 +558,21 @@ namespace CookingGraph.Editor
                 EditorUtility.DisplayDialog("Generation blocked", string.Join("\n", errors.Take(20)), "OK");
                 return;
             }
-            var diff = GraphAssetSynchronizer.Compare(_document);
-            var verb = GraphAssetSynchronizer.HasGeneratedAssets(_document.MapId) ? "Sync" : "Generate";
+            GraphSyncDifference diff;
+            try
+            {
+                diff = GraphAssetSynchronizer.Compare(_document, _generationConfig);
+            }
+            catch (Exception exception)
+            {
+                EditorUtility.DisplayDialog("Invalid generation config", exception.Message, "OK");
+                return;
+            }
+            var verb = GraphAssetSynchronizer.HasGeneratedAssets(_document.MapId, _generationConfig) ? "Sync" : "Generate";
             if (!EditorUtility.DisplayDialog(verb + " Cooking Graph", diff.Summary(), verb, "Cancel")) return;
             try
             {
-                var asset = GraphAssetSynchronizer.Synchronize(_document, _sourcePath, diff);
+                var asset = GraphAssetSynchronizer.Synchronize(_document, _sourcePath, diff, _generationConfig);
                 Selection.activeObject = asset;
                 EditorGUIUtility.PingObject(asset);
                 Refresh();
@@ -552,6 +582,13 @@ namespace CookingGraph.Editor
                 Debug.LogException(exception);
                 EditorUtility.DisplayDialog("Asset generation failed", exception.Message, "OK");
             }
+        }
+
+        private CookingNodeAsset ResolveGeneratedAsset(string kind, string name)
+        {
+            if (_document == null) return null;
+            try { return GraphAssetSynchronizer.ResolveSpriteAsset(_document.MapId, kind, name, _generationConfig); }
+            catch (InvalidOperationException) { return null; }
         }
 
         private void ShowAddNodeMenu()

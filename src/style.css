@@ -3215,6 +3215,20 @@ td input {
   background: rgba(240, 164, 65, 0.16);
 }
 
+.nodegraph-note-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  margin-top: 0.35rem;
+  border-radius: 4px;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.nodegraph-note-text {
+  overflow-wrap: anywhere;
+}
+
 /* ---------- the mapping tables ---------- */
 
 /*

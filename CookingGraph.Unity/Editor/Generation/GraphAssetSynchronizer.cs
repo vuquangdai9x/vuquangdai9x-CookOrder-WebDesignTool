@@ -52,27 +52,28 @@ namespace CookingGraph.Editor
 
     internal static class GraphAssetSynchronizer
     {
-        public static string OutputRoot(string mapId) => $"Assets/_Production/Map-{SafePathPart(mapId)}/Graph";
-        public static string MasterPath(string mapId) => $"{OutputRoot(mapId)}/{SafePathPart(mapId)}.asset";
-        public static string EditorDataPath(string mapId) => $"{OutputRoot(mapId)}/Editor/{SafePathPart(mapId)}-EditorData.asset";
+        public static string OutputRoot(string mapId, CookingGraphGenerationConfig config = null) =>
+            GenerationPath.Resolve(config?.outputFolderFormat, config?.mapIndex ?? 0, mapId);
+        public static string MasterPath(string mapId, CookingGraphGenerationConfig config = null) => $"{OutputRoot(mapId, config)}/{SafePathPart(mapId)}.asset";
+        public static string EditorDataPath(string mapId, CookingGraphGenerationConfig config = null) => $"{OutputRoot(mapId, config)}/Editor/{SafePathPart(mapId)}-EditorData.asset";
 
-        public static bool HasGeneratedAssets(string mapId)
+        public static bool HasGeneratedAssets(string mapId, CookingGraphGenerationConfig config = null)
         {
-            return AssetDatabase.LoadAssetAtPath<CookingGraphAsset>(MasterPath(mapId)) != null
-                   || AssetDatabase.LoadAssetAtPath<CookingGraphEditorData>(EditorDataPath(mapId)) != null;
+            return AssetDatabase.LoadAssetAtPath<CookingGraphAsset>(MasterPath(mapId, config)) != null
+                   || AssetDatabase.LoadAssetAtPath<CookingGraphEditorData>(EditorDataPath(mapId, config)) != null;
         }
 
-        public static CookingNodeAsset ResolveSpriteAsset(string mapId, string kind, string nodeName)
+        public static CookingNodeAsset ResolveSpriteAsset(string mapId, string kind, string nodeName, CookingGraphGenerationConfig config = null)
         {
-            var state = AssetDatabase.LoadAssetAtPath<CookingGraphEditorData>(EditorDataPath(mapId));
+            var state = AssetDatabase.LoadAssetAtPath<CookingGraphEditorData>(EditorDataPath(mapId, config));
             return state?.activeNodes.FirstOrDefault(mapping => mapping.kind == kind && mapping.nodeName == nodeName)?.asset;
         }
 
-        public static GraphSyncDifference Compare(GraphJsonDocument document)
+        public static GraphSyncDifference Compare(GraphJsonDocument document, CookingGraphGenerationConfig config = null)
         {
             var diff = new GraphSyncDifference
             {
-                ExistingState = AssetDatabase.LoadAssetAtPath<CookingGraphEditorData>(EditorDataPath(document.MapId))
+                ExistingState = AssetDatabase.LoadAssetAtPath<CookingGraphEditorData>(EditorDataPath(document.MapId, config))
             };
             var available = new List<GeneratedNodeMapping>();
             if (diff.ExistingState != null)
@@ -82,7 +83,7 @@ namespace CookingGraph.Editor
             }
             else
             {
-                available.AddRange(ReconstructMappings(AssetDatabase.LoadAssetAtPath<CookingGraphAsset>(MasterPath(document.MapId))));
+                available.AddRange(ReconstructMappings(AssetDatabase.LoadAssetAtPath<CookingGraphAsset>(MasterPath(document.MapId, config))));
             }
 
             var previousIds = ParsePreviousIds(diff.ExistingState?.previousIdTablesJson);
@@ -120,18 +121,19 @@ namespace CookingGraph.Editor
             return diff;
         }
 
-        public static CookingGraphAsset Synchronize(GraphJsonDocument document, string sourcePath, GraphSyncDifference diff)
+        public static CookingGraphAsset Synchronize(GraphJsonDocument document, string sourcePath, GraphSyncDifference diff, CookingGraphGenerationConfig config = null)
         {
-            if (diff == null) diff = Compare(document);
-            EnsureFolder(OutputRoot(document.MapId));
-            foreach (var kind in GraphSchema.VertexKinds) EnsureFolder($"{OutputRoot(document.MapId)}/Nodes/{KindFolder(kind)}");
-            EnsureFolder($"{OutputRoot(document.MapId)}/Editor");
+            if (diff == null) diff = Compare(document, config);
+            var outputRoot = OutputRoot(document.MapId, config);
+            EnsureFolder(outputRoot);
+            foreach (var kind in GraphSchema.VertexKinds) EnsureFolder($"{outputRoot}/Nodes/{KindFolder(kind)}");
+            EnsureFolder($"{outputRoot}/Editor");
 
             var state = diff.ExistingState;
             if (state == null)
             {
                 state = ScriptableObject.CreateInstance<CookingGraphEditorData>();
-                AssetDatabase.CreateAsset(state, EditorDataPath(document.MapId));
+                AssetDatabase.CreateAsset(state, EditorDataPath(document.MapId, config));
             }
 
             var previousMappings = state.activeNodes.Concat(state.orphanedNodes).Where(value => value != null).ToList();
@@ -144,7 +146,7 @@ namespace CookingGraph.Editor
                 {
                     asset = CreateNodeAsset(node.Kind);
                     var filename = SafePathPart(node.Name) + ".asset";
-                    var path = AssetDatabase.GenerateUniqueAssetPath($"{OutputRoot(document.MapId)}/Nodes/{KindFolder(node.Kind)}/{filename}");
+                    var path = AssetDatabase.GenerateUniqueAssetPath($"{outputRoot}/Nodes/{KindFolder(node.Kind)}/{filename}");
                     AssetDatabase.CreateAsset(asset, path);
                 }
                 ApplyNode(node.Kind, node.Json, asset);
@@ -162,11 +164,11 @@ namespace CookingGraph.Editor
             foreach (var mapping in state.orphanedNodes.Where(mapping => mapping?.asset != null && !activeAssets.Contains(mapping.asset)))
                 if (orphans.All(value => value.asset != mapping.asset)) orphans.Add(mapping);
 
-            var master = AssetDatabase.LoadAssetAtPath<CookingGraphAsset>(MasterPath(document.MapId));
+            var master = AssetDatabase.LoadAssetAtPath<CookingGraphAsset>(MasterPath(document.MapId, config));
             if (master == null)
             {
                 master = ScriptableObject.CreateInstance<CookingGraphAsset>();
-                AssetDatabase.CreateAsset(master, MasterPath(document.MapId));
+                AssetDatabase.CreateAsset(master, MasterPath(document.MapId, config));
             }
             PopulateMaster(document, master, active);
             EditorUtility.SetDirty(master);
@@ -174,6 +176,8 @@ namespace CookingGraph.Editor
             state.sourcePath = sourcePath ?? string.Empty;
             state.sourceGuid = ToAssetPath(sourcePath) is string assetPath && !string.IsNullOrEmpty(assetPath) ? AssetDatabase.AssetPathToGUID(assetPath) : string.Empty;
             state.sourceHash = Hash(document.ToJson());
+            state.mapIndex = config?.mapIndex ?? 0;
+            state.outputFolderFormat = config?.outputFolderFormat ?? GenerationPath.DefaultFormat;
             state.layoutJson = document.Layout.ToString(Formatting.Indented);
             state.notesJson = document.Notes.ToString(Formatting.Indented);
             state.previousIdTablesJson = document.IdTable.ToString(Formatting.None);
@@ -328,6 +332,7 @@ namespace CookingGraph.Editor
             var clone = (JObject)source.DeepClone();
             clone.Remove("localImage");
             clone.Remove("fileId");
+            clone.Remove("imageURL");
             return Hash(kind + "\n" + clone.ToString(Formatting.None));
         }
 

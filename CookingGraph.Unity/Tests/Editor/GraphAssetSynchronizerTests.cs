@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -8,17 +9,20 @@ namespace CookingGraph.Editor.Tests
     public sealed class GraphAssetSynchronizerTests
     {
         private const string Root = "Assets/_Production/Map-sync-test";
+        private const string CustomRoot = "Assets/GeneratedCooking/7-sync-test";
 
         [SetUp]
         public void SetUp()
         {
             AssetDatabase.DeleteAsset(Root);
+            AssetDatabase.DeleteAsset(CustomRoot);
         }
 
         [TearDown]
         public void TearDown()
         {
             AssetDatabase.DeleteAsset(Root);
+            AssetDatabase.DeleteAsset(CustomRoot);
         }
 
         [Test]
@@ -61,6 +65,46 @@ namespace CookingGraph.Editor.Tests
             while (iterator.NextVisible(true))
                 if (iterator.propertyType == SerializedPropertyType.ObjectReference)
                     Assert.That(iterator.objectReferenceValue, Is.Not.TypeOf<CookingGraphEditorData>());
+        }
+
+        [Test]
+        public void GenerationConfigFormatsMapIndexAndMapId()
+        {
+            var config = UnityEngine.ScriptableObject.CreateInstance<CookingGraphGenerationConfig>();
+            config.mapIndex = 7;
+            config.outputFolderFormat = "Assets/GeneratedCooking/{0}-{1}";
+
+            Assert.That(GraphAssetSynchronizer.OutputRoot("sync test", config), Is.EqualTo(CustomRoot));
+            var graph = GraphAssetSynchronizer.Synchronize(GraphJsonDocumentTests.MinimalDocument(), "fixture.json", null, config);
+            Assert.That(AssetDatabase.GetAssetPath(graph), Does.StartWith(CustomRoot + "/"));
+            var state = AssetDatabase.LoadAssetAtPath<CookingGraphEditorData>(GraphAssetSynchronizer.EditorDataPath("sync-test", config));
+            Assert.That(state.mapIndex, Is.EqualTo(7));
+            Assert.That(state.outputFolderFormat, Is.EqualTo(config.outputFolderFormat));
+            UnityEngine.Object.DestroyImmediate(config);
+        }
+
+        [Test]
+        public void GenerationConfigRejectsFoldersOutsideAssets()
+        {
+            var config = UnityEngine.ScriptableObject.CreateInstance<CookingGraphGenerationConfig>();
+            config.outputFolderFormat = "../Generated/{1}";
+            Assert.Throws<InvalidOperationException>(() => GraphAssetSynchronizer.OutputRoot("sync-test", config));
+            UnityEngine.Object.DestroyImmediate(config);
+        }
+
+        [Test]
+        public void WebImageUrlDoesNotMarkRuntimeAssetsChanged()
+        {
+            var first = GraphJsonDocumentTests.MinimalDocument();
+            first.FindNode("ingredient", "bun")["imageURL"] = "https://example.com/one.png";
+            GraphAssetSynchronizer.Synchronize(first, "fixture.json", null);
+
+            var second = GraphJsonDocumentTests.MinimalDocument();
+            second.FindNode("ingredient", "bun")["imageURL"] = "https://example.com/two.png";
+            var diff = GraphAssetSynchronizer.Compare(second);
+
+            Assert.That(diff.Changed, Does.Not.Contain("ingredient:bun"));
+            Assert.That(diff.Unchanged, Does.Contain("ingredient:bun"));
         }
     }
 }
