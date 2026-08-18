@@ -78,25 +78,45 @@ function buildDish(
   if (slots.length === 0) return null;
 
   const root: DishNode = { kind: "composite", id: compositeId, members: [] };
-  const containers = new Map<number, DishNode>();
+  const containers = new Map<string, DishNode>();
+  const groupHeld = new Map<number, number>();
   const weightOf = (ing: number) => weights.get(ing) ?? 0;
+  const pathKey = (path: number[], length = path.length): string => path.slice(0, length).join("/");
+  const groupCapacity = (group: number): number => {
+    const maximum = ix.doc.vertices.group[group]?.maxQuantity ?? -1;
+    return maximum < 0 ? maxDishSlots : Math.max(0, maximum);
+  };
 
   const put = (slotIndex: number, ing: number): boolean => {
     const slot = slots[slotIndex];
     const dataId = ids.byNode.ingredient.get(ix.ingName[ing]);
     if (dataId === undefined) return false;
     let container = root;
-    if (slot.group !== -1) {
-      const existing = containers.get(slotIndex);
-      if (existing) container = existing;
-      else {
-        const groupId = ids.byNode.group.get(ix.groupName[slot.group]);
+    for (let depth = 0; depth < slot.groupPath.length; depth++) {
+      const key = pathKey(slot.groupPath, depth + 1);
+      let child = containers.get(key);
+      if (!child) {
+        if (depth > 0) {
+          const parentGroup = slot.groupPath[depth - 1];
+          if ((groupHeld.get(parentGroup) ?? 0) >= groupCapacity(parentGroup)) return false;
+        }
+        const group = slot.groupPath[depth];
+        const groupId = ids.byNode.group.get(ix.groupName[group]);
         if (groupId === undefined) return false;
-        const fresh: DishNode = { kind: "group", id: groupId, members: [] };
-        root.members.push(fresh);
-        containers.set(slotIndex, fresh);
-        container = fresh;
+        child = { kind: "group", id: groupId, members: [] };
+        container.members.push(child);
+        containers.set(key, child);
+        if (depth > 0) {
+          const parentGroup = slot.groupPath[depth - 1];
+          groupHeld.set(parentGroup, (groupHeld.get(parentGroup) ?? 0) + 1);
+        }
       }
+      container = child;
+    }
+    const leafGroup = slot.groupPath[slot.groupPath.length - 1];
+    if (leafGroup !== undefined) {
+      if ((groupHeld.get(leafGroup) ?? 0) >= groupCapacity(leafGroup)) return false;
+      groupHeld.set(leafGroup, (groupHeld.get(leafGroup) ?? 0) + 1);
     }
     container.members.push({ kind: "ingredient", id: dataId } as DishMember);
     return true;
@@ -111,7 +131,7 @@ function buildDish(
     const eligible = slot.options.filter((option, at) => {
       const limit = slot.optionMax[at] ?? -1;
       if (limit <= 0) return true;
-      return countOf(root, containers, slotIndex, option, ix, ids) < limit;
+      return countOf(root, containers, slot, option, ix, ids) < limit;
     });
     const pick = weightedPick(eligible, weightOf, rand);
     if (pick === null) return false;
@@ -154,13 +174,13 @@ function buildDish(
 /** How many copies of `option` a slot currently holds in the dish being built. */
 function countOf(
   root: DishNode,
-  containers: Map<number, DishNode>,
-  slotIndex: number,
+  containers: Map<string, DishNode>,
+  slot: IndexedSlot,
   option: number,
   ix: GraphIndex,
   ids: IdIndex,
 ): number {
-  const container = containers.get(slotIndex) ?? root;
+  const container = containers.get(slot.groupPath.join("/")) ?? root;
   const dataId = ids.byNode.ingredient.get(ix.ingName[option]);
   return container.members.filter((m) => m.kind === "ingredient" && m.id === dataId).length;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import burgerJson from "./config/nodegraph/maps/Graph-1-Burger.json";
+import sushiJson from "./config/nodegraph/maps/Graph-3-Sushi.json";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 import { buildLookup, chainOf, depthOf, slotIndex, slotsOf, traceAll, traceOrderable } from "./nodeGraphResolve.ts";
 import { chainedPotato } from "../core/nodeTestFixtures.ts";
@@ -40,6 +41,16 @@ describe("slot tree", () => {
     doc.vertices.group.find((value) => value.name === "burger-toppings")!.minQuantity = 2;
     const slot = slotsOf(buildLookup(doc), "burger").find((value) => value.group === "burger-toppings");
     expect(slot?.minQuantity).toBe(2);
+  });
+
+  it("retains the parent path of a nested group", () => {
+    const sushi = sushiJson as unknown as NodeGraphMap;
+    const slots = slotsOf(buildLookup(sushi), "gunkan-with-topping");
+    expect(slots.find((slot) => slot.group === "single-fish-roe")?.groupPath).toEqual([
+      "gunkan-top",
+      "single-fish-roe",
+    ]);
+    expect(slots.find((slot) => slot.group === "gunkan-top")?.groupPath).toEqual(["gunkan-top"]);
   });
 });
 

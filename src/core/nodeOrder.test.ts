@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import burgerJson from "../data/config/nodegraph/maps/Graph-1-Burger.json";
+import sushiJson from "../data/config/nodegraph/maps/Graph-3-Sushi.json";
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
 import { buildIndex } from "./nodeIndex.ts";
 import { parseDish } from "./nodeParser.ts";
@@ -153,6 +154,38 @@ describe("group minQuantity", () => {
     const next = withMinimum();
     const result = resolveOrder(next.ix, parseDish("{c0:17.{g0:18.19}}"), next.ids);
     expect(result.issues).toEqual([]);
+  });
+});
+
+describe("nested group quantity", () => {
+  const sushi = sushiJson as unknown as NodeGraphMap;
+  const sushiIx = buildIndex(sushi);
+  const sushiIds = orderIdIndex(sushiIx);
+  const id = (space: "ingredient" | "composite" | "group", name: string): number => sushiIds.byNode[space].get(name)!;
+  const composite = id("composite", "gunkan-with-topping");
+  const outer = id("group", "gunkan-top");
+  const roe = id("group", "single-fish-roe");
+  const roeItem = id("ingredient", "fish-roe-orange");
+  const other = id("ingredient", "wakame-seasame");
+
+  it("counts a nested group as one item of its parent maximum", () => {
+    const text = `{c${composite}:{g${outer}:{g${roe}:${roeItem}}.${other}}}`;
+    const result = resolveOrder(sushiIx, parseDish(text), sushiIds);
+    expect(result.issues.map((issue) => issue.kind)).toContain("above-group-maximum");
+    expect(result.issues.map(describeIssue).join(" ")).toContain("gunkan-top");
+  });
+
+  it("requires the inner roe group to stay inside gunkan-top", () => {
+    const text = `{c${composite}:{g${roe}:${roeItem}}.{g${outer}:${other}}}`;
+    const result = resolveOrder(sushiIx, parseDish(text), sushiIds);
+    expect(result.issues.map((issue) => issue.kind)).toContain("misnested-group");
+  });
+
+  it("accepts either the nested roe choice or another gunkan topping", () => {
+    for (const member of [`{g${roe}:${roeItem}}`, String(other)]) {
+      const result = resolveOrder(sushiIx, parseDish(`{c${composite}:{g${outer}:${member}}}`), sushiIds);
+      expect(result.issues).toEqual([]);
+    }
   });
 });
 

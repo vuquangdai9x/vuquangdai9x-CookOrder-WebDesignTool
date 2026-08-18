@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import burgerJson from "../../data/config/nodegraph/maps/Graph-1-Burger.json";
+import sushiJson from "../../data/config/nodegraph/maps/Graph-3-Sushi.json";
 import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import { orderIdIndex, resolveOrder } from "../../core/nodeOrder.ts";
@@ -240,5 +241,29 @@ describe("group minQuantity generation", () => {
     });
     expect(customers[0].dishes).toEqual([]);
     expect(warnings.join(" ")).toContain("minimum quantities");
+  });
+});
+
+describe("nested group generation", () => {
+  it("never spends two choices from gunkan-top when its maximum is one", () => {
+    const clone = structuredClone(sushiJson as unknown as NodeGraphMap);
+    clone.vertices.composite.forEach((value) => {
+      value.orderable = value.name === "gunkan-with-topping";
+    });
+    const sushiIx = buildIndex(clone);
+    const sushiIds = orderIdIndex(sushiIx);
+    const weights = new Map<number, number>();
+    for (let index = 0; index < sushiIx.ingName.length; index++) {
+      if (sushiIx.servable[index]) weights.set(index, 100);
+    }
+    const generated = generateNodeCustomers(sushiIx, sushiIds, {
+      dishCounts: Array(40).fill(1),
+      weights,
+      curve: defaultCurve(5, 5),
+      random: seeded(29),
+    });
+    const issues = generated.flatMap((customer) => customer.dishes.flatMap((dish) => resolveOrder(sushiIx, dish, sushiIds).issues));
+    expect(issues).toEqual([]);
+    expect(generated.some((customer) => customer.dishes.length > 0)).toBe(true);
   });
 });

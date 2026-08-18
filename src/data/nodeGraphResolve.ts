@@ -29,6 +29,8 @@ export interface Slot {
   kind: "fixed" | "group";
   /** Group name for a choice slot; null for a fixed one. */
   group: string | null;
+  /** Group brackets from outermost to this slot's owning group. */
+  groupPath: string[];
   /** Ingredients that may fill this slot. Exactly one entry for a fixed slot. */
   options: string[];
   /**
@@ -157,17 +159,18 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
   const acc: Slot[] = [];
   const visiting = new Set<string>();
 
-  const walk = (node: string, isBase: boolean): void => {
+  const walk = (node: string, isBase: boolean, groupPath: string[]): void => {
     if (visiting.has(node)) return; // cyclic data — INV-ACYCLIC reports it
     visiting.add(node);
 
     const kind = lk.kindOf.get(node);
     if (kind === "ingredient") {
-      acc.push({ kind: "fixed", group: null, options: [node], optionMax: [1], maxQuantity: 1, minQuantity: 0, isBase });
+      acc.push({ kind: "fixed", group: null, groupPath, options: [node], optionMax: [1], maxQuantity: 1, minQuantity: 0, isBase });
       visiting.delete(node);
       return;
     }
     if (kind === "group") {
+      const path = [...groupPath, node];
       const leaves: string[] = [];
       const leafMax: number[] = [];
       for (const opt of lk.optionsOf.get(node) ?? []) {
@@ -175,13 +178,14 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
           leaves.push(opt.to);
           leafMax.push(opt.maxQuantity);
         } else {
-          walk(opt.to, isBase); // a nested group or composite becomes its own slots
+          walk(opt.to, isBase, path); // retain the parent bracket around nested choices
         }
       }
       if (leaves.length > 0) {
         acc.push({
           kind: "group",
           group: node,
+          groupPath: path,
           options: leaves,
           optionMax: leafMax,
           maxQuantity: lk.groupMax.get(node) ?? -1,
@@ -194,14 +198,14 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
     }
     if (kind === "composite") {
       const base = lk.baseOf.get(node);
-      if (base) walk(base, isBase);
+      if (base) walk(base, isBase, groupPath);
       const topping = lk.toppingOf.get(node);
-      if (topping) walk(topping, false); // a topping is never the base, however deep
+      if (topping) walk(topping, false, groupPath); // a topping is never the base, however deep
     }
     visiting.delete(node);
   };
 
-  walk(composite, true);
+  walk(composite, true, []);
   return acc;
 }
 

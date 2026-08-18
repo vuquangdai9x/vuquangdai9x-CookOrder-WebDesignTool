@@ -43,11 +43,11 @@ namespace CookingGraph
             return result;
         }
 
-        /// <summary>Parses and validates group minimum quantities against a generated graph.</summary>
+        /// <summary>Parses and validates group nesting and quantity limits against a generated graph.</summary>
         public static CustomerOrderData Parse(string source, CookingGraphAsset graph)
         {
             var data = Parse(source);
-            var issues = ValidateMinimumQuantities(data, graph);
+            var issues = ValidateGroupQuantities(data, graph);
             if (issues.Count > 0)
                 throw new CookingGraphFormatException(issues[0].message, 0, source ?? string.Empty);
             return data;
@@ -87,11 +87,22 @@ namespace CookingGraph
 
         public static IReadOnlyList<CustomerOrderValidationIssue> ValidateMinimumQuantities(string source, CookingGraphAsset graph)
         {
-            return ValidateMinimumQuantities(Parse(source), graph);
+            return ValidateGroupQuantities(Parse(source), graph);
         }
 
         /// <summary>Reports every dish whose authored group count is below the graph's configured minimum.</summary>
         public static IReadOnlyList<CustomerOrderValidationIssue> ValidateMinimumQuantities(CustomerOrderData data, CookingGraphAsset graph)
+        {
+            return ValidateGroupQuantities(data, graph);
+        }
+
+        public static IReadOnlyList<CustomerOrderValidationIssue> ValidateGroupQuantities(string source, CookingGraphAsset graph)
+        {
+            return ValidateGroupQuantities(Parse(source), graph);
+        }
+
+        /// <summary>Reports invalid group nesting and values outside each group's minimum/maximum.</summary>
+        public static IReadOnlyList<CustomerOrderValidationIssue> ValidateGroupQuantities(CustomerOrderData data, CookingGraphAsset graph)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
             if (graph == null) throw new ArgumentNullException(nameof(graph));
@@ -107,24 +118,41 @@ namespace CookingGraph
                     var composite = graph.idTable.composite[root.id];
                     if (composite == null) continue;
 
-                    var required = new HashSet<GroupNodeAsset>();
-                    CollectRequiredGroups(composite, graph, required, new HashSet<CookingNodeAsset>());
+                    var required = new Dictionary<GroupNodeAsset, GroupNodeAsset>();
+                    CollectRequiredGroups(composite, graph, null, required, new HashSet<CookingNodeAsset>());
                     var actual = new Dictionary<GroupNodeAsset, int>();
-                    CollectAuthoredGroups(root, graph, actual);
-                    foreach (var group in required.Where(value => value != null && value.minQuantity > 0))
+                    CollectAuthoredGroups(root, graph, actual, required, null, issues, customerIndex, dishIndex);
+                    foreach (var group in required.Keys.Where(value => value != null))
                     {
                         var used = actual.TryGetValue(group, out var count) ? count : 0;
-                        if (used >= group.minQuantity) continue;
                         var groupId = graph.idTable.group.IndexOf(group);
-                        issues.Add(new CustomerOrderValidationIssue
+                        if (used < group.minQuantity)
                         {
-                            customerIndex = customerIndex,
-                            dishIndex = dishIndex,
-                            groupId = groupId,
-                            minimum = group.minQuantity,
-                            actual = used,
-                            message = $"Customer {customerIndex + 1}, dish {dishIndex + 1}: group '{group.nodeName}' requires at least {group.minQuantity} item(s), but has {used}."
-                        });
+                            issues.Add(new CustomerOrderValidationIssue
+                            {
+                                code = "GROUP_MINIMUM",
+                                customerIndex = customerIndex,
+                                dishIndex = dishIndex,
+                                groupId = groupId,
+                                minimum = group.minQuantity,
+                                actual = used,
+                                message = $"Customer {customerIndex + 1}, dish {dishIndex + 1}: group '{group.nodeName}' requires at least {group.minQuantity} item(s), but has {used}."
+                            });
+                        }
+                        var maximum = group.maxQuantity != null && group.maxQuantity.hasValue ? group.maxQuantity.value : -1;
+                        if (maximum >= 0 && used > maximum)
+                        {
+                            issues.Add(new CustomerOrderValidationIssue
+                            {
+                                code = "GROUP_MAXIMUM",
+                                customerIndex = customerIndex,
+                                dishIndex = dishIndex,
+                                groupId = groupId,
+                                maximum = maximum,
+                                actual = used,
+                                message = $"Customer {customerIndex + 1}, dish {dishIndex + 1}: group '{group.nodeName}' allows at most {maximum} item(s), but has {used}."
+                            });
+                        }
                     }
                 }
             }
@@ -249,35 +277,60 @@ namespace CookingGraph
             return builder.Append('}').ToString();
         }
 
-        private static void CollectRequiredGroups(CookingNodeAsset node, CookingGraphAsset graph, ISet<GroupNodeAsset> groups, ISet<CookingNodeAsset> visiting)
+        private static void CollectRequiredGroups(CookingNodeAsset node, CookingGraphAsset graph, GroupNodeAsset parent, IDictionary<GroupNodeAsset, GroupNodeAsset> groups, ISet<CookingNodeAsset> visiting)
         {
             if (node == null || !visiting.Add(node)) return;
             if (node is GroupNodeAsset group)
             {
-                groups.Add(group);
+                if (!groups.ContainsKey(group)) groups.Add(group, parent);
                 foreach (var edge in graph.optionEdges.Where(value => value?.from == group))
-                    CollectRequiredGroups(edge.to, graph, groups, visiting);
+                    CollectRequiredGroups(edge.to, graph, group, groups, visiting);
             }
             else if (node is CompositeNodeAsset composite)
             {
                 foreach (var edge in graph.baseEdges.Where(value => value?.from == composite))
-                    CollectRequiredGroups(edge.to, graph, groups, visiting);
+                    CollectRequiredGroups(edge.to, graph, parent, groups, visiting);
                 foreach (var edge in graph.toppingEdges.Where(value => value?.from == composite))
-                    CollectRequiredGroups(edge.to, graph, groups, visiting);
+                    CollectRequiredGroups(edge.to, graph, parent, groups, visiting);
             }
             visiting.Remove(node);
         }
 
-        private static void CollectAuthoredGroups(OrderMemberData member, CookingGraphAsset graph, IDictionary<GroupNodeAsset, int> counts)
+        private static void CollectAuthoredGroups(
+            OrderMemberData member,
+            CookingGraphAsset graph,
+            IDictionary<GroupNodeAsset, int> counts,
+            IDictionary<GroupNodeAsset, GroupNodeAsset> expectedParents,
+            GroupNodeAsset parent,
+            ICollection<CustomerOrderValidationIssue> issues,
+            int customerIndex,
+            int dishIndex)
         {
             if (member == null) return;
+            var childParent = parent;
             if (member.kind == OrderMemberKind.Group && member.id >= 0 && member.id < graph.idTable.group.Count)
             {
                 var group = graph.idTable.group[member.id];
                 if (group != null)
+                {
                     counts[group] = (counts.TryGetValue(group, out var count) ? count : 0) + member.members.Count;
+                    if (!expectedParents.TryGetValue(group, out var expectedParent) || expectedParent != parent)
+                    {
+                        issues.Add(new CustomerOrderValidationIssue
+                        {
+                            code = "GROUP_NESTING",
+                            customerIndex = customerIndex,
+                            dishIndex = dishIndex,
+                            groupId = member.id,
+                            actual = member.members.Count,
+                            message = $"Customer {customerIndex + 1}, dish {dishIndex + 1}: group '{group.nodeName}' must be inside '{expectedParent?.nodeName ?? "the dish root"}', not '{parent?.nodeName ?? "the dish root"}'."
+                        });
+                    }
+                    childParent = group;
+                }
             }
-            foreach (var child in member.members) CollectAuthoredGroups(child, graph, counts);
+            foreach (var child in member.members)
+                CollectAuthoredGroups(child, graph, counts, expectedParents, childParent, issues, customerIndex, dishIndex);
         }
 
         private static int ParseInt(string token, string context)

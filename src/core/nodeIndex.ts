@@ -90,6 +90,8 @@ export interface IndexedSlot {
   kind: "fixed" | "group";
   /** Dense group index, or -1 for a fixed slot. */
   group: number;
+  /** Dense group indices from outermost bracket to this slot's bracket. */
+  groupPath: number[];
   options: number[];
   /** Per-option cap, parallel to `options`; -1 = unlimited. See Slot.optionMax. */
   optionMax: number[];
@@ -305,6 +307,7 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
     return {
       kind: slot.kind,
       group: slot.group === null ? -1 : (groupByName.get(slot.group) ?? -1),
+      groupPath: slot.groupPath.map((name) => groupByName.get(name) ?? -1).filter((group) => group >= 0),
       options,
       optionMax,
       maxQuantity: slot.maxQuantity,

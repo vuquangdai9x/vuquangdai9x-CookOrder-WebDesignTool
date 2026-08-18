@@ -49,8 +49,11 @@ export type OrderIssue =
   | { kind: "foreign-member"; ingredient: string; belongsTo: string; foundIn: string }
   /** A member placed in a group that is not part of this composite. */
   | { kind: "wrong-group"; group: string; composite: string }
+  | { kind: "misnested-group"; group: string; expectedParent: string; actualParent: string }
+  | { kind: "misnested-member"; ingredient: string; expectedGroup: string; actualGroup: string }
   | { kind: "over-limit"; ingredient: string; limit: number; used: number }
   | { kind: "below-group-minimum"; group: string; minimum: number; used: number }
+  | { kind: "above-group-maximum"; group: string; maximum: number; used: number }
   /** The composite declares `toppingRequired` but the dish leaves that slot empty. */
   | { kind: "missing-topping"; composite: string };
 
@@ -86,13 +89,20 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
   slotTree.forEach((slot, index) => {
     for (const option of slot.options) slotForIng.set(option, index);
   });
-  const groupsHere = new Set(slotTree.map((s) => s.group).filter((g) => g !== -1));
+  const groupsHere = new Set(slotTree.flatMap((s) => s.groupPath));
+  const validGroupPaths = new Set<string>();
+  for (const slot of slotTree) {
+    for (let length = 1; length <= slot.groupPath.length; length++) {
+      validGroupPaths.add(slot.groupPath.slice(0, length).join("/"));
+    }
+  }
 
   const slots: ResolvedSlot[] = [];
   const usedPerIng = new Map<number, number>();
   const usedPerGroup = new Map<number, number>();
 
-  const walk = (node: DishNode): void => {
+  const walk = (node: DishNode, parentGroupPath: number[] = []): void => {
+    let childGroupPath = parentGroupPath;
     if (node !== dish.root) {
       // Every nested bracket must be a group this composite actually offers.
       // (Nested composites flatten into the same slot tree, so their groups
@@ -109,6 +119,18 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
         if (groupIndex === undefined || !groupsHere.has(groupIndex)) {
           issues.push({ kind: "wrong-group", group: groupName, composite: compositeName });
         } else {
+          childGroupPath = [...parentGroupPath, groupIndex];
+          if (!validGroupPaths.has(childGroupPath.join("/"))) {
+            const expectedPath = slotTree.find((slot) => slot.groupPath.includes(groupIndex))?.groupPath ?? [];
+            const expectedParentIndex = expectedPath[expectedPath.indexOf(groupIndex) - 1];
+            const actualParentIndex = parentGroupPath[parentGroupPath.length - 1];
+            issues.push({
+              kind: "misnested-group",
+              group: groupName,
+              expectedParent: expectedParentIndex === undefined ? "the dish root" : ix.groupName[expectedParentIndex],
+              actualParent: actualParentIndex === undefined ? "the dish root" : ix.groupName[actualParentIndex],
+            });
+          }
           usedPerGroup.set(groupIndex, (usedPerGroup.get(groupIndex) ?? 0) + node.members.length);
         }
       }
@@ -116,7 +138,7 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
 
     for (const member of node.members) {
       if (member.kind !== "ingredient") {
-        walk(member);
+        walk(member, childGroupPath);
         continue;
       }
       const name = ids.byId.ingredient.get(member.id);
@@ -154,6 +176,14 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
       // ingredient fills exactly one slot, so its per-dish limit IS its cap
       // there. See Slot.optionMax.
       const indexed = slotTree[slot];
+      if (indexed && indexed.groupPath.join("/") !== childGroupPath.join("/")) {
+        issues.push({
+          kind: "misnested-member",
+          ingredient: name,
+          expectedGroup: indexed.groupPath.length === 0 ? "the dish root" : ix.groupName[indexed.groupPath[indexed.groupPath.length - 1]],
+          actualGroup: childGroupPath.length === 0 ? "the dish root" : ix.groupName[childGroupPath[childGroupPath.length - 1]],
+        });
+      }
       const at = indexed?.options.indexOf(ing) ?? -1;
       const limit = at === -1 ? -1 : (indexed.optionMax[at] ?? -1);
       if (limit > 0 && used > limit) {
@@ -168,16 +198,24 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
   // A group with a positive minimum is mandatory even when its composite's
   // slot would otherwise be optional. An omitted bracket therefore counts as
   // zero and produces the same issue as an under-filled bracket.
-  const checkedGroups = new Set<number>();
-  for (const slot of slotTree) {
-    if (slot.kind !== "group" || slot.group < 0 || !checkedGroups.add(slot.group)) continue;
-    const minimum = Math.max(0, slot.minQuantity);
-    const used = usedPerGroup.get(slot.group) ?? 0;
+  for (const group of groupsHere) {
+    const config = ix.doc.vertices.group[group];
+    const minimum = Math.max(0, config?.minQuantity ?? 0);
+    const maximum = config?.maxQuantity ?? -1;
+    const used = usedPerGroup.get(group) ?? 0;
     if (used < minimum) {
       issues.push({
         kind: "below-group-minimum",
-        group: ix.groupName[slot.group] ?? `group ${slot.group}`,
+        group: ix.groupName[group] ?? `group ${group}`,
         minimum,
+        used,
+      });
+    }
+    if (maximum >= 0 && used > maximum) {
+      issues.push({
+        kind: "above-group-maximum",
+        group: ix.groupName[group] ?? `group ${group}`,
+        maximum,
         used,
       });
     }
@@ -225,10 +263,16 @@ export function describeIssue(issue: OrderIssue): string {
       return `"${issue.ingredient}" belongs to ${issue.belongsTo}, but appears inside ${issue.foundIn}.`;
     case "wrong-group":
       return `Group "${issue.group}" is not part of composite "${issue.composite}".`;
+    case "misnested-group":
+      return `Group "${issue.group}" must be inside ${issue.expectedParent}, not ${issue.actualParent}.`;
+    case "misnested-member":
+      return `"${issue.ingredient}" must be inside ${issue.expectedGroup}, not ${issue.actualGroup}.`;
     case "over-limit":
       return `"${issue.ingredient}" appears ${issue.used} times but is limited to ${issue.limit} per dish.`;
     case "below-group-minimum":
       return `Group "${issue.group}" requires at least ${issue.minimum} item(s), but this dish has ${issue.used}.`;
+    case "above-group-maximum":
+      return `Group "${issue.group}" allows at most ${issue.maximum} item(s), but this dish has ${issue.used}.`;
     case "missing-topping":
       return `${issue.composite} requires a topping, but this dish has only its base.`;
   }

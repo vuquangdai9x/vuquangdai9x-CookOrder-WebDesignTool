@@ -27,6 +27,7 @@ import type { GraphIndex, IndexedSlot } from "../../core/nodeIndex.ts";
 import { describeIssue, orderIdIndex, resolveOrder } from "../../core/nodeOrder.ts";
 import type { ElementDef, GlobalDefs } from "../../core/types.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
+import { addToSlot as addToSlotTree } from "./nodeDishEdit.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import {
   addPickerGrid,
@@ -155,22 +156,62 @@ const orderableOf = (ix: GraphIndex, ids: IdIndex, dish: NodeDish): number => {
 };
 
 /** The bracket a slot's members live in — the root for a fixed slot, a `{gN:…}` for a group. */
+function groupCapacity(ix: GraphIndex, group: number): number {
+  const maximum = ix.doc.vertices.group[group]?.maxQuantity ?? -1;
+  return maximum < 0 ? Number.POSITIVE_INFINITY : Math.max(0, maximum);
+}
+
 function containerFor(
   ids: IdIndex,
   ix: GraphIndex,
   root: DishNode,
   slot: IndexedSlot,
   create: boolean,
+  makeRoom = false,
 ): DishNode | null {
-  if (slot.group === -1) return root;
-  const groupId = ids.byNode.group.get(ix.groupName[slot.group]);
-  if (groupId === undefined) return null;
-  const existing = root.members.find((m): m is DishNode => m.kind === "group" && m.id === groupId);
-  if (existing) return existing;
-  if (!create) return null;
-  const fresh: DishNode = { kind: "group", id: groupId, members: [] };
-  root.members.push(fresh);
-  return fresh;
+  if (slot.groupPath.length === 0) return root;
+  let container = root;
+  for (let depth = 0; depth < slot.groupPath.length; depth++) {
+    const group = slot.groupPath[depth];
+    const groupId = ids.byNode.group.get(ix.groupName[group]);
+    if (groupId === undefined) return null;
+    let child = container.members.find((member): member is DishNode => member.kind === "group" && member.id === groupId);
+    if (depth > 0 && makeRoom) {
+      const capacity = groupCapacity(ix, slot.groupPath[depth - 1]);
+      if (capacity <= 0) return null;
+      while (container.members.length >= capacity + (child ? 1 : 0)) {
+        const removeAt = child ? container.members.findIndex((member) => member !== child) : 0;
+        if (removeAt < 0) break;
+        container.members.splice(removeAt, 1);
+      }
+    }
+    if (!child) {
+      if (!create) return null;
+      child = { kind: "group", id: groupId, members: [] };
+      container.members.push(child);
+    }
+    container = child;
+  }
+  return container;
+}
+
+function removeEmptyGroupPath(ids: IdIndex, ix: GraphIndex, root: DishNode, slot: IndexedSlot): void {
+  const chain: { parent: DishNode; child: DishNode }[] = [];
+  let parent = root;
+  for (const group of slot.groupPath) {
+    const groupId = ids.byNode.group.get(ix.groupName[group]);
+    if (groupId === undefined) return;
+    const child = parent.members.find((member): member is DishNode => member.kind === "group" && member.id === groupId);
+    if (!child) return;
+    chain.push({ parent, child });
+    parent = child;
+  }
+  for (let index = chain.length - 1; index >= 0; index--) {
+    const { parent: owner, child } = chain[index];
+    if (child.members.length > 0) break;
+    const at = owner.members.indexOf(child);
+    if (at >= 0) owner.members.splice(at, 1);
+  }
 }
 
 function membersOf(
@@ -202,24 +243,7 @@ export function addToSlot(
   slotIndex: number,
   ing: number,
 ): void {
-  const slot = ix.slotsOfComposite[orderable]?.[slotIndex];
-  if (!slot) return;
-  const container = containerFor(ids, ix, root, slot, true);
-  if (!container) return;
-  const dataId = ids.byNode.ingredient.get(ix.ingName[ing]);
-  if (dataId === undefined) return;
-
-  // At capacity the oldest member makes room, so a cap-of-1 slot reads as
-  // "picking a new option replaces the current one".
-  const capacity = slotCapacity(slot);
-  let held = membersOf(ix, ids, root, orderable, slotIndex).length;
-  while (held >= capacity) {
-    const at = container.members.findIndex((m) => m.kind === "ingredient");
-    if (at === -1) break;
-    container.members.splice(at, 1);
-    held--;
-  }
-  container.members.push({ kind: "ingredient", id: dataId });
+  addToSlotTree(ix, ids, root, orderable, slotIndex, ing);
 }
 
 export function removeFromSlot(
@@ -247,10 +271,7 @@ export function removeFromSlot(
   }
   // An emptied group bracket is removed rather than left as `{g0:}`, which the
   // grammar cannot round-trip.
-  if (container !== root && container.members.length === 0) {
-    const index = root.members.indexOf(container);
-    if (index !== -1) root.members.splice(index, 1);
-  }
+  if (container !== root && container.members.length === 0) removeEmptyGroupPath(ids, ix, root, slot);
 }
 
 /** Replaces one occurrence in a slot, in place, keeping chip order stable. */
