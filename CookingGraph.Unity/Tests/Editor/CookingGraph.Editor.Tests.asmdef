@@ -1,0 +1,24 @@
+{
+  "name": "CookingGraph.Editor.Tests",
+  "rootNamespace": "CookingGraph.Editor.Tests",
+  "references": [
+    "CookingGraph.Runtime",
+    "CookingGraph.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
