@@ -50,6 +50,7 @@ import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import type { NodeProjectState } from "../../data/nodeProject.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
+import { renderGroupOverlay } from "./groupOverlay.ts";
 import { centerOf, EffectsLayer } from "../play/effectsLayer.ts";
 import type { Point } from "../play/effectsLayer.ts";
 import type { NodeFlight } from "../../core/nodeSim.ts";
@@ -262,6 +263,7 @@ export class NodePlayView {
     this.middleKey = middleStructureKey(this.sim);
     this.queuesKey = queuesStructureKey(this.sim);
     this.page.replaceChildren(this.customersEl, this.middleEl, this.queuesEl);
+    this.refreshQueueGroupOverlay();
     this.syncOverlay();
     this.patchLiveValues();
   }
@@ -352,6 +354,7 @@ export class NodePlayView {
       this.queuesEl.replaceWith(next);
       this.queuesEl = next;
       this.queuesKey = nextQueues;
+      this.refreshQueueGroupOverlay();
     }
 
     const nextCustomers = customersStructureKey(this.sim);
@@ -1275,6 +1278,21 @@ export class NodePlayView {
     this.queuesEl.replaceWith(next);
     this.queuesEl = next;
     this.queuesKey = queuesStructureKey(this.sim);
+    this.refreshQueueGroupOverlay();
+  }
+
+  /**
+   * Draws the linked-rope / combined-rail overlay for the queues tier.
+   *
+   * Must run only once `this.queuesEl` is actually IN the document: the
+   * geometry comes from getBoundingClientRect(), which returns all zeros on a
+   * detached tree, so doing this inside queuesTier() would silently produce an
+   * overlay of zero-length lines. That is why every caller sits immediately
+   * after the attach, not before it.
+   */
+  private refreshQueueGroupOverlay(): void {
+    const lanes = this.queuesEl.querySelector<HTMLElement>(".queue-lanes");
+    if (lanes) renderGroupOverlay(lanes, this.sim, this.windowRows);
   }
 
 }

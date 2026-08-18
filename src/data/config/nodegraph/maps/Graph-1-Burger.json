@@ -399,7 +399,7 @@
         "slotConfigs": [
           {
             "name": "Slot",
-            "slot": 2
+            "slot": 1
           }
         ],
         "cookingTime": 3,
@@ -1068,6 +1068,10 @@
     "ingredient:potato_sliced": {
       "x": 389.5156202922801,
       "y": -65.76573925718988
+    },
+    "table:pickupable": {
+      "x": -901.5616947624012,
+      "y": 172.04507069600004
     }
   }
 }
