@@ -275,7 +275,10 @@ namespace CookingGraph.Editor
                     tool.upgradeCosts = (json["upgradeCosts"] as JArray ?? new JArray()).Select(token => token.Value<int>()).ToList();
                     tool.runtimeToolId = OptionalIntOf(json, "runtimeToolId");
                     break;
-                case "group": ((GroupNodeAsset)asset).maxQuantity = OptionalIntOf(json, "maxQuantity"); break;
+                case "group":
+                    ((GroupNodeAsset)asset).minQuantity = Math.Max(0, json.Value<int?>("minQuantity") ?? 0);
+                    ((GroupNodeAsset)asset).maxQuantity = OptionalIntOf(json, "maxQuantity");
+                    break;
                 case "composite":
                     ((CompositeNodeAsset)asset).orderable = json.Value<bool?>("orderable") ?? false;
                     ((CompositeNodeAsset)asset).toppingRequired = json.Value<bool?>("toppingRequired") ?? false;

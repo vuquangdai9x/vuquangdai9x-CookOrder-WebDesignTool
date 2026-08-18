@@ -60,6 +60,7 @@ import type {
 import { downloadFile } from "../../data/sheetSource.ts";
 import { parseGraphJson, vertexCount } from "../../data/nodeGraphJson.ts";
 import { noteImageURL } from "./noteImage.ts";
+import { downloadGraphPng } from "./exportPng.ts";
 
 /** Which id space a vertex kind mints into. */
 const SPACE_OF: Record<VertexKindName, IdSpace> = {
@@ -252,6 +253,7 @@ export class MapProcessView {
       redoBtn,
       button("⤢ Auto layout", () => this.applyAutoLayout(), { title: "Re-run the layered layout" }),
       button("⬇ JSON", () => this.exportJson(), { title: "Download this graph as JSON" }),
+      button("⬇ PNG", () => void this.exportPng(), { title: "Download the whole graph as a PNG" }),
       button("⬆ JSON", () => this.importJson(), { title: "Replace this graph from a JSON file" }),
       button("⬇ CSV", () => this.exportCsv(), { title: "Download this graph as CSV" }),
       button("⬆ CSV", () => this.importCsv(), { title: "Replace this graph from a CSV file" }),
@@ -2487,6 +2489,16 @@ Continue?`,
     // export diffs clean against the file it came from.
     const text = JSON.stringify(this.doc, null, 2);
     downloadFile(`${this.doc.map.id || "graph"}.json`, text, "application/json");
+  }
+
+  private async exportPng(): Promise<void> {
+    try {
+      this.flashStatus("Rendering whole graph PNG…");
+      await downloadGraphPng(this.canvas, `${this.doc.map.id || "graph"}.png`);
+      this.flashStatus("PNG downloaded.");
+    } catch (error) {
+      alert(`PNG export failed.\n\n${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**

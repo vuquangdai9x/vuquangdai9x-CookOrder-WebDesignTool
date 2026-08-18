@@ -58,7 +58,7 @@ describe("filename convention", () => {
 describe("the scanned registry", () => {
   it("found the committed maps, in index order", () => {
     expect(NODE_DOCS.map((d) => d.index)).toEqual([...NODE_DOCS.map((d) => d.index)].sort((a, b) => a - b));
-    expect(NODE_DOCS.map((d) => d.name)).toEqual(["Map 1 — Burger", "Map 2 — Coffee"]);
+    expect(NODE_DOCS.map((d) => d.name)).toEqual(["Map 1 — Burger", "Map 2 — Coffee", "Map 3 — Sushi"]);
   });
 
   it("joins level data to its graph by INDEX", () => {

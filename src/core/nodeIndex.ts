@@ -94,6 +94,7 @@ export interface IndexedSlot {
   /** Per-option cap, parallel to `options`; -1 = unlimited. See Slot.optionMax. */
   optionMax: number[];
   maxQuantity: number;
+  minQuantity: number;
   isBase: boolean;
 }
 
@@ -307,6 +308,7 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
       options,
       optionMax,
       maxQuantity: slot.maxQuantity,
+      minQuantity: slot.minQuantity,
       isBase: slot.isBase,
     };
   };

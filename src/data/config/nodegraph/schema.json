@@ -306,6 +306,13 @@
           "required": true
         },
         {
+          "name": "minQuantity",
+          "type": "int",
+          "default": 0,
+          "min": 0,
+          "description": "Minimum total picks required across all options. Customer strings below this minimum are invalid."
+        },
+        {
           "name": "maxQuantity",
           "type": "int",
           "default": -1,
@@ -560,6 +567,11 @@
       "id": "INV-BASE-REQUIRED",
       "severity": "error",
       "description": "Every composite has exactly one base edge."
+    },
+    {
+      "id": "INV-GROUP-QUANTITY",
+      "severity": "error",
+      "description": "A group's minQuantity is non-negative and cannot exceed a finite maxQuantity."
     },
     {
       "id": "INV-GROUP-NONEMPTY",

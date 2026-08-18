@@ -132,6 +132,30 @@ describe("limitPerDish", () => {
   });
 });
 
+describe("group minQuantity", () => {
+  const withMinimum = (): { ix: ReturnType<typeof buildIndex>; ids: ReturnType<typeof orderIdIndex> } => {
+    const clone = structuredClone(doc);
+    const group = clone.vertices.group.find((value) => value.name === "burger-toppings")!;
+    group.minQuantity = 2;
+    const next = buildIndex(clone);
+    return { ix: next, ids: orderIdIndex(next) };
+  };
+
+  it("flags an omitted or under-filled group", () => {
+    const next = withMinimum();
+    for (const text of ["{c0:17}", "{c0:17.{g0:18}}"] ) {
+      const result = resolveOrder(next.ix, parseDish(text), next.ids);
+      expect(result.issues.map((issue) => issue.kind)).toContain("below-group-minimum");
+    }
+  });
+
+  it("accepts a group that reaches its minimum", () => {
+    const next = withMinimum();
+    const result = resolveOrder(next.ix, parseDish("{c0:17.{g0:18.19}}"), next.ids);
+    expect(result.issues).toEqual([]);
+  });
+});
+
 describe("resolveDishes", () => {
   it("resolves a customer's dishes and tags issues with their dish index", () => {
     const { orders, issues } = resolveDishes(ix, [parseDish(BURGER), parseDish("{c1:17}")], ids);

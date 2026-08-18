@@ -260,6 +260,15 @@ function checkGroups(doc: NodeGraphMap, add: Add): void {
   for (const e of doc.edges.option) optionCount.set(e.from, (optionCount.get(e.from) ?? 0) + 1);
   for (const group of doc.vertices.group) {
     const count = optionCount.get(group.name) ?? 0;
+    const min = group.minQuantity ?? 0;
+    const max = group.maxQuantity ?? -1;
+    if (min < 0 || (max >= 0 && min > max)) {
+      add(
+        "INV-GROUP-QUANTITY",
+        `Group "${group.name}" has minQuantity ${min} and maxQuantity ${max}; the minimum must be non-negative and no greater than a finite maximum.`,
+        { vertexKind: "group", vertexName: group.name },
+      );
+    }
     if (count === 0) {
       add("INV-GROUP-NONEMPTY", `Group "${group.name}" has no options — nothing can fill it.`, {
         vertexKind: "group",

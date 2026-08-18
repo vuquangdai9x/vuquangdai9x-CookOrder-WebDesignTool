@@ -196,3 +196,49 @@ describe("toppingRequired", () => {
     }
   });
 });
+
+describe("group minQuantity generation", () => {
+  const requiredBurger = (): { ix: ReturnType<typeof buildIndex>; ids: ReturnType<typeof orderIdIndex> } => {
+    const clone = structuredClone(doc);
+    clone.vertices.composite = clone.vertices.composite.map((value) => ({
+      ...value,
+      orderable: value.name === "burger",
+    }));
+    clone.vertices.group.find((value) => value.name === "burger-toppings")!.minQuantity = 3;
+    const next = buildIndex(clone);
+    return { ix: next, ids: orderIdIndex(next) };
+  };
+
+  it("fills the minimum even when the complexity target is lower", () => {
+    const next = requiredBurger();
+    const weights = new Map<number, number>();
+    for (let index = 0; index < next.ix.ingName.length; index++) {
+      if (next.ix.servable[index]) weights.set(index, 100);
+    }
+    const customers = generateNodeCustomers(next.ix, next.ids, {
+      dishCounts: [1],
+      weights,
+      curve: defaultCurve(1, 1),
+      random: seeded(4),
+    });
+    const result = resolveOrder(next.ix, customers[0].dishes[0], next.ids);
+    expect(result.issues).toEqual([]);
+    const toppingSlot = next.ix.slotsOfComposite[result.order.orderable].findIndex((slot) => slot.group >= 0);
+    expect(result.order.slots.filter((slot) => slot.slot === toppingSlot)).toHaveLength(3);
+  });
+
+  it("warns when enabled weights cannot meet the minimum", () => {
+    const next = requiredBurger();
+    const bun = next.ix.ingByName.get("bun-sliced")!;
+    const warnings: string[] = [];
+    const customers = generateNodeCustomers(next.ix, next.ids, {
+      dishCounts: [1],
+      weights: new Map([[bun, 100]]),
+      curve: defaultCurve(1, 1),
+      random: seeded(4),
+      onWarning: (message) => warnings.push(message),
+    });
+    expect(customers[0].dishes).toEqual([]);
+    expect(warnings.join(" ")).toContain("minimum quantities");
+  });
+});

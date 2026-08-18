@@ -32,6 +32,8 @@ export interface NodeGenerateOptions {
   maxDishSlots?: number;
   /** Injectable for deterministic tests; defaults to Math.random. */
   random?: () => number;
+  /** Receives deduplicated warnings when a requested dish cannot satisfy its graph constraints. */
+  onWarning?: (message: string) => void;
 }
 
 /** One weighted draw, consumed as a position along the cumulative weight sum. */
@@ -119,7 +121,17 @@ function buildDish(
   };
 
   const baseSlot = slots.findIndex((s) => s.isBase);
-  if (baseSlot !== -1 && !tryFill(baseSlot)) return null; // no weighted base available at all
+  if (baseSlot !== -1 && slots[baseSlot].kind === "fixed" && !tryFill(baseSlot)) return null;
+
+  // Group minima are hard constraints, not complexity suggestions. Fill them
+  // before spending the curve budget so a target of 1 cannot under-fill a
+  // group whose graph requires 2 items.
+  for (let slotIndex = 0; slotIndex < slots.length; slotIndex++) {
+    const slot = slots[slotIndex];
+    if (slot.kind !== "group") continue;
+    const required = Math.max(slot.minQuantity, slot.isBase ? 1 : 0);
+    while (held[slotIndex] < required) if (!tryFill(slotIndex)) return null;
+  }
 
   const requiresTopping = Boolean(ix.doc.vertices.composite[orderable]?.toppingRequired);
   const optional = slots.map((_, i) => i).filter((i) => i !== baseSlot);
@@ -162,6 +174,10 @@ export function generateNodeCustomers(
   const maxDishSlots = opts.maxDishSlots ?? DEFAULT_MAX_DISH_SLOTS;
   const counts = opts.dishCounts.length ? opts.dishCounts : [1];
   const out: NodeCustomerConfig[] = [];
+  const warnings = new Set<string>();
+  const warn = (message: string): void => {
+    if (warnings.add(message)) opts.onWarning?.(message);
+  };
 
   // Only orderables with at least one weighted option anywhere are candidates —
   // otherwise a run with a narrow weight set would emit dishes made of nothing.
@@ -191,6 +207,7 @@ export function generateNodeCustomers(
       if (orderable === undefined) continue;
       const dish = buildDish(ix, ids, orderable, perDish, opts.weights, rand, maxDishSlots);
       if (dish) dishes.push(dish);
+      else warn(`Could not generate ${ix.compositeName[orderable]}: enabled ingredients cannot satisfy its base and group minimum quantities.`);
     }
     out.push({ typeId: 0, waitTime: 0, weatherEff: 0, dishes });
   });

@@ -96,4 +96,15 @@ namespace CookingGraph
     {
         public List<CustomerData> customers = new List<CustomerData>();
     }
+
+    [Serializable]
+    public sealed class CustomerOrderValidationIssue
+    {
+        public int customerIndex;
+        public int dishIndex;
+        public int groupId;
+        public int minimum;
+        public int actual;
+        public string message;
+    }
 }

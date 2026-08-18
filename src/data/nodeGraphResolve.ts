@@ -43,6 +43,8 @@ export interface Slot {
   optionMax: number[];
   /** -1 = unlimited. Group-level cap across ALL options; 1 for a fixed slot. */
   maxQuantity: number;
+  /** Minimum total picks required across all options; 0 for a fixed slot. */
+  minQuantity: number;
   /** True when this slot came down a `base` edge — the thing every other slot gates on. */
   isBase: boolean;
 }
@@ -93,6 +95,7 @@ export interface GraphLookup {
   pickupable: Set<string>;
   servable: Set<string>;
   groupMax: Map<string, number>;
+  groupMin: Map<string, number>;
   orderables: string[];
 }
 
@@ -137,6 +140,7 @@ export function buildLookup(doc: NodeGraphMap): GraphLookup {
     pickupable: new Set(doc.vertices.ingredient.filter((i) => i.pickupable).map((i) => i.name)),
     servable: new Set(doc.vertices.ingredient.filter((i) => i.servable).map((i) => i.name)),
     groupMax: new Map(doc.vertices.group.map((g) => [g.name, g.maxQuantity ?? -1])),
+    groupMin: new Map(doc.vertices.group.map((g) => [g.name, Math.max(0, g.minQuantity ?? 0)])),
     orderables: doc.vertices.composite.filter((c) => c.orderable).map((c) => c.name),
   };
 }
@@ -159,7 +163,7 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
 
     const kind = lk.kindOf.get(node);
     if (kind === "ingredient") {
-      acc.push({ kind: "fixed", group: null, options: [node], optionMax: [1], maxQuantity: 1, isBase });
+      acc.push({ kind: "fixed", group: null, options: [node], optionMax: [1], maxQuantity: 1, minQuantity: 0, isBase });
       visiting.delete(node);
       return;
     }
@@ -181,6 +185,7 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
           options: leaves,
           optionMax: leafMax,
           maxQuantity: lk.groupMax.get(node) ?? -1,
+          minQuantity: lk.groupMin.get(node) ?? 0,
           isBase,
         });
       }
@@ -268,7 +273,9 @@ function countVariants(slots: Slot[]): number | null {
     if (slot.maxQuantity < 0) return null; // uncapped — infinitely many
     // Every multiset of size 0..maxQuantity drawn from this group's options.
     let sum = 0;
-    for (let take = 0; take <= slot.maxQuantity; take++) sum += combinationsWithRepetition(slot.options.length, take);
+    for (let take = slot.minQuantity; take <= slot.maxQuantity; take++) {
+      sum += combinationsWithRepetition(slot.options.length, take);
+    }
     total *= sum;
   }
   return total;

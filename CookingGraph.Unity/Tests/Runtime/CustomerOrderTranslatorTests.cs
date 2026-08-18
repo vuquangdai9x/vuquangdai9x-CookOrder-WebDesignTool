@@ -1,5 +1,6 @@
 using System.Linq;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace CookingGraph.Tests
 {
@@ -45,6 +46,35 @@ namespace CookingGraph.Tests
         public void LegacyOrMalformedOrdersAreRejected(string source)
         {
             Assert.Throws<CookingGraphFormatException>(() => CustomerOrderTranslator.Parse(source));
+        }
+
+        [Test]
+        public void GroupMinimumIsValidatedAgainstRuntimeGraph()
+        {
+            var graph = ScriptableObject.CreateInstance<CookingGraphAsset>();
+            var composite = ScriptableObject.CreateInstance<CompositeNodeAsset>();
+            var group = ScriptableObject.CreateInstance<GroupNodeAsset>();
+            var ingredient = ScriptableObject.CreateInstance<IngredientNodeAsset>();
+            composite.nodeName = "dish";
+            group.nodeName = "toppings";
+            group.minQuantity = 2;
+            graph.idTable.composite.Add(composite);
+            graph.idTable.group.Add(group);
+            graph.idTable.ingredient.Add(ingredient);
+            graph.toppingEdges.Add(new NodeEdgeAssetData { from = composite, to = group });
+            graph.optionEdges.Add(new OptionEdgeAssetData { from = group, to = ingredient });
+
+            var issues = CustomerOrderTranslator.ValidateMinimumQuantities("0;0;0;{c0:{g0:0}}", graph);
+            Assert.That(issues, Has.Count.EqualTo(1));
+            Assert.That(issues[0].minimum, Is.EqualTo(2));
+            Assert.That(issues[0].actual, Is.EqualTo(1));
+            Assert.Throws<CookingGraphFormatException>(() => CustomerOrderTranslator.Parse("0;0;0;{c0:{g0:0}}", graph));
+            Assert.DoesNotThrow(() => CustomerOrderTranslator.Parse("0;0;0;{c0:{g0:0.0}}", graph));
+
+            Object.DestroyImmediate(ingredient);
+            Object.DestroyImmediate(group);
+            Object.DestroyImmediate(composite);
+            Object.DestroyImmediate(graph);
         }
     }
 }

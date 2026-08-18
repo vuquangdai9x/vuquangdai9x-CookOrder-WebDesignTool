@@ -115,9 +115,17 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
             const dense = deps.projected.denseOf.get(dataId);
             if (dense !== undefined && weight > 0) weights.set(dense, weight);
           }
-          deps.onGenerate(
-            generateNodeCustomers(deps.ix, deps.ids, { dishCounts, weights, curve: curveState }),
-          );
+          const warnings: string[] = [];
+          const generated = generateNodeCustomers(deps.ix, deps.ids, {
+            dishCounts,
+            weights,
+            curve: curveState,
+            onWarning: (message) => warnings.push(message),
+          });
+          deps.onGenerate(generated);
+          if (warnings.length > 0) {
+            alert(`Customer generation warning:\n\n${warnings.join("\n")}`);
+          }
           close();
         },
         { class: "primary" },

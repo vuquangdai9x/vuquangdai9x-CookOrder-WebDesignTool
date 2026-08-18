@@ -43,6 +43,16 @@ namespace CookingGraph
             return result;
         }
 
+        /// <summary>Parses and validates group minimum quantities against a generated graph.</summary>
+        public static CustomerOrderData Parse(string source, CookingGraphAsset graph)
+        {
+            var data = Parse(source);
+            var issues = ValidateMinimumQuantities(data, graph);
+            if (issues.Count > 0)
+                throw new CookingGraphFormatException(issues[0].message, 0, source ?? string.Empty);
+            return data;
+        }
+
         public static bool TryParse(string source, out CustomerOrderData data, out CookingGraphFormatException error)
         {
             try
@@ -57,6 +67,68 @@ namespace CookingGraph
                 error = exception;
                 return false;
             }
+        }
+
+        public static bool TryParse(string source, CookingGraphAsset graph, out CustomerOrderData data, out CookingGraphFormatException error)
+        {
+            try
+            {
+                data = Parse(source, graph);
+                error = null;
+                return true;
+            }
+            catch (CookingGraphFormatException exception)
+            {
+                data = null;
+                error = exception;
+                return false;
+            }
+        }
+
+        public static IReadOnlyList<CustomerOrderValidationIssue> ValidateMinimumQuantities(string source, CookingGraphAsset graph)
+        {
+            return ValidateMinimumQuantities(Parse(source), graph);
+        }
+
+        /// <summary>Reports every dish whose authored group count is below the graph's configured minimum.</summary>
+        public static IReadOnlyList<CustomerOrderValidationIssue> ValidateMinimumQuantities(CustomerOrderData data, CookingGraphAsset graph)
+        {
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            if (graph == null) throw new ArgumentNullException(nameof(graph));
+            var issues = new List<CustomerOrderValidationIssue>();
+            for (var customerIndex = 0; customerIndex < data.customers.Count; customerIndex++)
+            {
+                var customer = data.customers[customerIndex];
+                for (var dishIndex = 0; dishIndex < customer.dishes.Count; dishIndex++)
+                {
+                    var root = customer.dishes[dishIndex]?.root;
+                    if (root == null || root.kind != OrderMemberKind.Composite || root.id < 0 || root.id >= graph.idTable.composite.Count)
+                        continue;
+                    var composite = graph.idTable.composite[root.id];
+                    if (composite == null) continue;
+
+                    var required = new HashSet<GroupNodeAsset>();
+                    CollectRequiredGroups(composite, graph, required, new HashSet<CookingNodeAsset>());
+                    var actual = new Dictionary<GroupNodeAsset, int>();
+                    CollectAuthoredGroups(root, graph, actual);
+                    foreach (var group in required.Where(value => value != null && value.minQuantity > 0))
+                    {
+                        var used = actual.TryGetValue(group, out var count) ? count : 0;
+                        if (used >= group.minQuantity) continue;
+                        var groupId = graph.idTable.group.IndexOf(group);
+                        issues.Add(new CustomerOrderValidationIssue
+                        {
+                            customerIndex = customerIndex,
+                            dishIndex = dishIndex,
+                            groupId = groupId,
+                            minimum = group.minQuantity,
+                            actual = used,
+                            message = $"Customer {customerIndex + 1}, dish {dishIndex + 1}: group '{group.nodeName}' requires at least {group.minQuantity} item(s), but has {used}."
+                        });
+                    }
+                }
+            }
+            return issues;
         }
 
         public static string Serialize(CustomerOrderData data)
@@ -175,6 +247,37 @@ namespace CookingGraph
             builder.Append('{').Append(member.kind == OrderMemberKind.Composite ? 'c' : 'g').Append(member.id).Append(':');
             builder.Append(string.Join(".", member.members.Select(SerializeMember)));
             return builder.Append('}').ToString();
+        }
+
+        private static void CollectRequiredGroups(CookingNodeAsset node, CookingGraphAsset graph, ISet<GroupNodeAsset> groups, ISet<CookingNodeAsset> visiting)
+        {
+            if (node == null || !visiting.Add(node)) return;
+            if (node is GroupNodeAsset group)
+            {
+                groups.Add(group);
+                foreach (var edge in graph.optionEdges.Where(value => value?.from == group))
+                    CollectRequiredGroups(edge.to, graph, groups, visiting);
+            }
+            else if (node is CompositeNodeAsset composite)
+            {
+                foreach (var edge in graph.baseEdges.Where(value => value?.from == composite))
+                    CollectRequiredGroups(edge.to, graph, groups, visiting);
+                foreach (var edge in graph.toppingEdges.Where(value => value?.from == composite))
+                    CollectRequiredGroups(edge.to, graph, groups, visiting);
+            }
+            visiting.Remove(node);
+        }
+
+        private static void CollectAuthoredGroups(OrderMemberData member, CookingGraphAsset graph, IDictionary<GroupNodeAsset, int> counts)
+        {
+            if (member == null) return;
+            if (member.kind == OrderMemberKind.Group && member.id >= 0 && member.id < graph.idTable.group.Count)
+            {
+                var group = graph.idTable.group[member.id];
+                if (group != null)
+                    counts[group] = (counts.TryGetValue(group, out var count) ? count : 0) + member.members.Count;
+            }
+            foreach (var child in member.members) CollectAuthoredGroups(child, graph, counts);
         }
 
         private static int ParseInt(string token, string context)

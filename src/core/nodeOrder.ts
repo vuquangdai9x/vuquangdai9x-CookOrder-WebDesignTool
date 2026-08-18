@@ -50,6 +50,7 @@ export type OrderIssue =
   /** A member placed in a group that is not part of this composite. */
   | { kind: "wrong-group"; group: string; composite: string }
   | { kind: "over-limit"; ingredient: string; limit: number; used: number }
+  | { kind: "below-group-minimum"; group: string; minimum: number; used: number }
   /** The composite declares `toppingRequired` but the dish leaves that slot empty. */
   | { kind: "missing-topping"; composite: string };
 
@@ -89,6 +90,7 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
 
   const slots: ResolvedSlot[] = [];
   const usedPerIng = new Map<number, number>();
+  const usedPerGroup = new Map<number, number>();
 
   const walk = (node: DishNode): void => {
     if (node !== dish.root) {
@@ -106,6 +108,8 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
         const groupIndex = ix.groupByName.get(groupName);
         if (groupIndex === undefined || !groupsHere.has(groupIndex)) {
           issues.push({ kind: "wrong-group", group: groupName, composite: compositeName });
+        } else {
+          usedPerGroup.set(groupIndex, (usedPerGroup.get(groupIndex) ?? 0) + node.members.length);
         }
       }
     }
@@ -161,6 +165,24 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
   };
   walk(dish.root);
 
+  // A group with a positive minimum is mandatory even when its composite's
+  // slot would otherwise be optional. An omitted bracket therefore counts as
+  // zero and produces the same issue as an under-filled bracket.
+  const checkedGroups = new Set<number>();
+  for (const slot of slotTree) {
+    if (slot.kind !== "group" || slot.group < 0 || !checkedGroups.add(slot.group)) continue;
+    const minimum = Math.max(0, slot.minQuantity);
+    const used = usedPerGroup.get(slot.group) ?? 0;
+    if (used < minimum) {
+      issues.push({
+        kind: "below-group-minimum",
+        group: ix.groupName[slot.group] ?? `group ${slot.group}`,
+        minimum,
+        used,
+      });
+    }
+  }
+
   // `toppingRequired` is a property of the COMPOSITE, so it can only be checked
   // once the whole dish has been walked — a topping may sit in any bracket.
   if (ix.doc.vertices.composite[orderable]?.toppingRequired) {
@@ -205,6 +227,8 @@ export function describeIssue(issue: OrderIssue): string {
       return `Group "${issue.group}" is not part of composite "${issue.composite}".`;
     case "over-limit":
       return `"${issue.ingredient}" appears ${issue.used} times but is limited to ${issue.limit} per dish.`;
+    case "below-group-minimum":
+      return `Group "${issue.group}" requires at least ${issue.minimum} item(s), but this dish has ${issue.used}.`;
     case "missing-topping":
       return `${issue.composite} requires a topping, but this dish has only its base.`;
   }

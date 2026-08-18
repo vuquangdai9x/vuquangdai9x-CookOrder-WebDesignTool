@@ -142,6 +142,17 @@ describe("graph structure invariants", () => {
     );
   });
 
+  it("INV-GROUP-QUANTITY: minimum cannot exceed a finite maximum", () => {
+    const doc = clone();
+    const group = doc.vertices.group.find((value) => value.name === "burger-toppings")!;
+    group.minQuantity = 3;
+    group.maxQuantity = 2;
+    const { errors } = validateNodeGraph(doc);
+    expect(errors.find((error) => error.invariantId === "INV-GROUP-QUANTITY")?.message).toContain(
+      "minQuantity 3",
+    );
+  });
+
   it("INV-TRACEABLE: an orderable needing something unobtainable", () => {
     const doc = clone();
     doc.vertices.ingredient.push({ name: "unobtainium", displayName: "Unobtainium", servable: true });

@@ -169,6 +169,8 @@ export interface ToolVertex {
 export interface GroupVertex {
   name: string;
   displayName: string;
+  /** Minimum total picks required across all options. Defaults to 0. */
+  minQuantity?: number;
   /**
    * Total picks across all options; -1 = unlimited (makes variant count
    * unbounded), 1 = exactly one option.

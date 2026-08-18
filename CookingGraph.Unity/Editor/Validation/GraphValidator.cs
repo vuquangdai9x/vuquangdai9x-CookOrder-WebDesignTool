@@ -222,6 +222,10 @@ namespace CookingGraph.Editor
             foreach (var group in GraphJsonDocument.Array(document.Vertices, "group").OfType<JObject>())
             {
                 var name = group.Value<string>("name");
+                var min = group.Value<int?>("minQuantity") ?? 0;
+                var max = group.Value<int?>("maxQuantity") ?? -1;
+                if (min < 0 || (max >= 0 && min > max))
+                    Error(issues, "INV-GROUP-QUANTITY", $"Group '{name}' has minQuantity {min} and maxQuantity {max}; the minimum must be non-negative and no greater than a finite maximum.", name);
                 var count = options.Count(edge => edge.Value<string>("from") == name);
                 if (count == 0) Error(issues, "INV-GROUP-NONEMPTY", $"Group '{name}' has no options.", name);
                 if (count == 1 && (group.Value<int?>("maxQuantity") ?? -1) == 1)

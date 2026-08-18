@@ -31,5 +31,17 @@ namespace CookingGraph.Editor.Tests
             Assert.That(issues.Any(issue => issue.Code == "INV-NAMESPACE"), Is.True);
             Assert.That(issues.Any(issue => issue.Code == "INV-IDTABLE-UNIQUE"), Is.True);
         }
+
+        [Test]
+        public void GroupMinimumCannotExceedFiniteMaximum()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            ((JArray)document.Vertices["group"]).Add(new JObject
+            {
+                ["name"] = "toppings", ["displayName"] = "Toppings", ["minQuantity"] = 3, ["maxQuantity"] = 2
+            });
+            ((JArray)document.Edges["option"]).Add(new JObject { ["from"] = "toppings", ["to"] = "bun" });
+            Assert.That(GraphValidator.Validate(document).Any(issue => issue.Code == "INV-GROUP-QUANTITY"), Is.True);
+        }
     }
 }

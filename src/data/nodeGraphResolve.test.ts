@@ -34,6 +34,13 @@ describe("slot tree", () => {
       expect(bases, `${orderable} should have exactly one base slot`).toHaveLength(1);
     }
   });
+
+  it("carries a group's minimum into its resolved slot", () => {
+    const doc = structuredClone(burger);
+    doc.vertices.group.find((value) => value.name === "burger-toppings")!.minQuantity = 2;
+    const slot = slotsOf(buildLookup(doc), "burger").find((value) => value.group === "burger-toppings");
+    expect(slot?.minQuantity).toBe(2);
+  });
 });
 
 describe("traceOrderable — burger.json expectations", () => {
