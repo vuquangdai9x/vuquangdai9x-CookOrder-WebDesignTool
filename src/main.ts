@@ -196,6 +196,19 @@ function saveNodeDraft(): void {
   saveNodeProject(node);
 }
 
+/** Adopt another node map without replacing the shared state object held by mounted views. */
+function selectNodeMap(docId: string): void {
+  if (docId === node.docId) return;
+  const next = loadNodeProject(docId);
+  node.docId = next.docId;
+  node.doc = next.doc;
+  node.levels = next.levels;
+  node.origin = next.origin;
+  nodeLevelId = node.levels[0]?.id ?? 1;
+  saveNodeDraft();
+  void render();
+}
+
 /** The icon/preload source for the active mode — one ambient map, chosen per group. */
 function iconSourceFor(group: ModeGroup): MapData | NodeIconSource {
   if (group === "legacy") return legacy.map;
@@ -340,7 +353,7 @@ function mount(target: Mode, main: HTMLElement): void {
     case "ndesign": {
       const view = new NodeDesignView(main, node, GLOBAL_DEFS, saveNodeDraft, nodeLevelId, (id) => {
         nodeLevelId = id;
-      });
+      }, selectNodeMap);
       dirtyProviders.push(() => view.isDirty);
       return;
     }
@@ -348,7 +361,7 @@ function mount(target: Mode, main: HTMLElement): void {
       nodePlayView = new NodePlayView(main, node, nodeLevelId, (id) => {
         nodeLevelId = id;
         void render();
-      });
+      }, selectNodeMap);
       return;
     }
     case "nremote": {
@@ -359,11 +372,19 @@ function mount(target: Mode, main: HTMLElement): void {
         (id) => {
           sheetIdInput = id;
         },
-        () => {
-          saveNodeDraft();
-          void render();
-        },
         (levelId) => openInNodeDesign(levelId),
+        (docId, levelId) => {
+          if (docId !== node.docId) {
+            const next = loadNodeProject(docId);
+            node.docId = next.docId;
+            node.doc = next.doc;
+            node.levels = next.levels;
+            node.origin = next.origin;
+            saveNodeDraft();
+          }
+          nodeLevelId = levelId;
+          switchMode("ndesign");
+        },
       );
       return;
     }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { diffChars } from "./index.ts";
+import { diffChars, levelSyncStatus } from "./index.ts";
+import type { LevelData } from "../../data/mapLoader.ts";
 
 /** Reconstructs newStr from the segments, and reconstructs which chars were "changed". */
 function apply(segments: { text: string; changed: boolean }[]) {
@@ -57,5 +58,42 @@ describe("diffChars", () => {
     const tool = "0;0;0;10.16|0;0;0;1.0.3";
     const { text } = apply(diffChars(sheet, tool));
     expect(text).toBe(tool);
+  });
+});
+
+describe("levelSyncStatus", () => {
+  const level = {
+    ingredientWeights: "1,2",
+    customerDishesSequence: "0,0,0",
+    complexityCurve: "1",
+    shuffleCurve: "0",
+    customerString: "customer",
+    gridString: "grid",
+    queueString: "queue",
+  } as LevelData;
+  const matching = {
+    rowNumber: 4,
+    fields: {
+      ingredientWeights: "1,2",
+      customerDishesSequence: "0,0,0",
+      complexityCurve: "1",
+      shuffleCurve: "0",
+      customerString: "customer",
+      gridString: "grid",
+      queueString: "queue",
+    },
+  };
+
+  it("is Local until sheet data is loaded", () => {
+    expect(levelSyncStatus(false, matching, level)).toBe("Local");
+  });
+
+  it("is Synced only when every remote field is identical", () => {
+    expect(levelSyncStatus(true, matching, level)).toBe("Synced");
+  });
+
+  it("is Edited for a missing or differing sheet row", () => {
+    expect(levelSyncStatus(true, null, level)).toBe("Edited");
+    expect(levelSyncStatus(true, { ...matching, fields: { ...matching.fields, queueString: "changed" } }, level)).toBe("Edited");
   });
 });

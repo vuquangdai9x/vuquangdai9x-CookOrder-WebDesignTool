@@ -39,7 +39,7 @@ import type { LevelData } from "../../data/mapLoader.ts";
 import { nodeAsMapDef, nodeLevelAsLevelConfig } from "../../data/nodeGraphToMapDef.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import { validateNodeGraph } from "../../data/nodeGraphValidate.ts";
-import { blankLevel, type NodeProjectState } from "../../data/nodeProject.ts";
+import { blankLevel, listNodeMaps, type NodeProjectState } from "../../data/nodeProject.ts";
 
 type LayoutMode = "stack" | "split";
 
@@ -49,6 +49,7 @@ export class NodeDesignView {
   private defs: GlobalDefs;
   private onChange: () => void;
   private onLevelChange?: (levelId: number) => void;
+  private onMapChange?: (docId: string) => void;
 
   private projected: ProjectedMap;
   private level!: LevelData;
@@ -69,12 +70,14 @@ export class NodeDesignView {
     onChange: () => void,
     initialLevelId?: number,
     onLevelChange?: (levelId: number) => void,
+    onMapChange?: (docId: string) => void,
   ) {
     this.root = root;
     this.project = project;
     this.defs = defs;
     this.onChange = onChange;
     this.onLevelChange = onLevelChange;
+    this.onMapChange = onMapChange;
     this.projected = nodeAsMapDef(project.doc, buildIndex(project.doc));
     this.level = project.levels.find((l) => l.id === initialLevelId) ?? project.levels[0];
     this.build();
@@ -195,7 +198,6 @@ export class NodeDesignView {
   /** Rebuilds the wrapper around the three existing sections, keeping their drafts. */
   private renderLayout(): void {
     this.root.replaceChildren(
-      this.mapSettingsBar(),
       this.levelBar(),
       this.warningsEl,
       this.layoutMode === "split" ? this.splitLayout() : this.stackLayout(),
@@ -261,26 +263,22 @@ export class NodeDesignView {
     }));
   }
 
-  private mapSettingsBar(): HTMLElement {
-    const doc = this.project.doc;
-    const stackInput = el("input", {
-      type: "number",
-      value: String(doc.map.dirtyStackHeight),
-      min: "1",
-    }) as HTMLInputElement;
-    stackInput.addEventListener("change", () => {
-      doc.map.dirtyStackHeight = Math.max(1, Number(stackInput.value) || 1);
-      this.onChange();
+  private levelBar(): HTMLElement {
+    const mapPicker = el("select", { class: "map-picker" }) as HTMLSelectElement;
+    for (const map of listNodeMaps()) {
+      const opt = el("option", { value: map.id }, [map.name]);
+      if (map.id === this.project.docId) (opt as HTMLOptionElement).selected = true;
+      mapPicker.append(opt);
+    }
+    mapPicker.addEventListener("change", () => {
+      if (mapPicker.value === this.project.docId) return;
+      if (this.isDirty && !confirm("Unsaved changes will be lost. Switch map anyway?")) {
+        mapPicker.value = this.project.docId;
+        return;
+      }
+      this.onMapChange?.(mapPicker.value);
     });
 
-    return el("div", { class: "level-bar map-settings" }, [
-      el("strong", { class: "map-settings-label" }, [`Map: ${doc.map.name}`]),
-      el("label", { class: "field small" }, ["Dirty stack", stackInput]),
-      el("small", { class: "muted" }, ["Applies to every level in this map"]),
-    ]);
-  }
-
-  private levelBar(): HTMLElement {
     const picker = el("select", { class: "level-picker" }) as HTMLSelectElement;
     for (const l of this.project.levels) {
       const opt = el("option", { value: String(l.id) }, [
@@ -290,6 +288,17 @@ export class NodeDesignView {
       picker.append(opt);
     }
     picker.addEventListener("change", () => this.selectLevel(Number(picker.value)));
+
+    const stackInput = el("input", {
+      type: "number",
+      value: String(this.project.doc.map.dirtyStackHeight),
+      min: "1",
+      title: "Applies to every level in this map",
+    }) as HTMLInputElement;
+    stackInput.addEventListener("change", () => {
+      this.project.doc.map.dirtyStackHeight = Math.max(1, Number(stackInput.value) || 1);
+      this.onChange();
+    });
 
     const metaField = (label: string, value: string | number, type: string, apply: (v: string) => void) => {
       const input = el("input", { value: String(value), type }) as HTMLInputElement;
@@ -324,7 +333,9 @@ export class NodeDesignView {
     };
 
     return el("div", { class: "level-bar" }, [
+      el("label", { class: "field small" }, ["Map", mapPicker]),
       el("label", { class: "field small" }, ["Level", picker]),
+      el("label", { class: "field small" }, ["Dirty stack", stackInput]),
       this.layoutToggle(),
       selectField(
         "Weather",

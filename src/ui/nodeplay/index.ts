@@ -48,7 +48,7 @@ import { nodeAsMapDef } from "../../data/nodeGraphToMapDef.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
-import type { NodeProjectState } from "../../data/nodeProject.ts";
+import { listNodeMaps, type NodeProjectState } from "../../data/nodeProject.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
 import { renderGroupOverlay } from "./groupOverlay.ts";
 import { centerOf, EffectsLayer } from "../play/effectsLayer.ts";
@@ -92,6 +92,7 @@ export class NodePlayView {
   private root: HTMLElement;
   private project: NodeProjectState;
   private onSelectLevel: (levelId: number) => void;
+  private onSelectMap: (docId: string) => void;
 
   private ix: GraphIndex;
   private projected: ProjectedMap;
@@ -161,10 +162,12 @@ export class NodePlayView {
     project: NodeProjectState,
     levelId: number,
     onSelectLevel: (levelId: number) => void,
+    onSelectMap: (docId: string) => void,
   ) {
     this.root = root;
     this.project = project;
     this.onSelectLevel = onSelectLevel;
+    this.onSelectMap = onSelectMap;
     this.ix = buildIndex(project.doc);
     this.projected = nodeAsMapDef(project.doc, this.ix);
     this.level = project.levels.find((l) => l.id === levelId) ?? project.levels[0];
@@ -610,6 +613,14 @@ export class NodePlayView {
   }
 
   private toolbar(): HTMLElement {
+    const mapPicker = el("select", { class: "map-picker" }) as HTMLSelectElement;
+    for (const map of listNodeMaps()) {
+      const opt = el("option", { value: map.id }, [map.name]);
+      if (map.id === this.project.docId) (opt as HTMLOptionElement).selected = true;
+      mapPicker.append(opt);
+    }
+    mapPicker.addEventListener("change", () => this.onSelectMap(mapPicker.value));
+
     const picker = el("select", { class: "level-picker" }) as HTMLSelectElement;
     for (const l of this.project.levels) {
       const opt = el("option", { value: String(l.id) }, [
@@ -657,6 +668,7 @@ export class NodePlayView {
     // Map/level/speed/policy are "config" and fold away; the HUD is live game
     // state, not config, so it stays visible either way.
     this.configGroupEl = el("div", { class: "toolbar-config" }, [
+      el("label", { class: "field small" }, ["Map", mapPicker]),
       el("label", { class: "field small" }, ["Level", picker]),
       speedBar,
       button(this.paused ? "▶ Resume" : "⏸ Pause", () => {

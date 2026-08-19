@@ -53,6 +53,32 @@ interface Group {
   entries: LevelEntry[];
 }
 
+export interface RemoteDataViewOptions {
+  /** Keeps sheet cache, folds, and editable column settings independent between systems. */
+  scope: string;
+  mapId?: string;
+  tabName?: string;
+  columns?: RemoteSheetColumns;
+  startRow?: number;
+  /** Node Remote shows the current graph's real level list instead of legacy's configured 25-level catalog. */
+  currentMapOnly?: boolean;
+  /** Makes every supplied map a live foldout with independently editable local level data. */
+  mapSources?: { id: string; title: string; map: MapData }[];
+  onMapLevelChanged?: (mapId: string) => void;
+  onOpenMapInDesign?: (mapId: string, levelId: number) => void;
+}
+
+interface RemoteViewState {
+  rowsCache: { cacheKey: string; rows: Map<string, LevelSheetRow> } | null;
+  openGroups: Set<string>;
+  openLevels: Set<string>;
+  tabName: string;
+  columnOverrides: RemoteSheetColumns;
+  startRow: number;
+}
+
+const scopedStates = new Map<string, RemoteViewState>();
+
 function buildGroups(): Group[] {
   return REMOTE_KEYS.maps.map((m) => ({
     title: m.mapId,
@@ -74,16 +100,6 @@ type FieldKey = (typeof REMOTE_LEVEL_FIELDS)[number]["key"];
  * would defeat that. Keyed by sheetId+tabName so switching either invalidates
  * it correctly.
  */
-let rowsCache: { cacheKey: string; rows: Map<string, LevelSheetRow> } | null = null;
-/** Same reasoning: fold state and the tab/column overrides outlive this view's own lifetime. */
-const openGroups = new Set<string>();
-const openLevels = new Set<string>();
-let tabName = REMOTE_SHEET_DEFAULT_TAB;
-/** Which column (0-based) each of the 7 fields is read from/written to — starts at the JSON defaults, editable per-field from the page header (letters, e.g. "D"). */
-const columnOverrides: RemoteSheetColumns = { ...REMOTE_SHEET_COLUMNS };
-/** 1-indexed sheet row data starts at — the real MapLevelProgress sheet has 3 title/category/header rows before level 1's row. */
-let startRow = 4;
-
 /**
  * Character-level diff of `newStr` against `oldStr` via an LCS backtrack —
  * returns `newStr` split into segments, each flagged as "changed" (not part
@@ -132,6 +148,23 @@ export function diffChars(oldStr: string, newStr: string): { text: string; chang
   return segments;
 }
 
+export type LevelSyncStatus = "Local" | "Synced" | "Edited";
+
+/** The three-state contract shown on every level header. */
+export function levelSyncStatus(
+  sheetLoaded: boolean,
+  row: LevelSheetRow | null,
+  level: LevelData | undefined,
+): LevelSyncStatus {
+  if (!sheetLoaded) return "Local";
+  if (!row || !level) return "Edited";
+  return REMOTE_LEVEL_FIELDS.every(
+    (field) => (row.fields[field.key] ?? "") === String((level as unknown as Record<string, unknown>)[field.key] ?? ""),
+  )
+    ? "Synced"
+    : "Edited";
+}
+
 export class RemoteDataView {
   private root: HTMLElement;
   private map: MapData;
@@ -140,6 +173,10 @@ export class RemoteDataView {
   private onLevelChanged: () => void;
   private onOpenInDesign: (levelId: number) => void;
   private groups: Group[];
+  private mapId: string;
+  private state: RemoteViewState;
+  private defaultTabName: string;
+  private options: RemoteDataViewOptions;
   private refreshRowByKey = new Map<string, () => void>();
   private setRowStatusByKey = new Map<string, (status: RowStatus, error?: string) => void>();
   private groupStatusByTitle = new Map<string, HTMLElement>();
@@ -152,6 +189,7 @@ export class RemoteDataView {
     setSheetId: (id: string) => void,
     onLevelChanged: () => void,
     onOpenInDesign: (levelId: number) => void,
+    options: RemoteDataViewOptions = { scope: "legacy" },
   ) {
     this.root = root;
     this.map = map;
@@ -159,16 +197,57 @@ export class RemoteDataView {
     this.setSheetId = setSheetId;
     this.onLevelChanged = onLevelChanged;
     this.onOpenInDesign = onOpenInDesign;
-    this.groups = buildGroups();
+    this.options = options;
+    this.mapId = options.mapId ?? map.name;
+    this.defaultTabName = options.tabName ?? REMOTE_SHEET_DEFAULT_TAB;
+    const existing = scopedStates.get(options.scope);
+    this.state = existing ?? {
+      rowsCache: null,
+      openGroups: new Set<string>(),
+      openLevels: new Set<string>(),
+      tabName: this.defaultTabName,
+      columnOverrides: { ...(options.columns ?? REMOTE_SHEET_COLUMNS) },
+      startRow: options.startRow ?? 4,
+    };
+    if (!existing) scopedStates.set(options.scope, this.state);
+    this.groups = options.mapSources
+      ? options.mapSources.map((source) => ({
+          title: source.title,
+          entries: source.map.levels.map((level) => ({
+            key: `map_config_${source.id}_lv_${level.id}`,
+            mapId: source.id,
+            levelIndex: level.id,
+          })),
+        }))
+      : options.currentMapOnly
+      ? [{
+          title: this.mapId,
+          entries: map.levels.map((level) => ({
+            key: `map_config_${this.mapId}_lv_${level.id}`,
+            mapId: this.mapId,
+            levelIndex: level.id,
+          })),
+        }]
+      : buildGroups();
     this.build();
   }
 
   private isLive(entry: LevelEntry): boolean {
-    return entry.mapId === this.map.name && this.map.levels.some((l) => l.id === entry.levelIndex);
+    return this.mapFor(entry)?.levels.some((l) => l.id === entry.levelIndex) ?? false;
   }
 
   private level(entry: LevelEntry): LevelData | undefined {
-    return this.map.levels.find((l) => l.id === entry.levelIndex);
+    return this.mapFor(entry)?.levels.find((l) => l.id === entry.levelIndex);
+  }
+
+  private mapFor(entry: LevelEntry): MapData | undefined {
+    if (this.options.mapSources) return this.options.mapSources.find((source) => source.id === entry.mapId)?.map;
+    return entry.mapId === this.mapId ? this.map : undefined;
+  }
+
+  private notifyLevelChanged(entry: LevelEntry): void {
+    if (this.options.onMapLevelChanged) this.options.onMapLevelChanged(entry.mapId);
+    else this.onLevelChanged();
   }
 
   private toolField(entry: LevelEntry, key: FieldKey): string | null {
@@ -183,12 +262,12 @@ export class RemoteDataView {
   }
 
   private cacheKeyNow(): string {
-    return `${this.getSheetId()}::${tabName}::${startRow}::${JSON.stringify(columnOverrides)}`;
+    return `${this.getSheetId()}::${this.state.tabName}::${this.state.startRow}::${JSON.stringify(this.state.columnOverrides)}`;
   }
 
   /** The cache, but only if it's actually for the currently-configured sheet+tab — otherwise `null` (not stale data). */
   private currentRows(): Map<string, LevelSheetRow> | null {
-    return rowsCache && rowsCache.cacheKey === this.cacheKeyNow() ? rowsCache.rows : null;
+    return this.state.rowsCache && this.state.rowsCache.cacheKey === this.cacheKeyNow() ? this.state.rowsCache.rows : null;
   }
 
   /** Reuses the cache unless `forceRefresh` — the single choke point every read goes through, so a fetch only ever happens once per explicit reload. */
@@ -205,10 +284,10 @@ export class RemoteDataView {
     const key = this.cacheKeyNow();
     const result = await this.withToken(async () => {
       const token = await requestAccessTokenInteractive();
-      return fetchLevelProgressRows(sheetId, token, tabName, columnOverrides, startRow);
+      return fetchLevelProgressRows(sheetId, token, this.state.tabName, this.state.columnOverrides, this.state.startRow);
     });
     if (result === null) return null;
-    rowsCache = { cacheKey: key, rows: result };
+    this.state.rowsCache = { cacheKey: key, rows: result };
     return result;
   }
 
@@ -225,21 +304,24 @@ export class RemoteDataView {
     sheetIdInput.addEventListener("change", () => {
       this.setSheetId(sheetIdInput.value.trim());
       sheetIdInput.value = this.getSheetId();
+      for (const refresh of this.refreshRowByKey.values()) refresh();
     });
-    const tabNameInput = el("input", { type: "text", value: tabName, class: "sheet-id-input" }) as HTMLInputElement;
+    const tabNameInput = el("input", { type: "text", value: this.state.tabName, class: "sheet-id-input" }) as HTMLInputElement;
     tabNameInput.addEventListener("change", () => {
-      tabName = tabNameInput.value.trim() || REMOTE_SHEET_DEFAULT_TAB;
-      tabNameInput.value = tabName;
+      this.state.tabName = tabNameInput.value.trim() || this.defaultTabName;
+      tabNameInput.value = this.state.tabName;
+      for (const refresh of this.refreshRowByKey.values()) refresh();
     });
     const startRowInput = el("input", {
       type: "number",
       min: "1",
-      value: String(startRow),
+      value: String(this.state.startRow),
       class: "sheet-id-input column-letter-input",
     }) as HTMLInputElement;
     startRowInput.addEventListener("change", () => {
-      startRow = Math.max(1, Number(startRowInput.value) || 1);
-      startRowInput.value = String(startRow);
+      this.state.startRow = Math.max(1, Number(startRowInput.value) || 1);
+      startRowInput.value = String(this.state.startRow);
+      for (const refresh of this.refreshRowByKey.values()) refresh();
     });
 
     // One column-letter override per field, defaulting to remote-sheet-columns.json's
@@ -247,13 +329,14 @@ export class RemoteDataView {
     const columnFields = REMOTE_LEVEL_FIELDS.map((f) => {
       const input = el("input", {
         type: "text",
-        value: columnLetter(columnOverrides[f.key]),
+        value: columnLetter(this.state.columnOverrides[f.key]),
         class: "sheet-id-input column-letter-input",
       }) as HTMLInputElement;
       input.addEventListener("change", () => {
         const col = letterToColumn(input.value);
-        if (col >= 0) columnOverrides[f.key] = col;
-        input.value = columnLetter(columnOverrides[f.key]); // normalize case / revert if invalid
+        if (col >= 0) this.state.columnOverrides[f.key] = col;
+        input.value = columnLetter(this.state.columnOverrides[f.key]); // normalize case / revert if invalid
+        for (const refresh of this.refreshRowByKey.values()) refresh();
       });
       return el("label", { class: "field small" }, [f.label, input]);
     });
@@ -289,15 +372,15 @@ export class RemoteDataView {
     const statusEl = el("span", { class: "remote-status" }, []);
     this.groupStatusByTitle.set(group.title, statusEl);
 
-    const open = openGroups.has(group.title);
+    const open = this.state.openGroups.has(group.title);
     const rows = el("div", { class: "remote-rows" }, group.entries.map((entry) => this.rowEl(entry)));
     rows.style.display = open ? "" : "none";
 
     const caret = el("span", { class: "foldout-caret" }, [open ? "▾" : "▸"]);
     const toggle = () => {
-      const next = !openGroups.has(group.title);
-      if (next) openGroups.add(group.title);
-      else openGroups.delete(group.title);
+      const next = !this.state.openGroups.has(group.title);
+      if (next) this.state.openGroups.add(group.title);
+      else this.state.openGroups.delete(group.title);
       caret.textContent = next ? "▾" : "▸";
       rows.style.display = next ? "" : "none";
     };
@@ -322,12 +405,16 @@ export class RemoteDataView {
   private rowEl(entry: LevelEntry): HTMLElement {
     const live = this.isLive(entry);
     const statusEl = el("span", { class: "remote-status" }, []);
+    const syncStatusEl = el("span", { class: "remote-sync-status local" }, ["Local"]);
 
     const loadBtn = button("⬇ Load", () => void this.loadRow(entry), {
       class: "small-btn",
       title: "Re-fetch the whole sheet and refresh this level (and every other open one)",
     });
-    const openBtn = button("✏ Open in Design", () => this.onOpenInDesign(entry.levelIndex), {
+    const openBtn = button("✏ Open in Design", () => {
+      if (this.options.onOpenMapInDesign) this.options.onOpenMapInDesign(entry.mapId, entry.levelIndex);
+      else this.onOpenInDesign(entry.levelIndex);
+    }, {
       class: "small-btn",
       title: "Switch to Design mode and select this level",
     }) as HTMLButtonElement;
@@ -377,11 +464,16 @@ export class RemoteDataView {
 
       applySheetBtn.disabled = !live;
       applyToolBtn.disabled = !live;
+
+      const loadedRows = this.currentRows();
+      const syncStatus = levelSyncStatus(loadedRows !== null, row, this.level(entry));
+      syncStatusEl.textContent = syncStatus;
+      syncStatusEl.className = `remote-sync-status ${syncStatus.toLowerCase()}`;
     };
     refresh();
     this.refreshRowByKey.set(entry.key, refresh);
 
-    const open = openLevels.has(entry.key);
+    const open = this.state.openLevels.has(entry.key);
     const body = el("div", { class: "remote-row-columns" }, [
       el("div", { class: "remote-col" }, [
         el("div", { class: "remote-col-label" }, ["Sheet data"]),
@@ -396,9 +488,9 @@ export class RemoteDataView {
 
     const caret = el("span", { class: "foldout-caret" }, [open ? "▾" : "▸"]);
     const toggle = () => {
-      const next = !openLevels.has(entry.key);
-      if (next) openLevels.add(entry.key);
-      else openLevels.delete(entry.key);
+      const next = !this.state.openLevels.has(entry.key);
+      if (next) this.state.openLevels.add(entry.key);
+      else this.state.openLevels.delete(entry.key);
       caret.textContent = next ? "▾" : "▸";
       body.style.display = next ? "" : "none";
     };
@@ -407,6 +499,7 @@ export class RemoteDataView {
       caret,
       el("code", {}, [entry.key]),
       live ? el("span", { class: "remote-live-badge" }, ["live level"]) : "",
+      syncStatusEl,
       el("span", { class: "spacer" }, []),
       openBtn,
       loadBtn,
@@ -493,7 +586,7 @@ export class RemoteDataView {
       return;
     }
     for (const f of REMOTE_LEVEL_FIELDS) this.setToolField(entry, f.key, row.fields[f.key] ?? "");
-    this.onLevelChanged();
+    this.notifyLevelChanged(entry);
     this.refreshRowByKey.get(entry.key)?.();
   }
 
@@ -519,10 +612,10 @@ export class RemoteDataView {
     }
     const updates: CellUpdate[] = REMOTE_LEVEL_FIELDS.map((f) => ({
       row: row.rowNumber,
-      col: columnOverrides[f.key],
+      col: this.state.columnOverrides[f.key],
       value: this.toolField(entry, f.key) ?? "",
     }));
-    const ok = await this.withToken(() => batchUpdateCells(sheetId, tabName, updates));
+    const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, updates));
     if (ok === null) {
       setStatus?.("error", "apply failed");
       return;
@@ -537,7 +630,7 @@ export class RemoteDataView {
     const row = this.currentRows()?.get(entry.key);
     if (!row) return;
     this.setToolField(entry, fieldKey, row.fields[fieldKey] ?? "");
-    this.onLevelChanged();
+    this.notifyLevelChanged(entry);
     this.refreshRowByKey.get(entry.key)?.();
   }
 
@@ -563,7 +656,7 @@ export class RemoteDataView {
       return;
     }
     const ok = await this.withToken(() =>
-      batchUpdateCells(sheetId, tabName, [{ row: row.rowNumber, col: columnOverrides[fieldKey], value }]),
+      batchUpdateCells(sheetId, this.state.tabName, [{ row: row.rowNumber, col: this.state.columnOverrides[fieldKey], value }]),
     );
     if (ok === null) {
       setStatus?.("error", "apply failed");
@@ -600,7 +693,12 @@ export class RemoteDataView {
         for (const f of REMOTE_LEVEL_FIELDS) this.setToolField(e, f.key, row.fields[f.key] ?? "");
         applied++;
       }
-      if (applied > 0) this.onLevelChanged();
+      if (applied > 0) {
+        for (const mapId of new Set(entries.filter((entry) => this.isLive(entry) && rows.has(entry.key)).map((entry) => entry.mapId))) {
+          const representative = entries.find((entry) => entry.mapId === mapId);
+          if (representative) this.notifyLevelChanged(representative);
+        }
+      }
       for (const e of entries) this.refreshRowByKey.get(e.key)?.();
       if (statusEl) statusEl.textContent = `Applied ${applied} level(s)`;
       return;
@@ -621,7 +719,7 @@ export class RemoteDataView {
       const row = rows.get(e.key);
       if (!row) continue;
       for (const f of REMOTE_LEVEL_FIELDS) {
-        updates.push({ row: row.rowNumber, col: columnOverrides[f.key], value: this.toolField(e, f.key) ?? "" });
+        updates.push({ row: row.rowNumber, col: this.state.columnOverrides[f.key], value: this.toolField(e, f.key) ?? "" });
       }
       touched.push({ entry: e, row });
     }
@@ -629,7 +727,7 @@ export class RemoteDataView {
       if (statusEl) statusEl.textContent = "Nothing to apply";
       return;
     }
-    const ok = await this.withToken(() => batchUpdateCells(sheetId, tabName, updates));
+    const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, updates));
     if (ok === null) {
       if (statusEl) statusEl.textContent = "Apply failed";
       return;
