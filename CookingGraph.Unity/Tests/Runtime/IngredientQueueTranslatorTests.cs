@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 
 namespace CookingGraph.Tests
 {
@@ -50,6 +51,28 @@ namespace CookingGraph.Tests
             Assert.That(data, Is.Null);
             Assert.That(error, Is.Not.Null);
             Assert.That(error.Position, Is.GreaterThanOrEqualTo(0));
+        }
+
+        [Test]
+        public void GraphAwareParseResolvesIngredientAssetAndIndex()
+        {
+            var graph = ScriptableObject.CreateInstance<CookingGraphAsset>();
+            var first = ScriptableObject.CreateInstance<IngredientNodeAsset>();
+            var second = ScriptableObject.CreateInstance<IngredientNodeAsset>();
+            graph.idTable.ingredient.Add(first);
+            graph.idTable.ingredient.Add(second);
+
+            var data = IngredientQueueTranslator.Parse("1,-1", graph);
+            Assert.That(data.columns[0].items[0].id, Is.EqualTo(1));
+            Assert.That(data.columns[0].items[0].index, Is.EqualTo(1));
+            Assert.That(data.columns[0].items[0].ingredient, Is.SameAs(second));
+            Assert.That(data.columns[0].items[1].index, Is.EqualTo(-1));
+            Assert.That(data.columns[0].items[1].ingredient, Is.Null);
+            Assert.Throws<CookingGraphFormatException>(() => IngredientQueueTranslator.Parse("2", graph));
+
+            Object.DestroyImmediate(second);
+            Object.DestroyImmediate(first);
+            Object.DestroyImmediate(graph);
         }
     }
 }

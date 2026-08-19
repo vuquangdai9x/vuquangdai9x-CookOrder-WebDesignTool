@@ -41,7 +41,7 @@ describe("the id is the row's position", () => {
   it("gives every pickupable and every orderable an id, and intermediates none", () => {
     for (const v of doc.vertices.ingredient) {
       const has = ids.byNode.ingredient.has(v.name);
-      if (v.pickupable || v.servable) expect(has, `${v.name} needs an id`).toBe(true);
+      if (v.pickupable || ix.lookup.servable.has(v.name)) expect(has, `${v.name} needs an id`).toBe(true);
       else expect(has, `${v.name} is an intermediate and should have none`).toBe(false);
     }
     for (const v of doc.vertices.composite) {
@@ -91,8 +91,7 @@ describe("the committed levels agree with the table they index into", () => {
               }
               const name = ids.byId.ingredient.get(member.id);
               expect(name, `${data.name}: dish id ${member.id} resolves to nothing`).toBeDefined();
-              const vertex = doc.vertices.ingredient.find((v) => v.name === name);
-              expect(vertex?.servable, `${data.name}: dish member "${name}" is not servable`).toBe(true);
+              expect(ix.lookup.servable.has(name!), `${data.name}: dish member "${name}" is not servable`).toBe(true);
             }
           };
           walk(dish.root);

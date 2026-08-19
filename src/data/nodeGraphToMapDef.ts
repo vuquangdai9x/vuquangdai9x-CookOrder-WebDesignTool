@@ -77,7 +77,7 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
         numSlices: ix.terminalYield[dense] || 1,
       });
     }
-    if (vertex.servable) {
+    if (ix.servable[dense]) {
       cookedIngredients.push({
         ...shared,
         ...(vertex.usageNum && vertex.usageNum > 1 ? { usageNum: vertex.usageNum } : {}),

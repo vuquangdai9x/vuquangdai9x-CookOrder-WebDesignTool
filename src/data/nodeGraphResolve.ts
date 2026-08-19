@@ -131,7 +131,7 @@ export function buildLookup(doc: NodeGraphMap): GraphLookup {
     optionsOf.set(edge.from, list);
   }
 
-  return {
+  const lookup: GraphLookup = {
     kindOf,
     producerOf,
     consumersOf,
@@ -140,11 +140,19 @@ export function buildLookup(doc: NodeGraphMap): GraphLookup {
     optionsOf,
     dirtyOf,
     pickupable: new Set(doc.vertices.ingredient.filter((i) => i.pickupable).map((i) => i.name)),
-    servable: new Set(doc.vertices.ingredient.filter((i) => i.servable).map((i) => i.name)),
+    // A servable is not authored state. It is exactly a concrete ingredient
+    // that can occupy a slot reached backward from an orderable composite.
+    servable: new Set<string>(),
     groupMax: new Map(doc.vertices.group.map((g) => [g.name, g.maxQuantity ?? -1])),
     groupMin: new Map(doc.vertices.group.map((g) => [g.name, Math.max(0, g.minQuantity ?? 0)])),
     orderables: doc.vertices.composite.filter((c) => c.orderable).map((c) => c.name),
   };
+  for (const orderable of lookup.orderables) {
+    for (const slot of slotsOf(lookup, orderable)) {
+      for (const option of slot.options) lookup.servable.add(option);
+    }
+  }
+  return lookup;
 }
 
 /**

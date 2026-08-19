@@ -192,9 +192,12 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
   const pickupable = new Uint8Array(n);
   doc.vertices.ingredient.forEach((v, i) => {
     usageNum[i] = v.usageNum ?? 1;
-    servable[i] = v.servable ? 1 : 0;
     pickupable[i] = v.pickupable ? 1 : 0;
   });
+  for (const name of lookup.servable) {
+    const i = ingByName.get(name);
+    if (i !== undefined) servable[i] = 1;
+  }
 
   const producerOf: (ProcessStep | null)[] = new Array(n).fill(null);
   const recipeForInput: (ProcessStep | null)[] = new Array(n).fill(null);

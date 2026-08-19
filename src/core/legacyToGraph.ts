@@ -160,7 +160,6 @@ export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): 
     const vertex: IngredientVertex = {
       name,
       displayName: def?.name ?? `cooked${id}`,
-      servable: true,
       ...(def?.usageNum && def.usageNum > 1 ? { usageNum: def.usageNum } : {}),
       ...(def?.limit ? { limitPerDish: def.limit } : {}),
       ...(def?.localImage ? { localImage: def.localImage } : {}),

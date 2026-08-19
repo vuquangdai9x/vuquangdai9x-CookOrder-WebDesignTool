@@ -37,12 +37,13 @@ namespace CookingGraph.Editor
             var nodes = document.Nodes().ToList();
             var byName = nodes.GroupBy(pair => pair.Node.Value<string>("name") ?? string.Empty, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+            var servable = DerivedServable(document);
 
             ValidateFields(nodes, issues);
             ValidateNamespace(byName, issues);
             ValidateEdges(document, byName, issues);
-            ValidateIdTables(document, byName, issues);
-            ValidateProduction(document, byName, issues);
+            ValidateIdTables(document, byName, servable, issues);
+            ValidateProduction(document, byName, servable, issues);
             ValidateComposition(document, byName, issues);
             ValidateCycles(document, byName, issues);
             ValidateWarnings(document, byName, issues);
@@ -102,7 +103,7 @@ namespace CookingGraph.Editor
             DuplicateCap(document, "leavesDirty", "from", issues, "INV-REF");
         }
 
-        private static void ValidateIdTables(GraphJsonDocument document, IReadOnlyDictionary<string, List<(string Kind, JObject Node)>> byName, ICollection<GraphIssue> issues)
+        private static void ValidateIdTables(GraphJsonDocument document, IReadOnlyDictionary<string, List<(string Kind, JObject Node)>> byName, ISet<string> servable, ICollection<GraphIssue> issues)
         {
             foreach (var space in GraphSchema.IdSpaces)
             {
@@ -125,14 +126,14 @@ namespace CookingGraph.Editor
             foreach (var pair in document.Nodes())
             {
                 var name = pair.Node.Value<string>("name");
-                var needsId = pair.Kind == "ingredient" && (pair.Node.Value<bool?>("pickupable") == true || pair.Node.Value<bool?>("servable") == true)
+                var needsId = pair.Kind == "ingredient" && (pair.Node.Value<bool?>("pickupable") == true || servable.Contains(name))
                               || pair.Kind == "composite" && pair.Node.Value<bool?>("orderable") == true;
                 if (needsId && !GraphJsonDocument.Array(document.IdTable, pair.Kind).Any(token => token.Value<string>() == name))
                     Warning(issues, "WARN-UNTABLED-NODE", $"{pair.Kind} '{name}' is addressable but has no id-table entry.", name);
             }
         }
 
-        private static void ValidateProduction(GraphJsonDocument document, IReadOnlyDictionary<string, List<(string Kind, JObject Node)>> byName, ICollection<GraphIssue> issues)
+        private static void ValidateProduction(GraphJsonDocument document, IReadOnlyDictionary<string, List<(string Kind, JObject Node)>> byName, ISet<string> servable, ICollection<GraphIssue> issues)
         {
             var processes = GraphJsonDocument.Array(document.Edges, "process").OfType<JObject>().ToList();
             var producers = processes.GroupBy(edge => edge.Value<string>("to") ?? string.Empty).ToDictionary(group => group.Key, group => group.ToList());
@@ -169,8 +170,8 @@ namespace CookingGraph.Editor
                 }
 
                 var target = targetName == null ? null : document.FindNode("ingredient", targetName);
-                if (target != null && target.Value<bool?>("servable") != true && (edge.Value<int?>("amount") ?? 1) != 1)
-                    Error(issues, "INV-INTERMEDIATE-AMOUNT", $"Non-servable intermediate '{targetName}' must have process amount 1.", targetName);
+                if (target != null && !servable.Contains(targetName) && target.Value<bool?>("pickupable") != true && (edge.Value<int?>("amount") ?? 1) != 1)
+                    Error(issues, "INV-INTERMEDIATE-AMOUNT", $"Non-order-slot intermediate '{targetName}' must have process amount 1.", targetName);
 
                 var usedSlots = inputs.OfType<JObject>().Select(value => value.Value<int?>("slot") ?? 0).Distinct().ToList();
                 if (usedSlots.Count > 1 && tool?["slotConfigs"] is JArray configs)
@@ -203,9 +204,6 @@ namespace CookingGraph.Editor
                     foreach (var leaf in leaves)
                     {
                         if (!seen.Add(leaf)) Error(issues, "INV-ORDER-REBUILDABLE", $"Ingredient '{leaf}' is offered by multiple slots of composite '{name}'.", name);
-                        var ingredient = document.FindNode("ingredient", leaf);
-                        if (ingredient != null && ingredient.Value<bool?>("servable") != true)
-                            Error(issues, "INV-SERVABLE", $"Ingredient '{leaf}' is used in an order slot but is not servable.", leaf);
                     }
                 }
 
@@ -321,6 +319,18 @@ namespace CookingGraph.Editor
             return edgeKinds.SelectMany(edgeKind => GraphJsonDocument.Array(document.Edges, edgeKind).OfType<JObject>()
                 .Where(edge => edge.Value<string>("from") == name)
                 .SelectMany(edge => CompositionLeaves(edge.Value<string>("to"), document, new HashSet<string>(visiting, StringComparer.Ordinal)))).Distinct();
+        }
+
+        private static HashSet<string> DerivedServable(GraphJsonDocument document)
+        {
+            var result = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var composite in GraphJsonDocument.Array(document.Vertices, "composite").OfType<JObject>()
+                         .Where(node => node.Value<bool?>("orderable") == true))
+            {
+                foreach (var leaf in CompositionLeaves(composite.Value<string>("name"), document, new HashSet<string>(StringComparer.Ordinal)))
+                    result.Add(leaf);
+            }
+            return result;
         }
 
         private static bool CanProduce(string ingredientName, GraphJsonDocument document, ISet<string> visiting)

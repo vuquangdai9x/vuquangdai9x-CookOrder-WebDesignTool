@@ -155,7 +155,7 @@ describe("graph structure invariants", () => {
 
   it("INV-TRACEABLE: an orderable needing something unobtainable", () => {
     const doc = clone();
-    doc.vertices.ingredient.push({ name: "unobtainium", displayName: "Unobtainium", servable: true });
+    doc.vertices.ingredient.push({ name: "unobtainium", displayName: "Unobtainium" });
     doc.edges.option.push({ from: "burger-toppings", to: "unobtainium", maxQuantity: -1 });
     doc.idTable.ingredient.push("unobtainium");
     const { errors } = validateNodeGraph(doc);

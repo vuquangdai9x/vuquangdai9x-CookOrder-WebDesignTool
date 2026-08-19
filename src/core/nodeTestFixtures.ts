@@ -67,7 +67,6 @@ export function expandChainTools(doc: NodeGraphMap, output: string): NodeGraphMa
         ...(template ?? { name: to, displayName: to }),
         name: to,
         displayName: to,
-        servable: false,
         pickupable: false,
       });
     }

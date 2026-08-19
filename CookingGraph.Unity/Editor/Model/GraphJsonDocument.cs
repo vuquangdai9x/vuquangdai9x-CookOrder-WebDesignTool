@@ -88,6 +88,8 @@ namespace CookingGraph.Editor
 
             NormalizeMap(root, result.Issues);
             var vertices = NormalizeBuckets(root, "vertices", GraphSchema.VertexKinds, result.Issues, true);
+            var retiredServable = ((JArray)vertices["ingredient"]).OfType<JObject>().Count(node => node.Remove("servable"));
+            if (retiredServable > 0) result.Issues.Add($"vertices.ingredient: removed {retiredServable} retired servable field(s); servability is derived from order slots.");
             var knownNames = new HashSet<string>(vertices.Properties().SelectMany(property =>
                 ((JArray)property.Value).OfType<JObject>().Select(node => node.Value<string>("name"))), StringComparer.Ordinal);
             NormalizeEdges(root, knownNames, result.Issues);

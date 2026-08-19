@@ -74,7 +74,7 @@ namespace CookingGraph.Editor
         {
             new VertexDefinition("ingredient", "Ingredient", "#6bbf59",
                 F("name", "string", true), F("displayName", "string", true), F("pickupable", "bool", false, false),
-                F("servable", "bool", false, false), F("usageNum", "int", false, 1), F("price", "int", false, 0),
+                F("usageNum", "int", false, 1), F("price", "int", false, 0),
                 F("code", "string"), F("emoji", "string"), F("localImage", "string"), F("fileId", "string")),
             new VertexDefinition("tool", "Tool", "#f0a441",
                 F("name", "string", true), F("displayName", "string", true), F("slotConfigs", "slotConfig[]", true),

@@ -14,7 +14,7 @@
 // produce issues, never an exception.
 
 import { invariant } from "./nodeGraphSchema.ts";
-import { buildLookup, slotIndex, slotsOf, traceOrderable } from "./nodeGraphResolve.ts";
+import { buildLookup, slotIndex, traceOrderable } from "./nodeGraphResolve.ts";
 import type { GraphLookup } from "./nodeGraphResolve.ts";
 import { ID_SPACES, buildIdIndex, validateIdTable } from "./nodeIdTable.ts";
 import type { IdSpace, NodeGraphMap, VertexKindName } from "./nodeGraphTypes.ts";
@@ -294,11 +294,11 @@ function checkGroups(doc: NodeGraphMap, add: Add): void {
 function checkIntermediates(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
   for (const e of doc.edges.process) {
     const target = doc.vertices.ingredient.find((i) => i.name === e.to);
-    const isIntermediate = target && !target.servable && !target.pickupable;
+    const isIntermediate = target && !lk.servable.has(target.name) && !target.pickupable;
     if (isIntermediate && e.amount !== 1) {
       add(
         "INV-INTERMEDIATE-AMOUNT",
-        `Process ${e.from}->${e.to} yields ${e.amount}, but "${e.to}" is a non-servable intermediate; only 1 is supported.`,
+        `Process ${e.from}->${e.to} yields ${e.amount}, but "${e.to}" is not an order-slot ingredient; only 1 is supported.`,
         { edge: { kind: "process", from: e.from, to: e.to } },
       );
     }
@@ -310,7 +310,6 @@ function checkIntermediates(doc: NodeGraphMap, lk: GraphLookup, add: Add): void 
       );
     }
   }
-  void lk;
 }
 
 /**
@@ -389,20 +388,6 @@ function checkTraceable(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
       );
     }
   }
-  // Anything reachable as a slot option must be servable, or it can never fill a dish.
-  for (const orderable of lk.orderables) {
-    for (const slot of slotsOf(lk, orderable)) {
-      for (const option of slot.options) {
-        if (!lk.servable.has(option)) {
-          add(
-            "INV-SERVABLE",
-            `"${option}" can fill a slot of "${orderable}" but is not marked servable.`,
-            { vertexKind: "ingredient", vertexName: option },
-          );
-        }
-      }
-    }
-  }
   void doc;
 }
 
@@ -462,7 +447,7 @@ function checkIdTable(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
   // Anything level data may reference needs an id, or it is unreachable from level data.
   const ix = buildIdIndex(doc.idTable);
   const needsId: [IdSpace, string][] = [
-    ...doc.vertices.ingredient.filter((i) => i.pickupable || i.servable).map((i) => ["ingredient", i.name] as [IdSpace, string]),
+    ...doc.vertices.ingredient.filter((i) => i.pickupable || lk.servable.has(i.name)).map((i) => ["ingredient", i.name] as [IdSpace, string]),
     ...doc.vertices.composite.filter((c) => c.orderable).map((c) => ["composite", c.name] as [IdSpace, string]),
   ];
   for (const [space, name] of needsId) {

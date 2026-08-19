@@ -119,8 +119,6 @@ export interface IngredientVertex {
   displayName: string;
   /** Comes off the queue — a graph leaf, where a traceback terminates. */
   pickupable?: boolean;
-  /** May occupy a dish slot. Raw items (bun, potato) are not; their outputs are. */
-  servable?: boolean;
   /** Dish slots ONE landed piece can fill before it's consumed. >1 also disables direct-serve. */
   usageNum?: number;
   price?: number;

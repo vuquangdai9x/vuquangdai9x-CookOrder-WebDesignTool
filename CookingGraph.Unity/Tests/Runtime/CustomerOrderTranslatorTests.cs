@@ -38,6 +38,40 @@ namespace CookingGraph.Tests
             Assert.That(ids, Is.EqualTo(new[] { 18, 18, 19 }));
         }
 
+        [Test]
+        public void GraphAwareParseResolvesEveryMemberAssetAndIndex()
+        {
+            var graph = ScriptableObject.CreateInstance<CookingGraphAsset>();
+            var composite = ScriptableObject.CreateInstance<CompositeNodeAsset>();
+            var group = ScriptableObject.CreateInstance<GroupNodeAsset>();
+            var baseIngredient = ScriptableObject.CreateInstance<IngredientNodeAsset>();
+            var topping = ScriptableObject.CreateInstance<IngredientNodeAsset>();
+            graph.idTable.composite.Add(composite);
+            graph.idTable.group.Add(group);
+            graph.idTable.ingredient.Add(baseIngredient);
+            graph.idTable.ingredient.Add(topping);
+            graph.baseEdges.Add(new NodeEdgeAssetData { from = composite, to = baseIngredient });
+            graph.toppingEdges.Add(new NodeEdgeAssetData { from = composite, to = group });
+            graph.optionEdges.Add(new OptionEdgeAssetData { from = group, to = topping });
+
+            var root = CustomerOrderTranslator.Parse("0;0;0;{c0:0.{g0:1}}", graph).customers[0].dishes[0].root;
+            Assert.That(root.index, Is.EqualTo(0));
+            Assert.That(root.asset, Is.SameAs(composite));
+            Assert.That(root.members[0].index, Is.EqualTo(0));
+            Assert.That(root.members[0].asset, Is.SameAs(baseIngredient));
+            Assert.That(root.members[1].index, Is.EqualTo(0));
+            Assert.That(root.members[1].asset, Is.SameAs(group));
+            Assert.That(root.members[1].members[0].index, Is.EqualTo(1));
+            Assert.That(root.members[1].members[0].asset, Is.SameAs(topping));
+            Assert.Throws<CookingGraphFormatException>(() => CustomerOrderTranslator.Parse("0;0;0;{c1:0}", graph));
+
+            Object.DestroyImmediate(topping);
+            Object.DestroyImmediate(baseIngredient);
+            Object.DestroyImmediate(group);
+            Object.DestroyImmediate(composite);
+            Object.DestroyImmediate(graph);
+        }
+
         [TestCase("0;0;0;1.0")]
         [TestCase("0;0;0;{g0:1}")]
         [TestCase("0;0;0;{c0:}")]

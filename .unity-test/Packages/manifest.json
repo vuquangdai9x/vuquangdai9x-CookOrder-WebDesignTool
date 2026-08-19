@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "com.daivq.cookinggraph": "file:../../CookingGraph.Unity",
+    "com.unity.test-framework": "1.4.6"
+  }
+}

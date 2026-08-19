@@ -99,6 +99,11 @@ export function parseGraphJson(text: string): GraphJsonResult {
       if (rows.length !== raw.length) {
         issues.push(`vertices.${kind}: dropped ${raw.length - rows.length} row(s) with no name`);
       }
+      if (kind === "ingredient") {
+        const retired = rows.filter((row) => "servable" in row).length;
+        for (const row of rows) delete row.servable;
+        if (retired > 0) issues.push(`vertices.ingredient: removed ${retired} retired servable field(s); servability is derived from order slots`);
+      }
       vertices[kind] = rows as never;
     } else {
       if (raw !== undefined) issues.push(`vertices.${kind} is not a list — treated as empty`);

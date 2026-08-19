@@ -30,6 +30,7 @@ namespace CookingGraph
                         column.items.Add(new QueueItemData
                         {
                             id = id,
+                            index = id < 0 ? -1 : id,
                             kind = id < 0 ? QueueItemKind.Sweeper : QueueItemKind.Ingredient,
                             effects = parsed.Effects
                         });
@@ -45,11 +46,54 @@ namespace CookingGraph
             return result;
         }
 
+        /// <summary>Parses a queue and resolves every ingredient index to its generated node asset.</summary>
+        public static IngredientQueueData Parse(string source, CookingGraphAsset graph)
+        {
+            if (graph == null) throw new ArgumentNullException(nameof(graph));
+            var data = Parse(source);
+            foreach (var item in data.columns.SelectMany(column => column.items))
+            {
+                if (item.kind == QueueItemKind.Sweeper)
+                {
+                    item.index = -1;
+                    item.ingredient = null;
+                    continue;
+                }
+                item.index = item.id;
+                if (item.index < 0 || item.index >= graph.idTable.ingredient.Count || graph.idTable.ingredient[item.index] == null)
+                {
+                    var token = item.id.ToString(CultureInfo.InvariantCulture);
+                    throw new CookingGraphFormatException(
+                        $"Ingredient index {item.index} does not resolve to an IngredientNodeAsset",
+                        Math.Max(0, source.IndexOf(token, StringComparison.Ordinal)),
+                        source);
+                }
+                item.ingredient = graph.idTable.ingredient[item.index];
+            }
+            return data;
+        }
+
         public static bool TryParse(string source, out IngredientQueueData data, out CookingGraphFormatException error)
         {
             try
             {
                 data = Parse(source);
+                error = null;
+                return true;
+            }
+            catch (CookingGraphFormatException exception)
+            {
+                data = null;
+                error = exception;
+                return false;
+            }
+        }
+
+        public static bool TryParse(string source, CookingGraphAsset graph, out IngredientQueueData data, out CookingGraphFormatException error)
+        {
+            try
+            {
+                data = Parse(source, graph);
                 error = null;
                 return true;
             }

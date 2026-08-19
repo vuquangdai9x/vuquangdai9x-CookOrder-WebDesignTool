@@ -86,7 +86,7 @@ describe("multi-tool routes collapse into chainTools", () => {
     // so minting one would be an id nothing could use. That makes the check
     // stronger rather than weaker: every projected recipe output must resolve
     // to something a dish can actually ask for, and an intermediate cannot.
-    const intermediates = doc.vertices.ingredient.filter((v) => !v.servable && !v.pickupable);
+    const intermediates = doc.vertices.ingredient.filter((v, i) => !projected.ix.servable[i] && !v.pickupable);
     expect(intermediates.length, "no intermediates in this graph to check").toBeGreaterThan(0);
     for (const v of intermediates) {
       expect(ids.byNode.ingredient.get(v.name), `${v.name} should have no id`).toBeUndefined();

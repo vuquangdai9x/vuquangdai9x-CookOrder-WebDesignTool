@@ -9,13 +9,23 @@ The graph JSON remains the source of truth. Without a config, generated runtime 
 ## Runtime translators
 
 ```csharp
-IngredientQueueData queues = IngredientQueueTranslator.Parse(queueString);
-CustomerOrderData customers = CustomerOrderTranslator.Parse(customerString);
+IngredientQueueData queues = IngredientQueueTranslator.Parse(queueString, graphAsset);
+CustomerOrderData customers = CustomerOrderTranslator.Parse(customerString, graphAsset);
+
+// Queue ingredients expose both the positional index and typed asset.
+int ingredientIndex = queues.columns[0].items[0].index;
+IngredientNodeAsset ingredient = queues.columns[0].items[0].ingredient;
+
+// Customer members expose their positional index and resolved node asset.
+int memberIndex = customers.customers[0].dishes[0].root.index;
+CookingNodeAsset memberAsset = customers.customers[0].dishes[0].root.asset;
 
 // Both formats support canonical round-tripping.
 string queueAgain = IngredientQueueTranslator.Serialize(queues);
 string customersAgain = CustomerOrderTranslator.Serialize(customers);
 ```
+
+Use the overloads that receive `CookingGraphAsset` for runtime data. They reject unresolved table indices and populate asset references. The graph-less overloads remain available for syntax-only parsing and canonical interchange; their asset-reference fields are null.
 
 The customer translator accepts the graph grammar (`{c0:...}` / `{g0:...}`) only. `TryParse` overloads return a `CookingGraphFormatException` containing the failing source position and context.
 

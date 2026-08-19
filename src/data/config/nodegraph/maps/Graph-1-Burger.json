@@ -78,7 +78,6 @@
         "name": "bun",
         "displayName": "Bun",
         "pickupable": true,
-        "servable": false,
         "price": 4,
         "code": "burger_bun_raw",
         "emoji": "🍞",
@@ -88,7 +87,6 @@
         "name": "patty",
         "displayName": "Patty",
         "pickupable": true,
-        "servable": false,
         "price": 10,
         "code": "beef_patty_raw",
         "emoji": "🥩",
@@ -98,7 +96,6 @@
         "name": "tomato",
         "displayName": "Tomato",
         "pickupable": true,
-        "servable": false,
         "price": 5,
         "code": "tomato",
         "emoji": "🍅",
@@ -108,7 +105,6 @@
         "name": "lettuce",
         "displayName": "Lettuce",
         "pickupable": true,
-        "servable": false,
         "price": 5,
         "code": "lettuce_raw",
         "emoji": "🥬",
@@ -118,7 +114,6 @@
         "name": "onion",
         "displayName": "Onion",
         "pickupable": true,
-        "servable": false,
         "price": 5,
         "code": "onion",
         "emoji": "🧅",
@@ -128,7 +123,6 @@
         "name": "cheese",
         "displayName": "Cheese",
         "pickupable": true,
-        "servable": false,
         "price": 6,
         "code": "cheese",
         "emoji": "🧀",
@@ -138,7 +132,6 @@
         "name": "egg",
         "displayName": "Egg",
         "pickupable": true,
-        "servable": false,
         "price": 7,
         "code": "egg",
         "emoji": "🥚",
@@ -148,7 +141,6 @@
         "name": "cup",
         "displayName": "Soda Cup (empty)",
         "pickupable": true,
-        "servable": false,
         "price": 8,
         "code": "cup",
         "emoji": "🥤",
@@ -158,7 +150,6 @@
         "name": "chicken-breast",
         "displayName": "Chicken Breast",
         "pickupable": true,
-        "servable": false,
         "price": 0,
         "code": "chicken_breast_raw",
         "emoji": "🍗",
@@ -168,7 +159,6 @@
         "name": "chicken-wing",
         "displayName": "Chicken Wing",
         "pickupable": true,
-        "servable": false,
         "price": 20,
         "code": "chicken_wing_raw",
         "emoji": "🍗",
@@ -178,7 +168,6 @@
         "name": "chicken-thigh",
         "displayName": "Chicken Thigh",
         "pickupable": true,
-        "servable": false,
         "price": 24,
         "code": "chicken_thigh_raw",
         "emoji": "🍗",
@@ -188,7 +177,6 @@
         "name": "chicken-nugget",
         "displayName": "Chicken Nugget",
         "pickupable": true,
-        "servable": false,
         "price": 28,
         "code": "chicken_nugget_raw",
         "emoji": "🍗",
@@ -198,7 +186,6 @@
         "name": "potato",
         "displayName": "Potato",
         "pickupable": true,
-        "servable": false,
         "price": 14,
         "code": "potato",
         "emoji": "🥔",
@@ -208,7 +195,6 @@
         "name": "chive",
         "displayName": "Chive",
         "pickupable": true,
-        "servable": false,
         "price": 8,
         "code": "chive",
         "emoji": "🌿",
@@ -218,7 +204,6 @@
         "name": "ice",
         "displayName": "Ice",
         "pickupable": true,
-        "servable": true,
         "usageNum": 1,
         "price": 2,
         "code": "ice",
@@ -229,7 +214,6 @@
         "name": "chili-bowl",
         "displayName": "Chili Bowl",
         "pickupable": true,
-        "servable": true,
         "usageNum": 2,
         "price": 0,
         "code": "chili_bowl",
@@ -240,7 +224,6 @@
         "name": "cheese-sauce",
         "displayName": "Cheese Sauce",
         "pickupable": true,
-        "servable": true,
         "usageNum": 3,
         "price": 8,
         "code": "cheese_sauce",
@@ -250,7 +233,6 @@
       {
         "name": "bun-sliced",
         "displayName": "Sliced Bun",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🍞",
         "localImage": "Map1-burger/ingredients/bun-sliced.png"
@@ -258,7 +240,6 @@
       {
         "name": "patty-cooked",
         "displayName": "Cooked Patty",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🥩",
         "localImage": "Map1-burger/ingredients/patty-cooked.png"
@@ -266,7 +247,6 @@
       {
         "name": "tomato-sliced",
         "displayName": "Tomato Slice",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🍅",
         "localImage": "Map1-burger/ingredients/tomato-sliced.png"
@@ -274,7 +254,6 @@
       {
         "name": "lettuce-sliced",
         "displayName": "Lettuce Cut",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🥬",
         "localImage": "Map1-burger/ingredients/lettuce_sliced.png"
@@ -282,7 +261,6 @@
       {
         "name": "onion-sliced",
         "displayName": "Onion Slice",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🧅",
         "localImage": "Map1-burger/ingredients/onion-sliced.png"
@@ -290,7 +268,6 @@
       {
         "name": "cheese-sliced",
         "displayName": "Cheese Slice",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🧀",
         "localImage": "Map1-burger/ingredients/cheese_sliced.png"
@@ -298,7 +275,6 @@
       {
         "name": "egg-cooked",
         "displayName": "Fried Egg",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🍳",
         "localImage": "Map1-burger/ingredients/egg_cooked.png"
@@ -306,7 +282,6 @@
       {
         "name": "soda-cup",
         "displayName": "Soda Cup",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🥤",
         "localImage": "Map1-burger/ingredients/cup_soda.png"
@@ -314,7 +289,6 @@
       {
         "name": "chicken-breast-fried",
         "displayName": "Fried Breast",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chicken_breast_fried.png"
@@ -322,7 +296,6 @@
       {
         "name": "chicken-wing-fried",
         "displayName": "Fried Wing",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chick_wing_fried.png"
@@ -330,7 +303,6 @@
       {
         "name": "chicken-thigh-fried",
         "displayName": "Fried Thigh",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chick_thigh_fried.png"
@@ -338,7 +310,6 @@
       {
         "name": "chicken-nugget-fried",
         "displayName": "Fried Nugget",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chick_nugget_fried.png"
@@ -346,7 +317,6 @@
       {
         "name": "potato-fried",
         "displayName": "Fried Potato",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🍟",
         "localImage": "Map1-burger/ingredients/potato_fried.png"
@@ -354,7 +324,6 @@
       {
         "name": "chive-sliced",
         "displayName": "Chive Sliced",
-        "servable": true,
         "usageNum": 1,
         "emoji": "🌿",
         "localImage": "Map1-burger/ingredients/chive_sliced.png"
@@ -362,32 +331,27 @@
       {
         "name": "chicken-breast-flour-coated",
         "displayName": "Coated Breast",
-        "servable": false,
         "emoji": "🍗"
       },
       {
         "name": "chicken-wing-flour-coated",
         "displayName": "Coated Wing",
-        "servable": false,
         "emoji": "🍗"
       },
       {
         "name": "chicken-thigh-flour-coated",
         "displayName": "Coated Thigh",
-        "servable": false,
         "emoji": "🍗"
       },
       {
         "name": "chicken-nugget-flour-coated",
         "displayName": "Coated Nugget",
-        "servable": false,
         "emoji": "🍗"
       },
       {
         "name": "potato_sliced",
         "displayName": "Sliced Potato",
         "pickupable": false,
-        "servable": false,
         "usageNum": 1,
         "price": 0
       }

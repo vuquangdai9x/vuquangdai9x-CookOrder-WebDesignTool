@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import burgerJson from "./config/nodegraph/maps/Graph-1-Burger.json";
 import type { IdTable, NodeGraphMap } from "./nodeGraphTypes.ts";
+import { buildLookup } from "./nodeGraphResolve.ts";
 import {
   buildIdIndex,
   createIdTable,
@@ -35,8 +36,9 @@ describe("id table — round trip", () => {
     // for it would be an id nothing can use. The rule is that everything level
     // data CAN name is nameable. WARN-UNTABLED-NODE says the same at load.
     const ix = buildIdIndex(burger.idTable);
+    const lookup = buildLookup(burger);
     for (const vertex of burger.vertices.ingredient) {
-      if (!vertex.servable && !vertex.pickupable) continue;
+      if (!lookup.servable.has(vertex.name) && !vertex.pickupable) continue;
       expect(idOf(ix, "ingredient", vertex.name), `ingredient "${vertex.name}" has no id`).not.toBeNull();
     }
     for (const vertex of burger.vertices.composite) {

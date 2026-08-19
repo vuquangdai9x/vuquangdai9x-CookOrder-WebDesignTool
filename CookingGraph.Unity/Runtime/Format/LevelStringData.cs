@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 namespace CookingGraph
 {
+    #region Ingredient Queue
     [Serializable]
     public sealed class EffectData
     {
@@ -20,7 +21,12 @@ namespace CookingGraph
     public sealed class QueueItemData
     {
         public QueueItemKind kind;
+        /// <summary>Raw numeric token retained for lossless serialization.</summary>
         public int id;
+        /// <summary>Position in CookingGraphAsset.idTable.ingredient, or -1 for a sweeper.</summary>
+        public int index = -1;
+        /// <summary>Resolved ingredient asset when parsed with a CookingGraphAsset.</summary>
+        public IngredientNodeAsset ingredient;
         public List<EffectData> effects = new List<EffectData>();
     }
 
@@ -56,7 +62,9 @@ namespace CookingGraph
         public List<IngredientQueueColumnData> columns = new List<IngredientQueueColumnData>();
         public List<QueueGroupData> groups = new List<QueueGroupData>();
     }
+    #endregion
 
+    #region Customer Order
     public enum OrderMemberKind
     {
         Ingredient,
@@ -69,7 +77,12 @@ namespace CookingGraph
     public sealed class OrderMemberData
     {
         public OrderMemberKind kind;
+        /// <summary>Raw numeric token retained for lossless serialization.</summary>
         public int id;
+        /// <summary>Position in the id table selected by kind.</summary>
+        public int index = -1;
+        /// <summary>Resolved IngredientNodeAsset, CompositeNodeAsset, or GroupNodeAsset.</summary>
+        public CookingNodeAsset asset;
         public List<OrderMemberData> members = new List<OrderMemberData>();
     }
 
@@ -109,4 +122,5 @@ namespace CookingGraph
         public int actual;
         public string message;
     }
+    #endregion
 }

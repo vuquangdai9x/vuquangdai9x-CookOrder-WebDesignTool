@@ -402,7 +402,7 @@ describe("legacyToGraph — the parity adapter", () => {
     expect(pickupName(testMap, 2)).toBe(cookedName(2));
     const merged = doc.vertices.ingredient.find((v) => v.name === cookedName(2))!;
     expect(merged.pickupable).toBe(true);
-    expect(merged.servable).toBe(true);
+    expect(buildIndex(doc).lookup.servable.has(merged.name)).toBe(true);
   });
 
   it("keeps a raw that needs a tool separate from its output", () => {
@@ -410,7 +410,7 @@ describe("legacyToGraph — the parity adapter", () => {
     const raw = doc.vertices.ingredient.find((v) => v.name === rawName(0))!;
     const cooked = doc.vertices.ingredient.find((v) => v.name === cookedName(0))!;
     expect(raw.name).not.toBe(cooked.name);
-    expect(raw.servable).toBeUndefined();
+    expect(buildIndex(doc).lookup.servable.has(raw.name)).toBe(false);
     expect(cooked.pickupable).toBeUndefined();
   });
 

@@ -260,7 +260,6 @@ namespace CookingGraph.Editor
                 case "ingredient":
                     var ingredient = (IngredientNodeAsset)asset;
                     ingredient.pickupable = json.Value<bool?>("pickupable") ?? false;
-                    ingredient.servable = json.Value<bool?>("servable") ?? false;
                     ingredient.usageNum = json.Value<int?>("usageNum") ?? 1;
                     ingredient.price = json.Value<int?>("price") ?? 0;
                     ingredient.code = json.Value<string>("code") ?? string.Empty;

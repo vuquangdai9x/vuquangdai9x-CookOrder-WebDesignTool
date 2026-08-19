@@ -67,14 +67,14 @@ namespace CookingGraph.Editor.Tests
 
         internal static GraphJsonDocument MinimalDocument(bool includeExtra = false)
         {
-            var extra = includeExtra ? ",{'name':'extra','displayName':'Extra','pickupable':true,'servable':true,'emoji':'🥬'}" : string.Empty;
+            var extra = includeExtra ? ",{'name':'extra','displayName':'Extra','pickupable':true,'emoji':'🥬'}" : string.Empty;
             var extraId = includeExtra ? ",'extra'" : string.Empty;
             var json = @"{
               'schemaVersion':1,
               'map':{'id':'sync-test','name':'Sync Test','gridWidth':4,'gridHeight':4,'dirtyStackHeight':3,'visibleRows':3},
               'idTable':{'ingredient':['bun'" + extraId + @"],'composite':['burger'],'group':[],'tool':[],'dirty':[]},
               'vertices':{
-                'ingredient':[{'name':'bun','displayName':'Bun','pickupable':true,'servable':true,'usageNum':1,'emoji':'🍞'}" + extra + @"],
+                'ingredient':[{'name':'bun','displayName':'Bun','pickupable':true,'usageNum':1,'emoji':'🍞'}" + extra + @"],
                 'tool':[],'group':[],'composite':[{'name':'burger','displayName':'Burger','orderable':true}],'dirty':[]
               },
               'edges':{'process':[],'base':[{'from':'burger','to':'bun'}],'topping':[],'option':[],'leavesDirty':[]},

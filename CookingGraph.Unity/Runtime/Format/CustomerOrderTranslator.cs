@@ -46,7 +46,13 @@ namespace CookingGraph
         /// <summary>Parses and validates group nesting and quantity limits against a generated graph.</summary>
         public static CustomerOrderData Parse(string source, CookingGraphAsset graph)
         {
+            if (graph == null) throw new ArgumentNullException(nameof(graph));
             var data = Parse(source);
+            foreach (var member in data.customers
+                         .SelectMany(customer => customer.dishes)
+                         .Where(dish => dish?.root != null)
+                         .Select(dish => dish.root))
+                ResolveAssets(member, graph, source ?? string.Empty);
             var issues = ValidateGroupQuantities(data, graph);
             if (issues.Count > 0)
                 throw new CookingGraphFormatException(issues[0].message, 0, source ?? string.Empty);
@@ -209,7 +215,7 @@ namespace CookingGraph
                 Fail("Expected ':' after node id", context, cursor.Index);
             cursor.Index++;
 
-            var node = new OrderMemberData { kind = kind, id = id };
+            var node = new OrderMemberData { kind = kind, id = id, index = id };
             while (true)
             {
                 if (cursor.Index >= source.Length) Fail("Expected a member", context, cursor.Index);
@@ -222,10 +228,12 @@ namespace CookingGraph
                     var memberStart = cursor.Index;
                     while (cursor.Index < source.Length && char.IsDigit(source[cursor.Index])) cursor.Index++;
                     if (cursor.Index == memberStart) Fail("Expected an ingredient id or '{'", context, cursor.Index);
+                    var ingredientId = ParseInt(source.Substring(memberStart, cursor.Index - memberStart), context);
                     node.members.Add(new OrderMemberData
                     {
                         kind = OrderMemberKind.Ingredient,
-                        id = ParseInt(source.Substring(memberStart, cursor.Index - memberStart), context)
+                        id = ingredientId,
+                        index = ingredientId
                     });
                 }
                 if (cursor.Index < source.Length && source[cursor.Index] == '.')
@@ -275,6 +283,38 @@ namespace CookingGraph
             builder.Append('{').Append(member.kind == OrderMemberKind.Composite ? 'c' : 'g').Append(member.id).Append(':');
             builder.Append(string.Join(".", member.members.Select(SerializeMember)));
             return builder.Append('}').ToString();
+        }
+
+        private static void ResolveAssets(OrderMemberData member, CookingGraphAsset graph, string context)
+        {
+            if (member == null) return;
+            member.index = member.id;
+            switch (member.kind)
+            {
+                case OrderMemberKind.Ingredient:
+                    member.asset = ResolveAt(graph.idTable.ingredient, member.index);
+                    break;
+                case OrderMemberKind.Composite:
+                    member.asset = ResolveAt(graph.idTable.composite, member.index);
+                    break;
+                case OrderMemberKind.Group:
+                    member.asset = ResolveAt(graph.idTable.group, member.index);
+                    break;
+            }
+            if (member.asset == null)
+            {
+                var token = member.id.ToString(CultureInfo.InvariantCulture);
+                throw new CookingGraphFormatException(
+                    $"{member.kind} index {member.index} does not resolve to a node asset",
+                    Math.Max(0, context.IndexOf(token, StringComparison.Ordinal)),
+                    context);
+            }
+            foreach (var child in member.members) ResolveAssets(child, graph, context);
+        }
+
+        private static CookingNodeAsset ResolveAt<T>(IReadOnlyList<T> table, int index) where T : CookingNodeAsset
+        {
+            return table != null && index >= 0 && index < table.Count ? table[index] : null;
         }
 
         private static void CollectRequiredGroups(CookingNodeAsset node, CookingGraphAsset graph, GroupNodeAsset parent, IDictionary<GroupNodeAsset, GroupNodeAsset> groups, ISet<CookingNodeAsset> visiting)

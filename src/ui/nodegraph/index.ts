@@ -16,7 +16,7 @@
 //     keystroke; a rejected wire pushes nothing at all.
 //
 //  3. **Id-table maintenance is automatic and part of the same undo entry.**
-//     Creating a servable/pickupable ingredient mints the next id, deleting one
+//     Creating a pickupable ingredient or wiring an order-slot ingredient mints the next id, deleting one
 //     tombstones it, renaming leaves the id alone. If those were separate undo
 //     entries, one Ctrl+Z would leave the table and the graph disagreeing.
 //
@@ -1570,6 +1570,9 @@ export class MapProcessView {
       fresh.amount = fresh.amount ?? 1;
     }
     (this.doc.edges[kind] as unknown as Record<string, unknown>[]).push(fresh);
+    // Assembly wiring can make one or more concrete ingredients addressable
+    // for the first time (including through nested groups/composites).
+    this.ensureDerivedIngredientIds();
     this.commit(`wire ${kind} ${from} → ${to}`, 1);
   }
 
@@ -1658,15 +1661,22 @@ export class MapProcessView {
   /**
    * Only nodes a level string can NAME need an id.
    *
-   * An ingredient earns one by being servable or pickupable; a composite by
-   * being orderable — those flags are exactly what makes a node reachable from
-   * queue and dish strings. Everything else (groups, tools, dirty objects) is
+   * An ingredient earns one by being pickupable or a derived concrete order
+   * slot; a composite earns one by being orderable. Everything else is
    * referenced structurally and always gets one.
    */
   private needsId(kind: VertexKindName, vertex: Record<string, unknown>): boolean {
-    if (kind === "ingredient") return Boolean(vertex.servable || vertex.pickupable);
+    if (kind === "ingredient") {
+      return Boolean(vertex.pickupable) || buildLookup(this.doc).servable.has(String(vertex.name));
+    }
     if (kind === "composite") return Boolean(vertex.orderable);
     return true;
+  }
+
+  private ensureDerivedIngredientIds(): void {
+    for (const name of buildLookup(this.doc).servable) {
+      if (!this.doc.idTable.ingredient.includes(name)) mintId(this.doc.idTable, "ingredient", name);
+    }
   }
 
   /**
@@ -2281,8 +2291,8 @@ export class MapProcessView {
     if (value === undefined) delete editing[field.name];
     else editing[field.name] = value;
 
-    // A flag that makes a node addressable from level data is what earns it an
-    // id — servable/pickupable for an ingredient, orderable for a composite.
+    // A flag that makes a node directly addressable from level data is what
+    // earns it an id — pickupable for an ingredient, orderable for a composite.
     // Minting here rather than on create means the id space only ever holds
     // things a level string can actually name.
     //
@@ -2290,7 +2300,7 @@ export class MapProcessView {
     // membership from, so the wires redraw with them: `commit()` re-renders the
     // graph, and the tables are rebuilt from the flags on every render.
     const addressability =
-      (target.kind === "ingredient" && (field.name === "servable" || field.name === "pickupable")) ||
+      (target.kind === "ingredient" && field.name === "pickupable") ||
       (target.kind === "composite" && field.name === "orderable");
     if (addressability && this.needsId(target.kind, editing)) {
       mintId(this.doc.idTable, SPACE_OF[target.kind], target.name);

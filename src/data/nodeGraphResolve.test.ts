@@ -126,10 +126,10 @@ describe("slotIndex — where each ingredient may sit", () => {
     // Two slots of ONE composite is the dangerous case and burger has none.
     // Sharing across two DIFFERENT composites is allowed and not counted here.
     expect(ambiguousWithinComposite.size).toBe(0);
-    const servable = burger.vertices.ingredient.filter((i) => i.servable);
+    const servable = [...lk.servable];
     expect(servable.length).toBe(17);
     for (const ing of servable) {
-      expect(slotOf.get(ing.name), `${ing.name} has no slot`).toBeDefined();
+      expect(slotOf.get(ing), `${ing} has no slot`).toBeDefined();
     }
   });
 
@@ -162,9 +162,9 @@ describe("nesting is not the hazard", () => {
     idTable: { ingredient: [], composite: [], group: [], tool: [], dirty: [] },
     vertices: {
       ingredient: [
-        { name: "leaf", displayName: "Leaf", pickupable: true, servable: true },
-        { name: "mid", displayName: "Mid", servable: true },
-        { name: "top", displayName: "Top", pickupable: true, servable: true },
+        { name: "leaf", displayName: "Leaf", pickupable: true },
+        { name: "mid", displayName: "Mid" },
+        { name: "top", displayName: "Top", pickupable: true },
       ],
       tool: [{ name: "t1", displayName: "T1", slotConfigs: [{ name: "Slot", slot: 1 }], cookingTime: 1 }],
       group: [],

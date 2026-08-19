@@ -182,12 +182,6 @@
           "description": "Comes off the ingredient queue. Marks this vertex as a graph leaf — a traceback terminates here."
         },
         {
-          "name": "servable",
-          "type": "bool",
-          "default": false,
-          "description": "Can occupy a dish slot. Purely raw items (bun, potato) are not; their processed outputs are."
-        },
-        {
           "name": "usageNum",
           "type": "int",
           "default": 1,
@@ -541,7 +535,7 @@
     {
       "id": "INV-INTERMEDIATE-AMOUNT",
       "severity": "error",
-      "description": "A process edge producing a non-servable intermediate must have amount 1. Amounts above 1 would leave half a batch forwarded and half stranded."
+      "description": "A process edge producing an ingredient that is neither pickupable nor reachable as an order slot must have amount 1. Amounts above 1 would leave half a batch forwarded and half stranded."
     },
     {
       "id": "INV-UNIQUE-PRODUCER",
@@ -584,11 +578,6 @@
       "description": "A composite marked toppingRequired actually has a topping edge to require. Marking it without one makes every order of that composite unfillable."
     },
     {
-      "id": "INV-SERVABLE",
-      "severity": "error",
-      "description": "Anything reachable as a base or topping leaf is marked servable."
-    },
-    {
       "id": "WARN-ORPHAN-OUTPUT",
       "severity": "warning",
       "description": "An ingredient produced by a tool but consumed by nothing and not reachable from any orderable."
@@ -621,7 +610,7 @@
     {
       "id": "WARN-UNTABLED-NODE",
       "severity": "warning",
-      "description": "A pickupable or servable ingredient — or an orderable composite, or a group reachable from one — with no id-table entry. It cannot be referenced by level data until an id is minted."
+      "description": "A pickupable or order-slot ingredient — or an orderable composite, or a group reachable from one — with no id-table entry. It cannot be referenced by level data until an id is minted."
     },
     {
       "id": "WARN-MULTI-INPUT",
