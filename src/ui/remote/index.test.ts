@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffChars, levelSyncStatus } from "./index.ts";
+import { diffChars, levelSyncStatus, remoteLevelIds } from "./index.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 
 /** Reconstructs newStr from the segments, and reconstructs which chars were "changed". */
@@ -73,6 +73,8 @@ describe("levelSyncStatus", () => {
   } as LevelData;
   const matching = {
     rowNumber: 4,
+    mapId: "burger",
+    level: 1,
     fields: {
       ingredientWeights: "1,2",
       customerDishesSequence: "0,0,0",
@@ -95,5 +97,18 @@ describe("levelSyncStatus", () => {
   it("is Edited for a missing or differing sheet row", () => {
     expect(levelSyncStatus(true, null, level)).toBe("Edited");
     expect(levelSyncStatus(true, { ...matching, fields: { ...matching.fields, queueString: "changed" } }, level)).toBe("Edited");
+  });
+});
+
+describe("remoteLevelIds", () => {
+  it("derives sparse and reordered level ids from each row's Map and Level cells", () => {
+    const rows = [
+      { rowNumber: 4, mapId: "sushi", level: 42, fields: {} },
+      { rowNumber: 5, mapId: "coffee", level: 7, fields: {} },
+      { rowNumber: 6, mapId: "sushi", level: 3, fields: {} },
+      { rowNumber: 7, mapId: "coffee", level: 120, fields: {} },
+    ];
+    expect(remoteLevelIds("coffee", [1], rows)).toEqual([1, 7, 120]);
+    expect(remoteLevelIds("sushi", [], rows)).toEqual([3, 42]);
   });
 });

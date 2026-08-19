@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { MAP1_DATA } from "./configLoader.ts";
-import { columnLetter, importLevelsCsv, letterToColumn, levelsCsv, parseCsv } from "./sheetSource.ts";
+import {
+  columnLetter,
+  importLevelsCsv,
+  letterToColumn,
+  levelsCsv,
+  parseCsv,
+  parseLevelProgressRows,
+  REMOTE_SHEET_COLUMNS,
+} from "./sheetSource.ts";
 
 describe("CSV export (level data only — no map/ingredient/tool definitions)", () => {
   it("writes one levels row per level with the canonical strings intact", () => {
@@ -99,5 +107,84 @@ describe("columnLetter / letterToColumn", () => {
     expect(letterToColumn("")).toBe(-1);
     expect(letterToColumn("1")).toBe(-1);
     expect(letterToColumn("D1")).toBe(-1);
+  });
+});
+
+describe("MapLevelProgress row schema", () => {
+  const dataRow = (map: string, level: string, suffix: string): string[] => {
+    const row = new Array<string>(38).fill("");
+    row[0] = map;
+    row[1] = level;
+    row[3] = `weights-${suffix}`;
+    row[4] = `sequence-${suffix}`;
+    row[5] = `complexity-${suffix}`;
+    row[6] = `shuffle-${suffix}`;
+    row[15] = `customers-${suffix}`;
+    row[16] = `grid-${suffix}`;
+    row[17] = `queues-${suffix}`;
+    return row;
+  };
+
+  it("skips the three heading rows and preserves physical row numbers", () => {
+    const rows = [
+      ["Map Level Progress"],
+      ["", "", "", "Design Config"],
+      ["Map", "Level", "ID", "Ingredient Weights"],
+      dataRow("1", "1", "burger"),
+    ];
+    const parsed = parseLevelProgressRows(rows, REMOTE_SHEET_COLUMNS, 4);
+    expect(parsed.get("map_config_burger_lv_1")).toEqual({
+      rowNumber: 4,
+      mapId: "burger",
+      level: 1,
+      fields: {
+        ingredientWeights: "weights-burger",
+        customerDishesSequence: "sequence-burger",
+        complexityCurve: "complexity-burger",
+        shuffleCurve: "shuffle-burger",
+        customerString: "customers-burger",
+        gridString: "grid-burger",
+        queueString: "queues-burger",
+      },
+    });
+  });
+
+  it("maps sheet indexes 2 and 3 onto the node graphs coffee and sushi", () => {
+    const rows = [
+      ["Map Level Progress"],
+      ["", "", "", "Design Config"],
+      ["Map", "Level", "ID", "Ingredient Weights"],
+      ...new Array<string[]>(25).fill([]),
+      dataRow("2", "1", "coffee"), // physical row 29
+      ...new Array<string[]>(24).fill([]),
+      dataRow("3", "1", "sushi"), // physical row 54
+    ];
+    const parsed = parseLevelProgressRows(rows, REMOTE_SHEET_COLUMNS, 4, {
+      1: "burger",
+      2: "coffee",
+      3: "sushi",
+    });
+    expect(parsed.get("map_config_coffee_lv_1")?.rowNumber).toBe(29);
+    expect(parsed.get("map_config_sushi_lv_1")?.rowNumber).toBe(54);
+    expect(parsed.has("map_config_donut_lv_1")).toBe(false);
+  });
+
+  it("uses Map and Level cells instead of assuming contiguous map ranges", () => {
+    const rows = [
+      ["Map Level Progress"],
+      ["", "", "", "Design Config"],
+      ["Map", "Level", "ID", "Ingredient Weights"],
+      dataRow("3", "42", "sushi-42"),
+      dataRow("2", "7", "coffee-7"),
+      dataRow("3", "3", "sushi-3"),
+      dataRow("2", "120", "coffee-120"),
+    ];
+    const parsed = parseLevelProgressRows(rows, REMOTE_SHEET_COLUMNS, 4, { 2: "coffee", 3: "sushi" });
+    expect([...parsed.values()].map((row) => [row.rowNumber, row.mapId, row.level])).toEqual([
+      [4, "sushi", 42],
+      [5, "coffee", 7],
+      [6, "sushi", 3],
+      [7, "coffee", 120],
+    ]);
   });
 });

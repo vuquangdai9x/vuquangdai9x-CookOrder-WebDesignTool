@@ -1,6 +1,8 @@
 {
-  "_note": "Column mapping for the NODE-GRAPH Remote Data tab. Same spreadsheet as the legacy tab, DIFFERENT sheet tab, so the two systems never overwrite each other: node level strings speak the graph's id space and a bracket dish grammar the legacy tool cannot parse. Column indexes are 0-based (0=A, 1=B, ...), and the tab's own UI can override each of them at runtime.",
-  "tabName": "NodeLevelProgress",
+  "_source": "CookOrder GDD New - MapLevelProgress: title row 1, category row 2, headers row 3, data begins at row 4. Each data row identifies itself through Map (A) and Level (B); map ranges and level counts are intentionally not configured.",
+  "_note": "Column mapping for the node-graph Remote Data tab. The current shared sheet stores graph-format level strings in MapLevelProgress. Column indexes are 0-based (0=A, 1=B, ...), and the tab UI can override them at runtime.",
+  "tabName": "MapLevelProgress",
+  "startRow": 4,
   "columns": {
     "map": 0,
     "level": 1,

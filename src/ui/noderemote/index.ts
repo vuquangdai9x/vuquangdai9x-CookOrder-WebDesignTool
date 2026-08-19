@@ -4,7 +4,14 @@
 
 import nodeColumnsJson from "../../data/config/general/node-remote-sheet-columns.json";
 import type { MapData } from "../../data/mapLoader.ts";
-import { listNodeMaps, loadNodeProject, saveNodeProject, type NodeProjectState } from "../../data/nodeProject.ts";
+import {
+  blankLevel,
+  listNodeMaps,
+  loadNodeProject,
+  NODE_DOCS,
+  saveNodeProject,
+  type NodeProjectState,
+} from "../../data/nodeProject.ts";
 import type { RemoteSheetColumns } from "../../data/sheetSource.ts";
 import { RemoteDataView } from "../remote/index.ts";
 
@@ -29,13 +36,25 @@ export class NodeRemoteDataView extends RemoteDataView {
       title: mapEntries.find((entry) => entry.id === source.docId)?.name ?? source.doc.map.name,
       map: { name: source.doc.map.id, levels: source.levels } as MapData,
     }));
+    const sheetMapAliases = Object.fromEntries(
+      NODE_DOCS.flatMap((entry) => [
+        [String(entry.index), entry.doc.map.id],
+        [entry.id, entry.doc.map.id],
+        [entry.doc.map.id, entry.doc.map.id],
+      ]),
+    );
     super(root, map, getSheetId, setSheetId, () => {}, onOpenInDesign, {
       scope: "node",
       mapId: project.doc.map.id,
       tabName: nodeColumnsJson.tabName,
       columns: nodeColumnsJson.columns as RemoteSheetColumns,
-      startRow: 1,
+      startRow: nodeColumnsJson.startRow,
       mapSources,
+      sheetMapAliases,
+      createLevel: (mapId, levelId) => {
+        const source = projects.find((candidate) => candidate.doc.map.id === mapId);
+        return source ? blankLevel(source.doc, levelId) : null;
+      },
       onMapLevelChanged: (mapId) => {
         const changed = projects.find((source) => source.doc.map.id === mapId);
         if (changed) saveNodeProject(changed);

@@ -200,17 +200,57 @@ export const REMOTE_LEVEL_FIELDS: { label: string; key: keyof RemoteSheetColumns
 export interface LevelSheetRow {
   /** 1-indexed sheet row — needed to write this row's cells back in place. */
   rowNumber: number;
+  /** Semantic map id resolved from this row's Map cell (column A by default). */
+  mapId: string;
+  /** Level number read from this row's Level cell (column B by default). */
+  level: number;
   fields: Partial<Record<keyof RemoteSheetColumns, string>>;
 }
 
-/** Matches a row's "Map" column cell against a known map by id (case-insensitive) or 1-based index. */
-function resolveMapId(cell: string): string | null {
+/**
+ * Optional sheet-cell aliases for views whose semantic map ids differ from
+ * the legacy registry (for example sheet Map `2` is the node graph `coffee`,
+ * while the legacy map registry still calls index 2 `donut`). Keys are
+ * matched case-insensitively.
+ */
+export type RemoteSheetMapAliases = Readonly<Record<string, string>>;
+
+/** Matches a row's "Map" cell against an explicit alias, known id, or 1-based index. */
+function resolveMapId(cell: string, aliases: RemoteSheetMapAliases = {}): string | null {
   const trimmed = cell.trim();
   if (!trimmed) return null;
+  const alias = Object.entries(aliases).find(([key]) => key.toLowerCase() === trimmed.toLowerCase())?.[1];
+  if (alias) return alias;
   const byId = MAP_INDEX.find((m) => m.id.toLowerCase() === trimmed.toLowerCase());
   if (byId) return byId.id;
   const byIndex = MAP_INDEX.find((m) => String(m.index) === trimmed);
   return byIndex?.id ?? null;
+}
+
+/** Pure row parser shared by the network loader and schema regression tests. */
+export function parseLevelProgressRows(
+  rows: string[][],
+  columns: RemoteSheetColumns = REMOTE_SHEET_COLUMNS,
+  startRow = 1,
+  mapAliases: RemoteSheetMapAliases = {},
+): Map<string, LevelSheetRow> {
+  const byKey = new Map<string, LevelSheetRow>();
+  rows.forEach((cells, i) => {
+    const rowNumber = i + 1;
+    if (rowNumber < startRow) return;
+    const level = Number((cells[columns.level] ?? "").trim());
+    if (!Number.isInteger(level) || level <= 0) return;
+    const mapId = resolveMapId(cells[columns.map] ?? "", mapAliases);
+    if (!mapId) return;
+    const key = `map_config_${mapId}_lv_${level}`;
+    const fields: LevelSheetRow["fields"] = {};
+    for (const k of Object.keys(columns) as (keyof RemoteSheetColumns)[]) {
+      if (k === "map" || k === "level") continue;
+      fields[k] = cells[columns[k]] ?? "";
+    }
+    byKey.set(key, { rowNumber, mapId, level, fields });
+  });
+  return byKey;
 }
 
 /**
@@ -230,25 +270,10 @@ export async function fetchLevelProgressRows(
   tabName: string,
   columns: RemoteSheetColumns = REMOTE_SHEET_COLUMNS,
   startRow = 1,
+  mapAliases: RemoteSheetMapAliases = {},
 ): Promise<Map<string, LevelSheetRow>> {
   const rows = await fetchTabValues(tabName, token, sheetId);
-  const byKey = new Map<string, LevelSheetRow>();
-  rows.forEach((cells, i) => {
-    const rowNumber = i + 1;
-    if (rowNumber < startRow) return;
-    const level = Number((cells[columns.level] ?? "").trim());
-    if (!Number.isInteger(level) || level <= 0) return;
-    const mapId = resolveMapId(cells[columns.map] ?? "");
-    if (!mapId) return;
-    const key = `map_config_${mapId}_lv_${level}`;
-    const fields: LevelSheetRow["fields"] = {};
-    for (const k of Object.keys(columns) as (keyof RemoteSheetColumns)[]) {
-      if (k === "map" || k === "level") continue;
-      fields[k] = cells[columns[k]] ?? "";
-    }
-    byKey.set(key, { rowNumber, fields });
-  });
-  return byKey;
+  return parseLevelProgressRows(rows, columns, startRow, mapAliases);
 }
 
 /**

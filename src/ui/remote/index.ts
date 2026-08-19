@@ -23,7 +23,7 @@
 // maps and individual levels fold out (collapsed by default); fold state is
 // module-level so it survives switching to Design/Play and back.
 
-import type { LevelSheetRow, RemoteSheetColumns } from "../../data/sheetSource.ts";
+import type { LevelSheetRow, RemoteSheetColumns, RemoteSheetMapAliases } from "../../data/sheetSource.ts";
 import {
   columnLetter,
   fetchLevelProgressRows,
@@ -64,6 +64,10 @@ export interface RemoteDataViewOptions {
   currentMapOnly?: boolean;
   /** Makes every supplied map a live foldout with independently editable local level data. */
   mapSources?: { id: string; title: string; map: MapData }[];
+  /** Maps sheet cells such as numeric map indexes onto this view's semantic ids. */
+  sheetMapAliases?: RemoteSheetMapAliases;
+  /** Allows applying a sheet row to create a missing local level. */
+  createLevel?: (mapId: string, levelId: number) => LevelData | null;
   onMapLevelChanged?: (mapId: string) => void;
   onOpenMapInDesign?: (mapId: string, levelId: number) => void;
 }
@@ -78,17 +82,6 @@ interface RemoteViewState {
 }
 
 const scopedStates = new Map<string, RemoteViewState>();
-
-function buildGroups(): Group[] {
-  return REMOTE_KEYS.maps.map((m) => ({
-    title: m.mapId,
-    entries: Array.from({ length: m.numLevels }, (_, i) => ({
-      key: `map_config_${m.mapId}_lv_${i + 1}`,
-      mapId: m.mapId,
-      levelIndex: i + 1,
-    })),
-  }));
-}
 
 type RowStatus = "idle" | "loading" | "error";
 type FieldKey = (typeof REMOTE_LEVEL_FIELDS)[number]["key"];
@@ -150,6 +143,19 @@ export function diffChars(oldStr: string, newStr: string): { text: string; chang
 
 export type LevelSyncStatus = "Local" | "Synced" | "Edited";
 
+/** Sorted union used by Remote Data foldouts; driven by row Map/Level values, never a configured count. */
+export function remoteLevelIds(
+  mapId: string,
+  localLevelIds: Iterable<number>,
+  rows: Iterable<LevelSheetRow>,
+): number[] {
+  const ids = new Set(localLevelIds);
+  for (const row of rows) {
+    if (row.mapId === mapId) ids.add(row.level);
+  }
+  return [...ids].sort((a, b) => a - b);
+}
+
 /** The three-state contract shown on every level header. */
 export function levelSyncStatus(
   sheetLoaded: boolean,
@@ -210,25 +216,50 @@ export class RemoteDataView {
       startRow: options.startRow ?? 4,
     };
     if (!existing) scopedStates.set(options.scope, this.state);
-    this.groups = options.mapSources
-      ? options.mapSources.map((source) => ({
-          title: source.title,
-          entries: source.map.levels.map((level) => ({
-            key: `map_config_${source.id}_lv_${level.id}`,
-            mapId: source.id,
-            levelIndex: level.id,
-          })),
-        }))
-      : options.currentMapOnly
-      ? [{
-          title: this.mapId,
-          entries: map.levels.map((level) => ({
-            key: `map_config_${this.mapId}_lv_${level.id}`,
-            mapId: this.mapId,
-            levelIndex: level.id,
-          })),
-        }]
-      : buildGroups();
+    this.groups = this.buildGroups();
+    this.build();
+  }
+
+  /**
+   * Builds each foldout from actual Level cells found in the loaded sheet,
+   * unioned with levels that already exist locally. No row range or per-map
+   * level count is assumed; sparse, reordered, or newly-added levels work.
+   */
+  private buildGroups(): Group[] {
+    const sheetRows = [...(this.currentRows()?.values() ?? [])];
+    const entries = (mapId: string, localLevels: LevelData[]): LevelEntry[] => {
+      return remoteLevelIds(mapId, localLevels.map((level) => level.id), sheetRows)
+        .map((levelIndex) => ({
+          key: `map_config_${mapId}_lv_${levelIndex}`,
+          mapId,
+          levelIndex,
+        }));
+    };
+
+    if (this.options.mapSources) {
+      return this.options.mapSources.map((source) => ({
+        title: source.title,
+        entries: entries(source.id, source.map.levels),
+      }));
+    }
+    if (this.options.currentMapOnly) {
+      return [{ title: this.mapId, entries: entries(this.mapId, this.map.levels) }];
+    }
+    return REMOTE_KEYS.maps.map((configured) => ({
+      title: configured.mapId,
+      entries: entries(configured.mapId, configured.mapId === this.mapId ? this.map.levels : []),
+    }));
+  }
+
+  private groupSignature(groups: Group[]): string {
+    return groups.map((group) => `${group.title}:${group.entries.map((entry) => entry.key).join(",")}`).join("|");
+  }
+
+  /** Rebuilds the foldouts only when a sheet load discovered new/removed level rows. */
+  private rebuildGroupsFromRows(): void {
+    const next = this.buildGroups();
+    if (this.groupSignature(next) === this.groupSignature(this.groups)) return;
+    this.groups = next;
     this.build();
   }
 
@@ -243,6 +274,21 @@ export class RemoteDataView {
   private mapFor(entry: LevelEntry): MapData | undefined {
     if (this.options.mapSources) return this.options.mapSources.find((source) => source.id === entry.mapId)?.map;
     return entry.mapId === this.mapId ? this.map : undefined;
+  }
+
+  private canApplySheet(entry: LevelEntry): boolean {
+    return this.isLive(entry) || this.options.createLevel !== undefined;
+  }
+
+  private ensureLevel(entry: LevelEntry): LevelData | undefined {
+    const existing = this.level(entry);
+    if (existing) return existing;
+    const map = this.mapFor(entry);
+    const created = this.options.createLevel?.(entry.mapId, entry.levelIndex) ?? null;
+    if (!map || !created) return undefined;
+    map.levels.push(created);
+    map.levels.sort((a, b) => a.id - b.id);
+    return created;
   }
 
   private notifyLevelChanged(entry: LevelEntry): void {
@@ -262,7 +308,7 @@ export class RemoteDataView {
   }
 
   private cacheKeyNow(): string {
-    return `${this.getSheetId()}::${this.state.tabName}::${this.state.startRow}::${JSON.stringify(this.state.columnOverrides)}`;
+    return `${this.getSheetId()}::${this.state.tabName}::${this.state.startRow}::${JSON.stringify(this.state.columnOverrides)}::${JSON.stringify(this.options.sheetMapAliases ?? {})}`;
   }
 
   /** The cache, but only if it's actually for the currently-configured sheet+tab — otherwise `null` (not stale data). */
@@ -284,14 +330,25 @@ export class RemoteDataView {
     const key = this.cacheKeyNow();
     const result = await this.withToken(async () => {
       const token = await requestAccessTokenInteractive();
-      return fetchLevelProgressRows(sheetId, token, this.state.tabName, this.state.columnOverrides, this.state.startRow);
+      return fetchLevelProgressRows(
+        sheetId,
+        token,
+        this.state.tabName,
+        this.state.columnOverrides,
+        this.state.startRow,
+        this.options.sheetMapAliases,
+      );
     });
     if (result === null) return null;
     this.state.rowsCache = { cacheKey: key, rows: result };
+    this.rebuildGroupsFromRows();
     return result;
   }
 
   private build(): void {
+    this.refreshRowByKey.clear();
+    this.setRowStatusByKey.clear();
+    this.groupStatusByTitle.clear();
     const page = el("div", { class: "remote-page" });
 
     this.pageStatusEl = el("span", { class: "remote-status" }, []);
@@ -406,6 +463,9 @@ export class RemoteDataView {
     const live = this.isLive(entry);
     const statusEl = el("span", { class: "remote-status" }, []);
     const syncStatusEl = el("span", { class: "remote-sync-status local" }, ["Local"]);
+    const liveBadge = el("span", { class: "remote-live-badge" }, ["live level"]);
+    liveBadge.hidden = !live;
+    let rowElement: HTMLElement | null = null;
 
     const loadBtn = button("⬇ Load", () => void this.loadRow(entry), {
       class: "small-btn",
@@ -433,12 +493,16 @@ export class RemoteDataView {
 
     const refresh = () => {
       const row = this.currentRows()?.get(entry.key) ?? null;
+      const liveNow = this.isLive(entry);
+      liveBadge.hidden = !liveNow;
+      rowElement?.classList.toggle("live", liveNow);
+      openBtn.disabled = !liveNow;
 
       REMOTE_LEVEL_FIELDS.forEach((f, i) => {
         const sf = sheetFields[i];
         sf.box.classList.toggle("remote-box-empty", row === null);
         sf.box.textContent = row ? row.fields[f.key] || "(empty)" : "(not loaded)";
-        sf.applyBtn.disabled = row === null || !live;
+        sf.applyBtn.disabled = row === null || !this.canApplySheet(entry);
 
         const tf = toolFields[i];
         const toolVal = this.toolField(entry, f.key);
@@ -462,8 +526,8 @@ export class RemoteDataView {
         tf.applyBtn.disabled = toolVal === null;
       });
 
-      applySheetBtn.disabled = !live;
-      applyToolBtn.disabled = !live;
+      applySheetBtn.disabled = row === null || !this.canApplySheet(entry);
+      applyToolBtn.disabled = !liveNow;
 
       const loadedRows = this.currentRows();
       const syncStatus = levelSyncStatus(loadedRows !== null, row, this.level(entry));
@@ -498,7 +562,7 @@ export class RemoteDataView {
     const rowLabel = el("div", { class: "remote-row-label foldable-header" }, [
       caret,
       el("code", {}, [entry.key]),
-      live ? el("span", { class: "remote-live-badge" }, ["live level"]) : "",
+      liveBadge,
       syncStatusEl,
       el("span", { class: "spacer" }, []),
       openBtn,
@@ -514,6 +578,7 @@ export class RemoteDataView {
     });
 
     const row = el("div", { class: `remote-row${live ? " live" : ""}` }, [rowLabel, body]);
+    rowElement = row;
 
     this.setRowStatusByKey.set(entry.key, (status, error) => {
       statusEl.textContent = status === "loading" ? "…" : status === "error" ? "⚠" : "";
@@ -521,8 +586,8 @@ export class RemoteDataView {
       row.classList.toggle("remote-row-error", status === "error");
       const busy = status === "loading";
       loadBtn.disabled = busy;
-      applySheetBtn.disabled = busy || !live;
-      applyToolBtn.disabled = busy || !live;
+      applySheetBtn.disabled = busy || !this.canApplySheet(entry);
+      applyToolBtn.disabled = busy || !this.isLive(entry);
       if (!busy) refresh(); // re-derive field content + correct enabled/disabled from live state
     });
 
@@ -563,14 +628,13 @@ export class RemoteDataView {
   }
 
   private async loadRow(entry: LevelEntry): Promise<void> {
-    const setStatus = this.setRowStatusByKey.get(entry.key);
-    setStatus?.("loading");
+    this.setRowStatusByKey.get(entry.key)?.("loading");
     const rows = await this.ensureRows(true);
     if (rows === null) {
-      setStatus?.("error", "load failed");
+      this.setRowStatusByKey.get(entry.key)?.("error", "load failed");
       return;
     }
-    setStatus?.("idle");
+    this.setRowStatusByKey.get(entry.key)?.("idle");
     // The refresh happened for every currently-open row via setStatus above
     // only for THIS row — the fetch refreshed the whole cache, so bring
     // every other rendered row's display up to date too.
@@ -579,12 +643,12 @@ export class RemoteDataView {
 
   /** Pushes every field from the sheet onto the tool's live level — no network (reads the cache). */
   private applyLevelSheetToTool(entry: LevelEntry): void {
-    if (!this.isLive(entry)) return;
     const row = this.currentRows()?.get(entry.key);
     if (!row) {
       alert("Load the sheet first.");
       return;
     }
+    if (!this.ensureLevel(entry)) return;
     for (const f of REMOTE_LEVEL_FIELDS) this.setToolField(entry, f.key, row.fields[f.key] ?? "");
     this.notifyLevelChanged(entry);
     this.refreshRowByKey.get(entry.key)?.();
@@ -598,16 +662,15 @@ export class RemoteDataView {
       return;
     }
     if (!this.isLive(entry)) return;
-    const setStatus = this.setRowStatusByKey.get(entry.key);
-    setStatus?.("loading");
+    this.setRowStatusByKey.get(entry.key)?.("loading");
     const rows = await this.ensureRows(false);
     if (rows === null) {
-      setStatus?.("error", "apply failed");
+      this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
       return;
     }
     const row = rows.get(entry.key);
     if (!row) {
-      setStatus?.("error", "no sheet row for this level yet");
+      this.setRowStatusByKey.get(entry.key)?.("error", "no sheet row for this level yet");
       return;
     }
     const updates: CellUpdate[] = REMOTE_LEVEL_FIELDS.map((f) => ({
@@ -617,18 +680,18 @@ export class RemoteDataView {
     }));
     const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, updates));
     if (ok === null) {
-      setStatus?.("error", "apply failed");
+      this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
       return;
     }
     for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.toolField(entry, f.key) ?? "";
-    setStatus?.("idle");
+    this.setRowStatusByKey.get(entry.key)?.("idle");
   }
 
   /** Pushes one sheet field onto the tool's corresponding LevelData property — no network (reads the cache). */
   private applyFieldSheetToTool(entry: LevelEntry, fieldKey: FieldKey): void {
-    if (!this.isLive(entry)) return;
     const row = this.currentRows()?.get(entry.key);
     if (!row) return;
+    if (!this.ensureLevel(entry)) return;
     this.setToolField(entry, fieldKey, row.fields[fieldKey] ?? "");
     this.notifyLevelChanged(entry);
     this.refreshRowByKey.get(entry.key)?.();
@@ -643,64 +706,71 @@ export class RemoteDataView {
     }
     const value = this.toolField(entry, fieldKey);
     if (value === null) return;
-    const setStatus = this.setRowStatusByKey.get(entry.key);
-    setStatus?.("loading");
+    this.setRowStatusByKey.get(entry.key)?.("loading");
     const rows = await this.ensureRows(false);
     if (rows === null) {
-      setStatus?.("error", "apply failed");
+      this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
       return;
     }
     const row = rows.get(entry.key);
     if (!row) {
-      setStatus?.("error", "no sheet row for this level yet");
+      this.setRowStatusByKey.get(entry.key)?.("error", "no sheet row for this level yet");
       return;
     }
     const ok = await this.withToken(() =>
       batchUpdateCells(sheetId, this.state.tabName, [{ row: row.rowNumber, col: this.state.columnOverrides[fieldKey], value }]),
     );
     if (ok === null) {
-      setStatus?.("error", "apply failed");
+      this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
       return;
     }
     row.fields[fieldKey] = value;
-    setStatus?.("idle");
+    this.setRowStatusByKey.get(entry.key)?.("idle");
   }
 
   private async runAll(action: "load" | "sheet-to-tool" | "tool-to-sheet", group?: Group): Promise<void> {
-    const entries = group ? group.entries : this.groups.flatMap((g) => g.entries);
-    const statusEl = group ? this.groupStatusByTitle.get(group.title) : this.pageStatusEl;
-    if (statusEl) statusEl.textContent = "Working…";
+    const groupTitle = group?.title;
+    const statusEl = () => groupTitle ? this.groupStatusByTitle.get(groupTitle) : this.pageStatusEl;
+    const initialStatus = statusEl();
+    if (initialStatus) initialStatus.textContent = "Working…";
 
     if (action === "load") {
       const rows = await this.ensureRows(true);
-      if (statusEl) statusEl.textContent = rows === null ? "Load failed" : "Done (1 request)";
+      const currentStatus = statusEl();
+      if (currentStatus) currentStatus.textContent = rows === null ? "Load failed" : "Done (1 request)";
       for (const refresh of this.refreshRowByKey.values()) refresh();
       return;
     }
 
     const rows = await this.ensureRows(false);
+    const currentGroup = groupTitle ? this.groups.find((candidate) => candidate.title === groupTitle) : undefined;
+    const entries = currentGroup ? currentGroup.entries : groupTitle ? [] : this.groups.flatMap((candidate) => candidate.entries);
     if (rows === null) {
-      if (statusEl) statusEl.textContent = "Load failed";
+      const currentStatus = statusEl();
+      if (currentStatus) currentStatus.textContent = "Load failed";
       return;
     }
 
     if (action === "sheet-to-tool") {
       let applied = 0;
+      const appliedMapIds = new Set<string>();
       for (const e of entries) {
-        if (!this.isLive(e)) continue;
         const row = rows.get(e.key);
         if (!row) continue;
+        if (!this.ensureLevel(e)) continue;
         for (const f of REMOTE_LEVEL_FIELDS) this.setToolField(e, f.key, row.fields[f.key] ?? "");
         applied++;
+        appliedMapIds.add(e.mapId);
       }
       if (applied > 0) {
-        for (const mapId of new Set(entries.filter((entry) => this.isLive(entry) && rows.has(entry.key)).map((entry) => entry.mapId))) {
+        for (const mapId of appliedMapIds) {
           const representative = entries.find((entry) => entry.mapId === mapId);
           if (representative) this.notifyLevelChanged(representative);
         }
       }
       for (const e of entries) this.refreshRowByKey.get(e.key)?.();
-      if (statusEl) statusEl.textContent = `Applied ${applied} level(s)`;
+      const currentStatus = statusEl();
+      if (currentStatus) currentStatus.textContent = `Applied ${applied} level(s)`;
       return;
     }
 
@@ -709,7 +779,8 @@ export class RemoteDataView {
     const sheetId = this.getSheetId();
     if (!sheetId.trim()) {
       alert("Paste a spreadsheet ID into the Sheet ID field first.");
-      if (statusEl) statusEl.textContent = "";
+      const currentStatus = statusEl();
+      if (currentStatus) currentStatus.textContent = "";
       return;
     }
     const updates: CellUpdate[] = [];
@@ -724,18 +795,21 @@ export class RemoteDataView {
       touched.push({ entry: e, row });
     }
     if (updates.length === 0) {
-      if (statusEl) statusEl.textContent = "Nothing to apply";
+      const currentStatus = statusEl();
+      if (currentStatus) currentStatus.textContent = "Nothing to apply";
       return;
     }
     const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, updates));
     if (ok === null) {
-      if (statusEl) statusEl.textContent = "Apply failed";
+      const currentStatus = statusEl();
+      if (currentStatus) currentStatus.textContent = "Apply failed";
       return;
     }
     for (const { entry, row } of touched) {
       for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.toolField(entry, f.key) ?? "";
     }
     for (const e of entries) this.refreshRowByKey.get(e.key)?.();
-    if (statusEl) statusEl.textContent = `Applied ${touched.length} level(s) in 1 request`;
+    const currentStatus = statusEl();
+    if (currentStatus) currentStatus.textContent = `Applied ${touched.length} level(s) in 1 request`;
   }
 }
