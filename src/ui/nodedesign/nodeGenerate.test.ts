@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import burgerJson from "../../data/config/nodegraph/maps/Graph-1-Burger.json";
+import coffeeJson from "../../data/config/nodegraph/maps/Graph-2-Coffee.json";
 import sushiJson from "../../data/config/nodegraph/maps/Graph-3-Sushi.json";
 import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
@@ -145,6 +146,60 @@ describe("generateNodeCustomers", () => {
         expect(ix.compositeName[order.orderable]).toBe("burger");
         for (const slot of order.slots) expect(allowed.has(slot.ing)).toBe(true);
       }
+    }
+  });
+
+  it("excludes a zero-weight option without excluding its whole dish type", () => {
+    const weights = allWeights();
+    weights.set(ix.ingByName.get("tomato-sliced")!, 0);
+
+    const generated = generateNodeCustomers(ix, ids, {
+      dishCounts: [1],
+      weights,
+      curve,
+      random: () => 0,
+    });
+    const result = resolveOrder(ix, generated[0].dishes[0], ids);
+    expect(ix.compositeName[result.order.orderable]).toBe("burger");
+    expect(result.order.slots.map((slot) => ix.ingName[slot.ing])).not.toContain("tomato-sliced");
+  });
+
+  it("excludes a dish type when none of its base ingredients has positive weight", () => {
+    const weights = allWeights();
+    weights.set(ix.ingByName.get("bun-sliced")!, 0);
+    const generated = generateNodeCustomers(ix, ids, {
+      dishCounts: [1],
+      weights,
+      curve,
+      random: () => 0,
+    });
+    const result = resolveOrder(ix, generated[0].dishes[0], ids);
+    expect(ix.compositeName[result.order.orderable]).toBe("soda");
+  });
+});
+
+describe("partial nested-composite weights", () => {
+  const coffeeIx = buildIndex(coffeeJson as unknown as NodeGraphMap);
+  const coffeeIds = orderIdIndex(coffeeIx);
+
+  it("keeps donut selectable with only donut, choco glaze, and sprinkle enabled", () => {
+    const enabledNames = ["donut-fried", "glaze-choco", "sprinkle"];
+    const weights = new Map(
+      enabledNames.map((name) => [coffeeIx.ingByName.get(name)!, 100]),
+    );
+    const generated = generateNodeCustomers(coffeeIx, coffeeIds, {
+      dishCounts: Array(20).fill(1),
+      weights,
+      curve: defaultCurve(3, 3),
+      random: seeded(17),
+    });
+
+    expect(generated.every((customer) => customer.dishes.length === 1)).toBe(true);
+    for (const customer of generated) {
+      const result = resolveOrder(coffeeIx, customer.dishes[0], coffeeIds);
+      expect(coffeeIx.compositeName[result.order.orderable]).toBe("donut-with-topping");
+      expect(result.issues).toEqual([]);
+      expect(result.order.slots.every((slot) => enabledNames.includes(coffeeIx.ingName[slot.ing]))).toBe(true);
     }
   });
 });

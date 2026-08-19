@@ -20,6 +20,7 @@ import type { CurveState } from "../design/curveEditor.ts";
 import { evaluateCurve } from "../design/curveEditor.ts";
 import { autoDishCount, DEFAULT_MAX_DISH_SLOTS } from "../design/autoGenerate.ts";
 import type { GraphIndex, IndexedSlot } from "../../core/nodeIndex.ts";
+import { resolveOrder } from "../../core/nodeOrder.ts";
 import type { DishMember, DishNode, NodeCustomerConfig, NodeDish } from "../../core/nodeParser.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
 
@@ -206,13 +207,21 @@ export function generateNodeCustomers(
     if (warnings.add(message)) opts.onWarning?.(message);
   };
 
-  // Only orderables with at least one weighted option anywhere are candidates —
-  // otherwise a run with a narrow weight set would emit dishes made of nothing.
-  const candidates = ix.orderables.filter((composite) =>
-    (ix.slotsOfComposite[composite] ?? []).some((slot) =>
-      slot.options.some((option) => (opts.weights.get(option) ?? 0) > 0),
-    ),
-  );
+  // Ingredient weights are an option allowlist, not an all-or-nothing switch
+  // for their composite. Probe the same builder used below with its smallest
+  // dish budget, then resolve the result: the orderable enters the random dish-
+  // type pool iff at least one enabled combination satisfies all of its real
+  // base, nested-base, topping, group-minimum, and quantity rules.
+  const candidates = ix.orderables.filter((composite) => {
+    const slots = ix.slotsOfComposite[composite] ?? [];
+    const probe = buildDish(ix, ids, composite, 1, opts.weights, () => 0, maxDishSlots);
+    return probe !== null && resolveOrder(ix, probe, ids).issues.length === 0 && slots.length > 0;
+  });
+  if (candidates.length === 0 && counts.some((count) => count !== -1)) {
+    warn(
+      "No dish type is eligible: no enabled ingredient combination satisfies its base, required topping, or minimum quantities.",
+    );
+  }
 
   counts.forEach((count, index) => {
     if (count === -1) {
