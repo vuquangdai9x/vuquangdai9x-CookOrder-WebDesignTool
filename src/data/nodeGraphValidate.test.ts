@@ -162,15 +162,13 @@ describe("graph structure invariants", () => {
     expect(errors.find((e) => e.invariantId === "INV-TRACEABLE")!.message).toContain("unobtainium");
   });
 
-  it("INV-INTERMEDIATE-AMOUNT: a non-servable intermediate yielding more than one", () => {
+  it("allows a non-servable intermediate to yield a batch", () => {
     const doc = clone();
     doc.edges.process = doc.edges.process.map((e) =>
       e.to === "chicken-breast-flour-coated" ? { ...e, amount: 2 } : e,
     );
     const { errors } = validateNodeGraph(doc);
-    expect(errors.find((e) => e.invariantId === "INV-INTERMEDIATE-AMOUNT")!.message).toContain(
-      "chicken-breast-flour-coated",
-    );
+    expect(errors.some((e) => e.invariantId === "INV-INTERMEDIATE-AMOUNT")).toBe(false);
   });
 
   it("WARN-MULTI-INPUT: a recipe with more than one input survives as data but is flagged", () => {

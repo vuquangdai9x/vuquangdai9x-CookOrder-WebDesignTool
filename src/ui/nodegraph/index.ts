@@ -29,7 +29,7 @@ import Sortable from "sortablejs";
 import { showContextMenu } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { History, bindUndoRedoKeys } from "../history.ts";
-import { cookedIconEl, dirtyIconEl, toolIconEl } from "../icon.ts";
+import { dirtyIconEl, iconEl, toolIconEl } from "../icon.ts";
 import { autoLayout, layoutKey } from "./autoLayout.ts";
 import type { Layout } from "./autoLayout.ts";
 import { csvToGraph, graphToCsv } from "../../data/nodeGraphCsv.ts";
@@ -1137,6 +1137,14 @@ export class MapProcessView {
       el("span", { class: "np-row-label" }, [this.inputSummary(row.processIndex) || "(no input)"]),
       el("span", { class: "np-row-arrow" }, ["\u2192"]),
       el("span", { class: "np-row-value" }, [edge?.to || "(no output)"]),
+      ...((edge?.amount ?? 1) > 1
+        ? [
+            el("span", {
+              class: "np-row-amount",
+              title: `This process produces ${edge!.amount} items`,
+            }, [`×${edge!.amount}`]),
+          ]
+        : []),
       button("\u2715", () => this.removeProcessRow(row.processIndex), {
         class: "np-row-x",
         title: "Remove this recipe",
@@ -1311,9 +1319,9 @@ export class MapProcessView {
   }
 
   private iconFor(kind: VertexKindName, name: string): HTMLElement {
-    // Icons resolve through the shell's ambient node icon source, which is
-    // keyed by DATA ID — so a vertex with no id table entry yet simply falls
-    // back to its emoji, which is the honest thing to show.
+    // Tool data is already in hand; dirty objects still use the ambient
+    // id-based lookup. Ingredients are handled directly below because valid
+    // intermediates intentionally have no data id.
     const id = this.doc.idTable[SPACE_OF[kind]]?.indexOf(name) ?? -1;
     if (kind === "tool") {
       const vertex = this.doc.vertices.tool.find((v) => v.name === name);
@@ -1333,7 +1341,25 @@ export class MapProcessView {
       );
     }
     if (kind === "dirty") return dirtyIconEl(id, 28);
-    if (kind === "ingredient") return cookedIconEl(id, 28);
+    if (kind === "ingredient") {
+      // Intermediate ingredients deliberately have no positional id-table row:
+      // level strings cannot address them. An id-based icon lookup therefore
+      // resolves them as -1 and drops artwork that is present on the vertex.
+      // Map Process owns the vertex itself, so render from that source directly.
+      const vertex = this.doc.vertices.ingredient.find((value) => value.name === name);
+      return iconEl(
+        vertex
+          ? {
+              name: vertex.displayName || vertex.name,
+              emoji: vertex.emoji ?? "❔",
+              fileId: vertex.fileId,
+              localImage: vertex.localImage,
+              imageURL: vertex.imageURL,
+            }
+          : undefined,
+        { size: 28, className: "icon-ingredient" },
+      );
+    }
     return el("span", { class: "icon" }, [kind === "group" ? "🧩" : "🍔"]);
   }
 

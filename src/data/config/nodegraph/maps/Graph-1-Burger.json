@@ -331,29 +331,34 @@
       {
         "name": "chicken-breast-flour-coated",
         "displayName": "Coated Breast",
-        "emoji": "🍗"
+        "emoji": "🍗",
+        "localImage": "Map1-burger/ingredients/chick_breast_coated.png"
       },
       {
         "name": "chicken-wing-flour-coated",
         "displayName": "Coated Wing",
-        "emoji": "🍗"
+        "emoji": "🍗",
+        "localImage": "Map1-burger/ingredients/chick_wing_coated.png"
       },
       {
         "name": "chicken-thigh-flour-coated",
         "displayName": "Coated Thigh",
-        "emoji": "🍗"
+        "emoji": "🍗",
+        "localImage": "Map1-burger/ingredients/chick_thigh_coated.png"
       },
       {
         "name": "chicken-nugget-flour-coated",
         "displayName": "Coated Nugget",
-        "emoji": "🍗"
+        "emoji": "🍗",
+        "localImage": "Map1-burger/ingredients/chick_nugget_coated.png"
       },
       {
         "name": "potato_sliced",
         "displayName": "Sliced Potato",
         "pickupable": false,
         "usageNum": 1,
-        "price": 0
+        "price": 0,
+        "localImage": "Map1-burger/ingredients/potato-coated.png"
       }
     ],
     "tool": [
@@ -707,7 +712,7 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 2
       },
       {
         "from": "fryer",
@@ -987,7 +992,7 @@
     },
     "tool:cutting-board": {
       "x": 14.540675349475254,
-      "y": 231.39937065187
+      "y": 229.78886065186998
     },
     "tool:flour": {
       "x": 87.70549999999994,
@@ -1030,8 +1035,8 @@
       "y": -102.99999999999989
     },
     "ingredient:potato_sliced": {
-      "x": 389.5156202922801,
-      "y": -65.76573925718988
+      "x": 399.5156202922801,
+      "y": -26.674830166280806
     },
     "table:pickupable": {
       "x": -901.5616947624012,

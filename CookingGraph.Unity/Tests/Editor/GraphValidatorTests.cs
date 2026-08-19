@@ -43,5 +43,24 @@ namespace CookingGraph.Editor.Tests
             ((JArray)document.Edges["option"]).Add(new JObject { ["from"] = "toppings", ["to"] = "bun" });
             Assert.That(GraphValidator.Validate(document).Any(issue => issue.Code == "INV-GROUP-QUANTITY"), Is.True);
         }
+
+        [Test]
+        public void BatchedIntermediateOutputIsAllowed()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            ((JArray)document.Vertices["ingredient"]).Add(new JObject
+            {
+                ["name"] = "sliced-potato", ["displayName"] = "Sliced Potato", ["pickupable"] = false
+            });
+            ((JArray)document.Edges["process"]).Add(new JObject
+            {
+                ["from"] = "cutter",
+                ["to"] = "sliced-potato",
+                ["inputs"] = new JArray(new JObject { ["ingredient"] = "potato", ["slot"] = 0 }),
+                ["amount"] = 2
+            });
+
+            Assert.That(GraphValidator.Validate(document).Any(issue => issue.Code == "INV-INTERMEDIATE-AMOUNT"), Is.False);
+        }
     }
 }

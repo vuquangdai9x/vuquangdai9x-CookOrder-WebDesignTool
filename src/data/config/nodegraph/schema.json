@@ -533,11 +533,6 @@
       "description": "Every member of a dish belongs to the composite its outermost bracket names. The bracket format makes the shape single-orderable by construction; this catches a member smuggled into a bracket it does not belong to, e.g. a soda cup inside a burger."
     },
     {
-      "id": "INV-INTERMEDIATE-AMOUNT",
-      "severity": "error",
-      "description": "A process edge producing an ingredient that is neither pickupable nor reachable as an order slot must have amount 1. Amounts above 1 would leave half a batch forwarded and half stranded."
-    },
-    {
       "id": "INV-UNIQUE-PRODUCER",
       "severity": "error",
       "description": "At most one process edge targets any ingredient. An ingredient with no producer must be pickupable."

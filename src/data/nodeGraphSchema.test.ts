@@ -42,7 +42,6 @@ describe("schema shape", () => {
       "INV-NO-RETIRED-IN-USE",
       "INV-ORDER-REBUILDABLE",
       "INV-DISH-SINGLE-ORDERABLE",
-      "INV-INTERMEDIATE-AMOUNT",
       "WARN-UNTABLED-NODE",
       "WARN-MULTI-INPUT",
     ];

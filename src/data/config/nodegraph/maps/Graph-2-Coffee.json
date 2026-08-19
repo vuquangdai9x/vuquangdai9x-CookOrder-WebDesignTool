@@ -10,45 +10,50 @@
   },
   "idTable": {
     "ingredient": [
-      "coffee-bean",
-      "cup",
-      "teacup",
-      "ice",
-      "milk",
-      "whiping-choco",
-      "whiping-cream",
-      "sprinkle",
-      "blueberry",
-      "strawberry",
-      "kiwi",
-      "cupcake",
-      "donut",
-      "donut-bar",
       "donut-fried",
-      "pineapple",
-      "kiwi-sliced",
-      "strawberry-sliced",
-      "pineapple-sliced",
       "donut-bar-fried",
       "donut-8-fried",
+      "glaze-choco",
+      "glaze-strawberry",
+      "glaze-vanilla",
+      "glaze-blue",
+      "cup",
+      "teacup",
+      "coffee-bean",
+      "milk",
+      "ice",
+      "cupcake-baked",
+      "whiping-cream",
+      "whiping-choco",
+      "sprinkle",
+      "blueberry",
+      "strawberry-sliced",
+      "kiwi-sliced",
+      "pineapple-sliced",
+      "donut",
+      "donut-bar",
       "donut-8",
-      "coffee-teacup-hot",
       "coffee-cup-cool",
-      "cupcake-baked"
+      "coffee-teacup-hot",
+      "cupcake",
+      "strawberry",
+      "kiwi",
+      "pineapple"
     ],
     "composite": [
+      "donut-with-topping",
+      "cupcake-with-cream",
       "cool-coffee-with-milk",
       "hot-coffee-latte",
       "cool-coffee-with-milk-ice",
-      "cool-coffee-with-cream",
-      "cupcake-with-cream",
-      "donut-with-topping"
+      "cool-coffee-with-cream"
     ],
     "group": [
       "whipings",
       "toppings",
       "fruits",
-      "single-donut-fried"
+      "single-donut-fried",
+      "glazes"
     ],
     "tool": [
       "coffee-grinder",
@@ -57,7 +62,11 @@
       "baker",
       "fryer"
     ],
-    "dirty": []
+    "dirty": [
+      "dirty-teacup",
+      "dirty-cup",
+      "dirty-plate"
+    ]
   },
   "vertices": {
     "ingredient": [
@@ -285,6 +294,38 @@
         "usageNum": 1,
         "price": 0,
         "localImage": "Map2-coffee/ingredients/donut-bar-fried.png"
+      },
+      {
+        "name": "glaze-choco",
+        "displayName": "glaze-choco",
+        "pickupable": true,
+        "usageNum": 2,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/glaze-choco.png"
+      },
+      {
+        "name": "glaze-strawberry",
+        "displayName": "glaze-strawberry",
+        "pickupable": true,
+        "usageNum": 2,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/glaze-strawberry.png"
+      },
+      {
+        "name": "glaze-vanilla",
+        "displayName": "glaze-vanilla",
+        "pickupable": true,
+        "usageNum": 2,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/glaze-vanilla.png"
+      },
+      {
+        "name": "glaze-blue",
+        "displayName": "glaze-blue",
+        "pickupable": true,
+        "usageNum": 2,
+        "price": 0,
+        "localImage": "Map2-coffee/ingredients/glaze-blue.png"
       }
     ],
     "tool": [
@@ -377,6 +418,12 @@
         "name": "single-donut-fried",
         "displayName": "single-donut-fried",
         "maxQuantity": 1
+      },
+      {
+        "name": "glazes",
+        "displayName": "glazes",
+        "minQuantity": 0,
+        "maxQuantity": 1
       }
     ],
     "composite": [
@@ -421,9 +468,28 @@
         "displayName": "donut-with-topping",
         "orderable": true,
         "toppingRequired": false
+      },
+      {
+        "name": "donut-with-glaze",
+        "displayName": "donut-with-glaze",
+        "orderable": false,
+        "toppingRequired": false
       }
     ],
-    "dirty": []
+    "dirty": [
+      {
+        "name": "dirty-teacup",
+        "displayName": "dirty-teacup"
+      },
+      {
+        "name": "dirty-cup",
+        "displayName": "dirty-cup"
+      },
+      {
+        "name": "dirty-plate",
+        "displayName": "dirty-plate"
+      }
+    ]
   },
   "edges": {
     "process": [
@@ -572,8 +638,12 @@
         "to": "cupcake-baked"
       },
       {
-        "from": "donut-with-topping",
+        "from": "donut-with-glaze",
         "to": "single-donut-fried"
+      },
+      {
+        "from": "donut-with-topping",
+        "to": "donut-with-glaze"
       }
     ],
     "topping": [
@@ -603,7 +673,11 @@
       },
       {
         "from": "donut-with-topping",
-        "to": "fruits"
+        "to": "toppings"
+      },
+      {
+        "from": "donut-with-glaze",
+        "to": "glazes"
       }
     ],
     "option": [
@@ -661,9 +735,46 @@
         "from": "single-donut-fried",
         "to": "donut-bar-fried",
         "maxQuantity": -1
+      },
+      {
+        "from": "glazes",
+        "to": "glaze-choco",
+        "maxQuantity": -1
+      },
+      {
+        "from": "glazes",
+        "to": "glaze-strawberry",
+        "maxQuantity": -1
+      },
+      {
+        "from": "glazes",
+        "to": "glaze-vanilla",
+        "maxQuantity": -1
+      },
+      {
+        "from": "glazes",
+        "to": "glaze-blue",
+        "maxQuantity": -1
       }
     ],
-    "leavesDirty": []
+    "leavesDirty": [
+      {
+        "from": "donut-with-topping",
+        "to": "dirty-plate"
+      },
+      {
+        "from": "cupcake-with-cream",
+        "to": "dirty-plate"
+      },
+      {
+        "from": "cool-coffee-with-cream",
+        "to": "dirty-teacup"
+      },
+      {
+        "from": "cool-coffee-with-milk-ice",
+        "to": "dirty-cup"
+      }
+    ]
   },
   "layout": {
     "table:pickupable": {
@@ -791,56 +902,92 @@
       "y": -682.3575378417953
     },
     "ingredient:cupcake": {
-      "x": -116.96524978970342,
-      "y": -959.2544462517151
+      "x": 76.29595021029652,
+      "y": -814.3085462517151
     },
     "tool:baker": {
-      "x": 195.2988993453831,
-      "y": -1007.5733000769592
+      "x": 353.12887934538304,
+      "y": -846.5223000769593
     },
     "ingredient:cupcake-baked": {
-      "x": 642.424537090298,
-      "y": -932.4036204275442
+      "x": 644.035047090298,
+      "y": -814.8363904275442
     },
     "composite:cupcake-with-cream": {
       "x": 1677.47582672119,
       "y": -417.629978637695
     },
     "ingredient:donut": {
-      "x": -88.4446630924864,
-      "y": -1394.576767077575
+      "x": 85.49041690751355,
+      "y": -1115.9585370775749
     },
     "ingredient:donut-8": {
-      "x": -102.28074462890616,
-      "y": -1304.4644873046866
+      "x": 82.92790537109374,
+      "y": -1045.1723773046865
     },
     "ingredient:donut-bar": {
-      "x": -101.07074462890617,
-      "y": -1210.0844873046865
+      "x": 80.91688537109377,
+      "y": -970.1184973046866
     },
     "tool:fryer": {
-      "x": 323.63925537109344,
-      "y": -1340.7644873046863
+      "x": 352.6284353710934,
+      "y": -1102.4090073046864
     },
     "ingredient:donut-fried": {
-      "x": 668.815336907513,
-      "y": -1406.8767670775749
+      "x": 646.2681969075131,
+      "y": -1118.5954770775747
     },
     "ingredient:donut-8-fried": {
-      "x": 676.9592553710933,
-      "y": -1309.3044873046865
+      "x": 646.3595653710934,
+      "y": -1046.7913573046865
     },
     "ingredient:donut-bar-fried": {
-      "x": 673.3292553710932,
-      "y": -1182.2544873046866
+      "x": 642.7295653710933,
+      "y": -974.4986973046864
     },
     "group:single-donut-fried": {
-      "x": 1063.9082976304612,
-      "y": -1271.0588439355452
+      "x": 1045.9082976304612,
+      "y": -1074.0588439355452
     },
     "composite:donut-with-topping": {
-      "x": 1542.3283291778384,
-      "y": -993.9107301110822
+      "x": 1630.4370649199325,
+      "y": -1015.7671606827645
+    },
+    "ingredient:glaze-choco": {
+      "x": 647.4254650000001,
+      "y": -1419.715685
+    },
+    "ingredient:glaze-strawberry": {
+      "x": 644.2154650000001,
+      "y": -1352.715685
+    },
+    "ingredient:glaze-vanilla": {
+      "x": 646.4254650000001,
+      "y": -1280.715685
+    },
+    "ingredient:glaze-blue": {
+      "x": 646.6354650000002,
+      "y": -1214.715685
+    },
+    "group:glazes": {
+      "x": 1045.1828050000001,
+      "y": -1307.884155
+    },
+    "composite:donut-with-glaze": {
+      "x": 1312.2714199105667,
+      "y": -1221.0903148641264
+    },
+    "dirty:dirty-teacup": {
+      "x": 2101.121360727893,
+      "y": -20.22440006075083
+    },
+    "dirty:dirty-cup": {
+      "x": 2118.8734650088845,
+      "y": 214.86347040205874
+    },
+    "dirty:dirty-plate": {
+      "x": 2115.894557884917,
+      "y": -771.0605856805855
     }
   },
   "notes": []

@@ -27,8 +27,8 @@ import { button, el } from "../dom.ts";
 import {
   backpackIconEl,
   cellIconEl,
-  cookedIconEl,
   dirtyIconEl,
+  iconEl,
   ingredientIconEl,
   statusIconEl,
   toolIconEl,
@@ -481,18 +481,34 @@ export class NodePlayView {
     }
   }
 
-  /** The artwork a flight carries: a dirty dish, a raw pickup, or a cooked item. */
+  /** The artwork a flight carries, resolved from its graph vertex. */
   private flightIcon(flight: NodeFlight): HTMLElement {
     if (flight.ing < 0) return dirtyIconEl(this.dirtyDataId(flight.dirtyId), 96);
-    const dataId = this.projected.dataIdOf.get(flight.ing);
-    if (dataId === undefined) return el("span", { class: "icon" }, ["\u2754"]);
-    // A raw pickup in transit to a tool still looks like its raw self; every
-    // other kind is carrying the finished item.
-    const raw =
-      flight.kind === "queue-to-tool" ||
-      flight.kind === "grid-to-tool" ||
-      (flight.kind === "queue-to-grid" && flight.raw);
-    return raw ? ingredientIconEl(dataId, 96) : cookedIconEl(dataId, 96);
+    return this.ingredientIconForDense(flight.ing, 96);
+  }
+
+  /**
+   * Simulation items use dense graph indices, while the shared raw/cooked
+   * helpers use positional level-data ids. Intermediate ingredients are not
+   * addressable by level strings and therefore intentionally have no such id.
+   * Resolve their artwork from the graph vertex so they still retain their
+   * local image while waiting on the grid, sitting in a tool, or flying.
+   */
+  private ingredientIconForDense(ing: number, size: number): HTMLElement {
+    const name = this.ix.ingName[ing];
+    const vertex = this.project.doc.vertices.ingredient.find((value) => value.name === name);
+    return iconEl(
+      vertex
+        ? {
+            name: vertex.displayName || vertex.name,
+            emoji: vertex.emoji ?? "\u2754",
+            fileId: vertex.fileId,
+            localImage: vertex.localImage,
+            imageURL: vertex.imageURL,
+          }
+        : undefined,
+      { size, className: "icon-ingredient" },
+    );
   }
 
   /**
@@ -766,7 +782,7 @@ export class NodePlayView {
           class: `chip icon-chip dish-chip${filled ? " filled" : ""}${gated ? " gated" : ""}`,
           "data-dish-ingredient": String(dataId ?? -1),
           title: `${this.ix.ingName[ing]}${gated ? " — waiting for the base" : ""}`,
-        }, [dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : cookedIconEl(dataId, 64)]);
+        }, [this.ingredientIconForDense(ing, 64)]);
       };
       dish.order.slots.forEach((_, i) => {
         if (dish.filled[i]) row.append(chip(i, true));
@@ -853,19 +869,13 @@ export class NodePlayView {
         }
         cell.append(el("small", { class: "cell-badge" }, [lock]));
       } else if (content.kind === "cooked") {
-        const dataId = this.projected.dataIdOf.get(content.ing);
-        cell.append(el("span", { class: "cell-main" }, [
-          dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : cookedIconEl(dataId, 96),
-        ]));
+        cell.append(el("span", { class: "cell-main" }, [this.ingredientIconForDense(content.ing, 96)]));
         if (content.usesLeft && content.usesLeft > 1) {
           cell.append(el("small", { class: "cell-badge uses-left" }, [`×${content.usesLeft}`]));
         }
       } else if (content.kind === "raw") {
-        const dataId = this.projected.dataIdOf.get(content.ing);
         cell.append(
-          el("span", { class: "cell-main parked" }, [
-            dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : ingredientIconEl(dataId, 96),
-          ]),
+          el("span", { class: "cell-main parked" }, [this.ingredientIconForDense(content.ing, 96)]),
           el("small", { class: "cell-badge" }, ["waiting"]),
         );
       } else if (content.kind === "dirty") {
@@ -945,10 +955,9 @@ export class NodePlayView {
             title: multiPoint ? `${point.name} · lane ${lane + 1}` : "",
           });
           if (slot.item) {
-            const dataId = this.projected.dataIdOf.get(slot.item.ing);
-            node.append(el("span", { class: "slot-item" }, [
-              dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : ingredientIconEl(dataId, 96),
-            ]));
+            node.append(
+              el("span", { class: "slot-item" }, [this.ingredientIconForDense(slot.item.ing, 96)]),
+            );
           }
           node.append(el("div", { class: "bar-track" }, [bar]));
           group.append(node);
@@ -1101,15 +1110,12 @@ export class NodePlayView {
 
     // The mask is checked FIRST: a hidden sweeper must read as "?" like any
     // other hidden slot, or its broom gives the slot away.
-    const dataId = cell.ing >= 0 ? this.projected.dataIdOf.get(cell.ing) : undefined;
     tile.append(
       opts.hidden
         ? el("span", { class: "tile-main" }, [el("span", { class: "hidden-mark" }, ["?"])])
         : item.kind === "sweeper"
           ? el("span", { class: "tile-main" }, ["🧹"])
-          : el("span", { class: "tile-main" }, [
-              dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : ingredientIconEl(dataId, 96),
-            ]),
+          : el("span", { class: "tile-main" }, [this.ingredientIconForDense(cell.ing, 96)]),
     );
     if (frozen) {
       tile.append(

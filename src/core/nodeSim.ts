@@ -508,7 +508,7 @@ export class NodeSimulation {
           };
         }
         if (flight.fromCell !== undefined) {
-          // reclaimParkedRaws() reserved this cell when it launched the flight —
+          // reclaimProcessableGridItems() reserved this cell when it launched the flight —
           // release it now the pickup has actually left, or it leaks forever.
           this.releaseCell(flight.fromCell);
           this.grid[flight.fromCell] = { kind: "empty" };
@@ -1191,7 +1191,7 @@ export class NodeSimulation {
     if (this.instantFlights) {
       // settle() unconditionally, THEN resolve flights: an all-sweeper pick
       // launches nothing, so completeAllFlights() alone would never trigger
-      // reclaimParkedRaws()/autoServe() off the stack the sweeper just cleared.
+      // reclaimProcessableGridItems()/autoServe() off the stack the sweeper just cleared.
       this.settle();
       this.completeAllFlights();
     }
@@ -1473,23 +1473,43 @@ export class NodeSimulation {
         const out = chain?.out ?? step?.out ?? lead.ing;
         const amount = chain?.amount ?? step?.amount ?? 1;
 
-        // --- spelling 2: a real intermediate vertex. An output auto-forwards
-        // iff it is NON-SERVABLE and something consumes it — that is exactly a
-        // coated chicken piece, which must reach the fryer without ever landing
-        // on the grid. INV-INTERMEDIATE-AMOUNT caps such an output at 1 piece,
-        // so this forwards once rather than looping over `amount`.
+        // --- spelling 2: a real intermediate vertex. Forward one produced
+        // piece immediately when the next tool has room; surplus pieces park on
+        // the grid and reclaimProcessableGridItems() moves them onward as that
+        // tool frees. This is the game's potato -> sliced potato (amount 2)
+        // behavior: one slice enters the fryer and the other visibly waits.
         const onward = this.forwardStepFor(out);
         if (onward) {
           const nextSlot = this.freeSlotFor(onward.tool, out);
-          if (nextSlot === -1) continue; // destination busy — stall and retry next tick
-          this.reserveSlot(onward.tool, nextSlot);
-          this.launch({
-            kind: "tool-to-tool",
-            ing: out,
-            fromTool: { tool: tool.index, slot: leadSlot },
-            toTool: { tool: onward.tool, slot: nextSlot },
-            // No chain: the destination owns a real recipe for this input.
-          });
+          // A single intermediate keeps the established no-grid behavior: it
+          // waits in its producer when the next tool is occupied. Grid parking
+          // is specifically the surplus path of a batch output.
+          if (amount === 1 && nextSlot === -1) continue;
+          let remaining = amount;
+          if (nextSlot !== -1) {
+            this.reserveSlot(onward.tool, nextSlot);
+            this.launch({
+              kind: "tool-to-tool",
+              ing: out,
+              fromTool: { tool: tool.index, slot: leadSlot },
+              toTool: { tool: onward.tool, slot: nextSlot },
+              // No chain: the destination owns a real recipe for this input.
+            });
+            remaining--;
+          }
+          for (let n = 0; n < remaining; n++) {
+            const cell = this.reserveCell();
+            if (cell === -1) {
+              this.lose("grid-overflow", "No free grid cell for a process intermediate");
+              return;
+            }
+            this.launch({
+              kind: "tool-to-grid",
+              ing: out,
+              fromTool: { tool: tool.index, slot: leadSlot },
+              toCell: cell,
+            });
+          }
           clearLane();
           continue;
         }
@@ -1561,7 +1581,7 @@ export class NodeSimulation {
       const before = `${this.servedCount}:${this.flights.length}`;
       this.fillSlots();
       this.autoServe();
-      this.reclaimParkedRaws();
+      this.reclaimProcessableGridItems();
       if (this.status !== "playing") return;
       if (`${this.servedCount}:${this.flights.length}` === before) return;
     }
@@ -1649,12 +1669,14 @@ export class NodeSimulation {
     }
   }
 
-  /** Moves pickups parked on the grid into a tool slot as soon as one frees. */
-  private reclaimParkedRaws(): void {
+  /** Moves parked pickups and non-servable intermediates into a tool as soon as it frees. */
+  private reclaimProcessableGridItems(): void {
     for (let cell = 0; cell < this.grid.length; cell++) {
       const content = this.grid[cell];
-      if (content.kind !== "raw" || this.reservedCells.has(cell)) continue;
-      const step = this.ix.recipeForInput[content.ing];
+      if ((content.kind !== "raw" && content.kind !== "cooked") || this.reservedCells.has(cell)) continue;
+      const step = content.kind === "raw"
+        ? this.ix.recipeForInput[content.ing]
+        : this.forwardStepFor(content.ing);
       if (!step) continue;
       const slot = this.freeSlotFor(step.tool, content.ing);
       if (slot === -1) continue;

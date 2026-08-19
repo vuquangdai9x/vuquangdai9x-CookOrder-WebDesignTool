@@ -3464,6 +3464,19 @@ td input {
 .np-row-base .np-row-label { color: var(--ok); }
 .np-row-topping .np-row-label { color: var(--accent); }
 
+.np-row-amount {
+  flex: none;
+  padding: 0.05rem 0.25rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 0.58rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
 .np-row-x {
   padding: 0 0.2rem;
   border: none;

@@ -43,7 +43,7 @@ namespace CookingGraph.Editor
             ValidateNamespace(byName, issues);
             ValidateEdges(document, byName, issues);
             ValidateIdTables(document, byName, servable, issues);
-            ValidateProduction(document, byName, servable, issues);
+            ValidateProduction(document, issues);
             ValidateComposition(document, byName, issues);
             ValidateCycles(document, byName, issues);
             ValidateWarnings(document, byName, issues);
@@ -133,7 +133,7 @@ namespace CookingGraph.Editor
             }
         }
 
-        private static void ValidateProduction(GraphJsonDocument document, IReadOnlyDictionary<string, List<(string Kind, JObject Node)>> byName, ISet<string> servable, ICollection<GraphIssue> issues)
+        private static void ValidateProduction(GraphJsonDocument document, ICollection<GraphIssue> issues)
         {
             var processes = GraphJsonDocument.Array(document.Edges, "process").OfType<JObject>().ToList();
             var producers = processes.GroupBy(edge => edge.Value<string>("to") ?? string.Empty).ToDictionary(group => group.Key, group => group.ToList());
@@ -168,10 +168,6 @@ namespace CookingGraph.Editor
                         Error(issues, "INV-INPUT-SLOT-STABLE", $"'{ingredient}' enters '{toolName}' at both slot {previous} and {slot}.", toolName);
                     else stableSlots[key] = slot;
                 }
-
-                var target = targetName == null ? null : document.FindNode("ingredient", targetName);
-                if (target != null && !servable.Contains(targetName) && target.Value<bool?>("pickupable") != true && (edge.Value<int?>("amount") ?? 1) != 1)
-                    Error(issues, "INV-INTERMEDIATE-AMOUNT", $"Non-order-slot intermediate '{targetName}' must have process amount 1.", targetName);
 
                 var usedSlots = inputs.OfType<JObject>().Select(value => value.Value<int?>("slot") ?? 0).Distinct().ToList();
                 if (usedSlots.Count > 1 && tool?["slotConfigs"] is JArray configs)

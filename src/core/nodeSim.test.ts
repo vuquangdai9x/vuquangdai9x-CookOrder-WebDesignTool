@@ -196,6 +196,42 @@ describe("the two spellings of a two-tool route", () => {
     expect(s.grid.filter((c) => c.kind === "cooked")).toHaveLength(yield_ - 1);
   });
 
+  it("forwards one batched intermediate and parks the surplus until the next tool frees", () => {
+    const doc = structuredClone(burgerJson as unknown as NodeGraphMap);
+    const slicedEdge = doc.edges.process.find((edge) => edge.to === "potato_sliced")!;
+    slicedEdge.amount = 2;
+    const batch = buildIndex(doc);
+    const sliced = batch.ingByName.get("potato_sliced")!;
+    const fryer = batch.toolByName.get("fryer")!;
+    const s = new NodeSimulation(
+      batch,
+      nodeLevel({
+        queueString: "13",
+        customerString: "0;0;0;{c2:{g1:29}}|0;0;0;{c2:{g1:29}}",
+      }),
+      { instantFlights: false },
+    );
+
+    s.pick(0);
+    s.completeAllFlights();
+    s.tick(100); // cutting board finishes: one slice forwards, one heads to grid
+    expect(s.flights.map((flight) => flight.kind).sort()).toEqual(["tool-to-grid", "tool-to-tool"]);
+    s.completeAllFlights();
+
+    expect(s.tools[fryer].slots[0].item?.ing).toBe(sliced);
+    expect(s.grid.some((cell) => cell.kind === "cooked" && cell.ing === sliced)).toBe(true);
+
+    s.tick(100); // fryer empties; the parked slice is reclaimed in the same settle pass
+    expect(s.flights.map((flight) => flight.kind).sort()).toEqual(["grid-to-tool", "tool-to-customer"]);
+    s.completeAllFlights();
+    expect(s.grid.some((cell) => cell.kind === "cooked" && cell.ing === sliced)).toBe(false);
+    expect(s.tools[fryer].slots[0].item?.ing).toBe(sliced);
+
+    s.tick(100);
+    s.completeAllFlights();
+    expect(s.status).toBe("won");
+  });
+
   it("stalls a forward rather than dropping the piece when the fryer is taken", () => {
     // The fryer has ONE slot and is the destination of BOTH spellings, so they
     // contend: a potato claims it as a chain hop in the same tick a coated

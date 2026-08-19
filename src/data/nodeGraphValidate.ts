@@ -75,7 +75,7 @@ export function validateNodeGraph(doc: NodeGraphMap): GraphValidation {
   checkAcyclic(doc, lk, add);
   checkComposites(doc, lk, add);
   checkGroups(doc, add);
-  checkIntermediates(doc, lk, add);
+  checkProcessCapabilities(doc, add);
   checkSlotPoints(doc, add);
   checkTraceable(doc, lk, add);
   checkRebuildable(lk, add);
@@ -285,23 +285,9 @@ function checkGroups(doc: NodeGraphMap, add: Add): void {
   }
 }
 
-/**
- * An ingredient that is neither servable nor pickupable only ever sits between
- * two tools. Producing several at once would leave part of a batch forwarded
- * and part stranded, so v1 requires amount 1. Multi-input recipes are likewise
- * kept in the data but flagged as beyond what the v1 sim reads.
- */
-function checkIntermediates(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
+/** Process features which remain informational rather than graph errors. */
+function checkProcessCapabilities(doc: NodeGraphMap, add: Add): void {
   for (const e of doc.edges.process) {
-    const target = doc.vertices.ingredient.find((i) => i.name === e.to);
-    const isIntermediate = target && !lk.servable.has(target.name) && !target.pickupable;
-    if (isIntermediate && e.amount !== 1) {
-      add(
-        "INV-INTERMEDIATE-AMOUNT",
-        `Process ${e.from}->${e.to} yields ${e.amount}, but "${e.to}" is not an order-slot ingredient; only 1 is supported.`,
-        { edge: { kind: "process", from: e.from, to: e.to } },
-      );
-    }
     if (e.inputs.length > 1) {
       add(
         "WARN-MULTI-INPUT",
