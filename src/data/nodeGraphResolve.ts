@@ -49,6 +49,10 @@ export interface Slot {
   minQuantity: number;
   /** True when this slot came down a `base` edge — the thing every other slot gates on. */
   isBase: boolean;
+  /** Composite bases satisfied by selecting this slot, outermost first. */
+  baseOf: string[];
+  /** Composite bases that must already be selected before this slot is available. */
+  requiresBaseOf: string[];
 }
 
 /** One step of a backward walk from a produced ingredient to its pickupables. */
@@ -167,13 +171,30 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
   const acc: Slot[] = [];
   const visiting = new Set<string>();
 
-  const walk = (node: string, isBase: boolean, groupPath: string[]): void => {
+  const walk = (
+    node: string,
+    isBase: boolean,
+    groupPath: string[],
+    baseOf: string[],
+    requiresBaseOf: string[],
+  ): void => {
     if (visiting.has(node)) return; // cyclic data — INV-ACYCLIC reports it
     visiting.add(node);
 
     const kind = lk.kindOf.get(node);
     if (kind === "ingredient") {
-      acc.push({ kind: "fixed", group: null, groupPath, options: [node], optionMax: [1], maxQuantity: 1, minQuantity: 0, isBase });
+      acc.push({
+        kind: "fixed",
+        group: null,
+        groupPath,
+        options: [node],
+        optionMax: [1],
+        maxQuantity: 1,
+        minQuantity: 0,
+        isBase,
+        baseOf,
+        requiresBaseOf,
+      });
       visiting.delete(node);
       return;
     }
@@ -186,7 +207,8 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
           leaves.push(opt.to);
           leafMax.push(opt.maxQuantity);
         } else {
-          walk(opt.to, isBase, path); // retain the parent bracket around nested choices
+          // Retain the parent bracket and the composite ancestry around nested choices.
+          walk(opt.to, isBase, path, baseOf, requiresBaseOf);
         }
       }
       if (leaves.length > 0) {
@@ -199,6 +221,8 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
           maxQuantity: lk.groupMax.get(node) ?? -1,
           minQuantity: lk.groupMin.get(node) ?? 0,
           isBase,
+          baseOf,
+          requiresBaseOf,
         });
       }
       visiting.delete(node);
@@ -206,14 +230,20 @@ export function slotsOf(lk: GraphLookup, composite: string): Slot[] {
     }
     if (kind === "composite") {
       const base = lk.baseOf.get(node);
-      if (base) walk(base, isBase, groupPath);
+      if (base) walk(base, isBase, groupPath, [...baseOf, node], requiresBaseOf);
       const topping = lk.toppingOf.get(node);
-      if (topping) walk(topping, false, groupPath); // a topping is never the base, however deep
+      if (topping) {
+        // A nested topping is gated by its own composite's base in addition to
+        // every enclosing composite whose topping branch led here. `baseOf`
+        // deliberately does not propagate: a topping cannot satisfy a parent
+        // composite's base merely because that parent points at this composite.
+        walk(topping, false, groupPath, [], [...requiresBaseOf, node]);
+      }
     }
     visiting.delete(node);
   };
 
-  walk(composite, true, []);
+  walk(composite, true, [], [], []);
   return acc;
 }
 

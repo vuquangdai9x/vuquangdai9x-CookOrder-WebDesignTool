@@ -125,6 +125,13 @@ function buildDish(
   const held = slots.map(() => 0);
   const tryFill = (slotIndex: number): boolean => {
     const slot = slots[slotIndex];
+    const unlocked = slot.requiresBaseOf.every((requiredComposite) =>
+      slots.some(
+        (candidate, candidateIndex) =>
+          candidate.baseOf.includes(requiredComposite) && held[candidateIndex] > 0,
+      ),
+    );
+    if (!unlocked) return false;
     if (held[slotIndex] >= capacityOf(slot, maxDishSlots)) return false;
     // Per-dish limits are a property of the ingredient, so an option already at
     // its limit is simply not a candidate any more.

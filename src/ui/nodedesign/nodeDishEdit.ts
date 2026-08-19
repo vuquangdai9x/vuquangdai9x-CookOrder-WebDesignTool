@@ -86,6 +86,40 @@ export function membersOf(
   return out;
 }
 
+/** The nearest composite base still missing for a slot, or -1 when it is selectable. */
+export function unmetSlotBase(
+  ix: GraphIndex,
+  ids: IdIndex,
+  root: DishNode,
+  orderable: number,
+  slotIndex: number,
+): number {
+  const slots = ix.slotsOfComposite[orderable] ?? [];
+  const slot = slots[slotIndex];
+  if (!slot) return -1;
+  // Check inner prerequisites first so the UI names the most useful next step.
+  for (let at = slot.requiresBaseOf.length - 1; at >= 0; at--) {
+    const composite = slot.requiresBaseOf[at];
+    const filled = slots.some(
+      (candidate, candidateIndex) =>
+        candidate.baseOf.includes(composite) &&
+        membersOf(ix, ids, root, orderable, candidateIndex).length > 0,
+    );
+    if (!filled) return composite;
+  }
+  return -1;
+}
+
+export function slotIsUnlocked(
+  ix: GraphIndex,
+  ids: IdIndex,
+  root: DishNode,
+  orderable: number,
+  slotIndex: number,
+): boolean {
+  return unmetSlotBase(ix, ids, root, orderable, slotIndex) === -1;
+}
+
 export function addToSlot(
   ix: GraphIndex,
   ids: IdIndex,
@@ -96,6 +130,7 @@ export function addToSlot(
 ): void {
   const slot = ix.slotsOfComposite[orderable]?.[slotIndex];
   if (!slot) return;
+  if (!slotIsUnlocked(ix, ids, root, orderable, slotIndex)) return;
   const container = containerFor(ids, ix, root, slot, true, true);
   if (!container) return;
   const dataId = ids.byNode.ingredient.get(ix.ingName[ing]);

@@ -54,6 +54,8 @@ export type OrderIssue =
   | { kind: "over-limit"; ingredient: string; limit: number; used: number }
   | { kind: "below-group-minimum"; group: string; minimum: number; used: number }
   | { kind: "above-group-maximum"; group: string; maximum: number; used: number }
+  /** A topping is present before the base of its own (possibly nested) composite. */
+  | { kind: "missing-composite-base"; composite: string }
   /** The composite declares `toppingRequired` but the dish leaves that slot empty. */
   | { kind: "missing-topping"; composite: string };
 
@@ -195,6 +197,29 @@ export function resolveOrder(ix: GraphIndex, dish: NodeDish, ids: IdIndex = orde
   };
   walk(dish.root);
 
+  // Design gating prevents new invalid combinations, but imported or
+  // hand-edited strings still need a real validation error. A selected nested
+  // topping must have a selected slot from that nested composite's base branch.
+  const selectedSlots = new Set(slots.map((slot) => slot.slot));
+  const missingBases = new Set<number>();
+  for (const selectedSlot of selectedSlots) {
+    const config = slotTree[selectedSlot];
+    if (!config) continue;
+    for (const requiredComposite of config.requiresBaseOf) {
+      const hasBase = slotTree.some(
+        (candidate, candidateIndex) =>
+          candidate.baseOf.includes(requiredComposite) && selectedSlots.has(candidateIndex),
+      );
+      if (!hasBase) missingBases.add(requiredComposite);
+    }
+  }
+  for (const composite of missingBases) {
+    issues.push({
+      kind: "missing-composite-base",
+      composite: ix.compositeName[composite] ?? `composite ${composite}`,
+    });
+  }
+
   // A group with a positive minimum is mandatory even when its composite's
   // slot would otherwise be optional. An omitted bracket therefore counts as
   // zero and produces the same issue as an under-filled bracket.
@@ -273,6 +298,8 @@ export function describeIssue(issue: OrderIssue): string {
       return `Group "${issue.group}" requires at least ${issue.minimum} item(s), but this dish has ${issue.used}.`;
     case "above-group-maximum":
       return `Group "${issue.group}" allows at most ${issue.maximum} item(s), but this dish has ${issue.used}.`;
+    case "missing-composite-base":
+      return `${issue.composite} has a topping selected before its base.`;
     case "missing-topping":
       return `${issue.composite} requires a topping, but this dish has only its base.`;
   }

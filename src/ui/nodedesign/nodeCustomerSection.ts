@@ -27,7 +27,7 @@ import type { GraphIndex, IndexedSlot } from "../../core/nodeIndex.ts";
 import { describeIssue, orderIdIndex, resolveOrder } from "../../core/nodeOrder.ts";
 import type { ElementDef, GlobalDefs } from "../../core/types.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
-import { addToSlot as addToSlotTree } from "./nodeDishEdit.ts";
+import { addToSlot as addToSlotTree, unmetSlotBase } from "./nodeDishEdit.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import {
   addPickerGrid,
@@ -665,8 +665,10 @@ function customerCard(
           counts.set(ref.ing, Math.max(0, (counts.get(ref.ing) ?? 1) - 1));
 
           const wrap = el("div", { class: "ctx-swap" });
-          wrap.append(
-            addPickerGrid(
+          const unmetBase = unmetSlotBase(ix, ids, dish.root, orderable, ref.slotIndex);
+          if (unmetBase === -1) {
+            wrap.append(
+              addPickerGrid(
               slot.options.map((option, at) => ({
                 id: option,
                 label: ix.doc.vertices.ingredient[option]?.displayName ?? ix.ingName[option],
@@ -679,7 +681,14 @@ function customerCard(
                 section.commit("Swap dish ingredient");
                 closeContextMenu();
               },
-            ),
+              ),
+            );
+          } else {
+            wrap.append(
+              el("div", { class: "warnings" }, [`Select ${baseRequirementLabel(ix, unmetBase)} first.`]),
+            );
+          }
+          wrap.append(
             button(
               "Remove",
               () => {
@@ -743,6 +752,11 @@ function iconFor(ix: GraphIndex, ids: IdIndex, ing: number): HTMLElement {
   return dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : cookedIconEl(dataId, 64);
 }
 
+function baseRequirementLabel(ix: GraphIndex, composite: number): string {
+  const name = ix.compositeName[composite] ?? "nested composite";
+  return `${ix.doc.vertices.composite[composite]?.displayName ?? name} base`;
+}
+
 /** The `＋` picker: one option grid per slot, so every add lands somewhere legal. */
 function slotPicker(
   section: Section<NodeCustomerConfig[]>,
@@ -755,37 +769,51 @@ function slotPicker(
   const wrap = el("div", { class: "ctx-swap" });
   const slots = ix.slotsOfComposite[orderable] ?? [];
 
-  slots.forEach((slot, slotIndex) => {
-    const held = membersOf(ix, ids, dish.root, orderable, slotIndex);
-    const capacity = slotCapacity(slot);
-    const label = slot.isBase
-      ? "Base"
-      : slot.group === -1
-        ? "Item"
-        : (ix.doc.vertices.group[slot.group]?.displayName ?? ix.groupName[slot.group]);
+  const rerender = () => {
+    wrap.replaceChildren();
+    slots.forEach((slot, slotIndex) => {
+      const held = membersOf(ix, ids, dish.root, orderable, slotIndex);
+      const capacity = slotCapacity(slot);
+      const unmetBase = unmetSlotBase(ix, ids, dish.root, orderable, slotIndex);
+      const label = slot.isBase
+        ? "Base"
+        : slot.group === -1
+          ? "Item"
+          : (ix.doc.vertices.group[slot.group]?.displayName ?? ix.groupName[slot.group]);
 
-    const counts = new Map<number, number>();
-    for (const ing of held) counts.set(ing, (counts.get(ing) ?? 0) + 1);
+      const counts = new Map<number, number>();
+      for (const ing of held) counts.set(ing, (counts.get(ing) ?? 0) + 1);
 
-    wrap.append(
-      el("div", { class: "slot-picker-head" }, [
-        `${label} — ${held.length}/${capacity === Number.POSITIVE_INFINITY ? "∞" : capacity}`,
-      ]),
-      addPickerGrid(
-        slot.options.map((option, at) => ({
-          id: option,
-          label: ix.doc.vertices.ingredient[option]?.displayName ?? ix.ingName[option],
-          icon: iconFor(ix, ids, option),
-          limit: (slot.optionMax[at] ?? -1) > 0 ? slot.optionMax[at] : undefined,
-        })),
-        counts,
-        (option) => {
-          addToSlot(ix, ids, dish.root, orderable, slotIndex, option);
-          section.commit("Add ingredient to dish", 1, 0);
-        },
-      ),
-    );
-  });
+      wrap.append(
+        el("div", { class: "slot-picker-head" }, [
+          `${label} — ${held.length}/${capacity === Number.POSITIVE_INFINITY ? "∞" : capacity}`,
+        ]),
+      );
+      if (unmetBase !== -1) {
+        wrap.append(
+          el("div", { class: "warnings" }, [`Select ${baseRequirementLabel(ix, unmetBase)} first.`]),
+        );
+        return;
+      }
+      wrap.append(
+        addPickerGrid(
+          slot.options.map((option, at) => ({
+            id: option,
+            label: ix.doc.vertices.ingredient[option]?.displayName ?? ix.ingName[option],
+            icon: iconFor(ix, ids, option),
+            limit: (slot.optionMax[at] ?? -1) > 0 ? slot.optionMax[at] : undefined,
+          })),
+          counts,
+          (option) => {
+            addToSlot(ix, ids, dish.root, orderable, slotIndex, option);
+            section.commit("Add ingredient to dish", 1, 0);
+            rerender();
+          },
+        ),
+      );
+    });
+  };
+  rerender();
   return wrap;
 }
 
@@ -835,13 +863,17 @@ function dishMenu(
     slots.forEach((slot, slotIndex) => {
       const held = membersOf(ix, ids, dish.root, orderable, slotIndex);
       const capacity = slotCapacity(slot);
+      const unmetBase = unmetSlotBase(ix, ids, dish.root, orderable, slotIndex);
       const label = slot.isBase
         ? "Base"
         : slot.group === -1
           ? "Item"
           : (ix.doc.vertices.group[slot.group]?.displayName ?? ix.groupName[slot.group]);
       items.push({
-        label: `${label} (${held.length}/${capacity === Number.POSITIVE_INFINITY ? "∞" : capacity})`,
+        label:
+          `${label} (${held.length}/${capacity === Number.POSITIVE_INFINITY ? "∞" : capacity})` +
+          (unmetBase === -1 ? "" : ` — select ${baseRequirementLabel(ix, unmetBase)} first`),
+        disabled: unmetBase !== -1,
         expand: () => slotEditor(section, deps, ids, dish, orderable, slotIndex),
       });
     });
@@ -888,15 +920,18 @@ function slotEditor(
   const rerender = () => {
     const held = membersOf(ix, ids, dish.root, orderable, slotIndex);
     const capacity = slotCapacity(slot);
+    const unmetBase = unmetSlotBase(ix, ids, dish.root, orderable, slotIndex);
     caption.textContent =
       `${held.length}/${capacity === Number.POSITIVE_INFINITY ? "∞" : capacity} filled` +
-      (slot.isBase ? " · base (required)" : "");
+      (slot.isBase ? " · base (required)" : "") +
+      (unmetBase === -1 ? "" : ` · select ${baseRequirementLabel(ix, unmetBase)} first`);
 
     const counts = new Map<number, number>();
     for (const ing of held) counts.set(ing, (counts.get(ing) ?? 0) + 1);
 
-    grid.replaceChildren(
-      addPickerGrid(
+    const picker =
+      unmetBase === -1
+        ? addPickerGrid(
         slot.options.map((option, at) => ({
           id: option,
           label: ix.doc.vertices.ingredient[option]?.displayName ?? ix.ingName[option],
@@ -909,7 +944,10 @@ function slotEditor(
           section.commit(`Add ${ix.ingName[option]}`);
           rerender();
         },
-      ),
+          )
+        : el("div", { class: "warnings" }, [`Select ${baseRequirementLabel(ix, unmetBase)} first.`]);
+    grid.replaceChildren(
+      picker,
       ...held.map((ing, occurrence) =>
         button(
           `✕ ${ix.doc.vertices.ingredient[ing]?.displayName ?? ix.ingName[ing]}`,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import burgerJson from "../data/config/nodegraph/maps/Graph-1-Burger.json";
 import sushiJson from "../data/config/nodegraph/maps/Graph-3-Sushi.json";
+import coffeeJson from "../data/config/nodegraph/maps/Graph-2-Coffee.json";
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
 import { buildIndex } from "./nodeIndex.ts";
 import { parseDish } from "./nodeParser.ts";
@@ -167,6 +168,9 @@ describe("nested group quantity", () => {
   const roe = id("group", "single-fish-roe");
   const roeItem = id("ingredient", "fish-roe-orange");
   const other = id("ingredient", "wakame-seasame");
+  const baseSlot = sushiIx.slotsOfComposite[sushiIx.compositeByName.get("gunkan-with-topping")!]
+    .find((slot) => slot.baseOf.includes(sushiIx.compositeByName.get("gunkan-with-topping")!))!;
+  const baseItem = sushiIds.byNode.ingredient.get(sushiIx.ingName[baseSlot.options[0]])!;
 
   it("counts a nested group as one item of its parent maximum", () => {
     const text = `{c${composite}:{g${outer}:{g${roe}:${roeItem}}.${other}}}`;
@@ -183,9 +187,35 @@ describe("nested group quantity", () => {
 
   it("accepts either the nested roe choice or another gunkan topping", () => {
     for (const member of [`{g${roe}:${roeItem}}`, String(other)]) {
-      const result = resolveOrder(sushiIx, parseDish(`{c${composite}:{g${outer}:${member}}}`), sushiIds);
+      const result = resolveOrder(
+        sushiIx,
+        parseDish(`{c${composite}:${baseItem}.{g${outer}:${member}}}`),
+        sushiIds,
+      );
       expect(result.issues).toEqual([]);
     }
+  });
+});
+
+describe("nested composite base requirements", () => {
+  const coffeeIx = buildIndex(coffeeJson as unknown as NodeGraphMap);
+  const coffeeIds = orderIdIndex(coffeeIx);
+  const id = (space: "ingredient" | "composite" | "group", name: string): number =>
+    coffeeIds.byNode[space].get(name)!;
+
+  it("rejects cupcake fruit selected without first selecting whipping cream", () => {
+    const cupcake = id("composite", "cupcake-with-cream");
+    const cupcakeBase = id("ingredient", "cupcake-baked");
+    const toppings = id("group", "toppings");
+    const fruits = id("group", "fruits");
+    const kiwi = id("ingredient", "kiwi-sliced");
+    const result = resolveOrder(
+      coffeeIx,
+      parseDish(`{c${cupcake}:${cupcakeBase}.{g${toppings}:{g${fruits}:${kiwi}}}}`),
+      coffeeIds,
+    );
+    expect(result.issues.map((issue) => issue.kind)).toContain("missing-composite-base");
+    expect(result.issues.map(describeIssue).join(" ")).toContain("whiping-cream-with-topping");
   });
 });
 

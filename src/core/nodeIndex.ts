@@ -98,6 +98,10 @@ export interface IndexedSlot {
   maxQuantity: number;
   minQuantity: number;
   isBase: boolean;
+  /** Dense composites whose base branch this slot fulfils. */
+  baseOf: number[];
+  /** Dense composite bases that must be selected before this slot. */
+  requiresBaseOf: number[];
 }
 
 export interface GraphIndex {
@@ -316,6 +320,12 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
       maxQuantity: slot.maxQuantity,
       minQuantity: slot.minQuantity,
       isBase: slot.isBase,
+      baseOf: slot.baseOf
+        .map((name) => compositeByName.get(name) ?? -1)
+        .filter((composite) => composite >= 0),
+      requiresBaseOf: slot.requiresBaseOf
+        .map((name) => compositeByName.get(name) ?? -1)
+        .filter((composite) => composite >= 0),
     };
   };
   const slotsOfComposite = compositeName.map((name) => slotsOf(lookup, name).map(toIndexed));
