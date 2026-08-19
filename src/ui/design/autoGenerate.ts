@@ -10,6 +10,8 @@ import { evaluateCurve } from "./curveEditor.ts";
 
 /** Hard ceiling on any one dish's ingredient count, so a spiky curve can't produce absurd dishes. */
 export const DEFAULT_MAX_DISH_SLOTS = 5;
+/** Three generated customers, each letting the complexity curve choose its dish count. */
+export const DEFAULT_DISH_COUNT_SEQUENCE = [0, 0, 0] as const;
 
 export interface GenerateOptions {
   /**

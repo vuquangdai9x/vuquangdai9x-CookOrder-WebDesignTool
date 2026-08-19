@@ -12,6 +12,11 @@ import {
 describe("queue string", () => {
   const s = "0,1#4:5,0,1%0,0,1,0%1,7,1,7,7";
 
+  it("round-trips three explicitly empty queues", () => {
+    expect(parseQueues("%%")).toEqual([[], [], []]);
+    expect(serializeQueues(parseQueues("%%"))).toBe("%%");
+  });
+
   it("round-trips", () => {
     expect(serializeQueues(parseQueues(s))).toBe(s);
   });

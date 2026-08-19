@@ -44,6 +44,7 @@ import { customerColor } from "./customerColors.ts";
 import type { EstimateResult } from "./estimateDifficulty.ts";
 import { generateQueueLanes } from "./queueGenerate.ts";
 import { demandByRaw, rawYieldAmounts, supplyByRaw } from "../../data/recipeDemand.ts";
+import type { RawDemand } from "../../data/recipeDemand.ts";
 import type { ShuffleRangeSpec } from "./queueGenerate.ts";
 import { Section } from "./section.ts";
 
@@ -78,6 +79,11 @@ export interface QueueSectionDeps {
    * be swappable rather than forked.
    */
   generateLanes?(laneCount: number, shuffleRange: ShuffleRangeSpec): Id[][];
+  /**
+   * Replaces legacy single-input recipe demand. The node editor supplies a
+   * graph-aware walk so Recipe Pieces includes every input of a process.
+   */
+  recipeDemand?(): Map<Id, RawDemand>;
 }
 
 /**
@@ -1226,7 +1232,7 @@ function recipeFoldout(
   ui: QueueUiState,
   draft: QueueDraft,
 ): HTMLElement {
-  const demand = demandByRaw(deps.map, deps.currentCustomers());
+  const demand = deps.recipeDemand ? deps.recipeDemand() : demandByRaw(deps.map, deps.currentCustomers());
   const rawYield = rawYieldAmounts(deps.map);
   const supply = supplyByRaw(draft.queues);
 

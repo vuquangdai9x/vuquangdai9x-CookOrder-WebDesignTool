@@ -462,9 +462,9 @@ export class DesignView {
       featureUnlock: "",
       serveableSlots: 2,
       shuffleDistance: 0,
-      queueString: "0,1%0,1%0,1",
+      queueString: "%%",
       gridString: blankGrid,
-      customerString: "0;0;0.1",
+      customerString: "",
     });
     this.onChange();
     this.selectLevel(id);

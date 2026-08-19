@@ -70,7 +70,7 @@ export function parseQueues(s: string): QueueItem[][] {
   const [data] = queueSections(s);
   if (data.trim() === "") return [];
   return data.split("%").map((queueStr) =>
-    queueStr.split(",").map((itemStr) => {
+    queueStr === "" ? [] : queueStr.split(",").map((itemStr) => {
       const { base, effects } = splitEffects(itemStr);
       const id = parseIntStrict(base, itemStr);
       return { kind: id < 0 ? "sweeper" : "ingredient", id, effects } as QueueItem;

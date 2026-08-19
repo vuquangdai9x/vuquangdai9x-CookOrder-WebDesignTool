@@ -11,11 +11,9 @@
 // supposed to agree are two places to disagree, and the one that loses is
 // always the one the level strings actually used.
 //
-// The consequence, stated plainly: REORDERING A SPACE RENUMBERS IT, and every
-// committed level string indexing into it starts meaning something else. That
-// is a real editing power (a designer can renumber the queue alphabet), not an
-// accident — the editor confirms before doing it, naming how many levels are
-// affected.
+// The consequence, stated plainly: REORDERING A SPACE RENUMBERS IT. The graph
+// editor therefore migrates every queue/customer string in the map in the same
+// confirmed undo entry, so those numbers continue to name the same nodes.
 //
 // Two rules keep the rest safe:
 //
@@ -186,4 +184,3 @@ export function validateIdTable(table: IdTable): IdTableIssue[] {
   }
   return issues;
 }
-

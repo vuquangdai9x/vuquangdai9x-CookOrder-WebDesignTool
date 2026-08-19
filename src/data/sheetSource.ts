@@ -304,7 +304,7 @@ const LEVELS_CSV_HEADER = [
 ];
 
 /** Level data only: metadata, customer, grid and queue strings — no map/ingredient/tool definitions. */
-export function levelsCsv(map: MapData): string {
+export function levelsCsv(map: Pick<MapData, "levels">): string {
   const rows = map.levels.map((l) => [
     l.id, l.name, l.weather, l.levelTag, l.featureUnlock, l.shuffleDistance,
     l.serveableSlots, l.queueString, l.gridString, l.customerString,
@@ -328,7 +328,7 @@ export function downloadFile(name: string, content: string, mime = "text/csv"): 
 /** Save = download one levels CSV per map. */
 export function exportProjectCsv(maps: MapData[]): void {
   for (const map of maps) {
-    downloadFile(`map${map.id}_${map.name}_levels.csv`, levelsCsv(map));
+    downloadFile(`LevelData-${map.id}-${map.name}.csv`, levelsCsv(map));
   }
 }
 

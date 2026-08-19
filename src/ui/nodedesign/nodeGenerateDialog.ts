@@ -12,6 +12,7 @@
 
 import { button, el } from "../dom.ts";
 import {
+  DEFAULT_DISH_COUNT_SEQUENCE,
   DEFAULT_MAX_DISH_SLOTS,
   parseDishCountSequence,
   serializeDishCountSequence,
@@ -55,7 +56,7 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
     ? existing.map((c) => (c.typeId === 1 ? -1 : c.dishes.length))
     : storedCounts.length
       ? storedCounts
-      : [1, 1, 1];
+      : [...DEFAULT_DISH_COUNT_SEQUENCE];
 
   const storedWeights = deps.level.ingredientWeights
     ? parseIngredientWeights(deps.level.ingredientWeights)

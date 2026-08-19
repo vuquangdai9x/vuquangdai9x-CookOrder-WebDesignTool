@@ -24,7 +24,7 @@ import { estimateDifficulty } from "../design/estimateDifficulty.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
 import { createGridSection } from "../design/gridSection.ts";
 import { createQueueSection, startQueueAutoGenerate, toQueueDraft } from "../design/queueSection.ts";
-import { generateNodeQueueLanes } from "./nodeQueueGenerate.ts";
+import { generateNodeQueueLanes, nodeDemandByRaw } from "./nodeQueueGenerate.ts";
 import type { QueueDraft, QueueSectionDeps } from "../design/queueSection.ts";
 import type { Section } from "../design/section.ts";
 import { createNodeCustomerSection } from "./nodeCustomerSection.ts";
@@ -39,7 +39,7 @@ import type { LevelData } from "../../data/mapLoader.ts";
 import { nodeAsMapDef, nodeLevelAsLevelConfig } from "../../data/nodeGraphToMapDef.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import { validateNodeGraph } from "../../data/nodeGraphValidate.ts";
-import type { NodeProjectState } from "../../data/nodeProject.ts";
+import { blankLevel, type NodeProjectState } from "../../data/nodeProject.ts";
 
 type LayoutMode = "stack" | "split";
 
@@ -139,6 +139,8 @@ export class NodeDesignView {
           laneCount,
           shuffleRange,
         }),
+      recipeDemand: () =>
+        nodeDemandByRaw(this.projected.ix, orderIdIndex(this.projected.ix), this.customers.draft),
     };
 
     this.customers = createNodeCustomerSection({
@@ -343,10 +345,8 @@ export class NodeDesignView {
 
   private addLevel(): void {
     const nextId = this.project.levels.reduce((n, l) => Math.max(n, l.id), 0) + 1;
-    const template = this.level;
     this.project.levels.push({
-      ...structuredClone(template),
-      id: nextId,
+      ...blankLevel(this.project.doc, nextId),
       name: `${this.project.doc.map.id}_${nextId}`,
     });
     this.onChange();

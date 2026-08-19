@@ -20,6 +20,7 @@ import type { ShuffleRangeSpec } from "../design/queueGenerate.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
 import type { NodeCustomerConfig, DishNode } from "../../core/nodeParser.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
+import type { RawDemand } from "../../data/recipeDemand.ts";
 
 export interface NodeQueueOptions {
   ix: GraphIndex;
@@ -90,6 +91,37 @@ function leavesFor(ix: GraphIndex, ing: number): { leaf: number; covers: number 
 
   walk(ing, 1, new Set());
   return out;
+}
+
+/**
+ * Recipe Pieces demand keyed by pickupable DATA id. Unlike MapDef demand,
+ * this follows every input of every producer step, so a coffee output counts
+ * both its coffee/bean chain and its cup input.
+ */
+export function nodeDemandByRaw(
+  ix: GraphIndex,
+  ids: IdIndex,
+  customers: NodeCustomerConfig[],
+): Map<number, RawDemand> {
+  const demand = new Map<number, RawDemand>();
+  for (const item of orderedItems(ix, ids, customers)) {
+    for (const { leaf, covers } of leavesFor(ix, item)) {
+      const name = ix.ingName[leaf];
+      const dataId = name === undefined ? undefined : ids.byNode.ingredient.get(name);
+      if (dataId === undefined) continue;
+      const existing = demand.get(dataId);
+      if (existing) {
+        existing.need++;
+        // A valid graph normally reaches a leaf with one stable yield. Keep
+        // the smaller capacity if invalid paths disagree, so the warning is
+        // conservative rather than hiding a shortage.
+        existing.amount = Math.min(existing.amount, Math.max(1, covers));
+      } else {
+        demand.set(dataId, { need: 1, amount: Math.max(1, covers), usageNum: 1 });
+      }
+    }
+  }
+  return demand;
 }
 
 /**

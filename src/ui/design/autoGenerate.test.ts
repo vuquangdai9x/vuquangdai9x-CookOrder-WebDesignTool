@@ -4,7 +4,12 @@ import { testMap } from "../../core/testFixtures.ts";
 import type { CookedIngredientDef, MapDef } from "../../core/types.ts";
 import { defaultCurve } from "./curveEditor.ts";
 import type { CurveState } from "./curveEditor.ts";
-import { autoDishCount, generateCustomers, parseDishCountSequence } from "./autoGenerate.ts";
+import {
+  autoDishCount,
+  DEFAULT_DISH_COUNT_SEQUENCE,
+  generateCustomers,
+  parseDishCountSequence,
+} from "./autoGenerate.ts";
 
 // A fixture with real base/topping relationships, unlike testMap (whose
 // cookedIngredients are all baseId-less): bun(0) has 2 followers (multi),
@@ -41,6 +46,9 @@ function flatCurve(value: number): CurveState {
 }
 
 describe("generateCustomers", () => {
+  it("defaults three customers to automatic dish counts", () => {
+    expect(DEFAULT_DISH_COUNT_SEQUENCE).toEqual([0, 0, 0]);
+  });
   it("creates one customer per dishCounts entry, in order", () => {
     const result = generateCustomers(fixtureMap, {
       dishCounts: [1, 2, 1],

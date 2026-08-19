@@ -260,7 +260,10 @@ export function blankLevel(doc: NodeGraphMap, id = 1): LevelData {
     featureUnlock: "",
     serveableSlots: 2,
     shuffleDistance: 0,
-    queueString: "",
+    // Three explicit empty lanes. `%%` is canonical and round-trips as
+    // `[[], [], []]`, so a new level opens with the requested queue count
+    // without inventing ingredient ids that may not exist in this graph.
+    queueString: "%%",
     // One empty cell per grid position, so the grid editor renders the real
     // shape rather than a zero-width board the designer cannot click into.
     gridString: new Array(cells).fill("").join(","),

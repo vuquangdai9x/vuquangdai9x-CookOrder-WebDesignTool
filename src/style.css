@@ -3142,6 +3142,19 @@ td input {
 .edge-option { stroke: #9a8bd0; }
 .edge-leavesDirty { stroke: #8a8d96; }
 
+/* Direction is relative to the selected node(s), following the visual flow. */
+.nodegraph-edge.selected-input {
+  stroke: #fff2a8;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 3px rgba(255, 242, 168, 0.55));
+}
+
+.nodegraph-edge.selected-output {
+  stroke: #aef4ff;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 3px rgba(174, 244, 255, 0.55));
+}
+
 .nodegraph-wire {
   stroke: var(--accent);
   stroke-width: 2;
@@ -3829,6 +3842,68 @@ td input {
 }
 
 .nodegraph-idgrip:active { cursor: grabbing; }
+
+.nodegraph-idtable-dialog {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 36px #0009;
+}
+
+.nodegraph-idtable-dialog > p { margin-top: 0; }
+
+.nodegraph-idtable-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.nodegraph-idtable-space {
+  min-width: 0;
+  max-height: min(62vh, 38rem);
+  overflow: auto;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.nodegraph-idtable-space h3 {
+  position: sticky;
+  top: -0.55rem;
+  z-index: 1;
+  margin: -0.55rem -0.55rem 0.4rem;
+  padding: 0.55rem;
+  color: var(--accent);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.nodegraph-idtable-modal-row {
+  min-height: 1.65rem;
+  padding: 0.15rem 0.25rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.nodegraph-idtable-modal-row + .nodegraph-idtable-modal-row { margin-top: 2px; }
+
+.nodegraph-idtable-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nodegraph-idtable-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
 
 /* ---------- Slot points (Map Process inspector + node Play) ---------- */
 

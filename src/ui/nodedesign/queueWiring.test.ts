@@ -38,6 +38,12 @@ describe("node Design supplies its own generator", () => {
     expect(nodeDesignSrc).toContain("generateNodeQueueLanes({");
   });
 
+  it("supplies graph-aware Recipe Pieces demand", () => {
+    expect(queueSectionSrc).toMatch(/recipeDemand\?\(\)/);
+    expect(nodeDesignSrc).toContain("recipeDemand: () =>");
+    expect(nodeDesignSrc).toContain("nodeDemandByRaw(");
+  });
+
   it("routes BOTH entry points through the section, not a private copy", () => {
     // The chained call from the customer generator goes through the same
     // startQueueAutoGenerate the button uses, so there is one path to keep

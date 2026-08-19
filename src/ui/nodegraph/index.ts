@@ -48,17 +48,24 @@ import { validateNodeGraph } from "../../data/nodeGraphValidate.ts";
 import { ID_SPACES, buildIdIndex, mintId, nextId, removeId, renameNode, reorderIdEntry } from "../../data/nodeIdTable.ts";
 import { createNodeMap, listNodeMaps, loadNodeProject } from "../../data/nodeProject.ts";
 import type { NodeProjectState } from "../../data/nodeProject.ts";
+import { nodeDownloadNames } from "../../data/nodeFileNames.ts";
 import type {
   EdgeKindName,
   FieldDef,
   GraphNote,
   IdSpace,
+  IdTable,
   NodeGraphMap,
   ToolSlotConfig,
   VertexKindName,
 } from "../../data/nodeGraphTypes.ts";
-import { downloadFile } from "../../data/sheetSource.ts";
+import { downloadFile, importLevelsCsv, levelsCsv } from "../../data/sheetSource.ts";
 import { parseGraphJson, vertexCount } from "../../data/nodeGraphJson.ts";
+import {
+  idTablesAreReorders,
+  migrateLevelsForIdTableReorder,
+  type LevelIdMigration,
+} from "../../data/nodeIdMigration.ts";
 import { noteImageURL } from "./noteImage.ts";
 import { downloadGraphPng } from "./exportPng.ts";
 
@@ -252,11 +259,14 @@ export class MapProcessView {
       undoBtn,
       redoBtn,
       button("⤢ Auto layout", () => this.applyAutoLayout(), { title: "Re-run the layered layout" }),
-      button("⬇ JSON", () => this.exportJson(), { title: "Download this graph as JSON" }),
-      button("⬇ PNG", () => void this.exportPng(), { title: "Download the whole graph as a PNG" }),
-      button("⬆ JSON", () => this.importJson(), { title: "Replace this graph from a JSON file" }),
-      button("⬇ CSV", () => this.exportCsv(), { title: "Download this graph as CSV" }),
-      button("⬆ CSV", () => this.importCsv(), { title: "Replace this graph from a CSV file" }),
+      button("# ID table", () => this.openIdTableDialog(), { title: "View and stage reordering of every ID space" }),
+      button("⬇ Graph JSON", () => this.exportJson(), { title: "Download this graph as JSON" }),
+      button("⬇ Graph PNG", () => void this.exportPng(), { title: "Download the whole graph as a PNG" }),
+      button("⬆ Graph JSON", () => this.importJson(), { title: "Replace this graph from a JSON file" }),
+      button("⬇ Graph CSV", () => this.exportCsv(), { title: "Download this graph as CSV" }),
+      button("⬆ Graph CSV", () => this.importCsv(), { title: "Replace this graph from a CSV file" }),
+      button("⬇ Levels CSV", () => this.exportLevelsCsv(), { title: "Download every level in this map as CSV" }),
+      button("⬆ Levels CSV", () => this.importLevelsCsv(), { title: "Replace every level in this map from CSV" }),
       button("💾 Save draft", () => this.save(), { class: "primary" }),
     );
   }
@@ -363,6 +373,13 @@ export class MapProcessView {
   }
 
   private applyState(state: NodeGraphMap): void {
+    const idTableChanged = ID_SPACES.some(
+      (space) => JSON.stringify(this.doc.idTable[space]) !== JSON.stringify(state.idTable[space]),
+    );
+    if (idTableChanged && idTablesAreReorders(this.doc.idTable, state.idTable)) {
+      const migration = migrateLevelsForIdTableReorder(this.project.levels, this.doc.idTable, state.idTable);
+      this.project.levels = migration.levels;
+    }
     this.doc = state;
     this.project.doc = state;
     // The selection may name a vertex that no longer exists at this point in
@@ -681,7 +698,15 @@ export class MapProcessView {
       el.classList.toggle("selected", this.selected.has(key));
       el.classList.toggle("primary", this.selection !== null && key === selKey(this.selection));
     }
+    this.paintEdgeSelection();
     this.refreshChrome();
+  }
+
+  private paintEdgeSelection(): void {
+    for (const edge of this.edgeLayer.querySelectorAll<SVGPathElement>(".nodegraph-edge:not(.edge-lookup)")) {
+      edge.classList.toggle("selected-output", this.selected.has(edge.dataset.fromKey ?? ""));
+      edge.classList.toggle("selected-input", this.selected.has(edge.dataset.toKey ?? ""));
+    }
   }
 
   private clearSelection(): void {
@@ -1171,6 +1196,8 @@ export class MapProcessView {
       const path = document.createElementNS(svgNs, "path");
       path.setAttribute("d", `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`);
       path.setAttribute("class", `nodegraph-edge edge-${kind}`);
+      path.dataset.fromKey = selKey({ kind: from.kind, name: from.name });
+      path.dataset.toKey = selKey({ kind: to.kind, name: to.name });
       const def = edgeKind(kind);
       if (def?.style === "dashed") path.setAttribute("stroke-dasharray", "6 4");
       if (def?.style === "dotted") path.setAttribute("stroke-dasharray", "2 4");
@@ -1250,6 +1277,7 @@ export class MapProcessView {
     }
 
     this.renderTableWires(svgNs, kindOf);
+    this.paintEdgeSelection();
   }
 
   /**
@@ -2441,24 +2469,132 @@ export class MapProcessView {
   }
 
   /**
-   * Move a row within its id space. Confirms first, because everything from
-   * `min(from,to)` onward is renumbered and every level string indexing into
-   * that range starts meaning something else.
+   * Full-table modal with a staged copy. Dragging here changes no graph data;
+   * all spaces are committed together only after the explicit Apply warning.
+   */
+  private openIdTableDialog(): void {
+    let staged: IdTable = structuredClone(this.doc.idTable);
+    const original = JSON.stringify(staged);
+    const close = (): void => overlay.remove();
+    const grid = el("div", { class: "nodegraph-idtable-grid" });
+    const apply = button(
+      "Apply reordered IDs",
+      () => {
+        const changed = ID_SPACES.filter(
+          (space) => JSON.stringify(staged[space]) !== JSON.stringify(this.doc.idTable[space]),
+        );
+        if (changed.length === 0) {
+          close();
+          return;
+        }
+        let migration: LevelIdMigration;
+        try {
+          migration = migrateLevelsForIdTableReorder(this.project.levels, this.doc.idTable, staged);
+        } catch (error) {
+          alert(error instanceof Error ? error.message : String(error));
+          return;
+        }
+        if (
+          !confirm(
+            `Apply ID-table reordering for ${changed.join(", ")}?\n\n` +
+              `${migration.changedLevels} level(s) will be updated to keep pointing at the same nodes ` +
+              `(${migration.changedQueueReferences} queue and ${migration.changedCustomerReferences} customer references).`,
+          )
+        ) {
+          return;
+        }
+        this.project.levels = migration.levels;
+        this.doc = { ...this.doc, idTable: structuredClone(staged) };
+        this.commit(`reorder ID table (${changed.join(", ")})`);
+        close();
+      },
+      { class: "primary" },
+    );
+
+    const updateApply = (): void => {
+      const dirty = JSON.stringify(staged) !== original;
+      apply.disabled = !dirty;
+      apply.textContent = dirty ? "Apply reordered IDs" : "No ID changes";
+    };
+
+    const render = (): void => {
+      grid.replaceChildren();
+      for (const space of ID_SPACES) {
+        const list = el("div", { class: "nodegraph-idrows", "data-space": space });
+        staged[space].forEach((node, id) => {
+          list.append(
+            el("div", { class: "nodegraph-idrow nodegraph-idtable-modal-row", "data-node": node }, [
+              el("span", { class: "nodegraph-idgrip", title: "Drag to stage a new ID" }, ["⠿"]),
+              el("code", {}, [String(id)]),
+              el("span", { class: "nodegraph-idtable-name" }, [node]),
+            ]),
+          );
+        });
+        Sortable.create(list, {
+          animation: 120,
+          handle: ".nodegraph-idgrip",
+          onEnd: (event) => {
+            if (event.oldIndex === undefined || event.newIndex === undefined || event.oldIndex === event.newIndex) return;
+            const rows = [...staged[space]];
+            const [moved] = rows.splice(event.oldIndex, 1);
+            rows.splice(event.newIndex, 0, moved);
+            staged = { ...staged, [space]: rows };
+            render();
+          },
+        });
+        grid.append(
+          el("section", { class: "nodegraph-idtable-space" }, [
+            el("h3", {}, [`${space} · ${staged[space].length}`]),
+            staged[space].length > 0 ? list : el("p", { class: "muted" }, ["No IDs"]),
+          ]),
+        );
+      }
+      updateApply();
+    };
+
+    const panel = el("div", { class: "nodegraph-idtable-dialog" }, [
+      el("p", { class: "muted" }, [
+        "Drag rows to stage positional ID changes. Nothing is applied until you confirm below.",
+      ]),
+      grid,
+      el("div", { class: "nodegraph-idtable-actions" }, [button("Cancel", close), apply]),
+    ]);
+    const overlay = el("div", { class: "overlay-panel nodegraph-idtable-overlay" }, [
+      el("div", { class: "definitions-head" }, [
+        el("h2", {}, ["Full ID table"]),
+        button("✕ Close", close),
+      ]),
+      panel,
+    ]);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) close();
+    });
+    render();
+    document.body.append(overlay);
+  }
+
+  /**
+   * Move a row within its id space. Confirms first, then migrates all level
+   * strings so every serialized ID continues to name the same node.
    */
   private reorderIdRow(space: IdSpace, from: number, to: number): void {
     if (from === to) return;
-    const rows = this.doc.idTable[space] ?? [];
-    const affected = new Set<string>();
-    for (let id = Math.min(from, to); id < rows.length; id++) {
-      for (const name of this.levelsUsingId(space, id)) affected.add(name);
+    const nextIdTable = reorderIdEntry(this.doc.idTable, space, from, to);
+    let migration: LevelIdMigration;
+    try {
+      migration = migrateLevelsForIdTableReorder(this.project.levels, this.doc.idTable, nextIdTable);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : String(error));
+      this.renderSide();
+      return;
     }
     if (
-      affected.size > 0 &&
       !confirm(
         `Moving this row renumbers the ${space} ids from ${Math.min(from, to)} onward.
 
 ` +
-          `${affected.size} committed level(s) index into that range and will start meaning something different.
+          `${migration.changedLevels} level(s) will be updated to keep pointing at the same nodes ` +
+          `(${migration.changedQueueReferences} queue and ${migration.changedCustomerReferences} customer references).
 
 Continue?`,
       )
@@ -2466,7 +2602,8 @@ Continue?`,
       this.renderSide(); // put the dragged row back where it was
       return;
     }
-    this.doc = { ...this.doc, idTable: reorderIdEntry(this.doc.idTable, space, from, to) };
+    this.project.levels = migration.levels;
+    this.doc = { ...this.doc, idTable: nextIdTable };
     this.commit(`reorder ${space} id ${from} → ${to}`);
   }
 
@@ -2494,17 +2631,21 @@ Continue?`,
 
   // ---------- import / export ----------
 
+  private downloadNames() {
+    return nodeDownloadNames(listNodeMaps(), this.project.docId, this.doc.map.name || this.project.docId);
+  }
+
   private exportJson(): void {
     // Unknown `_*` keys are preserved by structuredClone, so an unmodified
     // export diffs clean against the file it came from.
     const text = JSON.stringify(this.doc, null, 2);
-    downloadFile(`${this.doc.map.id || "graph"}.json`, text, "application/json");
+    downloadFile(this.downloadNames().graphJson, text, "application/json");
   }
 
   private async exportPng(): Promise<void> {
     try {
       this.flashStatus("Rendering whole graph PNG…");
-      await downloadGraphPng(this.canvas, `${this.doc.map.id || "graph"}.png`);
+      await downloadGraphPng(this.canvas, this.downloadNames().graphPng);
       this.flashStatus("PNG downloaded.");
     } catch (error) {
       alert(`PNG export failed.\n\n${error instanceof Error ? error.message : String(error)}`);
@@ -2556,7 +2697,42 @@ Continue?`,
   }
 
   private exportCsv(): void {
-    downloadFile(`${this.doc.map.id || "graph"}.csv`, graphToCsv(this.doc), "text/csv");
+    downloadFile(this.downloadNames().graphCsv, graphToCsv(this.doc), "text/csv");
+  }
+
+  private exportLevelsCsv(): void {
+    downloadFile(this.downloadNames().levelsCsv, levelsCsv({ levels: this.project.levels }), "text/csv");
+  }
+
+  private importLevelsCsv(): void {
+    if (
+      this.history.isDirty &&
+      !confirm("Importing level data will also save the current unsaved graph changes. Continue?")
+    ) {
+      return;
+    }
+    const input = el("input", { type: "file", accept: ".csv,text/csv" }) as HTMLInputElement;
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const levels = importLevelsCsv(String(reader.result));
+          if (levels.length === 0) throw new Error("CSV has no level rows");
+          if (!confirm(`Replace all ${this.project.levels.length} level(s) with ${levels.length} row(s) from ${file.name}?`)) {
+            return;
+          }
+          this.project.levels = levels;
+          this.project.origin = `imported level CSV (${file.name})`;
+          this.save();
+        } catch (error) {
+          alert(`Could not import level CSV.\n\n${error instanceof Error ? error.message : String(error)}`);
+        }
+      };
+      reader.readAsText(file);
+    });
+    input.click();
   }
 
   private importCsv(): void {
