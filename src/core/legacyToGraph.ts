@@ -290,6 +290,7 @@ export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): 
   const dirty: DirtyVertex[] = map.dirtyObjects.map((d) => ({
     name: dirtyName(d.id),
     displayName: d.name,
+    ...(d.maxStack !== undefined ? { maxStack: d.maxStack } : {}),
     runtimeDirtyId: d.id,
     ...(d.localImage ? { localImage: d.localImage } : {}),
     ...(d.fileId ? { fileId: d.fileId } : {}),

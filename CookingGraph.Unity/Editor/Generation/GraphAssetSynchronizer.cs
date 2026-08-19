@@ -282,7 +282,10 @@ namespace CookingGraph.Editor
                     ((CompositeNodeAsset)asset).orderable = json.Value<bool?>("orderable") ?? false;
                     ((CompositeNodeAsset)asset).toppingRequired = json.Value<bool?>("toppingRequired") ?? false;
                     break;
-                case "dirty": ((DirtyNodeAsset)asset).runtimeDirtyId = OptionalIntOf(json, "runtimeDirtyId"); break;
+                case "dirty":
+                    ((DirtyNodeAsset)asset).maxStack = OptionalIntOf(json, "maxStack");
+                    ((DirtyNodeAsset)asset).runtimeDirtyId = OptionalIntOf(json, "runtimeDirtyId");
+                    break;
             }
         }
 

@@ -653,6 +653,30 @@ describe("serve slots and dirty dishes", () => {
     expect(dirty.every((c) => c.count === 1)).toBe(true);
   });
 
+  it("uses a dirty object's maxStack before the map fallback", () => {
+    const dirtyMap: MapDef = {
+      ...testMap,
+      dirtyStackHeight: 3,
+      dirtyObjects: [{ id: 10, name: "Plate", icon: "", maxStack: 1, sourceCookedId: 0 }],
+    };
+    const sim = new Simulation(
+      dirtyMap,
+      level({
+        queueString: "0,0",
+        gridString: EMPTY_GRID,
+        customerString: "0;0;0;0|0;0;0;0",
+        serveableSlots: 1,
+      }),
+    );
+    sim.pick(0);
+    sim.tick(2);
+    sim.pick(0);
+    sim.tick(2);
+    const dirty = sim.grid.filter((cell) => cell.kind === "dirty") as { dirtyId: number; count: number }[];
+    expect(dirty).toHaveLength(2);
+    expect(dirty.every((cell) => cell.dirtyId === 10 && cell.count === 1)).toBe(true);
+  });
+
   it("clears the oldest dirty stack when a sweeper is picked", () => {
     const sim = new Simulation(
       { ...testMap, dirtyStackHeight: 1 },

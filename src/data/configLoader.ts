@@ -83,6 +83,7 @@ interface CookedRow {
 interface DirtyRow {
   id: number;
   name: string;
+  maxStack?: number;
   /** Name of the cooked ingredient (or any one of several) whose presence in a dish spawns this object. */
   source: string | string[];
   emoji: string;
@@ -184,6 +185,7 @@ function buildMap(
         id: d.id,
         name: d.name,
         icon: d.emoji,
+        ...(d.maxStack !== undefined ? { maxStack: d.maxStack } : {}),
         fileId: d.fileId,
         localImage: d.localImage,
         sourceCookedId: ids.length === 1 ? ids[0] : ids,

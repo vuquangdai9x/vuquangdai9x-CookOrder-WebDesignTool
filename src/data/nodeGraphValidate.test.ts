@@ -77,6 +77,13 @@ describe("INV-ORDER-REBUILDABLE — one ingredient, two slots of one composite",
 });
 
 describe("graph structure invariants", () => {
+  it("INV-DIRTY-STACK: a configured stack maximum must be positive", () => {
+    const doc = clone();
+    doc.vertices.dirty[0].maxStack = 0;
+    const { errors } = validateNodeGraph(doc);
+    expect(errors.find((error) => error.invariantId === "INV-DIRTY-STACK")?.vertexName).toBe("dirty-plate");
+  });
+
   it("INV-UNIQUE-PRODUCER: two tools producing one ingredient", () => {
     const doc = clone();
     doc.edges.process.push({ from: "griddle", to: "bun-sliced", inputs: [{ ingredient: "bun", slot: 0 }], amount: 1 });

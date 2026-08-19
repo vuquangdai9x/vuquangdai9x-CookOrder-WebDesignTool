@@ -87,7 +87,7 @@ namespace CookingGraph.Editor
                 F("name", "string", true), F("displayName", "string", true), F("orderable", "bool", false, false),
                 F("toppingRequired", "bool", false, false)),
             new VertexDefinition("dirty", "Dirty", "#888888",
-                F("name", "string", true), F("displayName", "string", true), F("emoji", "string"),
+                F("name", "string", true), F("displayName", "string", true), F("maxStack", "int"), F("emoji", "string"),
                 F("localImage", "string"), F("fileId", "string"), F("runtimeDirtyId", "int"))
         }.ToDictionary(value => value.Kind);
 

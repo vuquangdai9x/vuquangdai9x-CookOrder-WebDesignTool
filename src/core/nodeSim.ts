@@ -1735,7 +1735,8 @@ export class NodeSimulation {
    * visible when the flight lands. Stacks never mix types.
    */
   private addDirtyDish(fromCustomer: number, dirtyId: number): void {
-    const height = this.ix.doc.map.dirtyStackHeight || 1;
+    const configured = dirtyId >= 0 ? this.ix.doc.vertices.dirty[dirtyId]?.maxStack : undefined;
+    const height = Math.max(1, configured ?? this.ix.doc.map.dirtyStackHeight ?? 1);
     const openStack = this.dirtyOrder.find((i) => {
       const cell = this.grid[i];
       const pendingEntry = this.pendingDirty.get(i);

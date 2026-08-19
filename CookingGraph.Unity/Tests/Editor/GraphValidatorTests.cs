@@ -45,6 +45,17 @@ namespace CookingGraph.Editor.Tests
         }
 
         [Test]
+        public void DirtyStackMaximumMustBePositive()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            ((JArray)document.Vertices["dirty"]).Add(new JObject
+            {
+                ["name"] = "dirty-plate", ["displayName"] = "Dirty Plate", ["maxStack"] = 0
+            });
+            Assert.That(GraphValidator.Validate(document).Any(issue => issue.Code == "INV-DIRTY-STACK"), Is.True);
+        }
+
+        [Test]
         public void BatchedIntermediateOutputIsAllowed()
         {
             var document = GraphJsonDocumentTests.MinimalDocument();

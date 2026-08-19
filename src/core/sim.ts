@@ -1485,7 +1485,8 @@ export class Simulation {
    * a dirty cup always occupy separate cells.
    */
   private addDirtyDish(fromCustomer: number, dirtyId: Id): void {
-    const height = this.map.dirtyStackHeight || 1;
+    const configured = this.map.dirtyObjects.find((dirty) => dirty.id === dirtyId)?.maxStack;
+    const height = Math.max(1, configured ?? this.map.dirtyStackHeight ?? 1);
     const openStack = this.dirtyOrder.find((i) => {
       const cell = this.grid[i];
       const pendingEntry = this.pendingDirty.get(i);

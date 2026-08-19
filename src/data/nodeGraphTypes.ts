@@ -196,6 +196,8 @@ export interface CompositeVertex {
 export interface DirtyVertex {
   name: string;
   displayName: string;
+  /** Maximum objects in one stack; absent uses the map-wide dirtyStackHeight fallback. */
+  maxStack?: number;
   emoji?: string;
   localImage?: string;
   imageURL?: string;

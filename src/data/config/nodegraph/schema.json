@@ -115,7 +115,7 @@
       "type": "int",
       "required": true,
       "min": 1,
-      "description": "How many dirty objects stack in one grid cell before it overflows and the level is lost."
+      "description": "Fallback stack capacity for dirty nodes whose maxStack is blank."
     },
     {
       "name": "visibleRows",
@@ -363,6 +363,12 @@
           "required": true
         },
         {
+          "name": "maxStack",
+          "type": "int",
+          "min": 1,
+          "description": "Maximum number of this dirty object in one grid-cell stack. Leave blank to use the map dirtyStackHeight fallback."
+        },
+        {
           "name": "emoji",
           "type": "string"
         },
@@ -561,6 +567,11 @@
       "id": "INV-GROUP-QUANTITY",
       "severity": "error",
       "description": "A group's minQuantity is non-negative and cannot exceed a finite maxQuantity."
+    },
+    {
+      "id": "INV-DIRTY-STACK",
+      "severity": "error",
+      "description": "A dirty node's optional maxStack must be a positive integer."
     },
     {
       "id": "INV-GROUP-NONEMPTY",

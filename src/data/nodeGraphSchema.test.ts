@@ -30,6 +30,11 @@ describe("schema shape", () => {
     }
   });
 
+  it("exposes a positive per-dirty-node maxStack in the generated inspector", () => {
+    const field = vertexFields("dirty").find((candidate) => candidate.name === "maxStack");
+    expect(field).toMatchObject({ type: "int", min: 1 });
+  });
+
   it("carries every invariant the plan relies on, each with a severity", () => {
     const required = [
       "INV-REF",
@@ -37,6 +42,7 @@ describe("schema shape", () => {
       "INV-ACYCLIC",
       "INV-NAMESPACE",
       "INV-TRACEABLE",
+      "INV-DIRTY-STACK",
       "INV-IDTABLE-UNIQUE",
       "INV-IDTABLE-RESOLVES",
       "INV-NO-RETIRED-IN-USE",

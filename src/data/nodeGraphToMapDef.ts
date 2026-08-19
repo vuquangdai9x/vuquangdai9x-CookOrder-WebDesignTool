@@ -167,6 +167,7 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
       id: ids.byNode.dirty.get(vertex.name) ?? dense,
       name: vertex.displayName,
       icon: vertex.emoji ?? "🍽",
+      ...(vertex.maxStack !== undefined ? { maxStack: vertex.maxStack } : {}),
       ...(vertex.fileId ? { fileId: vertex.fileId } : {}),
       ...(vertex.localImage ? { localImage: vertex.localImage } : {}),
       sourceCookedId: sources.length === 1 ? sources[0] : sources,

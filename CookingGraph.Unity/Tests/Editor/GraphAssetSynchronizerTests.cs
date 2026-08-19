@@ -106,5 +106,23 @@ namespace CookingGraph.Editor.Tests
             Assert.That(diff.Changed, Does.Not.Contain("ingredient:bun"));
             Assert.That(diff.Unchanged, Does.Contain("ingredient:bun"));
         }
+
+        [Test]
+        public void DirtyNodeMaxStackIsGeneratedAsOptionalRuntimeData()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            document.Vertices["dirty"].Add(new JObject
+            {
+                ["name"] = "dirty-plate",
+                ["displayName"] = "Dirty Plate",
+                ["maxStack"] = 2
+            });
+            document.IdTable["dirty"] = new JArray("dirty-plate");
+
+            var graph = GraphAssetSynchronizer.Synchronize(document, "fixture.json", null);
+            var dirty = graph.dirtyObjects.Single();
+            Assert.That(dirty.maxStack.hasValue, Is.True);
+            Assert.That(dirty.maxStack.value, Is.EqualTo(2));
+        }
     }
 }

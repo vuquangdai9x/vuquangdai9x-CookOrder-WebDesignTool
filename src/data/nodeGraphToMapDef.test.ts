@@ -41,6 +41,12 @@ describe("the projection carries what the Design sections read", () => {
     expect(cooked("patty-cooked").limit).toBeUndefined();
   });
 
+  it("projects a dirty node's per-stack maximum", () => {
+    const configured = structuredClone(doc);
+    configured.vertices.dirty[0].maxStack = 2;
+    expect(nodeAsMapDef(configured).map.dirtyObjects[0].maxStack).toBe(2);
+  });
+
   it("gives a topping the base-slot hint its dish editor shows", () => {
     expect(cooked("patty-cooked").baseId).toBe(dataId("bun-sliced"));
     // A shared sauce lists every base its composite offers.

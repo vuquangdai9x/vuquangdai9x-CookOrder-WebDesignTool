@@ -100,6 +100,8 @@ export interface DirtyObjectDef {
   id: Id;
   name: string;
   icon: string;
+  /** Per-type stack capacity; absent uses MapDef.dirtyStackHeight. */
+  maxStack?: number;
   fileId?: string;
   /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */
   localImage?: string;
@@ -159,8 +161,8 @@ export interface MapDef {
   name: string;
   dirtyDishName: string; // per-map skin: "plate" | "cup" | "box" | ...
   /**
-   * Grid size and dirty-stack height are fixed per map, not per level — every
-   * level in a map shares one board shape and one stack cap.
+   * Grid size and fallback dirty-stack height are fixed per map, not per level.
+   * A DirtyObjectDef may override the stack height for its own type.
    */
   gridWidth: number;
   gridHeight: number;

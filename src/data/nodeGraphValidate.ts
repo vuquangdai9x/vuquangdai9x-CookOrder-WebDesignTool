@@ -75,6 +75,7 @@ export function validateNodeGraph(doc: NodeGraphMap): GraphValidation {
   checkAcyclic(doc, lk, add);
   checkComposites(doc, lk, add);
   checkGroups(doc, add);
+  checkDirtyStacks(doc, add);
   checkProcessCapabilities(doc, add);
   checkSlotPoints(doc, add);
   checkTraceable(doc, lk, add);
@@ -89,6 +90,18 @@ export function validateNodeGraph(doc: NodeGraphMap): GraphValidation {
 }
 
 type Add = (id: string, message: string, extra?: Partial<GraphIssue>) => void;
+
+function checkDirtyStacks(doc: NodeGraphMap, add: Add): void {
+  for (const dirty of doc.vertices.dirty) {
+    if (dirty.maxStack === undefined) continue;
+    if (!Number.isInteger(dirty.maxStack) || dirty.maxStack < 1) {
+      add("INV-DIRTY-STACK", `Dirty object "${dirty.name}" has maxStack ${dirty.maxStack}; it must be a positive integer.`, {
+        vertexKind: "dirty",
+        vertexName: dirty.name,
+      });
+    }
+  }
+}
 
 /** Base/topping/option edges resolve in ONE namespace, so a name may belong to only one kind. */
 function checkNamespace(doc: NodeGraphMap, add: Add): void {

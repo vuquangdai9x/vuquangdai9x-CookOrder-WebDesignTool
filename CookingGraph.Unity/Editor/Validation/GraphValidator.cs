@@ -61,6 +61,8 @@ namespace CookingGraph.Editor
                     if (token == null || token.Type == JTokenType.Null || (token.Type == JTokenType.String && string.IsNullOrEmpty(token.Value<string>())))
                         Error(issues, "INV-REQUIRED", $"{pair.Kind} '{name}' is missing required field '{field.Name}'.", name);
                 }
+                if (pair.Kind == "dirty" && pair.Node["maxStack"] != null && pair.Node.Value<int?>("maxStack") < 1)
+                    Error(issues, "INV-DIRTY-STACK", $"Dirty object '{name}' has maxStack {pair.Node.Value<int>("maxStack")}; it must be positive.", name);
             }
         }
 

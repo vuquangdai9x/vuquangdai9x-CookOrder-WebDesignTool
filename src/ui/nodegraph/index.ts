@@ -2163,11 +2163,15 @@ export class MapProcessView {
         type: numeric ? "number" : "text",
         value: list ? (Array.isArray(current) ? current.join("|") : "") : String(current ?? ""),
       }) as HTMLInputElement;
+      if (numeric && field.min !== undefined) input.min = String(field.min);
+      if (numeric && field.max !== undefined) input.max = String(field.max);
       if (list) input.title = 'Separate items with "|"';
       input.addEventListener("blur", () => {
         const raw = (input as HTMLInputElement).value;
         if (numeric) {
-          const n = Number(raw);
+          let n = Number(raw);
+          if (Number.isFinite(n) && field.min !== undefined) n = Math.max(field.min, n);
+          if (Number.isFinite(n) && field.max !== undefined) n = Math.min(field.max, n);
           this.commitField(target, field, raw === "" ? undefined : Number.isFinite(n) ? n : undefined);
         } else if (list) {
           const items = raw.split("|").map((s) => s.trim()).filter(Boolean);
