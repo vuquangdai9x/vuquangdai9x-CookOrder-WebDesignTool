@@ -671,9 +671,16 @@ footer {
   border-top: 1px dashed var(--line);
 }
 
+.dish-list:empty {
+  min-height: 1.4rem;
+  border-top: 1px dashed var(--line);
+}
+
 .dish-label {
   font-size: 0.68rem;
   color: var(--muted);
+  cursor: grab;
+  user-select: none;
 }
 
 .dish-chips {
@@ -2420,6 +2427,26 @@ td input {
   flex-direction: column;
   align-items: stretch;
   gap: 0.3rem;
+}
+
+.ctx-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.35rem;
+  margin: 0.15rem 0.2rem 0.3rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.ctx-inline-label {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.queue-ingredient-picker .ctx-picker {
+  max-width: 16rem;
 }
 
 .remote-col-label {

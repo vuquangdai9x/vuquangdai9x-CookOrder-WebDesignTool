@@ -280,7 +280,7 @@ describe("group minQuantity generation", () => {
     const result = resolveOrder(next.ix, customers[0].dishes[0], next.ids);
     expect(result.issues).toEqual([]);
     const toppingSlot = next.ix.slotsOfComposite[result.order.orderable].findIndex((slot) => slot.group >= 0);
-    expect(result.order.slots.filter((slot) => slot.slot === toppingSlot)).toHaveLength(3);
+    expect(result.order.slots.filter((slot) => slot.slot === toppingSlot).length).toBeGreaterThanOrEqual(3);
   });
 
   it("warns when enabled weights cannot meet the minimum", () => {
@@ -320,5 +320,30 @@ describe("nested group generation", () => {
     const issues = generated.flatMap((customer) => customer.dishes.flatMap((dish) => resolveOrder(sushiIx, dish, sushiIds).issues));
     expect(issues).toEqual([]);
     expect(generated.some((customer) => customer.dishes.length > 0)).toBe(true);
+  });
+});
+
+describe("recipe-piece alignment", () => {
+  it("appends a customer when a two-piece recipe remainder cannot fit an existing dish", () => {
+    const clone = structuredClone(doc);
+    clone.vertices.composite.forEach((value) => {
+      value.orderable = value.name === "fried-basket";
+    });
+    const next = buildIndex(clone);
+    const nextIds = orderIdIndex(next);
+    const potato = next.ingByName.get("potato-fried")!;
+    const generated = generateNodeCustomers(next, nextIds, {
+      dishCounts: [1],
+      weights: new Map([[potato, 100]]),
+      curve: defaultCurve(1, 1),
+      random: seeded(23),
+    });
+
+    const ordered = generated.flatMap((customer) =>
+      customer.dishes.flatMap((dish) => resolveOrder(next, dish, nextIds).order.slots.map((slot) => slot.ing)),
+    );
+    expect(ordered.filter((ing) => ing === potato)).toHaveLength(2);
+    expect(generated).toHaveLength(2);
+    expect(generated[1].dishes).toHaveLength(1);
   });
 });

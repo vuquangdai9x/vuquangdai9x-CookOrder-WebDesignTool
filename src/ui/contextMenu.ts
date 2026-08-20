@@ -6,6 +6,8 @@ import { button, el } from "./dom.ts";
 
 export interface MenuItem {
   label: string;
+  /** Always-visible custom content placed directly in menu order (no clickable row). */
+  content?: HTMLElement;
   /** Optional leading icon element (Drive image or emoji span). */
   icon?: HTMLElement;
   /** Renders the item highlighted (e.g. the cell's current type). */
@@ -70,6 +72,10 @@ export function showContextMenu(
 
   for (const item of items) {
     if (item.separator) menu.append(el("div", { class: "ctx-sep" }));
+    if (item.content) {
+      menu.append(item.content);
+      continue;
+    }
     const row = el("div", {
       class: `ctx-item${item.active ? " active" : ""}${item.danger ? " danger" : ""}${
         item.disabled ? " disabled" : ""

@@ -179,6 +179,7 @@ function cellEl(
     node.title = `${typeDef?.name ?? effect.effectId}${
       effect.params.length ? ` (${effect.params.join(":")})` : ""
     }`;
+    if (effect.effectId === CELL_INGREDIENT_SLOT) node.title += " — right-click to change ingredient";
   } else {
     node.title = "Normal";
   }
@@ -191,6 +192,8 @@ function cellEl(
   // there for changing the cell's type itself.
   node.addEventListener("contextmenu", (e) => {
     if (effect?.effectId === CELL_INGREDIENT_SLOT) {
+      e.preventDefault();
+      e.stopPropagation();
       const [ingredientId = 0, amount = 1] = effect.params;
       showContextContent(
         e,

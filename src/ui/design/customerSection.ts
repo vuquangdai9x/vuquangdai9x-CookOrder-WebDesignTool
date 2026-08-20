@@ -510,6 +510,7 @@ function customerCard(
       ]),
     );
   } else {
+    const dishList = el("div", { class: "dish-list", "data-customer-index": String(index) });
     customer.dishes.forEach((dish, di) => {
       const dishRow = el("div", { class: "dish-row" }, [
         el("span", { class: "dish-label" }, [`D${di + 1}`]),
@@ -614,8 +615,28 @@ function customerCard(
       dishRow.addEventListener("contextmenu", (e) =>
         showContextMenu(e, dishMenu(section, customer, di), { title: `Dish ${di + 1}` }),
       );
-      card.append(dishRow);
+      dishList.append(dishRow);
     });
+
+    Sortable.create(dishList, {
+      animation: 150,
+      group: "customer-dishes",
+      draggable: ".dish-row",
+      handle: ".dish-label",
+      emptyInsertThreshold: 20,
+      onEnd: (evt) => {
+        if (evt.oldIndex === undefined || evt.newIndex === undefined) return;
+        const from = draft[Number((evt.from as HTMLElement).dataset.customerIndex)];
+        const to = draft[Number((evt.to as HTMLElement).dataset.customerIndex)];
+        if (!from || !to) return;
+        if (from === to && evt.oldIndex === evt.newIndex) return;
+        const [moved] = from.dishes.splice(evt.oldIndex, 1);
+        if (!moved) return;
+        to.dishes.splice(Math.min(evt.newIndex, to.dishes.length), 0, moved);
+        section.commit(from === to ? "Reorder dishes" : "Move dish between customers");
+      },
+    });
+    card.append(dishList);
 
     card.append(
       button(

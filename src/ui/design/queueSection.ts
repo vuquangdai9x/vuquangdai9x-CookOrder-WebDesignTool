@@ -1088,6 +1088,33 @@ function tileMenu(
     });
   }
 
+  // Keep this picker visible directly in the right-click menu (rather than
+  // hiding it behind another "Change ingredient" row). Graph Design's
+  // projected rawIngredients contains pickupable graph leaves only; legacy
+  // Design's rawIngredients is its equivalent pickup list. Mutating only id
+  // preserves effects, selection identity, and combined/linked membership.
+  if (item.kind === "ingredient") {
+    const picker = pickerGrid(
+      rawList,
+      (id) => {
+        if (id !== item.id) {
+          item.id = id;
+          section.commit("Change queue ingredient");
+        }
+        closeContextMenu();
+      },
+      item.id,
+    );
+    items.push({
+      label: "Change ingredient",
+      separator: true,
+      content: el("div", { class: "ctx-inline queue-ingredient-picker" }, [
+        el("small", { class: "ctx-inline-label" }, ["Pickupable ingredients"]),
+        picker,
+      ]),
+    });
+  }
+
   items.push({
     label: "Remove",
     danger: true,

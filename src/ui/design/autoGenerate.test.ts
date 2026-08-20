@@ -45,6 +45,14 @@ function flatCurve(value: number): CurveState {
   return curve;
 }
 
+function seeded(seed = 7): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
 describe("generateCustomers", () => {
   it("defaults three customers to automatic dish counts", () => {
     expect(DEFAULT_DISH_COUNT_SEQUENCE).toEqual([0, 0, 0]);
@@ -218,6 +226,21 @@ describe("generateCustomers", () => {
       if (result[0].dishes[0].cookedIds[0] === 3) cupCount++;
     }
     expect(cupCount / n).toBeGreaterThan(0.8);
+  });
+
+  it("adapts after each dish so the final counts stay close to the configured distribution", () => {
+    const result = generateCustomers(fixtureMap, {
+      dishCounts: Array(40).fill(1),
+      ingredientWeights: new Map([[3, 75], [8, 25]]),
+      curve: flatCurve(1),
+      random: seeded(31),
+    });
+    const ids = result.flatMap((customer) => customer.dishes.map((dish) => dish.cookedIds[0]));
+    const cups = ids.filter((id) => id === 3).length;
+    const potatoes = ids.filter((id) => id === 8).length;
+    expect(cups).toBeGreaterThanOrEqual(29);
+    expect(cups).toBeLessThanOrEqual(31);
+    expect(potatoes).toBe(40 - cups);
   });
 
   it("keeps each dish's total ingredient count within maxDishSlots", () => {

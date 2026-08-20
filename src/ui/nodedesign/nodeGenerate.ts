@@ -23,6 +23,12 @@ import type { GraphIndex, IndexedSlot } from "../../core/nodeIndex.ts";
 import { resolveOrder } from "../../core/nodeOrder.ts";
 import type { DishMember, DishNode, NodeCustomerConfig, NodeDish } from "../../core/nodeParser.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
+import {
+  addToSlot as addToSlotTree,
+  membersOf,
+  slotCapacity,
+  slotIsUnlocked,
+} from "./nodeDishEdit.ts";
 
 export interface NodeGenerateOptions {
   /** One entry per customer, in order. -1 = Staff, 0 = Auto (from the curve), >0 = explicit dish count. */
@@ -69,7 +75,7 @@ function buildDish(
   ids: IdIndex,
   orderable: number,
   budget: number,
-  weights: Map<number, number>,
+  weightOf: (ing: number) => number,
   rand: () => number,
   maxDishSlots: number,
 ): NodeDish | null {
@@ -81,7 +87,6 @@ function buildDish(
   const root: DishNode = { kind: "composite", id: compositeId, members: [] };
   const containers = new Map<string, DishNode>();
   const groupHeld = new Map<number, number>();
-  const weightOf = (ing: number) => weights.get(ing) ?? 0;
   const pathKey = (path: number[], length = path.length): string => path.slice(0, length).join("/");
   const groupCapacity = (group: number): number => {
     const maximum = ix.doc.vertices.group[group]?.maxQuantity ?? -1;
@@ -179,6 +184,194 @@ function buildDish(
   return { root, effects: [] };
 }
 
+/**
+ * Keep each ingredient close to its configured share, instead of applying the
+ * same static lottery independently to every dish. An ingredient already
+ * ahead of its target share gets only a tiny floor weight; one behind its
+ * share gets the current deficit as its draw weight.
+ */
+function adaptiveWeightTracker(initial: Map<number, number>): {
+  weightOf(ing: number): number;
+  record(ingredients: number[]): void;
+} {
+  const used = new Map<number, number>();
+  const totalWeight = [...initial.values()].reduce((sum, weight) => sum + Math.max(0, weight), 0);
+  let totalUsed = 0;
+  return {
+    weightOf(ing: number): number {
+      const weight = Math.max(0, initial.get(ing) ?? 0);
+      if (weight <= 0 || totalWeight <= 0) return 0;
+      const desiredAfterNextPick = ((totalUsed + 1) * weight) / totalWeight;
+      const deficit = desiredAfterNextPick - (used.get(ing) ?? 0);
+      return Math.max(weight / totalWeight / 1000, deficit);
+    },
+    record(ingredients: number[]): void {
+      for (const ing of ingredients) {
+        used.set(ing, (used.get(ing) ?? 0) + 1);
+        totalUsed++;
+      }
+    },
+  };
+}
+
+/** Pickup capacities needed by one occurrence of an ordered ingredient. */
+function productionCovers(ix: GraphIndex, ordered: number): number[] {
+  const out: number[] = [];
+  const usage = Math.max(1, ix.usageNum[ordered] ?? 1);
+  const walk = (ing: number, amount: number, seen: Set<number>): void => {
+    if (seen.has(ing)) return;
+    const step = ix.producerOf[ing];
+    if (!step || ix.pickupable[ing]) {
+      out.push(Math.max(1, amount) * usage);
+      return;
+    }
+    const next = new Set(seen).add(ing);
+    for (const input of step.inputs) walk(input.ing, amount * Math.max(1, step.amount), next);
+  };
+  walk(ordered, 1, new Set());
+  return out.length > 0 ? out : [usage];
+}
+
+function alignmentAddition(ix: GraphIndex, ing: number, count: number): number {
+  const covers = productionCovers(ix, ing).filter((amount) => amount > 1);
+  if (covers.length === 0 || covers.every((amount) => count % amount === 0)) return 0;
+  for (let add = 1; add <= 1024; add++) {
+    if (covers.every((amount) => (count + add) % amount === 0)) return add;
+  }
+  return -1;
+}
+
+function ingredientCounts(ix: GraphIndex, ids: IdIndex, customers: NodeCustomerConfig[]): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const customer of customers) {
+    for (const dish of customer.dishes) {
+      for (const slot of resolveOrder(ix, dish, ids).order.slots) {
+        counts.set(slot.ing, (counts.get(slot.ing) ?? 0) + 1);
+      }
+    }
+  }
+  return counts;
+}
+
+/** Add exactly one occurrence without replacing another member or invalidating the dish. */
+function tryAddToDish(
+  ix: GraphIndex,
+  ids: IdIndex,
+  dish: NodeDish,
+  ing: number,
+  maxDishSlots: number,
+): boolean {
+  const before = resolveOrder(ix, dish, ids);
+  if (before.issues.length > 0 || before.order.slots.length >= maxDishSlots) return false;
+  const beforeTargetCount = before.order.slots.filter((slot) => slot.ing === ing).length;
+  for (const place of ix.placesOf[ing] ?? []) {
+    if (place.orderable !== before.order.orderable) continue;
+    const slot = ix.slotsOfComposite[place.orderable]?.[place.slot];
+    if (!slot || !slotIsUnlocked(ix, ids, dish.root, place.orderable, place.slot)) continue;
+    const held = membersOf(ix, ids, dish.root, place.orderable, place.slot);
+    const capacity = Math.min(slotCapacity(slot), maxDishSlots);
+    if (held.length >= capacity) continue;
+    const optionAt = slot.options.indexOf(ing);
+    const optionLimit = optionAt < 0 ? -1 : (slot.optionMax[optionAt] ?? -1);
+    if (optionLimit > 0 && held.filter((value) => value === ing).length >= optionLimit) continue;
+
+    const candidate = structuredClone(dish);
+    addToSlotTree(ix, ids, candidate.root, place.orderable, place.slot, ing);
+    const after = resolveOrder(ix, candidate, ids);
+    if (after.issues.length > 0 || after.order.slots.length !== before.order.slots.length + 1) continue;
+    if (after.order.slots.filter((filled) => filled.ing === ing).length !== beforeTargetCount + 1) continue;
+    dish.root = candidate.root;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Make a new legal dish for an otherwise unplaceable spare piece. Every
+ * supporting ingredient is restricted to a one-piece production path, so the
+ * repair cannot create a second kind of recipe remainder.
+ */
+function alignmentDish(
+  ix: GraphIndex,
+  ids: IdIndex,
+  target: number,
+  initialWeights: Map<number, number>,
+  maxDishSlots: number,
+): NodeDish | null {
+  const hasUnitProduction = (ing: number) => productionCovers(ix, ing).every((amount) => amount === 1);
+  const repairWeight = (ing: number): number => {
+    if (ing === target) return 1_000_000;
+    return (initialWeights.get(ing) ?? 0) > 0 && hasUnitProduction(ing)
+      ? Math.max(1, initialWeights.get(ing) ?? 0)
+      : 0;
+  };
+
+  for (const place of ix.placesOf[target] ?? []) {
+    if (!ix.orderables.includes(place.orderable)) continue;
+    const dish = buildDish(ix, ids, place.orderable, 1, repairWeight, () => 0.5, maxDishSlots);
+    if (!dish) continue;
+    let resolved = resolveOrder(ix, dish, ids);
+    if (!resolved.order.slots.some((slot) => slot.ing === target)) {
+      if (!tryAddToDish(ix, ids, dish, target, maxDishSlots)) continue;
+      resolved = resolveOrder(ix, dish, ids);
+    }
+    if (resolved.issues.length > 0) continue;
+    if (resolved.order.slots.some((slot) => slot.ing !== target && !hasUnitProduction(slot.ing))) continue;
+    return dish;
+  }
+  return null;
+}
+
+function alignRecipePieces(
+  ix: GraphIndex,
+  ids: IdIndex,
+  customers: NodeCustomerConfig[],
+  weights: Map<number, number>,
+  maxDishSlots: number,
+  warn: (message: string) => void,
+): void {
+  const blocked = new Set<number>();
+  let repairCustomer: NodeCustomerConfig | null = null;
+  let guard = 2048;
+  while (guard-- > 0) {
+    const counts = ingredientCounts(ix, ids, customers);
+    const pending = [...counts.entries()].find(([ing, count]) =>
+      !blocked.has(ing) && alignmentAddition(ix, ing, count) !== 0
+    );
+    if (!pending) break;
+    const [ing, count] = pending;
+    if (alignmentAddition(ix, ing, count) < 0) {
+      blocked.add(ing);
+      continue;
+    }
+
+    let added = false;
+    for (const customer of customers) {
+      for (const dish of customer.dishes) {
+        if (tryAddToDish(ix, ids, dish, ing, maxDishSlots)) {
+          added = true;
+          break;
+        }
+      }
+      if (added) break;
+    }
+    if (added) continue;
+
+    const dish = alignmentDish(ix, ids, ing, weights, maxDishSlots);
+    if (dish) {
+      if (!repairCustomer) {
+        repairCustomer = { typeId: 0, waitTime: 0, weatherEff: 0, dishes: [] };
+        customers.push(repairCustomer);
+      }
+      repairCustomer.dishes.push(dish);
+      continue;
+    }
+
+    warn(`Could not place the spare piece of ${ix.ingName[ing]} in a legal dish without creating another recipe remainder.`);
+    blocked.add(ing);
+  }
+}
+
 /** How many copies of `option` a slot currently holds in the dish being built. */
 function countOf(
   root: DishNode,
@@ -206,6 +399,8 @@ export function generateNodeCustomers(
   const warn = (message: string): void => {
     if (warnings.add(message)) opts.onWarning?.(message);
   };
+  const initialWeightOf = (ing: number) => opts.weights.get(ing) ?? 0;
+  const adaptive = adaptiveWeightTracker(opts.weights);
 
   // Ingredient weights are an option allowlist, not an all-or-nothing switch
   // for their composite. Probe the same builder used below with its smallest
@@ -214,7 +409,7 @@ export function generateNodeCustomers(
   // base, nested-base, topping, group-minimum, and quantity rules.
   const candidates = ix.orderables.filter((composite) => {
     const slots = ix.slotsOfComposite[composite] ?? [];
-    const probe = buildDish(ix, ids, composite, 1, opts.weights, () => 0, maxDishSlots);
+    const probe = buildDish(ix, ids, composite, 1, initialWeightOf, () => 0, maxDishSlots);
     return probe !== null && resolveOrder(ix, probe, ids).issues.length === 0 && slots.length > 0;
   });
   if (candidates.length === 0 && counts.some((count) => count !== -1)) {
@@ -239,14 +434,26 @@ export function generateNodeCustomers(
 
     const dishes: NodeDish[] = [];
     for (let d = 0; d < dishCount; d++) {
-      const orderable = candidates[Math.floor(rand() * candidates.length) % Math.max(1, candidates.length)];
-      if (orderable === undefined) continue;
-      const dish = buildDish(ix, ids, orderable, perDish, opts.weights, rand, maxDishSlots);
-      if (dish) dishes.push(dish);
+      const orderable = weightedPick(
+        candidates,
+        (composite) => {
+          const options = [...new Set((ix.slotsOfComposite[composite] ?? []).flatMap((slot) => slot.options))];
+          if (options.length === 0) return 0;
+          return options.reduce((sum, ing) => sum + adaptive.weightOf(ing), 0) / options.length;
+        },
+        rand,
+      );
+      if (orderable === null) continue;
+      const dish = buildDish(ix, ids, orderable, perDish, adaptive.weightOf, rand, maxDishSlots);
+      if (dish) {
+        dishes.push(dish);
+        adaptive.record(resolveOrder(ix, dish, ids).order.slots.map((slot) => slot.ing));
+      }
       else warn(`Could not generate ${ix.compositeName[orderable]}: enabled ingredients cannot satisfy its base and group minimum quantities.`);
     }
     out.push({ typeId: 0, waitTime: 0, weatherEff: 0, dishes });
   });
 
+  alignRecipePieces(ix, ids, out, opts.weights, maxDishSlots, warn);
   return out;
 }

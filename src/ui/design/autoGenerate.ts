@@ -81,17 +81,27 @@ function requiresBase(topping: CookedIngredientDef, baseId: Id): boolean {
  * pickup (1 tomato → 2 slices), so if the total demand for a topping isn't a
  * clean multiple of its yield, the last pickup would produce a piece nobody
  * ordered — dead weight sitting on the table at the end of the level. This
- * tops the total up to the next multiple by adding the topping into other
- * dishes that already have a compatible base, room for one more ingredient,
- * and don't already contain it (so no dish repeats an ingredient). Bases
- * aren't touched — a base is one per dish, so "adding one more" would mean
- * inventing a whole new dish, out of scope for a best-effort nudge. If there's
- * nowhere left to add one, the remainder is simply left as-is.
+ * tops the total up to the next multiple by adding a topping into compatible
+ * dishes first. When there is no legal slot (or the remainder belongs to a
+ * base), it appends a repair customer. Supporting ingredients in those new
+ * dishes must have one-piece production so the repair does not create another
+ * kind of leftover.
  */
-function topUpPieceAlignment(map: MapDef, customers: CustomerConfig[], maxSlots: number): void {
+function topUpPieceAlignment(
+  map: MapDef,
+  customers: CustomerConfig[],
+  maxSlots: number,
+  ingredientWeights: Map<Id, number>,
+): void {
   const yieldByCooked = new Map<Id, number>();
   for (const tool of map.tools) {
     for (const recipe of tool.recipes) yieldByCooked.set(recipe.out, recipe.amount);
+  }
+  for (const ingredient of map.cookedIngredients) {
+    yieldByCooked.set(
+      ingredient.id,
+      Math.max(1, yieldByCooked.get(ingredient.id) ?? 1) * Math.max(1, ingredient.usageNum ?? 1),
+    );
   }
 
   const totals = new Map<Id, number>();
@@ -101,25 +111,54 @@ function topUpPieceAlignment(map: MapDef, customers: CustomerConfig[], maxSlots:
     }
   }
 
+  let repairCustomer: CustomerConfig | null = null;
   for (const [cookedId, total] of totals) {
     const amount = yieldByCooked.get(cookedId) ?? 1;
     if (amount <= 1) continue;
     const remainder = total % amount;
     if (remainder === 0) continue;
-    const topping = map.cookedIngredients.find((c) => c.id === cookedId);
-    if (!topping || topping.baseId === undefined) continue; // bases are out of scope — see above
+    const ingredient = map.cookedIngredients.find((c) => c.id === cookedId);
+    if (!ingredient) continue;
 
     let need = amount - remainder;
-    for (const c of customers) {
-      if (need <= 0) break;
-      for (const d of c.dishes) {
+    if (ingredient.baseId !== undefined) {
+      for (const c of customers) {
         if (need <= 0) break;
-        if (d.cookedIds.length === 0 || d.cookedIds.length >= maxSlots) continue;
-        if (d.cookedIds.includes(cookedId)) continue;
-        if (!requiresBase(topping, d.cookedIds[0])) continue;
-        d.cookedIds.push(cookedId);
-        need--;
+        for (const d of c.dishes) {
+          if (need <= 0) break;
+          if (d.cookedIds.length === 0 || d.cookedIds.length >= maxSlots) continue;
+          if (d.cookedIds.includes(cookedId)) continue;
+          if (!requiresBase(ingredient, d.cookedIds[0])) continue;
+          d.cookedIds.push(cookedId);
+          need--;
+        }
       }
+    }
+
+    // No existing compatible dish has room. Create a final repair customer;
+    // any supporting base must itself produce exactly one usable piece, so
+    // satisfying this remainder cannot create a new one for another item.
+    while (need > 0) {
+      let dish: Id[] | null = null;
+      if (ingredient.baseId === undefined) {
+        dish = [cookedId];
+      } else {
+        const required = Array.isArray(ingredient.baseId) ? ingredient.baseId : [ingredient.baseId];
+        const base = map.cookedIngredients.find((candidate) =>
+          required.includes(candidate.id) &&
+          candidate.baseId === undefined &&
+          (ingredientWeights.get(candidate.id) ?? 0) > 0 &&
+          (yieldByCooked.get(candidate.id) ?? 1) === 1
+        );
+        if (base) dish = [base.id, cookedId];
+      }
+      if (!dish) break;
+      if (!repairCustomer) {
+        repairCustomer = { typeId: 0, waitTime: 0, weatherEff: 0, dishes: [] };
+        customers.push(repairCustomer);
+      }
+      repairCustomer.dishes.push({ cookedIds: dish, effects: [] });
+      need--;
     }
   }
 }
@@ -158,11 +197,26 @@ export function generateCustomers(map: MapDef, opts: GenerateOptions): CustomerC
   const maxSlots = Math.max(1, opts.maxDishSlots ?? DEFAULT_MAX_DISH_SLOTS);
   const n = opts.dishCounts.length;
 
-  const weightOf = (c: CookedIngredientDef) => opts.ingredientWeights.get(c.id) ?? 0;
-  const cooked = map.cookedIngredients.filter((c) => weightOf(c) > 0);
+  const initialWeightOf = (c: CookedIngredientDef) => opts.ingredientWeights.get(c.id) ?? 0;
+  const cooked = map.cookedIngredients.filter((c) => initialWeightOf(c) > 0);
   const bases = cooked.filter((c) => c.baseId === undefined);
   const toppings = cooked.filter((c) => c.baseId !== undefined);
   const capacity = (base: CookedIngredientDef) => followersOf(toppings, base.id).length + 1;
+  const used = new Map<Id, number>();
+  const totalWeight = cooked.reduce((sum, ingredient) => sum + Math.max(0, initialWeightOf(ingredient)), 0);
+  let totalUsed = 0;
+  const adaptiveWeightOf = (ingredient: CookedIngredientDef): number => {
+    const weight = Math.max(0, initialWeightOf(ingredient));
+    if (weight <= 0 || totalWeight <= 0) return 0;
+    const desiredAfterNextPick = ((totalUsed + 1) * weight) / totalWeight;
+    return Math.max(weight / totalWeight / 1000, desiredAfterNextPick - (used.get(ingredient.id) ?? 0));
+  };
+  const recordDish = (dish: Id[]): void => {
+    for (const id of dish) {
+      used.set(id, (used.get(id) ?? 0) + 1);
+      totalUsed++;
+    }
+  };
 
   function generateDish(slotTarget: number): Id[] {
     const k = Math.max(1, slotTarget);
@@ -170,12 +224,12 @@ export function generateCustomers(map: MapDef, opts: GenerateOptions): CustomerC
       k === 1
         ? bases.filter((b) => capacity(b) <= 2) // reserve "weak" bases for 1-slot dishes...
         : bases.filter((b) => capacity(b) >= k); // ...and only "strong enough" bases for the rest
-    const base = weightedPick(pool.length ? pool : bases, weightOf, rand);
+    const base = weightedPick(pool.length ? pool : bases, adaptiveWeightOf, rand);
     if (!base) return [];
     const dish = [base.id];
     const followerPool = followersOf(toppings, base.id);
     while (dish.length < k && followerPool.length > 0) {
-      const picked = weightedPick(followerPool, weightOf, rand);
+      const picked = weightedPick(followerPool, adaptiveWeightOf, rand);
       if (!picked) break;
       dish.push(picked.id);
       followerPool.splice(followerPool.indexOf(picked), 1);
@@ -212,13 +266,18 @@ export function generateCustomers(map: MapDef, opts: GenerateOptions): CustomerC
     const dishCount = configured === 0 ? autoDishCount(target, maxSlots) : configured;
     const total = Math.max(dishCount, Math.min(dishCount * maxSlots, target));
     const slots = distribute(total, dishCount);
+    const dishes = slots.map((k) => {
+      const dish = generateDish(k);
+      recordDish(dish);
+      return { cookedIds: dish, effects: [] };
+    });
     customers.push({
       typeId: 0,
       waitTime: 0,
       weatherEff: 0,
-      dishes: slots.map((k) => ({ cookedIds: generateDish(k), effects: [] })),
+      dishes,
     });
   }
-  topUpPieceAlignment(map, customers, maxSlots);
+  topUpPieceAlignment(map, customers, maxSlots, opts.ingredientWeights);
   return customers;
 }
