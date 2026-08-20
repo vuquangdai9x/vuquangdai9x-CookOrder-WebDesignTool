@@ -35,6 +35,11 @@ import type { QueueDraft, QueueSectionDeps } from "./queueSection.ts";
 import { estimateDifficulty } from "./estimateDifficulty.ts";
 import type { EstimateResult } from "./estimateDifficulty.ts";
 import { tableEditor } from "./tableEditor.ts";
+import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
+import {
+  convertLegacyCustomerString,
+  convertLegacyIngredientQueueString,
+} from "../../data/legacyStringConvert.ts";
 
 type LayoutMode = "stack" | "split";
 
@@ -45,6 +50,7 @@ export class DesignView {
   private onChange: () => void;
   /** Reports every level switch (picker, +Level, delete-then-fallback) so the app shell can carry the selection over into Play mode — see main.ts. */
   private onLevelChange?: (levelId: number) => void;
+  private conversionTarget?: NodeGraphMap;
   private level!: LevelData;
 
   private customers!: Section<CustomerConfig[]>;
@@ -82,12 +88,14 @@ export class DesignView {
     onChange: () => void,
     initialLevelId?: number,
     onLevelChange?: (levelId: number) => void,
+    conversionTarget?: NodeGraphMap,
   ) {
     this.root = root;
     this.map = map;
     this.defs = defs;
     this.onChange = onChange;
     this.onLevelChange = onLevelChange;
+    this.conversionTarget = conversionTarget;
     this.level = map.levels.find((l) => l.id === initialLevelId) ?? map.levels[0];
     this.build();
   }
@@ -145,6 +153,9 @@ export class DesignView {
       onSaved: saved,
       onCommit: refreshLevelWrite,
       currentEstimate: () => this.estimate,
+      ...(this.conversionTarget
+        ? { convertToNewFormat: (text: string) => convertLegacyIngredientQueueString(text, parsedMap, this.conversionTarget!) }
+        : {}),
     };
 
     this.customers = createCustomerSection({
@@ -164,6 +175,9 @@ export class DesignView {
       onGenerated: () => startQueueAutoGenerate(this.queues, this.queueDeps, true),
       onEstimate: () => this.runEstimate(parsedMap),
       currentEstimate: () => this.estimate,
+      ...(this.conversionTarget
+        ? { convertToNewFormat: (text: string) => convertLegacyCustomerString(text, parsedMap, this.conversionTarget!) }
+        : {}),
     });
     this.grid = createGridSection({
       map: parsedMap,

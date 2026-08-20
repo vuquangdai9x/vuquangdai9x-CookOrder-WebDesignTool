@@ -391,7 +391,7 @@ function mount(target: Mode, main: HTMLElement): void {
     case "design": {
       const view = new DesignView(main, legacy.map, GLOBAL_DEFS, saveDraft, legacy.levelId, (id) => {
         legacy.levelId = id;
-      });
+      }, node.doc);
       dirtyProviders.push(() => view.isDirty);
       return;
     }

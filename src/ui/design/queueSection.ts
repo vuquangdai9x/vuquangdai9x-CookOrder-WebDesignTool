@@ -47,6 +47,7 @@ import { demandByRaw, rawYieldAmounts, supplyByRaw } from "../../data/recipeDema
 import type { RawDemand } from "../../data/recipeDemand.ts";
 import type { ShuffleRangeSpec } from "./queueGenerate.ts";
 import { Section } from "./section.ts";
+import { openStringConversionDialog } from "./stringConversionDialog.ts";
 
 const MIN_COLUMNS = 1;
 const MAX_COLUMNS = 5;
@@ -84,6 +85,8 @@ export interface QueueSectionDeps {
    * graph-aware walk so Recipe Pieces includes every input of a process.
    */
   recipeDemand?(): Map<Id, RawDemand>;
+  /** Legacy Design only: converts the live queue string to the active graph's current ids. */
+  convertToNewFormat?(legacyString: string): string;
 }
 
 /**
@@ -259,6 +262,13 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
     },
     stringPreview: (draft) => serializeQueues(draft.queues, toCoordGroups(draft)),
     headerButtons: (sec) => [
+      ...(deps.convertToNewFormat
+        ? [button("Convert to New Format", () => {
+            openStringConversionDialog("Converted Ingredient Queue String", () =>
+              deps.convertToNewFormat!(serializeQueues(sec.draft.queues, toCoordGroups(sec.draft))),
+            );
+          }, { title: "Convert this live legacy queue draft to the active graph's current ingredient ids" })]
+        : []),
       button("＋ Queue", () => {
         if (sec.draft.queues.length >= MAX_COLUMNS) return;
         sec.draft.queues.push(tagNew([]));
