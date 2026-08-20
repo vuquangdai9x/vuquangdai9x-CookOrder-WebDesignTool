@@ -82,6 +82,9 @@ export function computeDepths(doc: NodeGraphMap): Map<string, number> {
         if (edge.from !== name) continue;
         for (const input of edge.inputs) value = Math.max(value, 1 + of(input.ingredient));
       }
+      for (const edge of doc.edges.preservation) {
+        if (edge.from === name) value = Math.max(value, 1 + of(edge.to));
+      }
     } else if (kind === "group") {
       for (const option of optionsOf.get(name) ?? []) value = Math.max(value, 1 + of(option));
     } else if (kind === "composite") {

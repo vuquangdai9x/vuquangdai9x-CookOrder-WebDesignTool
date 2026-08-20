@@ -75,6 +75,34 @@ const chainedSim = (o: LevelStrings, options = {}) =>
 // groups g0 burger-toppings, g1 fried-basket-bases, g2 fried-basket-sauces.
 
 describe("core loop", () => {
+  it("parks a manual process input until an active order needs its output", () => {
+    const doc = structuredClone(burgerJson as unknown as NodeGraphMap);
+    const patty = doc.edges.process.find((edge) => edge.to === "patty-cooked")!;
+    patty.auto = false;
+    const index = buildIndex(doc);
+    const pattyRaw = index.ingByName.get("patty")!;
+    const grill = index.stepsForInput[pattyRaw][0].tool;
+    const s = new NodeSimulation(
+      index,
+      nodeLevel({
+        queueString: "1,0",
+        customerString: "0;0;0;{c0:17}|0;0;0;{c0:17.{g0:18}}",
+        serveableSlots: 1,
+      }),
+    );
+
+    expect(s.pick(0)).toBe(true);
+    expect(s.tools[grill].slots.every((slot) => slot.item === null)).toBe(true);
+    expect(s.grid.some((cell) => cell.kind === "raw" && cell.ing === pattyRaw)).toBe(true);
+
+    // Serving the plain bun admits the patty customer. The already-available
+    // raw is reclaimed into the grill during that same settle pass.
+    expect(s.pick(0)).toBe(true);
+    s.tick(s.nextCompletionIn()!);
+    expect(s.tools[grill].slots.some((slot) => slot.item?.ing === pattyRaw)).toBe(true);
+    expect(s.grid.some((cell) => cell.kind === "raw" && cell.ing === pattyRaw)).toBe(false);
+  });
+
   it("picks, cooks, serves and wins", () => {
     const s = sim({ queueString: "0,1", customerString: "0;0;0;{c0:17.{g0:18}}" });
     expect(s.active).toHaveLength(1);

@@ -12,31 +12,31 @@
 // right-clicking a dish opens a menu that configures its nested composite and
 // groups. Everything else a designer touches behaves identically.
 //
-// The projection is also what makes the difficulty estimator work unchanged.
-// The plan expected to fork it for chain awareness; it turned out not to be
-// necessary, because the projection collapses a multi-tool route into legacy's
-// `chainTools` spelling — so the estimator already scores a raw chicken breast
-// as producing a FRIED one (not the coated intermediate no dish wants) and
-// still pays for both tool visits.
+// Legacy-compatible sections still read a MapDef projection. Difficulty
+// estimation is deliberately graph-native, however: its replay is rendered by
+// NodeSimulation, so estimation must use that exact engine as well or
+// multi-input tool lanes can diverge from the popup.
 
 import { button, el } from "../dom.ts";
-import { estimateDifficulty } from "../design/estimateDifficulty.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
+import { estimateNodeDifficulty } from "../design/nodeEstimateDifficulty.ts";
 import { createGridSection } from "../design/gridSection.ts";
-import { createQueueSection, startQueueAutoGenerate, toQueueDraft } from "../design/queueSection.ts";
+import { createQueueSection, startQueueAutoGenerate, toCoordGroups, toQueueDraft } from "../design/queueSection.ts";
 import { generateNodeQueueLanes, nodeDemandByRaw } from "./nodeQueueGenerate.ts";
 import type { QueueDraft, QueueSectionDeps } from "../design/queueSection.ts";
 import type { Section } from "../design/section.ts";
 import { createNodeCustomerSection } from "./nodeCustomerSection.ts";
 import { openNodeGenerateDialog } from "./nodeGenerateDialog.ts";
+import { openNodeEstimateReplay } from "../nodeplay/index.ts";
 import { parseGrid, parseQueueGroups, parseQueues } from "../../core/parser.ts";
 import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
+import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import { orderIdIndex, resolveOrder } from "../../core/nodeOrder.ts";
 import type { CustomerConfig, GlobalDefs, GridCellConfig } from "../../core/types.ts";
 import { TAGS, WEATHER } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
-import { nodeAsMapDef, nodeLevelAsLevelConfig } from "../../data/nodeGraphToMapDef.ts";
+import { nodeAsMapDef } from "../../data/nodeGraphToMapDef.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import { validateNodeGraph } from "../../data/nodeGraphValidate.ts";
 import { blankLevel, listNodeMaps, type NodeProjectState } from "../../data/nodeProject.ts";
@@ -154,9 +154,13 @@ export class NodeDesignView {
       onSaved: saved,
       onCommit: () => {
         this.estimate = null; // any edit invalidates the pickup-order overlay
+        this.refreshReplayButton();
         refreshQueueReadout();
       },
       onEstimate: () => this.runEstimate(),
+      onReplayEstimate: () => {
+        if (this.estimate) openNodeEstimateReplay(this.project, this.level.id, this.estimate.replaySteps);
+      },
       currentEstimate: () => this.estimate,
       onAutoGenerate: () =>
         openNodeGenerateDialog({
@@ -373,28 +377,32 @@ export class NodeDesignView {
     this.selectLevel(this.project.levels[Math.max(0, at - 1)].id);
   }
 
-  /**
-   * The estimator runs on the PROJECTION, not the graph — an approximation in
-   * exactly one respect: intermediates are collapsed into a chainTools hop
-   * rather than modelled as separate items. Tool cost, yields and gates all
-   * survive, which is what the score depends on.
-   */
+  /** Estimate with the same graph-native engine used by Play and replay. */
   private runEstimate(): void {
-    const level = nodeLevelAsLevelConfig(this.projected, this.level);
+    const level = toNodeLevelConfig(this.level);
     // The estimator reads live drafts, not the saved strings.
-    level.customers = this.flatCustomers();
+    level.customers = this.customers.draft;
     level.grid = this.grid.draft;
     level.queues = this.queues.draft.queues;
+    level.queueGroups = toCoordGroups(this.queues.draft);
     try {
-      this.estimate = estimateDifficulty(this.projected.map, structuredClone(level));
+      this.estimate = estimateNodeDifficulty(this.projected.ix, structuredClone(level));
     } catch (err) {
       this.estimate = null;
+      this.refreshReplayButton();
       console.error("Estimate Difficulty failed", err);
       alert(`Estimate Difficulty failed: ${(err as Error).message}`);
       return;
     }
     this.customers.render();
     this.queues.render();
+    this.refreshReplayButton();
+  }
+
+  /** Section headers persist while their bodies re-render, so update this control explicitly. */
+  private refreshReplayButton(): void {
+    const replay = this.root.querySelector<HTMLButtonElement>(".estimate-replay-btn");
+    if (replay) replay.disabled = !(this.estimate?.replaySteps.length);
   }
 
   /** Same bar, same `.ok` styling as legacy — sourced from the graph's invariants. */

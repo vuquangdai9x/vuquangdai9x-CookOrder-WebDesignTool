@@ -338,6 +338,7 @@
             "slot": 1
           }
         ],
+        "preservationSlots": 1,
         "cookingTime": 1,
         "upgradeCosts": [],
         "localImage": "Map2-coffee/tools/grinder.png"
@@ -492,6 +493,12 @@
     ]
   },
   "edges": {
+    "preservation": [
+      {
+        "from": "coffee-grinder",
+        "to": "coffee-bean"
+      }
+    ],
     "process": [
       {
         "from": "coffee-grinder",

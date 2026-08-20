@@ -49,7 +49,7 @@ export interface FieldDef {
 }
 
 export type VertexKindName = "ingredient" | "tool" | "group" | "composite" | "dirty";
-export type EdgeKindName = "process" | "base" | "topping" | "option" | "leavesDirty";
+export type EdgeKindName = "process" | "preservation" | "base" | "topping" | "option" | "leavesDirty";
 
 export interface VertexKindDef {
   kind: VertexKindName;
@@ -154,6 +154,8 @@ export interface ToolVertex {
   displayName: string;
   /** The tool's slot points, in the order the inspector lists them. */
   slotConfigs: ToolSlotConfig[];
+  /** Extra input buffers. Their accepted ingredients come from the tool's preservation edge. */
+  preservationSlots?: number;
   /** Default seconds per item; a process edge may override it. */
   cookingTime: number;
   upgradeCosts?: number[];
@@ -234,6 +236,12 @@ export interface ProcessEdge {
   inputs: ProcessInput[];
   /** Pieces produced per pickup. */
   amount: number;
+  /**
+   * When true (the default), available inputs enter this process immediately.
+   * When false, they wait until an active customer order needs this output (or
+   * something produced downstream from it).
+   */
+  auto?: boolean;
   /** Overrides the tool's cookingTime for this recipe only. */
   duration?: number;
   /**
@@ -257,6 +265,8 @@ export interface OptionEdge extends SimpleEdge {
 
 export interface EdgeSets {
   process: ProcessEdge[];
+  /** Tool-owned buffer accepting the wired ingredient, or every concrete option of a wired group. */
+  preservation: SimpleEdge[];
   base: SimpleEdge[];
   topping: SimpleEdge[];
   option: OptionEdge[];

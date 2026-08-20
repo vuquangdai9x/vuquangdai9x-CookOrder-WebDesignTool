@@ -108,6 +108,17 @@ export interface EstimateResult {
   occupancyHistory: OccupancySample[];
   /** Total grid cells this level's board has — the chart's y-axis ceiling and the line at which the run would overflow. */
   gridCapacity: number;
+  /** Solver actions used by the node Play renderer to replay this estimate. */
+  replaySteps: EstimateReplayStep[];
+}
+
+export interface EstimateReplayStep {
+  /** Queue column picked at this solver step. */
+  lane: number;
+  /** Dynamic serve window used by the estimator immediately before the pick. */
+  serveableSlots: number;
+  /** Score of every queue column at this decision; null means it was not pickable. */
+  laneScores: (number | null)[];
 }
 
 export interface EstimateOptions {
@@ -227,6 +238,8 @@ export function estimateDifficulty(
   const byCid = new Map<string, EstimateSlot>();
   const costs = new Map<number, CustomerCost>();
   const occupancyHistory: OccupancySample[] = [];
+  const replaySteps: EstimateReplayStep[] = [];
+  let currentReplayLaneScores: (number | null)[] = [];
   let counter = 0;
   let iterations = 0;
   let halted: string | undefined;
@@ -423,6 +436,11 @@ export function estimateDifficulty(
     const activeBefore = new Set(sim.active.map((c) => c.index));
 
     if (!sim.pick(lane)) return false;
+    replaySteps.push({
+      lane,
+      serveableSlots: sim.level.serveableSlots,
+      laneScores: [...currentReplayLaneScores],
+    });
 
     counter++;
     for (const item of items) {
@@ -496,9 +514,14 @@ export function estimateDifficulty(
     }
 
     const depth = Math.max(1, map.visibleRows);
+    const pickable = new Set(lanes);
+    const scoresByLane = sim.queueGrid.map((_, lane) =>
+      pickable.has(lane) ? scoreLane(lane, depth) : null,
+    );
+    currentReplayLaneScores = scoresByLane.map((value) => value?.score ?? null);
     let best = { lane: -1, score: 0, customerIndex: -1, fromFront: false };
     for (const x of lanes) {
-      const s = scoreLane(x, depth);
+      const s = scoresByLane[x]!;
       if (s.score > best.score) {
         best = { lane: x, score: s.score, customerIndex: s.customerIndex, fromFront: s.fromFront };
       }
@@ -571,6 +594,7 @@ export function estimateDifficulty(
     perCustomer: [...costs.values()].sort((a, b) => a.index - b.index),
     occupancyHistory,
     gridCapacity: sim.grid.length,
+    replaySteps,
   };
 }
 

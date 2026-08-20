@@ -94,7 +94,7 @@ namespace CookingGraph.Editor
         public static readonly IReadOnlyDictionary<string, EdgeDefinition> Edges = new[]
         {
             new EdgeDefinition("process", "Process", new[] { "tool" }, new[] { "ingredient" },
-                F("inputs", "processInput[]", true), F("amount", "int", true, 1), F("duration", "number"), F("chainTools", "ref[]", false, null, "tool")),
+                F("inputs", "processInput[]", true), F("amount", "int", true, 1), F("auto", "bool", true, true), F("duration", "number"), F("chainTools", "ref[]", false, null, "tool")),
             new EdgeDefinition("base", "Base", new[] { "composite" }, new[] { "ingredient", "group", "composite" }),
             new EdgeDefinition("topping", "Topping", new[] { "composite" }, new[] { "ingredient", "group", "composite" }),
             new EdgeDefinition("option", "Option", new[] { "group" }, new[] { "ingredient", "group", "composite" }, F("maxQuantity", "int", false, -1)),

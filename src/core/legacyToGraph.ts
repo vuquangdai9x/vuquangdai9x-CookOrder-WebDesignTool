@@ -333,7 +333,7 @@ export function legacyToGraph(map: MapDef, levels: LevelConfig[] = map.levels): 
     },
     idTable,
     vertices: { ingredient, tool, group, composite, dirty },
-    edges: { process, base, topping, option, leavesDirty },
+    edges: { process, preservation: [], base, topping, option, leavesDirty },
   };
 }
 

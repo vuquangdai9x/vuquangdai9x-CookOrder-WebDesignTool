@@ -35,6 +35,8 @@ export interface ProcessStep {
   /** Dense ingredient index produced. */
   out: number;
   amount: number;
+  /** Missing JSON values are normalized to true for backward compatibility. */
+  auto: boolean;
   /** edge.duration ?? tool.cookingTime — resolved here so the sim never re-derives it. */
   duration: number;
   /** Extra tools visited in order, producing no intermediate item. */
@@ -125,6 +127,8 @@ export interface GraphIndex {
   producerOf: (ProcessStep | null)[];
   /** The process edge consuming this ingredient; null = nothing takes it further. */
   recipeForInput: (ProcessStep | null)[];
+  /** Every process that may consume an ingredient, preserving graph order. */
+  stepsForInput: ProcessStep[][];
   /**
    * Every recipe a tool owns, by dense tool index.
    *
@@ -136,6 +140,12 @@ export interface GraphIndex {
   stepsOfTool: ProcessStep[][];
   /** Slot points per tool, resolved once: `slotConfigs`, flattened into lanes. */
   toolSlots: ToolSlotLayout[];
+  /** Number of non-cooking input buffers configured on each tool. */
+  preservationSlots: Int32Array;
+  /** Concrete ingredient indices accepted by each tool's preservation buffer. */
+  preservationIngredients: number[][];
+  /** Preservation-buffer destinations for each ingredient, in graph/tool order. */
+  preservationToolsForInput: number[][];
   /**
    * Following recipeForInput until the output is servable or nothing consumes
    * it. What a pickup ACTUALLY becomes — the estimator must score against this,
@@ -190,6 +200,37 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
   const compositeByName = intern(compositeName);
   const dirtyByName = intern(dirtyName);
 
+  const preservationSlots = Int32Array.from(
+    doc.vertices.tool.map((tool) => Math.max(0, Math.floor(tool.preservationSlots ?? 0))),
+  );
+  const preservationIngredients: number[][] = doc.vertices.tool.map(() => []);
+  const preservationToolsForInput: number[][] = doc.vertices.ingredient.map(() => []);
+  const collectPreserved = (name: string, out: Set<number>, visiting = new Set<string>()): void => {
+    if (visiting.has(name)) return;
+    visiting.add(name);
+    const kind = lookup.kindOf.get(name);
+    if (kind === "ingredient") {
+      const ing = ingByName.get(name);
+      if (ing !== undefined) out.add(ing);
+    } else if (kind === "group") {
+      for (const option of lookup.optionsOf.get(name) ?? []) collectPreserved(option.to, out, visiting);
+    } else if (kind === "composite") {
+      const base = lookup.baseOf.get(name);
+      const topping = lookup.toppingOf.get(name);
+      if (base) collectPreserved(base, out, visiting);
+      if (topping) collectPreserved(topping, out, visiting);
+    }
+    visiting.delete(name);
+  };
+  for (const edge of doc.edges.preservation) {
+    const tool = toolByName.get(edge.from);
+    if (tool === undefined) continue;
+    const ingredients = new Set<number>();
+    collectPreserved(edge.to, ingredients);
+    preservationIngredients[tool] = [...ingredients];
+    for (const ing of ingredients) preservationToolsForInput[ing].push(tool);
+  }
+
   const n = ingName.length;
   const usageNum = new Int32Array(n);
   const servable = new Uint8Array(n);
@@ -205,6 +246,7 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
 
   const producerOf: (ProcessStep | null)[] = new Array(n).fill(null);
   const recipeForInput: (ProcessStep | null)[] = new Array(n).fill(null);
+  const stepsForInput: ProcessStep[][] = Array.from({ length: n }, () => []);
   // Every recipe a tool owns. A multi-input tool needs this to work out WHICH
   // of its recipes a partly-filled lane is heading for: a coffee machine holds
   // ground coffee for both the hot and the cool drink, so the coffee alone does
@@ -226,6 +268,7 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
       inputs,
       out,
       amount: edge.amount,
+      auto: edge.auto !== false,
       duration: edge.duration ?? doc.vertices.tool[tool].cookingTime,
       chainTools: (edge.chainTools ?? [])
         .map((name) => toolByName.get(name))
@@ -235,6 +278,7 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
     if (producerOf[out] === null) producerOf[out] = step;
     for (const input of inputs) {
       if (recipeForInput[input.ing] === null) recipeForInput[input.ing] = step;
+      stepsForInput[input.ing].push(step);
       stepsOfTool[tool].push(step);
     }
   }
@@ -368,8 +412,12 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
     dirtyByName,
     producerOf,
     recipeForInput,
+    stepsForInput,
     stepsOfTool,
     toolSlots: doc.vertices.tool.map(toolSlotLayout),
+    preservationSlots,
+    preservationIngredients,
+    preservationToolsForInput,
     terminalOutput,
     terminalYield,
     chainDepth,

@@ -177,6 +177,7 @@ describe("nesting is not the hazard", () => {
     },
     edges: {
       process: [{ from: "t1", to: "mid", inputs: [{ ingredient: "leaf", slot: 0 }], amount: 1 }],
+      preservation: [],
       base: [
         { from: "outer", to: "middle" },
         { from: "middle", to: "inner" },
@@ -224,6 +225,7 @@ describe("total on malformed data", () => {
       },
       edges: {
         process: [],
+        preservation: [],
         base: [
           { from: "a", to: "b" },
           { from: "b", to: "a" },

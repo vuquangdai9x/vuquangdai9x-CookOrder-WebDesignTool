@@ -34,7 +34,7 @@ describe("round-trip", () => {
   });
 
   it("preserves every edge, including chainTools and inputs lists", () => {
-    for (const kind of ["process", "base", "topping", "option", "leavesDirty"] as const) {
+    for (const kind of ["process", "preservation", "base", "topping", "option", "leavesDirty"] as const) {
       expect(norm(doc.edges[kind]), kind).toEqual(norm(burger.edges[kind]));
     }
   });

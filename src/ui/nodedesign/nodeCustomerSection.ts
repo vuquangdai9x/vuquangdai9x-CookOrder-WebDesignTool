@@ -72,6 +72,7 @@ export interface NodeCustomerSectionDeps {
   onSaved(): void;
   onCommit?(): void;
   onEstimate?(): void;
+  onReplayEstimate?(): void;
   currentEstimate?(): EstimateResult | null;
   onAutoGenerate?(): void;
 }
@@ -97,15 +98,23 @@ export function createNodeCustomerSection(deps: NodeCustomerSectionDeps): Sectio
       deps.onSaved();
     },
     stringPreview: (draft) => serializeNodeCustomers(draft),
-    headerButtons: () => [
-      button("✨ Auto Generate", () => deps.onAutoGenerate?.(), {
+    headerButtons: () => {
+      const replay = button("▶ Replay Estimate", () => deps.onReplayEstimate?.(), {
+        class: "estimate-replay-btn",
+        title: "Open the Play board and step through the most recent estimate",
+      }) as HTMLButtonElement;
+      replay.disabled = !(deps.currentEstimate?.()?.replaySteps.length);
+      return [
+        button("✨ Auto Generate", () => deps.onAutoGenerate?.(), {
         title: "Generate a customer sequence from a dish-count list, ingredient weights, and a complexity curve",
-      }),
-      button("📊 Estimate Difficulty", () => deps.onEstimate?.(), {
+        }),
+        button("📊 Estimate Difficulty", () => deps.onEstimate?.(), {
         title:
           "Play the level with a solver and report, per customer, how much grid space their order takes and how much is wasted. Also numbers each queue tile in pickup order.",
-      }),
-    ],
+        }),
+        replay,
+      ];
+    },
     menuItems: (draft) => [
       {
         label: "Import from string…",

@@ -29,6 +29,7 @@ namespace CookingGraph
         public IngredientNodeAsset to;
         public List<ProcessInputAssetData> inputs = new List<ProcessInputAssetData>();
         public int amount = 1;
+        public bool auto = true;
         public OptionalFloat duration = new OptionalFloat();
         public List<ToolNodeAsset> chainTools = new List<ToolNodeAsset>();
     }

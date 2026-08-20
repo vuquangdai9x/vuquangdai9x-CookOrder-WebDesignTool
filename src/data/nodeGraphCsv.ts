@@ -200,7 +200,7 @@ const emptyDoc = (): NodeGraphMap => ({
   map: { id: "", name: "", gridWidth: 0, gridHeight: 0, dirtyStackHeight: 1, visibleRows: 3 },
   idTable: { ingredient: [], composite: [], group: [], tool: [], dirty: [] },
   vertices: { ingredient: [], tool: [], group: [], composite: [], dirty: [] },
-  edges: { process: [], base: [], topping: [], option: [], leavesDirty: [] },
+  edges: { process: [], preservation: [], base: [], topping: [], option: [], leavesDirty: [] },
 });
 
 export function csvToGraph(text: string): CsvImportResult {

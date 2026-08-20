@@ -45,6 +45,11 @@ describe("estimateDifficulty", () => {
     const orders = [...result.byCid.values()].map((s) => s.order).sort((a, b) => a - b);
     expect(orders).toEqual([1, 2, 3, 4]);
     expect(result.totalPicks).toBe(4);
+    expect(result.replaySteps).toHaveLength(result.totalPicks);
+    for (const step of result.replaySteps) {
+      expect(step.laneScores).toHaveLength(2);
+      expect(step.laneScores[step.lane]).not.toBeNull();
+    }
   });
 
   it("records one occupancy sample per pick, and reports the board's total cell count as capacity", () => {

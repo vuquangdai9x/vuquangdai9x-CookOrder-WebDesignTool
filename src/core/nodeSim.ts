@@ -104,6 +104,8 @@ export interface NodeToolSlotState {
      * through every hop, since later tools own no recipe for this input.
      */
     chain?: { remaining: number[]; out: number; amount: number };
+    /** Finished recipe output retained in its producer until the next tool accepts it. */
+    completed?: { out: number; amount: number };
   } | null;
 }
 
@@ -118,6 +120,9 @@ export interface NodeToolState {
    * what each index means.
    */
   numSlots: number;
+  /** Prefix of `slots` used for recipes; preservation buffers follow it. */
+  processSlotCount: number;
+  preservationSlotCount: number;
   slots: NodeToolSlotState[];
   /** The tool's slot points and the flat index of each point/lane pair. */
   layout: ToolSlotLayout;
@@ -131,7 +136,7 @@ export type NodeCellContent =
   | { kind: "raw"; ing: number }
   /** dirtyId is a dense dirty index, or DIRTY_DISH_ID for the generic dish. Stacks never mix types. */
   | { kind: "dirty"; dirtyId: number; count: number }
-  /** The Save Me booster's collapsed grid — servable ingredients only. */
+  /** The Save Me booster's collapsed grid — items retain their current processing state. */
   | { kind: "backpack"; items: number[] };
 
 /**
@@ -215,7 +220,7 @@ export interface NodeQueueCell {
 /** Where one picked item ends up, decided by planDispatch(). */
 type Dispatch =
   | { kind: "sweeper" }
-  | { kind: "tool"; tool: number; slot: number }
+  | { kind: "tool"; tool: number; slot: number; step?: ProcessStep }
   | { kind: "grid"; cell: number; raw: boolean };
 
 export interface NodeFlight {
@@ -236,6 +241,8 @@ export interface NodeFlight {
   dirtyId?: number;
   /** tool-to-tool only, chainTools spelling: the chain state to install at the destination. */
   chain?: { remaining: number[]; out: number; amount: number };
+  /** Exact process selected when one ingredient can enter more than one recipe. */
+  step?: ProcessStep;
 }
 
 export interface NodeSimOptions {
@@ -332,9 +339,11 @@ export class NodeSimulation {
       index,
       name: def.name,
       displayName: def.displayName,
-      numSlots: ix.toolSlots[index].flat.length,
+      numSlots: ix.toolSlots[index].flat.length + ix.preservationSlots[index],
+      processSlotCount: ix.toolSlots[index].flat.length,
+      preservationSlotCount: ix.preservationSlots[index],
       slots: Array.from(
-        { length: ix.toolSlots[index].flat.length },
+        { length: ix.toolSlots[index].flat.length + ix.preservationSlots[index] },
         () => ({ item: null }) as NodeToolSlotState,
       ),
       layout: ix.toolSlots[index],
@@ -365,7 +374,10 @@ export class NodeSimulation {
   }
 
   get cookingCount(): number {
-    return this.tools.reduce((n, t) => n + t.slots.filter((s) => s.item).length, 0);
+    return this.tools.reduce(
+      (n, tool) => n + tool.slots.slice(0, tool.processSlotCount).filter((slot) => slot.item).length,
+      0,
+    );
   }
 
   get columnCount(): number {
@@ -482,6 +494,7 @@ export class NodeSimulation {
     switch (flight.kind) {
       case "queue-to-tool":
       case "grid-to-tool":
+      case "backpack-to-tool":
       case "tool-to-tool": {
         const { tool: toolIndex, slot } = flight.toTool!;
         this.releaseSlot(toolIndex, slot);
@@ -491,7 +504,7 @@ export class NodeSimulation {
           // owns no recipe for this input); the first hop looks it up fresh.
           // An intermediate FORWARD (the chicken spelling) carries none, because
           // its destination owns a real recipe for the coated piece.
-          const step = this.ix.recipeForInput[flight.ing];
+          const step = flight.step ?? this.ix.recipeForInput[flight.ing];
           const chain =
             flight.chain ??
             (step && step.chainTools.length > 0
@@ -507,11 +520,20 @@ export class NodeSimulation {
             chain,
           };
         }
-        if (flight.fromCell !== undefined) {
+        if (flight.kind === "grid-to-tool" && flight.fromCell !== undefined) {
           // reclaimProcessableGridItems() reserved this cell when it launched the flight —
           // release it now the pickup has actually left, or it leaks forever.
           this.releaseCell(flight.fromCell);
           this.grid[flight.fromCell] = { kind: "empty" };
+        }
+        if (flight.kind === "backpack-to-tool" && flight.fromCell !== undefined) {
+          this.releaseCell(flight.fromCell);
+          const content = this.grid[flight.fromCell];
+          if (content.kind === "backpack") {
+            const at = content.items.indexOf(flight.ing);
+            if (at !== -1) content.items.splice(at, 1);
+            if (content.items.length === 0) this.grid[flight.fromCell] = { kind: "empty" };
+          }
         }
         break;
       }
@@ -610,6 +632,7 @@ export class NodeSimulation {
       if (this.cookingCount === 0) break;
       if (this.time - start >= maxSeconds) break;
       const completion = this.nextCompletionIn();
+      if (completion === null) break;
       const timeout = Math.min(...this.active.map((c) => c.timeLeft), Infinity);
       const step = Math.min(completion ?? Infinity, timeout);
       this.tick(Number.isFinite(step) && step > 0 ? step : 0.05);
@@ -629,13 +652,23 @@ export class NodeSimulation {
     this.completeAllFlights();
   }
 
-  /** Seconds until the next tool slot finishes, or null when nothing is cooking. */
+  /** Seconds until the next READY lane finishes; partial multi-input lanes are waiting, not cooking. */
   nextCompletionIn(): number | null {
     let best: number | null = null;
     for (const tool of this.tools) {
-      for (const slot of tool.slots) {
-        if (!slot.item) continue;
-        const left = slot.item.duration - slot.item.elapsed;
+      for (let lane = 0; lane < tool.layout.laneCount; lane++) {
+        const filled = this.laneSlots(tool, lane).filter((flat) => tool.slots[flat].item);
+        if (filled.length === 0) continue;
+        const lead = tool.slots[filled[0]].item!;
+        if (lead.completed) continue;
+        const step = lead.chain ? null : this.stepForLane(tool, lane);
+        if (!lead.chain && (!step || !this.laneReady(tool, lane, step))) continue;
+        const left = lead.duration - Math.min(...filled.map((flat) => tool.slots[flat].item!.elapsed));
+        // A non-positive lane has finished but cannot currently discharge its
+        // output (for example, ground coffee held in the grinder while the
+        // coffee machine runs). Time cannot change that state, so it is a
+        // resting point rather than another completion to wait for.
+        if (left <= 0) continue;
         if (best === null || left < best) best = left;
       }
     }
@@ -842,9 +875,9 @@ export class NodeSimulation {
 
   /**
    * Save Me: rescues a lost run, up to `maxUses` times (negative = unlimited).
-   * Sweeps every ingredient off the grid into a backpack cell — a parked pickup
-   * is converted through its whole chain first (terminalOutput/terminalYield),
-   * so the backpack only ever holds servable items — and resets patience.
+   * Sweeps every ingredient off the grid into a backpack cell without changing
+   * its processing state. Processable items can therefore fly back to a tool;
+   * the process `auto` gate applies to them exactly as it does to grid items.
    */
   saveMe(maxUses: number): boolean {
     if (this.status !== "lost") return false;
@@ -859,9 +892,7 @@ export class NodeSimulation {
         // A multi-use item's remaining uses become that many backpack entries.
         for (let n = 0; n < (cell.usesLeft ?? 1); n++) items.push(cell.ing);
       } else {
-        const out = this.ix.terminalOutput[cell.ing];
-        const yieldN = this.ix.terminalYield[cell.ing];
-        for (let n = 0; n < Math.max(1, yieldN); n++) items.push(out);
+        items.push(cell.ing);
       }
       this.grid[i] = { kind: "empty" };
       if (firstClearedCell === -1) firstClearedCell = i;
@@ -883,7 +914,7 @@ export class NodeSimulation {
     this.status = "playing";
     this.loseReason = null;
     this.saveMeUsed++;
-    this.log("saved", "Save Me: grid ingredients collapsed into the backpack");
+    this.log("saved", "Save Me: grid ingredients moved into the backpack");
     return true;
   }
 
@@ -1063,6 +1094,25 @@ export class NodeSimulation {
 
   private releaseSlot(tool: number, slot: number): void {
     this.reservedSlots.delete(`${tool}:${slot}`);
+  }
+
+  /** A free preservation position for one tool, outside its recipe layout. */
+  private freePreservationSlot(toolIndex: number): number {
+    const tool = this.tools[toolIndex];
+    if (!tool) return -1;
+    for (let slot = tool.processSlotCount; slot < tool.slots.length; slot++) {
+      if (!tool.slots[slot].item && !this.reservedSlots.has(`${toolIndex}:${slot}`)) return slot;
+    }
+    return -1;
+  }
+
+  /** First graph-ordered preservation buffer that accepts this ingredient. */
+  private preservationDestination(ing: number): { tool: number; slot: number } | null {
+    for (const tool of this.ix.preservationToolsForInput[ing] ?? []) {
+      const slot = this.freePreservationSlot(tool);
+      if (slot !== -1) return { tool, slot };
+    }
+    return null;
   }
 
   private findFreeCell(): number {
@@ -1272,8 +1322,29 @@ export class NodeSimulation {
         return { ok: false, reason: `${this.ingredientName(cell.ing)} can't complete any waiting order` };
       }
 
-      const step = this.ix.recipeForInput[cell.ing];
-      if (!step) {
+      const preservationTools = this.ix.preservationToolsForInput[cell.ing] ?? [];
+      if (preservationTools.length > 0) {
+        const destination = this.preservationDestination(cell.ing);
+        if (!destination) {
+          const tool = this.tools[preservationTools[0]];
+          rollback();
+          return {
+            ok: false,
+            reason: `${tool?.displayName ?? "Tool"} preservation slots are full`,
+          };
+        }
+        this.reserveSlot(destination.tool, destination.slot);
+        reservedSlots.push(destination);
+        const step = (this.ix.stepsForInput[cell.ing] ?? []).find(
+          (candidate) => candidate.tool === destination.tool,
+        );
+        plan.push({ kind: "tool", ...destination, step });
+        continue;
+      }
+
+      const allSteps = this.ix.stepsForInput[cell.ing] ?? [];
+      const eligible = allSteps.filter((step) => this.processMayStart(step));
+      if (allSteps.length === 0) {
         // No tool needed — it only has to fit on the grid.
         const free = this.reserveCell();
         if (free === -1) {
@@ -1285,15 +1356,36 @@ export class NodeSimulation {
         continue;
       }
 
-      const slot = this.freeSlotFor(step.tool, cell.ing);
-      if (slot !== -1) {
-        this.reserveSlot(step.tool, slot);
-        reservedSlots.push({ tool: step.tool, slot });
-        plan.push({ kind: "tool", tool: step.tool, slot });
+      let routed: { step: ProcessStep; slot: number } | null = null;
+      for (const step of eligible) {
+        const slot = this.freeSlotFor(step.tool, cell.ing, inputPoint(step, cell.ing));
+        if (slot !== -1) {
+          routed = { step, slot };
+          break;
+        }
+      }
+      if (routed) {
+        this.reserveSlot(routed.step.tool, routed.slot);
+        reservedSlots.push({ tool: routed.step.tool, slot: routed.slot });
+        plan.push({ kind: "tool", tool: routed.step.tool, slot: routed.slot, step: routed.step });
         continue;
       }
 
-      const toolName = this.ix.doc.vertices.tool[step.tool]?.displayName ?? "Tool";
+      // A manual process that no active order needs is an intentional wait,
+      // not a "tool full" error. Park the pickup so it can be reclaimed when
+      // the matching customer appears, even under block-pick policy.
+      if (eligible.length === 0) {
+        const free = this.reserveCell();
+        if (free === -1) {
+          rollback();
+          return { ok: false, reason: "No free grid cell for a waiting ingredient" };
+        }
+        reservedCells.push(free);
+        plan.push({ kind: "grid", cell: free, raw: true });
+        continue;
+      }
+
+      const toolName = this.ix.doc.vertices.tool[eligible[0].tool]?.displayName ?? "Tool";
       if (!allowPark) {
         rollback();
         return { ok: false, reason: `${toolName} is full` };
@@ -1322,7 +1414,7 @@ export class NodeSimulation {
     this.ctx.picksByIngredient[cell.item.id] = (this.ctx.picksByIngredient[cell.item.id] ?? 0) + 1;
     this.log("pick", `Picked ${this.ingredientName(cell.ing)}`);
     if (d.kind === "tool") {
-      this.launch({ kind: "queue-to-tool", ing: cell.ing, toTool: { tool: d.tool, slot: d.slot } });
+      this.launch({ kind: "queue-to-tool", ing: cell.ing, toTool: { tool: d.tool, slot: d.slot }, step: d.step });
       return;
     }
     if (!d.raw) {
@@ -1434,15 +1526,18 @@ export class NodeSimulation {
 
         const lead = tool.slots[filled[0]].item!;
         const leadSlot = filled[0];
-        const step = lead.chain ? null : this.stepForLane(tool, lane);
+        const completed = lead.completed;
+        const step = lead.chain || completed ? null : this.stepForLane(tool, lane);
 
         // Waiting for the other input. Nothing ages, so an ingredient parked
         // in a machine does not silently burn while its partner is in the queue.
-        if (step && !this.laneReady(tool, lane, step)) continue;
+        if (!completed && step && !this.laneReady(tool, lane, step)) continue;
 
-        for (const f of filled) tool.slots[f].item!.elapsed += dt;
-        const elapsed = Math.min(...filled.map((f) => tool.slots[f].item!.elapsed));
-        if (elapsed < lead.duration) continue;
+        if (!completed) {
+          for (const f of filled) tool.slots[f].item!.elapsed += dt;
+          const elapsed = Math.min(...filled.map((f) => tool.slots[f].item!.elapsed));
+          if (elapsed < lead.duration) continue;
+        }
 
         const clearLane = () => {
           for (const f of filled) tool.slots[f].item = null;
@@ -1470,8 +1565,8 @@ export class NodeSimulation {
           continue;
         }
 
-        const out = chain?.out ?? step?.out ?? lead.ing;
-        const amount = chain?.amount ?? step?.amount ?? 1;
+        const out = completed?.out ?? chain?.out ?? step?.out ?? lead.ing;
+        const amount = completed?.amount ?? chain?.amount ?? step?.amount ?? 1;
 
         // --- spelling 2: a real intermediate vertex. Forward one produced
         // piece immediately when the next tool has room; surplus pieces park on
@@ -1484,7 +1579,20 @@ export class NodeSimulation {
           // A single intermediate keeps the established no-grid behavior: it
           // waits in its producer when the next tool is occupied. Grid parking
           // is specifically the surplus path of a batch output.
-          if (amount === 1 && nextSlot === -1) continue;
+          if (amount === 1 && nextSlot === -1) {
+            // The recipe is done even though its output cannot advance. A
+            // buffered tool keeps the concrete output visible in the producer
+            // (ground coffee in the grinder), releases any partner points,
+            // and retries only when downstream state changes. Unbuffered tools
+            // retain their established source-item representation.
+            if (!completed && tool.preservationSlotCount > 0) {
+              for (const flat of filled) if (flat !== leadSlot) tool.slots[flat].item = null;
+              lead.ing = out;
+              lead.elapsed = lead.duration;
+              lead.completed = { out, amount };
+            }
+            continue;
+          }
           let remaining = amount;
           if (nextSlot !== -1) {
             this.reserveSlot(onward.tool, nextSlot);
@@ -1493,6 +1601,7 @@ export class NodeSimulation {
               ing: out,
               fromTool: { tool: tool.index, slot: leadSlot },
               toTool: { tool: onward.tool, slot: nextSlot },
+              step: onward,
               // No chain: the destination owns a real recipe for this input.
             });
             remaining--;
@@ -1558,7 +1667,7 @@ export class NodeSimulation {
    */
   private forwardStepFor(out: number): ProcessStep | null {
     if (this.ix.servable[out]) return null;
-    return this.ix.recipeForInput[out];
+    return this.routingStep(out);
   }
 
   private advanceCustomers(dt: number): void {
@@ -1579,8 +1688,14 @@ export class NodeSimulation {
   private settle(): void {
     for (let guard = 0; guard < 100; guard++) {
       const before = `${this.servedCount}:${this.flights.length}`;
+      // A flight may have just freed a downstream tool after advanceTools()
+      // already visited its upstream producer. Retry completed lanes at zero
+      // elapsed time so held intermediates move immediately when space opens.
+      this.advanceTools(0);
       this.fillSlots();
       this.autoServe();
+      this.reclaimPreservedItems();
+      this.reclaimProcessableBackpackItems();
       this.reclaimProcessableGridItems();
       if (this.status !== "playing") return;
       if (`${this.servedCount}:${this.flights.length}` === before) return;
@@ -1674,11 +1789,25 @@ export class NodeSimulation {
     for (let cell = 0; cell < this.grid.length; cell++) {
       const content = this.grid[cell];
       if ((content.kind !== "raw" && content.kind !== "cooked") || this.reservedCells.has(cell)) continue;
-      const step = content.kind === "raw"
-        ? this.ix.recipeForInput[content.ing]
-        : this.forwardStepFor(content.ing);
+      if (content.kind === "raw" && (this.ix.preservationToolsForInput[content.ing]?.length ?? 0) > 0) {
+        const destination = this.preservationDestination(content.ing);
+        if (!destination) continue;
+        const step = (this.ix.stepsForInput[content.ing] ?? []).find(
+          (candidate) => candidate.tool === destination.tool,
+        );
+        this.reservedCells.add(cell);
+        this.launch({
+          kind: "grid-to-tool",
+          ing: content.ing,
+          fromCell: cell,
+          toTool: this.reserveSlot(destination.tool, destination.slot),
+          step,
+        });
+        continue;
+      }
+      const step = content.kind === "raw" ? this.routingStep(content.ing) : this.forwardStepFor(content.ing);
       if (!step) continue;
-      const slot = this.freeSlotFor(step.tool, content.ing);
+      const slot = this.freeSlotFor(step.tool, content.ing, inputPoint(step, content.ing));
       if (slot === -1) continue;
       this.reservedCells.add(cell);
       this.launch({
@@ -1686,7 +1815,71 @@ export class NodeSimulation {
         ing: content.ing,
         fromCell: cell,
         toTool: this.reserveSlot(step.tool, slot),
+        step,
       });
+    }
+  }
+
+  /** Moves processable Save Me items into tools under the same auto/manual gate as the grid. */
+  private reclaimProcessableBackpackItems(): void {
+    for (let cell = 0; cell < this.grid.length; cell++) {
+      const content = this.grid[cell];
+      if (content.kind !== "backpack" || this.reservedCells.has(cell)) continue;
+      for (const ing of content.items) {
+        if ((this.ix.preservationToolsForInput[ing]?.length ?? 0) > 0) {
+          const destination = this.preservationDestination(ing);
+          if (!destination) continue;
+          const step = (this.ix.stepsForInput[ing] ?? []).find(
+            (candidate) => candidate.tool === destination.tool,
+          );
+          this.reservedCells.add(cell);
+          this.launch({
+            kind: "backpack-to-tool",
+            ing,
+            fromCell: cell,
+            toTool: this.reserveSlot(destination.tool, destination.slot),
+            step,
+          });
+          break;
+        }
+        const step = this.routingStep(ing);
+        if (!step) continue;
+        const slot = this.freeSlotFor(step.tool, ing, inputPoint(step, ing));
+        if (slot === -1) continue;
+        this.reservedCells.add(cell);
+        this.launch({
+          kind: "backpack-to-tool",
+          ing,
+          fromCell: cell,
+          toTool: this.reserveSlot(step.tool, slot),
+          step,
+        });
+        break;
+      }
+    }
+  }
+
+  /** Moves buffered ingredients into this tool's recipe slots as soon as they are available. */
+  private reclaimPreservedItems(): void {
+    for (const tool of this.tools) {
+      for (let preserved = tool.processSlotCount; preserved < tool.slots.length; preserved++) {
+        const item = tool.slots[preserved].item;
+        if (!item) continue;
+        const step = (this.ix.stepsForInput[item.ing] ?? []).find(
+          (candidate) => candidate.tool === tool.index && this.processMayStart(candidate),
+        );
+        if (!step) continue;
+        const slot = this.freeSlotFor(tool.index, item.ing, inputPoint(step, item.ing));
+        if (slot === -1) continue;
+        this.launch({
+          kind: "tool-to-tool",
+          ing: item.ing,
+          fromTool: { tool: tool.index, slot: preserved },
+          toTool: this.reserveSlot(tool.index, slot),
+          step,
+        });
+        tool.slots[preserved].item = null;
+      }
     }
   }
 
@@ -1877,6 +2070,16 @@ export class NodeSimulation {
       }
     }
     return bits;
+  }
+
+  /** A manual process starts only while an active customer needs its output path. */
+  private processMayStart(step: ProcessStep): boolean {
+    return step.auto || reachesAny(this.ix, step.out, this.demandBits());
+  }
+
+  /** First graph-ordered process for `ing` that is currently permitted to start. */
+  private routingStep(ing: number): ProcessStep | null {
+    return (this.ix.stepsForInput[ing] ?? []).find((step) => this.processMayStart(step)) ?? null;
   }
 
   /** Whether any remaining source could still yield `ing` — see unsatisfiableSlots(). */

@@ -115,6 +115,8 @@ export interface ToolRecipe {
   in: Id;
   out: Id;
   amount: number;
+  /** Missing values are treated as true. False waits for matching active demand. */
+  auto?: boolean;
   /**
    * Additional tool ids to visit, in order, after this one, before `out` is
    * produced (e.g. potato: Cutting Board, then Fryer, then 2 pieces out).

@@ -219,6 +219,7 @@ namespace CookingGraph.Editor
                 from = Resolve<ToolNodeAsset>(lookup, edge.Value<string>("from")),
                 to = Resolve<IngredientNodeAsset>(lookup, edge.Value<string>("to")),
                 amount = edge.Value<int?>("amount") ?? 1,
+                auto = edge.Value<bool?>("auto") ?? true,
                 duration = OptionalFloatOf(edge, "duration"),
                 inputs = (edge["inputs"] as JArray ?? new JArray()).OfType<JObject>().Select(input => new ProcessInputAssetData
                 {

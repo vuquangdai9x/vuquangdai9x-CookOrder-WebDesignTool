@@ -542,6 +542,7 @@
     ]
   },
   "edges": {
+    "preservation": [],
     "process": [
       {
         "from": "rice-cooker",

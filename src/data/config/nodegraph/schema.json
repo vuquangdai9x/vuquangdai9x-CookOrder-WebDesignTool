@@ -247,6 +247,13 @@
           "description": "The tool's slot POINTS. Each is a named place an ingredient goes, with `slot` parallel positions (lanes). A single-input tool has one point whose `slot` is the old numSlots. A multi-input tool has one point per ingredient - a coffee machine holds ground coffee in one and a cup in another, and brews only once both are filled."
         },
         {
+          "name": "preservationSlots",
+          "type": "int",
+          "default": 0,
+          "min": 0,
+          "description": "Extra waiting positions for the ingredient(s) wired by a preservation edge. A matching pickup enters this buffer first, advances into a free process slot automatically, and is blocked while every preservation position is occupied."
+        },
+        {
           "name": "cookingTime",
           "type": "number",
           "required": true,
@@ -423,6 +430,13 @@
           "description": "Pieces produced per pickup. A chopping board yielding 2 drops two pieces on the grid at once."
         },
         {
+          "name": "auto",
+          "type": "bool",
+          "required": true,
+          "default": true,
+          "description": "When enabled, every available input moves into this process immediately. When disabled, inputs wait until an active customer order needs this output or a downstream result."
+        },
+        {
           "name": "duration",
           "type": "number",
           "min": 0,
@@ -437,6 +451,21 @@
           "description": "Extra tools visited in order after the source tool, before the output appears. Produces NO intermediate item and never touches the grid (potato: cutting board, then fryer, then 2 fries)."
         }
       ]
+    },
+    {
+      "kind": "preservation",
+      "label": "Preserves",
+      "style": "dotted",
+      "from": [
+        "tool"
+      ],
+      "to": [
+        "ingredient",
+        "group"
+      ],
+      "description": "Declares which ingredient, or concrete options of which group, enter this tool's preservation slots before its normal process slots.",
+      "maxOutgoingPerSource": 1,
+      "fields": []
     },
     {
       "kind": "base",
@@ -621,7 +650,7 @@
     {
       "id": "WARN-MULTI-INPUT",
       "severity": "warning",
-      "description": "A process edge with more than one input. The data keeps the list, but the v1 simulation reads only inputs[0]."
+      "description": "A process edge with more than one input. Runtime supports it by filling matching lane points and waiting until every required input is present; the warning keeps the extra queue/tool contention visible to designers."
     },
     {
       "id": "INV-INPUT-SLOT-RANGE",

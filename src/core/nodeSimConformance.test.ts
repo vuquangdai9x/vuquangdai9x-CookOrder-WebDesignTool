@@ -958,7 +958,7 @@ describe("boosters", () => {
     expect(sim.status).toBe("won");
   });
 
-  it("saveMe converts grid raws to cooked items in the backpack and resets patience", () => {
+  it("saveMe preserves raw processing state in the backpack and resets patience", () => {
     const { sim, ck, rw } = bind({ queueString: "0", customerString: "10;0;0" });
     for (const c of sim.active) c.timeLeft = 0.001;
     sim.tick(1);
@@ -980,7 +980,7 @@ describe("boosters", () => {
       | { kind: "backpack"; items: number[] }
       | undefined;
     expect(backpack).toBeDefined();
-    expect([...backpack!.items].sort((a, b) => a - b)).toEqual([ck(1), ck(3), ck(3)].sort((a, b) => a - b));
+    expect([...backpack!.items].sort((a, b) => a - b)).toEqual([ck(1), rw(3)].sort((a, b) => a - b));
     expect(sim.grid.filter((c) => c.kind === "raw" || c.kind === "cooked")).toHaveLength(0);
     expect(sim.grid.filter((c) => c.kind === "backpack")).toHaveLength(1);
   });

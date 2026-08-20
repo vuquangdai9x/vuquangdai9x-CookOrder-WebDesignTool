@@ -112,6 +112,7 @@ const PAN_SLOP_PX = 4;
  */
 type NodeRow =
   | { type: "process"; processIndex: number }
+  | { type: "preservation" }
   | { type: "add-process" }
   | { type: "base" }
   | { type: "topping" };
@@ -124,7 +125,9 @@ const sameRow = (a: NodeRow, b: NodeRow): boolean => rowKey(a) === rowKey(b);
 function parseRowKey(key: string | undefined): NodeRow | undefined {
   if (!key) return undefined;
   if (key.startsWith("process:")) return { type: "process", processIndex: Number(key.slice(8)) };
-  if (key === "base" || key === "topping" || key === "add-process") return { type: key };
+  if (key === "base" || key === "topping" || key === "preservation" || key === "add-process") {
+    return { type: key };
+  }
   return undefined;
 }
 
@@ -782,6 +785,8 @@ export class MapProcessView {
   private rowsOf(kind: VertexKindName, name: string): NodeRow[] {
     if (kind === "tool") {
       const rows: NodeRow[] = [];
+      const tool = this.doc.vertices.tool.find((vertex) => vertex.name === name);
+      if ((tool?.preservationSlots ?? 0) > 0) rows.push({ type: "preservation" });
       this.doc.edges.process.forEach((edge, index) => {
         if (edge.from === name) rows.push({ type: "process", processIndex: index });
       });
@@ -1131,6 +1136,25 @@ export class MapProcessView {
       return wrap;
     }
 
+    if (row.type === "preservation") {
+      const edge = this.doc.edges.preservation.find((candidate) => candidate.from === name);
+      const wrap = el("div", { class: "np-row np-row-preservation" }, [
+        this.portEl(
+          { kind, name, side: "in", row },
+          "Wire an ingredient or group into this tool's preservation slots",
+        ),
+        el("span", { class: "np-row-label" }, ["preserve"]),
+        el("span", { class: "np-row-value" }, [edge?.to ?? "—"]),
+      ]);
+      if (edge) {
+        wrap.append(button("✕", () => this.removeEdge("preservation", name, edge.to), {
+          class: "np-row-x",
+          title: "Unwire",
+        }));
+      }
+      return wrap;
+    }
+
     const edge = this.doc.edges.process[row.processIndex];
     return el("div", { class: "np-row np-row-process" }, [
       this.portEl({ kind, name, side: "in", row }, "Wire an ingredient in as this recipe's input"),
@@ -1144,6 +1168,18 @@ export class MapProcessView {
               title: `This process produces ${edge!.amount} items`,
             }, [`×${edge!.amount}`]),
           ]
+        : []),
+      ...(edge
+        ? [button(edge.auto === false ? "On demand" : "Auto", () => {
+            this.doc = structuredClone(this.doc);
+            this.doc.edges.process[row.processIndex].auto = edge.auto === false;
+            this.commit(`toggle ${edge.from} recipe auto`);
+          }, {
+            class: `np-row-auto${edge.auto === false ? " manual" : ""}`,
+            title: edge.auto === false
+              ? "Manual: start only when an active customer needs this output"
+              : "Auto: start whenever all inputs are available",
+          })]
         : []),
       button("\u2715", () => this.removeProcessRow(row.processIndex), {
         class: "np-row-x",
@@ -1242,6 +1278,20 @@ export class MapProcessView {
       }
     });
 
+    // preservation: stored tool -> ingredient/group, drawn member -> the
+    // tool's dedicated buffer row because the member is what enters the tool.
+    for (const edge of this.doc.edges.preservation) {
+      const memberKind = kindOf.get(edge.to);
+      if (!memberKind || kindOf.get(edge.from) !== "tool") continue;
+      draw(
+        { kind: memberKind, name: edge.to, side: "out" },
+        { kind: "tool", name: edge.from, side: "in", row: { type: "preservation" } },
+        "preservation",
+        edge.from,
+        edge.to,
+      );
+    }
+
     // base / topping: stored composite -> member, DRAWN member -> composite,
     // because the member is what feeds the assembly.
     for (const rowType of ["base", "topping"] as const) {
@@ -1333,7 +1383,9 @@ export class MapProcessView {
           fileId: vertex?.fileId,
           localImage: vertex?.localImage,
           imageURL: vertex?.imageURL,
-          numSlots: (vertex?.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1,
+          numSlots:
+            ((vertex?.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1) +
+            Math.max(0, vertex?.preservationSlots ?? 0),
           cookingTime: vertex?.cookingTime ?? 1,
           recipes: [],
         },
@@ -1368,7 +1420,7 @@ export class MapProcessView {
     // An empty recipe is intentionally allowed to exist: it is the thing the
     // designer then wires an input and an output into. Validation reports it
     // until both ends are connected.
-    this.doc.edges.process.push({ from: tool, to: "", inputs: [], amount: 1 });
+    this.doc.edges.process.push({ from: tool, to: "", inputs: [], amount: 1, auto: true });
     this.commit(`add recipe to ${tool}`, 1);
   }
 
@@ -1524,6 +1576,16 @@ export class MapProcessView {
       // cup belongs versus the coffee.
       this.doc.edges.process[to.row.processIndex].inputs.push({ ingredient: from.name, slot: 0 });
       this.commit(`${from.name} → ${to.name} recipe`, 1);
+      return;
+    }
+
+    // --- preservation input: ingredient/group out -> tool buffer row in
+    if (to.kind === "tool" && to.row?.type === "preservation") {
+      if (from.kind !== "ingredient" && from.kind !== "group") {
+        this.flashStatus("Preservation slots accept an ingredient or group");
+        return;
+      }
+      this.addEdge("preservation", to.name, from.name);
       return;
     }
 
@@ -2085,6 +2147,19 @@ export class MapProcessView {
           numberField("amount", edge.amount, (n) => {
             this.doc.edges.process[index].amount = n ?? 1;
           }),
+          (() => {
+            const input = el("input", { type: "checkbox" }) as HTMLInputElement;
+            input.checked = edge.auto !== false;
+            input.addEventListener("change", () => {
+              this.doc = structuredClone(this.doc);
+              this.doc.edges.process[index].auto = input.checked;
+              this.commit(`set ${tool} recipe auto`);
+            });
+            return el("label", {
+              class: "inline-field",
+              title: "Off: ingredients wait until an active customer needs this process output",
+            }, ["auto", input]);
+          })(),
           numberField("duration", edge.duration, (n) => {
             if (n === undefined) delete this.doc.edges.process[index].duration;
             else this.doc.edges.process[index].duration = n;

@@ -73,7 +73,9 @@ export function nodeIconSource(doc: NodeGraphMap): NodeIconSource {
       ...(vertex.fileId ? { fileId: vertex.fileId } : {}),
       ...(vertex.localImage ? { localImage: vertex.localImage } : {}),
       ...(vertex.imageURL ? { imageURL: vertex.imageURL } : {}),
-      numSlots: (vertex.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1,
+      numSlots:
+        ((vertex.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1) +
+        Math.max(0, vertex.preservationSlots ?? 0),
       cookingTime: vertex.cookingTime,
       recipes: [],
     });

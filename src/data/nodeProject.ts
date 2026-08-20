@@ -235,7 +235,7 @@ export function blankNodeGraph(id: string, name: string): NodeGraphMap {
     },
     idTable: { ingredient: [], composite: [], group: [], tool: [], dirty: [] },
     vertices: { ingredient: [], tool: [], group: [], composite: [], dirty: [] },
-    edges: { process: [], base: [], topping: [], option: [], leavesDirty: [] },
+    edges: { process: [], preservation: [], base: [], topping: [], option: [], leavesDirty: [] },
     layout: {},
     notes: [],
   };
@@ -368,6 +368,10 @@ function isCurrentShape(doc: NodeGraphMap | undefined): doc is NodeGraphMap {
   for (const bucket of ["process", "base", "topping", "option", "leavesDirty"] as const) {
     if (!Array.isArray(doc.edges[bucket])) return false;
   }
+  // Backward-compatible v1 draft: preservation was added as an optional empty
+  // bucket, so its absence must not discard a designer's locally saved graph.
+  if ((doc.edges as unknown as Record<string, unknown>).preservation !== undefined &&
+      !Array.isArray((doc.edges as unknown as Record<string, unknown>).preservation)) return false;
   return true;
 }
 
@@ -379,6 +383,7 @@ export function loadNodeProject(docId = activeNodeMapId()): NodeProjectState {
       // A brand-new map legitimately has no levels yet, so level count is not
       // part of the shape check — only that the graph itself is well-formed.
       if (draft.version === NODE_DRAFT_VERSION && isCurrentShape(draft.doc)) {
+        draft.doc.edges.preservation ??= [];
         return {
           docId,
           doc: draft.doc,

@@ -142,6 +142,11 @@ function checkRefs(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
     }
     for (const tool of e.chainTools ?? []) check(tool, ["tool"], `Process ${e.from}->${e.to} chainTool`, edge);
   }
+  for (const e of doc.edges.preservation) {
+    const edge = { kind: "preservation", from: e.from, to: e.to };
+    check(e.from, ["tool"], "A preservation edge's source", edge);
+    check(e.to, ["ingredient", "group"], "A preservation edge's target", edge);
+  }
   for (const kind of ["base", "topping"] as const) {
     for (const e of doc.edges[kind]) {
       const edge = { kind, from: e.from, to: e.to };
@@ -318,6 +323,38 @@ function checkProcessCapabilities(doc: NodeGraphMap, add: Add): void {
  */
 function checkSlotPoints(doc: NodeGraphMap, add: Add): void {
   const toolOf = new Map(doc.vertices.tool.map((t) => [t.name, t]));
+  const preservationCount = new Map<string, number>();
+  for (const edge of doc.edges.preservation) {
+    preservationCount.set(edge.from, (preservationCount.get(edge.from) ?? 0) + 1);
+  }
+  for (const tool of doc.vertices.tool) {
+    const slots = tool.preservationSlots ?? 0;
+    const edges = preservationCount.get(tool.name) ?? 0;
+    if (!Number.isInteger(slots) || slots < 0) {
+      add("INV-REF", `Tool "${tool.name}" has preservationSlots ${slots}; it must be a non-negative integer.`, {
+        vertexKind: "tool",
+        vertexName: tool.name,
+      });
+    }
+    if (slots > 0 && edges === 0) {
+      add("INV-REF", `Tool "${tool.name}" has preservation slots but no ingredient or group is wired to them.`, {
+        vertexKind: "tool",
+        vertexName: tool.name,
+      });
+    }
+    if (edges > 0 && slots <= 0) {
+      add("INV-REF", `Tool "${tool.name}" has a preservation edge but preservationSlots is zero.`, {
+        vertexKind: "tool",
+        vertexName: tool.name,
+      });
+    }
+    if (edges > 1) {
+      add("INV-REF", `Tool "${tool.name}" has ${edges} preservation edges; at most one is allowed.`, {
+        vertexKind: "tool",
+        vertexName: tool.name,
+      });
+    }
+  }
 
   // INV-INPUT-SLOT-STABLE is per (tool, ingredient): dispatch routes an
   // incoming pickup by ingredient alone, so the point must not depend on which

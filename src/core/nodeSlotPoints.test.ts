@@ -155,6 +155,46 @@ describe("the machine waits for BOTH inputs", () => {
   });
 });
 
+describe("tool preservation slots", () => {
+  it("buffers one extra bean while completed ground coffee waits for the running machine", () => {
+    const bufferedDoc = structuredClone(doc);
+    const machine = bufferedDoc.vertices.tool.find((value) => value.name === "coffee-machine")!;
+    machine.cookingTime = 3;
+    const buffered = buildIndex(bufferedDoc);
+    const bean = buffered.ingByName.get("coffee-bean")!;
+    const ground = buffered.ingByName.get("coffee-grinded")!;
+    const grinderIndex = buffered.toolByName.get("coffee-grinder")!;
+    const machineIndex = buffered.toolByName.get("coffee-machine")!;
+    const cool = `{c${cid("cool-coffee-with-milk")}:${id("coffee-cup-cool")}}`;
+    const sim = new NodeSimulation(
+      buffered,
+      level(
+        `${id("coffee-bean")},${id("cup")},${id("coffee-bean")},${id("coffee-bean")},${id("coffee-bean")}`,
+        `0;0;0;${cool},${cool}`,
+      ),
+    );
+
+    expect(sim.pick(0)).toBe(true); // bean passes through preservation into grinder
+    sim.tick(1); // ground coffee reaches the machine and waits
+    expect(sim.pick(0)).toBe(true); // cup starts the three-second brew
+    expect(sim.pick(0)).toBe(true); // next bean enters the now-free grinder
+    sim.tick(1); // its completed ground coffee is held because the machine is still running
+
+    const grinder = sim.tools[grinderIndex];
+    expect(grinder.slots[0].item?.ing).toBe(ground);
+    expect(sim.pick(0)).toBe(true); // one more bean fits in the preservation buffer
+    expect(grinder.slots[grinder.processSlotCount].item?.ing).toBe(bean);
+    expect(sim.canPick(0)).toMatchObject({ ok: false });
+    expect(sim.canPick(0).reason).toContain("preservation slots are full");
+
+    sim.tick(2); // machine finishes: held ground moves in, buffered bean starts grinding
+    expect(sim.tools[machineIndex].slots[0].item?.ing).toBe(ground);
+    expect(sim.tools[machineIndex].slots[1].item).toBeNull(); // waits for the next cup
+    expect(grinder.slots[0].item?.ing).toBe(bean);
+    expect(grinder.slots[grinder.processSlotCount].item).toBeNull();
+  });
+});
+
 describe("the lane's recipe is decided by the whole set, not the first item", () => {
   // Ground coffee is input 0 of BOTH drinks, so it names neither on its own.
   // `recipeForInput` returns whichever was registered first; if the sim trusted

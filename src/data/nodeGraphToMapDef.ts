@@ -98,7 +98,7 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
   //   * The two-tool COST survives. `chainTools` makes a legacy Simulation hop
   //     the piece through both tools, occupying both, so a difficulty estimate
   //     still pays for the flour step rather than pretending it is free.
-  const routes = new Map<number, { tool: number; out: number; amount: number; chainTools: number[] }>();
+  const routes = new Map<number, { tool: number; out: number; amount: number; auto: boolean; chainTools: number[] }>();
   for (let dense = 0; dense < ix.ingName.length; dense++) {
     if (!ix.pickupable[dense]) continue;
     const route = collapsedRoute(ix, dense);
@@ -117,7 +117,8 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
    * labels and grid dimensions.
    */
   const totalSlots = (vertex: (typeof doc.vertices.tool)[number]): number =>
-    (vertex.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1;
+    ((vertex.slotConfigs ?? []).reduce((n, c) => n + Math.max(1, c.slot), 0) || 1) +
+    Math.max(0, vertex.preservationSlots ?? 0);
 
   const tools: CookingToolDef[] = doc.vertices.tool.map((vertex, dense) => {
     const recipes: ToolRecipe[] = [];
@@ -130,6 +131,7 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
         in: inId,
         out: outId,
         amount: route.amount,
+        auto: route.auto,
         ...(route.chainTools.length
           ? { chainTools: route.chainTools.map((t) => ids.byNode.tool.get(doc.vertices.tool[t].name) ?? t) }
           : {}),
@@ -256,11 +258,15 @@ export function nodeLevelAsLevelConfig(projected: ProjectedMap, data: LevelData)
 function collapsedRoute(
   ix: GraphIndex,
   pickup: number,
-): { tool: number; out: number; amount: number; chainTools: number[] } | null {
+): { tool: number; out: number; amount: number; auto: boolean; chainTools: number[] } | null {
   const first = ix.recipeForInput[pickup];
   if (!first) return null;
   const chainTools: number[] = [...first.chainTools];
   let amount = first.amount;
+  // The legacy-shaped estimator cannot stop at a real intermediate vertex.
+  // Conservatively gate the collapsed route if ANY stage is manual, so it
+  // never simulates a manual process before a matching order is visible.
+  let auto = first.auto;
   let current = first.out;
   const seen = new Set<number>([pickup]);
 
@@ -272,9 +278,10 @@ function collapsedRoute(
     if (!next) break;
     chainTools.push(next.tool, ...next.chainTools);
     amount *= next.amount;
+    auto = auto && next.auto;
     current = next.out;
   }
-  return { tool: first.tool, out: current, amount, chainTools };
+  return { tool: first.tool, out: current, amount, auto, chainTools };
 }
 
 /**

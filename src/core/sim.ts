@@ -118,6 +118,8 @@ export type FlightKind =
   | "queue-to-grid"
   | "tool-to-grid"
   | "grid-to-tool"
+  /** A processable item leaving the Save Me backpack for a tool. */
+  | "backpack-to-tool"
   /** A chained-recipe hop from one tool straight to the next (see ToolRecipe.chainTools) — never touches the grid. */
   | "tool-to-tool"
   | "grid-to-customer"
@@ -653,6 +655,20 @@ export class Simulation {
         }
         reservedCells.push(cell);
         plan.push({ kind: "grid", cell, raw: false });
+        continue;
+      }
+
+      // A manual recipe intentionally waits on the grid until a currently
+      // visible order needs its result. This is not a full-tool rejection, so
+      // it remains pickable under block-pick policy.
+      if (match.recipe.auto === false && !this.recipeIsDemanded(match.recipe.out)) {
+        const cell = this.reserveCell();
+        if (cell === -1) {
+          rollback();
+          return { ok: false, reason: "No free grid cell for a waiting ingredient" };
+        }
+        reservedCells.push(cell);
+        plan.push({ kind: "grid", cell, raw: true });
         continue;
       }
 
@@ -1416,6 +1432,7 @@ export class Simulation {
       if (content.kind !== "raw" || this.reservedCells.has(cell)) continue;
       const match = findToolRecipe(this.map.tools, content.rawId);
       if (!match) continue;
+      if (match.recipe.auto === false && !this.recipeIsDemanded(match.recipe.out)) continue;
       const slot = this.freeSlot(match.tool.id);
       if (slot === -1) continue;
       this.reservedCells.add(cell);
@@ -1426,6 +1443,13 @@ export class Simulation {
         toTool: this.reserveSlot(match.tool.id, slot),
       });
     }
+  }
+
+  /** Whether a currently active customer still needs this recipe's result. */
+  private recipeIsDemanded(cookedId: Id): boolean {
+    return this.active.some((customer) =>
+      customer.dishes.some((dish) => dish.remaining.includes(cookedId)),
+    );
   }
 
   /** Fills one dish slot with a served item and completes the customer if that was their last one — shared by the grid-to-customer and backpack-to-customer flight cases. */

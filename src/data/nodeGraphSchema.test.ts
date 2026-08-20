@@ -15,9 +15,9 @@ import {
 const burger = burgerJson as unknown as NodeGraphMap;
 
 describe("schema shape", () => {
-  it("declares the five vertex kinds and five edge kinds the runtime expects", () => {
+  it("declares the five vertex kinds and six edge kinds the runtime expects", () => {
     expect(VERTEX_KIND_NAMES).toEqual(["ingredient", "tool", "group", "composite", "dirty"]);
-    expect(EDGE_KIND_NAMES).toEqual(["process", "base", "topping", "option", "leavesDirty"]);
+    expect(EDGE_KIND_NAMES).toEqual(["process", "preservation", "base", "topping", "option", "leavesDirty"]);
   });
 
   it("caps process edges at one per target — the invariant that makes a backward trace deterministic", () => {
@@ -67,6 +67,8 @@ describe("schema shape", () => {
 describe("wiring matrix", () => {
   it("permits the connections burger.json actually uses", () => {
     expect(edgeAllowed("process", "tool", "ingredient")).toBe(true);
+    expect(edgeAllowed("preservation", "tool", "ingredient")).toBe(true);
+    expect(edgeAllowed("preservation", "tool", "group")).toBe(true);
     expect(edgeAllowed("base", "composite", "group")).toBe(true);
     expect(edgeAllowed("base", "composite", "ingredient")).toBe(true);
     expect(edgeAllowed("topping", "composite", "ingredient")).toBe(true);

@@ -51,9 +51,11 @@ import type { LevelData } from "../../data/mapLoader.ts";
 import { listNodeMaps, type NodeProjectState } from "../../data/nodeProject.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
 import { renderGroupOverlay } from "./groupOverlay.ts";
+import { replayScoreStepIndex } from "./replayScoreStep.ts";
 import { centerOf, EffectsLayer } from "../play/effectsLayer.ts";
 import type { Point } from "../play/effectsLayer.ts";
 import type { NodeFlight } from "../../core/nodeSim.ts";
+import type { EstimateReplayStep } from "../design/estimateDifficulty.ts";
 
 /** Same per-tool tints the legacy tool strip uses, so the two read identically. */
 const TOOL_COLORS = [
@@ -72,6 +74,13 @@ const SPEEDS = [
 ];
 
 const TICK_MS = 100;
+
+interface ReplayState {
+  steps: EstimateReplayStep[];
+  index: number;
+  busy: boolean;
+  message: string;
+}
 
 /**
  * Flight kinds that land on (and fill) a customer's dish chip: the two
@@ -156,6 +165,8 @@ export class NodePlayView {
   private timerBarEls = new Map<number, HTMLElement>();
   /** Populated by toolsEl(); keyed "toolIndex:slotIndex". */
   private barEls = new Map<string, HTMLElement>();
+  private replay: ReplayState | null = null;
+  private replayKeyHandler: ((event: KeyboardEvent) => void) | null = null;
 
   constructor(
     root: HTMLElement,
@@ -163,11 +174,25 @@ export class NodePlayView {
     levelId: number,
     onSelectLevel: (levelId: number) => void,
     onSelectMap: (docId: string) => void,
+    replaySteps?: EstimateReplayStep[],
   ) {
     this.root = root;
     this.project = project;
     this.onSelectLevel = onSelectLevel;
     this.onSelectMap = onSelectMap;
+    if (replaySteps) {
+      this.replay = { steps: replaySteps, index: 0, busy: false, message: "Initial state" };
+      this.replayKeyHandler = (event) => {
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          this.replayNext();
+        } else if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          this.replayPrevious();
+        }
+      };
+      window.addEventListener("keydown", this.replayKeyHandler);
+    }
     this.ix = buildIndex(project.doc);
     this.projected = nodeAsMapDef(project.doc, this.ix);
     this.level = project.levels.find((l) => l.id === levelId) ?? project.levels[0];
@@ -176,6 +201,7 @@ export class NodePlayView {
 
   destroy(): void {
     this.stopClock();
+    if (this.replayKeyHandler) window.removeEventListener("keydown", this.replayKeyHandler);
   }
 
   /**
@@ -189,6 +215,7 @@ export class NodePlayView {
   }
 
   private get speedFactor(): number {
+    if (this.replay?.busy) return 5;
     return SPEEDS.find((s) => s.id === this.speedId)?.factor ?? 1;
   }
 
@@ -232,8 +259,13 @@ export class NodePlayView {
     this.ingredientPickMode = false;
     this.saveMeDeclined = false;
     this.paused = false;
+    if (this.replay) {
+      this.replay.index = 0;
+      this.replay.busy = false;
+      this.replay.message = "Initial state";
+    }
     this.mount();
-    this.startClock();
+    if (!this.replay) this.startClock();
   }
 
   /**
@@ -246,6 +278,7 @@ export class NodePlayView {
   private mount(): void {
     this.page = el("div", { class: "play-page" });
     this.boostersEl = this.boostersBar();
+    if (this.replay) this.boostersEl.style.display = "none";
     // The boosters bar is a SIBLING of `.play-page`, not a child: the page has
     // a fixed height with three sized tiers, so a fourth child would shrink
     // them instead of sitting below.
@@ -264,7 +297,7 @@ export class NodePlayView {
     this.queuesEl = this.queuesTier();
     this.customersKey = customersStructureKey(this.sim);
     this.middleKey = middleStructureKey(this.sim);
-    this.queuesKey = queuesStructureKey(this.sim);
+    this.queuesKey = this.queueRenderKey();
     this.page.replaceChildren(this.customersEl, this.middleEl, this.queuesEl);
     this.refreshQueueGroupOverlay();
     this.syncOverlay();
@@ -351,7 +384,7 @@ export class NodePlayView {
       this.middleKey = nextMiddle;
     }
 
-    const nextQueues = queuesStructureKey(this.sim);
+    const nextQueues = this.queueRenderKey();
     if (nextQueues !== this.queuesKey) {
       const next = this.queuesTier();
       this.queuesEl.replaceWith(next);
@@ -573,6 +606,11 @@ export class NodePlayView {
   }
 
   private syncOverlay(): void {
+    if (this.replay) {
+      this.overlayEl?.remove();
+      this.overlayEl = null;
+      return;
+    }
     // Wait for every still-flying item to land: the panel is opaque and
     // full-page, so popping it up the instant the verdict lands would hide
     // whatever is mid-air behind it instead of letting it arrive.
@@ -629,6 +667,7 @@ export class NodePlayView {
   }
 
   private toolbar(): HTMLElement {
+    if (this.replay) return this.replayToolbar();
     const mapPicker = el("select", { class: "map-picker" }) as HTMLSelectElement;
     for (const map of listNodeMaps()) {
       const opt = el("option", { value: map.id }, [map.name]);
@@ -720,6 +759,116 @@ export class NodePlayView {
     const existing = this.root.querySelector(".play-toolbar");
     if (existing) existing.replaceWith(this.toolbar());
     this.refreshHud();
+  }
+
+  /** Play-mode toolbar variant used by estimate replay. The board below is unchanged. */
+  private replayToolbar(): HTMLElement {
+    const state = this.replay!;
+    const previous = button("◀ Prev", () => this.replayPrevious(), {
+      title: "Previous solver state (Left Arrow)",
+    }) as HTMLButtonElement;
+    const next = button("Next ▶", () => this.replayNext(), {
+      class: "primary",
+      title: "Animate the next solver step at ×5 speed (Right Arrow)",
+    }) as HTMLButtonElement;
+    previous.disabled = state.busy || state.index === 0;
+    next.disabled = state.busy || state.index >= state.steps.length;
+    return el("div", { class: "play-toolbar estimate-replay-toolbar" }, [
+      previous,
+      next,
+      el("strong", {}, [`Step ${state.index}/${state.steps.length}`]),
+      el("span", { class: "muted" }, [state.message]),
+      el("span", { class: "spacer" }),
+      el("div", { class: "hud", id: "play-hud" }),
+    ]);
+  }
+
+  /** Capture the same on-screen origins a real click uses before removing queue tiles. */
+  private capturePickOrigins(lane: number): void {
+    this.pendingPickOrigins = this.sim.pickTargets(lane)
+      .map((cell) => this.page.querySelector(`.queue-tile[data-qx="${cell.x}"][data-qy="${cell.y}"]`))
+      .filter((node): node is Element => node !== null)
+      .map(centerOf);
+  }
+
+  /** Animate one recorded solver pick and all resulting cooking/transfers at ×5. */
+  private replayNext(): void {
+    const state = this.replay;
+    if (!state || state.busy || state.index >= state.steps.length) return;
+    const step = state.steps[state.index];
+    this.sim.level.serveableSlots = step.serveableSlots;
+    this.sim.tick(0);
+    this.capturePickOrigins(step.lane);
+    if (!this.sim.pick(step.lane)) {
+      state.message = `Step ${state.index + 1} cannot be replayed from this state`;
+      this.pendingPickOrigins = [];
+      this.refreshToolbar();
+      return;
+    }
+    state.index++;
+    state.busy = true;
+    state.message = `Animating queue ${step.lane + 1} at ×5`;
+    this.dispatchFlights();
+    this.syncPage();
+    this.refreshToolbar();
+    this.startReplayClock();
+  }
+
+  /** Drive animations until the board reaches the resting state after one pick. */
+  private startReplayClock(): void {
+    this.stopClock();
+    this.timer = window.setInterval(() => {
+      if (!this.replay?.busy) {
+        this.stopClock();
+        return;
+      }
+      this.dispatchFlights();
+      if (this.sim.flights.length === 0 && this.animating.size === 0) {
+        const completion = this.sim.nextCompletionIn();
+        if (completion === null || this.sim.status !== "playing") {
+          this.replay.busy = false;
+          this.replay.message = `State after step ${this.replay.index}`;
+          this.stopClock();
+          this.syncPage();
+          this.refreshToolbar();
+          return;
+        }
+        this.sim.tick(Math.min(0.5, Math.max(0.01, completion)));
+      }
+      this.dispatchFlights();
+      this.syncPage();
+    }, TICK_MS);
+  }
+
+  /** Go back instantly by deterministically rebuilding and replaying prior picks without animation. */
+  private replayPrevious(): void {
+    const state = this.replay;
+    if (!state || state.busy || state.index === 0) return;
+    const target = state.index - 1;
+    this.stopClock();
+    this.animating.clear();
+    document.querySelectorAll(".fx-layer .fx-flier").forEach((node) => node.remove());
+    this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level), { instantFlights: false });
+    let reached = 0;
+    for (; reached < target; reached++) {
+      const step = state.steps[reached];
+      this.sim.level.serveableSlots = step.serveableSlots;
+      this.sim.tick(0);
+      this.sim.completeAllFlights();
+      if (!this.sim.pick(step.lane)) break;
+      for (let guard = 0; guard < 500; guard++) {
+        this.sim.completeAllFlights();
+        const completion = this.sim.nextCompletionIn();
+        if (completion === null || this.sim.status !== "playing") break;
+        this.sim.tick(Math.max(0.01, completion));
+      }
+      this.sim.completeAllFlights();
+    }
+    state.index = reached;
+    state.message = reached === 0 ? "Initial state" : `State after step ${reached}`;
+    this.pendingPickOrigins = [];
+    this.fullRender();
+    this.refreshToolbar();
   }
 
   private customersTier(): HTMLElement {
@@ -932,7 +1081,7 @@ export class NodePlayView {
       // that needs a cup should say so, or a half-filled machine reads as
       // broken rather than waiting. A single-point tool renders exactly as
       // before — an unlabelled row of slots.
-      const multiPoint = tool.layout.points.length > 1;
+      const multiPoint = tool.layout.points.length > 1 || tool.preservationSlotCount > 0;
       const slots = el("div", { class: `tool-slots${multiPoint ? " multi-point" : ""}` });
       tool.layout.points.forEach((point, pointIndex) => {
         const group = multiPoint ? el("div", { class: "slot-point" }) : slots;
@@ -963,12 +1112,33 @@ export class NodePlayView {
           group.append(node);
         }
       });
+      if (tool.preservationSlotCount > 0) {
+        const group = el("div", { class: "slot-point preservation-point" }, [
+          el("span", { class: "slot-point-name" }, ["preservation"]),
+        ]);
+        for (let offset = 0; offset < tool.preservationSlotCount; offset++) {
+          const i = tool.processSlotCount + offset;
+          const slot = tool.slots[i];
+          const node = el("div", {
+            class: `tool-slot preservation-slot${slot.item ? " busy" : ""}`,
+            "data-slot": `${tool.index}:${i}`,
+            title: `Preservation slot ${offset + 1}`,
+          });
+          if (slot.item) {
+            node.append(el("span", { class: "slot-item" }, [this.ingredientIconForDense(slot.item.ing, 96)]));
+          }
+          node.append(el("small", { class: "cell-badge" }, ["hold"]));
+          group.append(node);
+        }
+        slots.append(group);
+      }
 
       const def = this.projected.map.tools.find((t) => t.name === tool.displayName);
       const toolEl = el("div", {
         class: `tool${unused ? " unused" : ""}`,
         title:
           `${tool.displayName} — ${tool.layout.points.map((p) => `${p.name} ×${p.lanes}`).join(", ")}` +
+          (tool.preservationSlotCount > 0 ? `, preservation ×${tool.preservationSlotCount}` : "") +
           (unused ? " — no ingredient in this level needs it" : ""),
       }, [
         el("div", { class: "tool-head" }, [
@@ -987,16 +1157,35 @@ export class NodePlayView {
   private queuesTier(): HTMLElement {
     const sim = this.sim;
     const needed = sim.neededIngredients();
+    const replayStepIndex = this.replay
+      ? replayScoreStepIndex(this.replay.index, this.replay.busy, this.replay.steps.length)
+      : null;
+    const replayStep = replayStepIndex === null
+      ? undefined
+      : this.replay?.steps[replayStepIndex];
 
     const lanes = el("div", { class: "queue-lanes play" });
     lanes.style.setProperty("--window-rows", String(this.windowRows));
 
     for (let x = 0; x < sim.columnCount; x++) {
-      if (sim.remainingIn(x) === 0) continue;
+      if (sim.remainingIn(x) === 0 && !this.replay) continue;
       const check = sim.canPick(x);
-      const lane = el("div", { class: "queue-lane", "data-lane": String(x) }, [
+      const replayScore = replayStep?.laneScores[x];
+      const picked = replayStep?.lane === x;
+      const lane = el("div", {
+        class: `queue-lane${picked ? " replay-picked" : ""}`,
+        "data-lane": String(x),
+      }, [
         el("div", { class: "lane-head" }, [
           el("span", {}, [`Queue ${x + 1}`]),
+          ...(this.replay
+            ? [el("strong", {
+                class: `replay-lane-score${picked ? " picked" : ""}`,
+                title: replayScore === null || replayScore === undefined
+                  ? "This lane was not pickable in this estimator step"
+                  : `Estimator score: ${replayScore}`,
+              }, [replayScore === null || replayScore === undefined ? "—" : `S ${replayScore.toFixed(1)}`])]
+            : []),
           el("small", {}, [`${sim.remainingIn(x)}`]),
         ]),
       ]);
@@ -1042,9 +1231,25 @@ export class NodePlayView {
     }
 
     return el("section", { class: "play-section queues-tier" }, [
-      el("h2", {}, ["Ingredient queues — click the top tile to pick"]),
+      el("h2", {}, [this.replay
+        ? replayStepIndex === null
+          ? "Ingredient queues — final state"
+          : `Ingredient queues — scores for step ${replayStepIndex + 1}`
+        : "Ingredient queues — click the top tile to pick"]),
       lanes,
     ]);
+  }
+
+  /** Queue contents plus the replay score context that changes its highlight. */
+  private queueRenderKey(): string {
+    const structure = queuesStructureKey(this.sim);
+    if (!this.replay) return structure;
+    const step = replayScoreStepIndex(
+      this.replay.index,
+      this.replay.busy,
+      this.replay.steps.length,
+    );
+    return `${structure}|replay-score:${step ?? "final"}`;
   }
 
   /**
@@ -1056,6 +1261,7 @@ export class NodePlayView {
    * was armed, so arming and cancelling costs nothing.
    */
   private performPick(x: number, y: number, viaBooster: boolean): void {
+    if (this.replay) return;
     const cells = viaBooster ? this.sim.pickTargetsAt(x, y) : this.sim.pickTargets(x);
     this.pendingPickOrigins = cells
       .map((c) => this.page.querySelector(`.queue-tile[data-qx="${c.x}"][data-qy="${c.y}"]`))
@@ -1295,7 +1501,7 @@ export class NodePlayView {
     const next = this.queuesTier();
     this.queuesEl.replaceWith(next);
     this.queuesEl = next;
-    this.queuesKey = queuesStructureKey(this.sim);
+    this.queuesKey = this.queueRenderKey();
     this.refreshQueueGroupOverlay();
   }
 
@@ -1313,4 +1519,29 @@ export class NodePlayView {
     if (lanes) renderGroupOverlay(lanes, this.sim, this.windowRows);
   }
 
+}
+
+/** Opens an estimate as a modal Play board with deterministic step controls. */
+export function openNodeEstimateReplay(
+  project: NodeProjectState,
+  levelId: number,
+  steps: EstimateReplayStep[],
+): void {
+  let view: NodePlayView | null = null;
+  const close = () => {
+    view?.destroy();
+    overlay.remove();
+  };
+  const host = el("div", { class: "estimate-replay-host" });
+  const overlay = el("div", { class: "overlay-panel estimate-replay-overlay" }, [
+    el("div", { class: "definitions-head" }, [
+      el("h2", {}, ["Difficulty Estimate Replay"]),
+      el("span", { class: "muted" }, ["Use Left/Right Arrow or Prev/Next"]),
+      el("span", { class: "spacer" }),
+      button("✕ Close", close, { class: "primary" }),
+    ]),
+    host,
+  ]);
+  document.body.append(overlay);
+  view = new NodePlayView(host, project, levelId, () => {}, () => {}, steps);
 }
