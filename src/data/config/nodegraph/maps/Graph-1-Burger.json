@@ -224,7 +224,7 @@
         "name": "cheese-sauce",
         "displayName": "Cheese Sauce",
         "pickupable": true,
-        "usageNum": 3,
+        "usageNum": 2,
         "price": 0,
         "code": "cheese_sauce",
         "emoji": "🧀",
@@ -837,20 +837,7 @@
         "maxQuantity": -1
       }
     ],
-    "leavesDirty": [
-      {
-        "from": "burger",
-        "to": "dirty-plate"
-      },
-      {
-        "from": "soda",
-        "to": "dirty-cup"
-      },
-      {
-        "from": "fried-basket",
-        "to": "dirty-chick-box"
-      }
-    ]
+    "leavesDirty": []
   },
   "layout": {
     "ingredient:bun": {
@@ -1038,16 +1025,16 @@
       "y": -215.18700999999987
     },
     "dirty:dirty-plate": {
-      "x": 1906.7800209962995,
-      "y": 589.2180487892997
+      "x": 1897.9222159962994,
+      "y": 493.5537547892997
     },
     "composite:fried-basket": {
       "x": 1584,
       "y": -135.99999999999986
     },
     "dirty:dirty-chick-box": {
-      "x": 1859,
-      "y": -102.99999999999989
+      "x": 1908.6037079999999,
+      "y": -177.40556199999986
     },
     "ingredient:potato_sliced": {
       "x": 399.5156202922801,

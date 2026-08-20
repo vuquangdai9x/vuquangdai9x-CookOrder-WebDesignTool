@@ -1167,6 +1167,10 @@ function quickAddDrawer(
     ]),
   ]);
   const pool = el("div", { class: "quick-add-pool" });
+  // The drawer sits outside `.queue-lanes`, so it does not inherit that
+  // element's zoom custom property. Mirror it here so every quick-add choice
+  // is exactly the same size as the ingredient slots it inserts into.
+  pool.style.setProperty("--tile-zoom", String(ui.zoom));
   const add = (id: number) => {
     (draft.queues[ui.activeLane] ?? draft.queues[0]).push(
       tagNew({ kind: id < 0 ? "sweeper" : "ingredient", id, effects: [] }),
@@ -1175,13 +1179,14 @@ function quickAddDrawer(
   };
   for (const raw of deps.map.rawIngredients) {
     const tile = button("", () => add(raw.id), { class: "queue-tile", title: raw.name });
-    tile.replaceChildren(ingredientIconEl(raw.id, 96));
+    tile.replaceChildren(el("span", { class: "tile-main" }, [ingredientIconEl(raw.id, 96)]));
     pool.append(tile);
   }
-  const sweeper = button("🧹", () => add(SWEEPER_ID), {
+  const sweeper = button("", () => add(SWEEPER_ID), {
     class: "queue-tile sweeper",
     title: "Sweeper",
   });
+  sweeper.replaceChildren(el("span", { class: "tile-main" }, ["🧹"]));
   pool.append(sweeper);
   drawer.append(pool);
   return drawer;

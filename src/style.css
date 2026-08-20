@@ -1213,6 +1213,12 @@ footer {
   gap: 0.3rem;
 }
 
+.quick-add-pool .queue-tile {
+  flex: 0 0 calc(var(--tile) * var(--tile-zoom, 1));
+  padding: 0;
+  cursor: pointer;
+}
+
 /* ---------- recipe pieces foldout ---------- */
 
 .foldout {

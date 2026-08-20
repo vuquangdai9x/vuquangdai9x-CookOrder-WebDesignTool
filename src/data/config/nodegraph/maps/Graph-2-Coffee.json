@@ -162,7 +162,7 @@
         "name": "sprinkle",
         "displayName": "sprinkle",
         "pickupable": true,
-        "usageNum": 1,
+        "usageNum": 2,
         "price": 5,
         "localImage": "Map2-coffee/ingredients/sprinkle.png"
       },
@@ -188,7 +188,7 @@
         "name": "blueberry",
         "displayName": "blueberry",
         "pickupable": true,
-        "usageNum": 1,
+        "usageNum": 2,
         "price": 5,
         "emoji": "🔵",
         "localImage": "Map2-coffee/ingredients/blueberry.png"
@@ -338,10 +338,10 @@
             "slot": 1
           }
         ],
+        "preservationSlots": 1,
         "cookingTime": 1,
         "upgradeCosts": [],
-        "localImage": "Map2-coffee/tools/grinder.png",
-        "preservationSlots": 1
+        "localImage": "Map2-coffee/tools/grinder.png"
       },
       {
         "name": "coffee-machine",
@@ -423,7 +423,7 @@
       {
         "name": "glazes",
         "displayName": "glazes",
-        "minQuantity": 0,
+        "minQuantity": 1,
         "maxQuantity": 1
       }
     ],
@@ -474,7 +474,7 @@
         "name": "donut-with-glaze",
         "displayName": "donut-with-glaze",
         "orderable": false,
-        "toppingRequired": false
+        "toppingRequired": true
       }
     ],
     "dirty": [
@@ -493,6 +493,12 @@
     ]
   },
   "edges": {
+    "preservation": [
+      {
+        "from": "coffee-grinder",
+        "to": "coffee-bean"
+      }
+    ],
     "process": [
       {
         "from": "coffee-grinder",
@@ -766,20 +772,6 @@
       {
         "from": "cupcake-with-cream",
         "to": "dirty-plate"
-      },
-      {
-        "from": "cool-coffee-with-cream",
-        "to": "dirty-teacup"
-      },
-      {
-        "from": "cool-coffee-with-milk-ice",
-        "to": "dirty-cup"
-      }
-    ],
-    "preservation": [
-      {
-        "from": "coffee-grinder",
-        "to": "coffee-bean"
       }
     ]
   },
@@ -793,8 +785,8 @@
       "y": -557.4057858947192
     },
     "ingredient:coffee-bean": {
-      "x": -34.98006561197996,
-      "y": 6.7895411430230865
+      "x": 81.06392045454544,
+      "y": 69.421875
     },
     "ingredient:coffee-grinded": {
       "x": 85.609375,
@@ -985,11 +977,11 @@
       "y": -1221.0903148641264
     },
     "dirty:dirty-teacup": {
-      "x": 2101.121360727893,
-      "y": -20.22440006075083
+      "x": 2128.3940880006203,
+      "y": -22.042581878932648
     },
     "dirty:dirty-cup": {
-      "x": 2118.8734650088845,
+      "x": 2117.9643740997935,
       "y": 214.86347040205874
     },
     "dirty:dirty-plate": {
