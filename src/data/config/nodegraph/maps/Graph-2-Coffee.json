@@ -162,7 +162,7 @@
         "name": "sprinkle",
         "displayName": "sprinkle",
         "pickupable": true,
-        "usageNum": 2,
+        "usageNum": 1,
         "price": 5,
         "localImage": "Map2-coffee/ingredients/sprinkle.png"
       },
@@ -188,7 +188,7 @@
         "name": "blueberry",
         "displayName": "blueberry",
         "pickupable": true,
-        "usageNum": 2,
+        "usageNum": 1,
         "price": 5,
         "emoji": "🔵",
         "localImage": "Map2-coffee/ingredients/blueberry.png"
@@ -338,10 +338,10 @@
             "slot": 1
           }
         ],
-        "preservationSlots": 1,
         "cookingTime": 1,
         "upgradeCosts": [],
-        "localImage": "Map2-coffee/tools/grinder.png"
+        "localImage": "Map2-coffee/tools/grinder.png",
+        "preservationSlots": 1
       },
       {
         "name": "coffee-machine",
@@ -493,12 +493,6 @@
     ]
   },
   "edges": {
-    "preservation": [
-      {
-        "from": "coffee-grinder",
-        "to": "coffee-bean"
-      }
-    ],
     "process": [
       {
         "from": "coffee-grinder",
@@ -781,6 +775,12 @@
         "from": "cool-coffee-with-milk-ice",
         "to": "dirty-cup"
       }
+    ],
+    "preservation": [
+      {
+        "from": "coffee-grinder",
+        "to": "coffee-bean"
+      }
     ]
   },
   "layout": {
@@ -793,8 +793,8 @@
       "y": -557.4057858947192
     },
     "ingredient:coffee-bean": {
-      "x": 81.06392045454544,
-      "y": 69.421875
+      "x": -34.98006561197996,
+      "y": 6.7895411430230865
     },
     "ingredient:coffee-grinded": {
       "x": 85.609375,
