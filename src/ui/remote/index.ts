@@ -39,6 +39,7 @@ import type { LevelData, MapData } from "../../data/mapLoader.ts";
 import { requestAccessTokenInteractive } from "../../data/googleAuth.ts";
 import { batchUpdateCells } from "../../data/sheetWrite.ts";
 import type { CellUpdate } from "../../data/sheetWrite.ts";
+import { FirebaseAuthRequiredError, FirebasePermissionError, pushRemoteConfigParameter } from "../../data/remoteConfigWrite.ts";
 import { showSheetPermissionDialog } from "../sheetPermissionDialog.ts";
 import { button, el } from "../dom.ts";
 
@@ -79,6 +80,8 @@ interface RemoteViewState {
   tabName: string;
   columnOverrides: RemoteSheetColumns;
   startRow: number;
+  /** Project id for the "Push Remote Config" button — blank until the designer pastes one in. */
+  firebaseProjectId: string;
 }
 
 const scopedStates = new Map<string, RemoteViewState>();
@@ -214,6 +217,7 @@ export class RemoteDataView {
       tabName: this.defaultTabName,
       columnOverrides: { ...(options.columns ?? REMOTE_SHEET_COLUMNS) },
       startRow: options.startRow ?? 4,
+      firebaseProjectId: "",
     };
     if (!existing) scopedStates.set(options.scope, this.state);
     this.groups = this.buildGroups();
@@ -380,6 +384,16 @@ export class RemoteDataView {
       startRowInput.value = String(this.state.startRow);
       for (const refresh of this.refreshRowByKey.values()) refresh();
     });
+    const firebaseProjectIdInput = el("input", {
+      type: "text",
+      value: this.state.firebaseProjectId,
+      placeholder: "your-firebase-project-id",
+      class: "sheet-id-input",
+    }) as HTMLInputElement;
+    firebaseProjectIdInput.addEventListener("change", () => {
+      this.state.firebaseProjectId = firebaseProjectIdInput.value.trim();
+      firebaseProjectIdInput.value = this.state.firebaseProjectId;
+    });
 
     // One column-letter override per field, defaulting to remote-sheet-columns.json's
     // values — lets a designer point at the real sheet's actual layout without a code change.
@@ -404,13 +418,14 @@ export class RemoteDataView {
         el("p", { class: "remote-hint" }, [
           "One row per level, one column per field — column letters and the start row below default from remote-sheet-columns.json but are editable here if the real sheet's layout differs. Only ",
           this.map.name,
-          "'s levels have live tool data to compare against. Hover a field to apply just that one; each map and level folds out on click.",
+          "'s levels have live tool data to compare against. Hover a field to apply just that one; each map and level folds out on click. Each level's ↪ Push Remote Config button writes its tool data (customers~grid~queue) straight to the Firebase project above, under a Google account with Remote Config write access.",
         ]),
         el("div", { class: "remote-sheet-config" }, [
           el("label", { class: "field small" }, ["Sheet ID", sheetIdInput]),
           el("label", { class: "field small" }, ["Sheet (tab) name", tabNameInput]),
           el("label", { class: "field small" }, ["Start row", startRowInput]),
           ...columnFields,
+          el("label", { class: "field small" }, ["Firebase Project ID", firebaseProjectIdInput]),
         ]),
         el("div", { class: "remote-buttons" }, [
           button("⬇ Load All from sheet", () => void this.runAll("load"), { class: "full-btn" }),
@@ -487,6 +502,10 @@ export class RemoteDataView {
       class: "small-btn",
       title: "Write every field from this level's live draft to the sheet, in one request",
     }) as HTMLButtonElement;
+    const pushConfigBtn = button("↪ Push Remote Config", () => void this.pushLevelRemoteConfig(entry), {
+      class: "small-btn",
+      title: "Write this level's customers~grid~queue strings to Firebase Remote Config",
+    }) as HTMLButtonElement;
 
     const sheetFields = REMOTE_LEVEL_FIELDS.map((f) => this.fieldEl(f.label, "sheet", () => this.applyFieldSheetToTool(entry, f.key)));
     const toolFields = REMOTE_LEVEL_FIELDS.map((f) => this.fieldEl(f.label, "tool", () => void this.applyFieldToolToSheet(entry, f.key)));
@@ -528,6 +547,7 @@ export class RemoteDataView {
 
       applySheetBtn.disabled = row === null || !this.canApplySheet(entry);
       applyToolBtn.disabled = !liveNow;
+      pushConfigBtn.disabled = !liveNow;
 
       const loadedRows = this.currentRows();
       const syncStatus = levelSyncStatus(loadedRows !== null, row, this.level(entry));
@@ -569,6 +589,7 @@ export class RemoteDataView {
       loadBtn,
       applySheetBtn,
       applyToolBtn,
+      pushConfigBtn,
       statusEl,
     ]);
     // Same click-anywhere-but-a-button toggle as the group header — see groupEl.
@@ -588,6 +609,7 @@ export class RemoteDataView {
       loadBtn.disabled = busy;
       applySheetBtn.disabled = busy || !this.canApplySheet(entry);
       applyToolBtn.disabled = busy || !this.isLive(entry);
+      pushConfigBtn.disabled = busy || !this.isLive(entry);
       if (!busy) refresh(); // re-derive field content + correct enabled/disabled from live state
     });
 
@@ -685,6 +707,39 @@ export class RemoteDataView {
     }
     for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.toolField(entry, f.key) ?? "";
     this.setRowStatusByKey.get(entry.key)?.("idle");
+  }
+
+  /**
+   * Writes this level's tool data — customers, grid, and queue strings,
+   * `~`-joined — to Firebase Remote Config under this level's own key, in
+   * one GET-modify-PUT template round trip (see remoteConfigWrite.ts).
+   * Reads the live draft, same source "← Apply Tool" pushes to the sheet.
+   */
+  private async pushLevelRemoteConfig(entry: LevelEntry): Promise<void> {
+    const projectId = this.state.firebaseProjectId.trim();
+    if (!projectId) {
+      alert("Paste a Firebase Project ID into the Firebase Project ID field first.");
+      return;
+    }
+    if (!this.isLive(entry)) return;
+    const customers = this.toolField(entry, "customerString") ?? "";
+    const grid = this.toolField(entry, "gridString") ?? "";
+    const queue = this.toolField(entry, "queueString") ?? "";
+    const value = `${customers}~${grid}~${queue}`;
+    this.setRowStatusByKey.get(entry.key)?.("loading");
+    try {
+      await pushRemoteConfigParameter(projectId, entry.key, value);
+      this.setRowStatusByKey.get(entry.key)?.("idle");
+    } catch (err) {
+      if (err instanceof FirebasePermissionError) {
+        alert(`Firebase Remote Config: ${err.message}`);
+      } else if (err instanceof FirebaseAuthRequiredError) {
+        alert("Google sign-in required for Firebase — click Push Remote Config again to sign in.");
+      } else {
+        alert(`Push Remote Config failed: ${(err as Error).message}`);
+      }
+      this.setRowStatusByKey.get(entry.key)?.("error", "push failed");
+    }
   }
 
   /** Pushes one sheet field onto the tool's corresponding LevelData property — no network (reads the cache). */
