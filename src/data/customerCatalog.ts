@@ -19,19 +19,25 @@ export interface CustomerCatalogEntry {
   desc: string;
   type: string;
   baseMap: string;
+  /** The graph system's own map index (1/2/3/...) for `baseMap` — authored directly in the sheet rather than inferred, since `baseMap` alone can't be trusted against every map registry's naming (e.g. the legacy registry's "donut" vs the graph's "coffee"). */
+  mapIndex: number;
   fileId: string;
   icon: string;
 }
 
-const CATALOG_HEADER = ["Index", "Id", "Name", "Desc", "Type", "BaseMap", "FileID", "Icon"];
+// Column 9 (between FileID and Icon) is a blank spacer in the source Google
+// Sheet export — no header text, never a value. Kept as a real column here
+// (read AND written back) purely for column-position fidelity with that
+// sheet, so re-exporting a CSV pulled from Sheets diffs clean against it.
+const CATALOG_HEADER = ["Index", "Id", "Name", "Desc", "Type", "BaseMap", "MapIndex", "FileID", "", "Icon"];
 
-/** Parses the 8-column Index/Id/Name/Desc/Type/BaseMap/FileID/Icon CSV shape, header row optional. */
+/** Parses the Index/Id/Name/Desc/Type/BaseMap/MapIndex/FileID/(spacer)/Icon CSV shape, header row optional. */
 export function parseCustomersCsv(text: string): CustomerCatalogEntry[] {
   const rows = parseCsv(text).filter((r) => r.some((cell) => cell.trim() !== ""));
   if (rows.length === 0) return [];
   const body = rows[0][0]?.trim().toLowerCase() === "index" ? rows.slice(1) : rows;
   return body.map((r) => {
-    const [index, id, name, desc, type, baseMap, fileId, icon] = r;
+    const [index, id, name, desc, type, baseMap, mapIndex, fileId, , icon] = r;
     return {
       index: Number(index) || 0,
       id: id ?? "",
@@ -39,6 +45,7 @@ export function parseCustomersCsv(text: string): CustomerCatalogEntry[] {
       desc: desc ?? "",
       type: type ?? "",
       baseMap: baseMap ?? "",
+      mapIndex: Number(mapIndex) || 0,
       fileId: fileId ?? "",
       icon: icon ?? "",
     };
@@ -51,12 +58,13 @@ function csvEscape(v: string | number): string {
 }
 
 export function serializeCustomersCsv(entries: CustomerCatalogEntry[]): string {
-  const rows = entries.map((e) => [e.index, e.id, e.name, e.desc, e.type, e.baseMap, e.fileId, e.icon]);
+  const rows = entries.map((e) => [e.index, e.id, e.name, e.desc, e.type, e.baseMap, e.mapIndex, e.fileId, "", e.icon]);
   return [CATALOG_HEADER, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
 }
 
 const CATALOG_DRAFT_KEY = "cookorder-customer-catalog";
-const CATALOG_DRAFT_VERSION = 1;
+/** 2 — added the `mapIndex` field; a v1 draft has none, so it's discarded rather than loaded with mapIndex 0 for every row. */
+const CATALOG_DRAFT_VERSION = 2;
 
 interface CatalogDraft {
   version: number;

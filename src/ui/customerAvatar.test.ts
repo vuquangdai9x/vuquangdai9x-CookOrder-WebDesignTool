@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customerAvatarLocalPath, mapIndexOfBaseMap, randomNormalCustomer } from "./customerAvatar.ts";
+import { customerAvatarLocalPath, randomNormalCustomer } from "./customerAvatar.ts";
 import type { CustomerCatalogEntry } from "../data/customerCatalog.ts";
 
 const entry = (over: Partial<CustomerCatalogEntry> = {}): CustomerCatalogEntry => ({
@@ -9,41 +9,47 @@ const entry = (over: Partial<CustomerCatalogEntry> = {}): CustomerCatalogEntry =
   desc: "",
   type: "",
   baseMap: "",
+  mapIndex: 0,
   fileId: "",
   icon: "",
   ...over,
 });
 
-describe("mapIndexOfBaseMap", () => {
-  it("resolves the bundled maps' own ids to their graph index", () => {
-    expect(mapIndexOfBaseMap("burger")).toBe(1);
-    expect(mapIndexOfBaseMap("coffee")).toBe(2);
-    expect(mapIndexOfBaseMap("sushi")).toBe(3);
-  });
-
-  it("returns undefined for an unknown base map", () => {
-    expect(mapIndexOfBaseMap("donut")).toBeUndefined();
-    expect(mapIndexOfBaseMap("")).toBeUndefined();
-  });
-});
-
 describe("customerAvatarLocalPath", () => {
-  it("builds the customer-map<index>-<id> convention path", () => {
-    expect(customerAvatarLocalPath(entry({ id: "24", baseMap: "burger" }))).toBe("customers/customer-map1-24.png");
+  it("uses the customer-map<mapIndex>-<id> convention for Normal (and blank-type) rows", () => {
+    expect(customerAvatarLocalPath(entry({ id: "dog_boy", mapIndex: 1, type: "Normal" }))).toBe("customers/customer-map1-dog_boy.png");
+    expect(customerAvatarLocalPath(entry({ id: "dog_boy", mapIndex: 1, type: "" }))).toBe("customers/customer-map1-dog_boy.png");
   });
 
-  it("is undefined when the base map or id is missing", () => {
-    expect(customerAvatarLocalPath(entry({ id: "24", baseMap: "" }))).toBeUndefined();
-    expect(customerAvatarLocalPath(entry({ id: "", baseMap: "burger" }))).toBeUndefined();
+  it("uses the shipper-map<mapIndex>-<id> convention for Type=Shipper", () => {
+    expect(customerAvatarLocalPath(entry({ id: "rat_red", mapIndex: 1, type: "Shipper" }))).toBe("customers/shipper-map1-rat_red.png");
+  });
+
+  it("uses the boss-map<mapIndex>-<id> convention for Type=Boss", () => {
+    expect(customerAvatarLocalPath(entry({ id: "pig_boss", mapIndex: 1, type: "Boss" }))).toBe("customers/boss-map1-pig_boss.png");
+  });
+
+  it("matches Type case-insensitively", () => {
+    expect(customerAvatarLocalPath(entry({ id: "rat_red", mapIndex: 1, type: "shipper" }))).toBe("customers/shipper-map1-rat_red.png");
+    expect(customerAvatarLocalPath(entry({ id: "pig_boss", mapIndex: 1, type: "BOSS" }))).toBe("customers/boss-map1-pig_boss.png");
+  });
+
+  it("uses the authored mapIndex directly, not one inferred from baseMap", () => {
+    expect(customerAvatarLocalPath(entry({ id: "beaver", mapIndex: 2, baseMap: "coffee" }))).toBe("customers/customer-map2-beaver.png");
+  });
+
+  it("is undefined when mapIndex or id is missing", () => {
+    expect(customerAvatarLocalPath(entry({ id: "dog_boy", mapIndex: 0 }))).toBeUndefined();
+    expect(customerAvatarLocalPath(entry({ id: "", mapIndex: 1 }))).toBeUndefined();
   });
 });
 
 describe("randomNormalCustomer", () => {
   const catalog = [
-    entry({ index: 0, baseMap: "burger", type: "Normal" }),
-    entry({ index: 1, baseMap: "burger", type: "" }),
-    entry({ index: 2, baseMap: "burger", type: "Shipper" }),
-    entry({ index: 3, baseMap: "coffee", type: "Normal" }),
+    entry({ index: 0, baseMap: "burger", mapIndex: 1, type: "Normal" }),
+    entry({ index: 1, baseMap: "burger", mapIndex: 1, type: "" }),
+    entry({ index: 2, baseMap: "burger", mapIndex: 1, type: "Shipper" }),
+    entry({ index: 3, baseMap: "coffee", mapIndex: 2, type: "Normal" }),
   ];
 
   it("only picks from the given map's Normal (or blank-type) rows", () => {

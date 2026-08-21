@@ -9,7 +9,6 @@ import { button, el } from "../dom.ts";
 import { iconEl } from "../icon.ts";
 import { customerAvatarIconSpec } from "../customerAvatar.ts";
 import type { CustomerCatalogEntry } from "../../data/customerCatalog.ts";
-import { NODE_DOCS } from "../../data/nodeProject.ts";
 
 export interface CustomerAvatarDialogOptions {
   catalog: CustomerCatalogEntry[];
@@ -19,14 +18,16 @@ export interface CustomerAvatarDialogOptions {
   onPick: (catalogIndex: number | undefined) => void;
 }
 
-/** Base Map values in graph map order, then any unrecognised ones, then "" (unassigned) last. */
+/** Base Map values in ascending MapIndex order (the catalog's own authored order), then "" (unassigned) last. */
 function groupOrder(catalog: CustomerCatalogEntry[]): string[] {
-  const known = [...NODE_DOCS].sort((a, b) => a.index - b.index).map((d) => d.doc.map.id);
-  const present = new Set(catalog.map((e) => e.baseMap));
-  const ordered = known.filter((id) => present.has(id));
-  const rest = [...present].filter((id) => id !== "" && !known.includes(id)).sort();
-  const out = [...ordered, ...rest];
-  if (present.has("")) out.push("");
+  const minIndexOf = new Map<string, number>();
+  for (const e of catalog) {
+    if (e.baseMap === "") continue;
+    const cur = minIndexOf.get(e.baseMap);
+    if (cur === undefined || e.mapIndex < cur) minIndexOf.set(e.baseMap, e.mapIndex);
+  }
+  const out = [...minIndexOf.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
+  if (catalog.some((e) => e.baseMap === "")) out.push("");
   return out;
 }
 
