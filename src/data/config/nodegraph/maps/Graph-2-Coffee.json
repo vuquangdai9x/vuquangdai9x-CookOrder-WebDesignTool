@@ -162,7 +162,7 @@
         "name": "sprinkle",
         "displayName": "sprinkle",
         "pickupable": true,
-        "usageNum": 2,
+        "usageNum": 1,
         "price": 5,
         "localImage": "Map2-coffee/ingredients/sprinkle.png"
       },
@@ -188,7 +188,7 @@
         "name": "blueberry",
         "displayName": "blueberry",
         "pickupable": true,
-        "usageNum": 2,
+        "usageNum": 1,
         "price": 5,
         "emoji": "🔵",
         "localImage": "Map2-coffee/ingredients/blueberry.png"
@@ -849,8 +849,8 @@
       "y": 202.98248291015582
     },
     "composite:cool-coffee-with-cream": {
-      "x": 1685.2309051132174,
-      "y": -37.812514160156105
+      "x": 1634.2309051132174,
+      "y": -41.812514160156105
     },
     "composite:whiping-cream-with-topping": {
       "x": 1392.945898437497,

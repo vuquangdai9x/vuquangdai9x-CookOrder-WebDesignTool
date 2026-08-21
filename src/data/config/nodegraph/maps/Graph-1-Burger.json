@@ -773,32 +773,32 @@
       {
         "from": "burger-toppings",
         "to": "patty-cooked",
-        "maxQuantity": -1
+        "maxQuantity": 1
       },
       {
         "from": "burger-toppings",
         "to": "tomato-sliced",
-        "maxQuantity": -1
+        "maxQuantity": 1
       },
       {
         "from": "burger-toppings",
         "to": "lettuce-sliced",
-        "maxQuantity": -1
+        "maxQuantity": 1
       },
       {
         "from": "burger-toppings",
         "to": "onion-sliced",
-        "maxQuantity": -1
+        "maxQuantity": 1
       },
       {
         "from": "burger-toppings",
         "to": "cheese-sliced",
-        "maxQuantity": -1
+        "maxQuantity": 1
       },
       {
         "from": "burger-toppings",
         "to": "egg-cooked",
-        "maxQuantity": -1
+        "maxQuantity": 1
       },
       {
         "from": "fried-basket-bases",
@@ -837,7 +837,12 @@
         "maxQuantity": -1
       }
     ],
-    "leavesDirty": []
+    "leavesDirty": [
+      {
+        "from": "burger",
+        "to": "dirty-plate"
+      }
+    ]
   },
   "layout": {
     "ingredient:bun": {
