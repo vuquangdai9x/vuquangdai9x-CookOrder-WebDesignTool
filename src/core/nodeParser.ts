@@ -65,6 +65,8 @@ export interface NodeCustomerConfig {
   weatherEff: number;
   dishes: NodeDish[];
   staffAmount?: number;
+  /** Row index into the customer catalog (data/customerCatalog.ts) this arrival's avatar/identity is pinned to; unset = random. */
+  customerIndex?: number;
 }
 
 function fail(message: string, context: string): never {
@@ -176,10 +178,16 @@ export function parseNodeCustomers(s: string): NodeCustomerConfig[] {
   if (s.trim() === "") return [];
   return s.split("|").map((custStr) => {
     const parts = custStr.split(";");
-    if (parts.length !== 4 && parts.length !== 5) {
-      fail(`Customer must have 4 or 5 ";"-separated params, got ${parts.length}`, custStr);
+    if (parts.length !== 4 && parts.length !== 5 && parts.length !== 6) {
+      fail(`Customer must have 4, 5 or 6 ";"-separated params, got ${parts.length}`, custStr);
     }
-    const staffAmount = parts.length === 5 ? parseIntStrict(parts[4], custStr) : undefined;
+    // Field 5 (staffAmount) may be blank when only field 6 (customerIndex) is
+    // set — the same "blank field between two ;" convention a staff customer's
+    // empty dish list already uses.
+    const staffAmount =
+      parts.length >= 5 && parts[4] !== "" ? parseIntStrict(parts[4], custStr) : undefined;
+    const customerIndex =
+      parts.length === 6 && parts[5] !== "" ? parseIntStrict(parts[5], custStr) : undefined;
     return {
       typeId: parseIntStrict(parts[0], custStr),
       waitTime: parseIntStrict(parts[1], custStr),
@@ -187,6 +195,7 @@ export function parseNodeCustomers(s: string): NodeCustomerConfig[] {
       // A staff customer orders nothing, so an empty dishes field is legal.
       dishes: parts[3] === "" ? [] : parts[3].split(",").map(parseDish),
       ...(staffAmount !== undefined ? { staffAmount } : {}),
+      ...(customerIndex !== undefined ? { customerIndex } : {}),
     };
   });
 }
@@ -200,7 +209,11 @@ export function serializeNodeCustomers(customers: NodeCustomerConfig[]): string 
         c.weatherEff,
         c.dishes.map(serializeDish).join(","),
       ];
-      if (c.staffAmount !== undefined) base.push(c.staffAmount);
+      if (c.customerIndex !== undefined) {
+        base.push(c.staffAmount ?? "", c.customerIndex);
+      } else if (c.staffAmount !== undefined) {
+        base.push(c.staffAmount);
+      }
       return base.join(";");
     })
     .join("|");

@@ -13,7 +13,6 @@ describe("node map download names", () => {
   it("uses the bundled graph/level filename convention", () => {
     expect(nodeDownloadNames(entries, "sushi", "sushi")).toEqual({
       graphJson: "Graph-3-Sushi.json",
-      graphCsv: "Graph-3-Sushi.csv",
       graphPng: "Graph-3-Sushi.png",
       levelsCsv: "LevelData-3-Sushi.csv",
     });

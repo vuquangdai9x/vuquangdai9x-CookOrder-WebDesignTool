@@ -1,9 +1,0 @@
-{
-  "_source": "MapDefinitions.csv Map2_donut's dirty-objects table (Index/ID/IconFileID/MaxStack/FromIngredient).",
-  "_note": "\"source\" names match cooked-ingredients.json entries exactly. dirty_plate's From Ingredient list (0,1,2,12) covers all three fried-donut types plus the baked cupcake. fileId values are reused from map1 straight from the CSV (the sheet points both maps at the same generic dirty-dish artwork) — but no localImage is set, since no asset has been bundled into src/assets for this map yet; it falls through to fileId, then the emoji.",
-  "cookedIngredients": [
-    { "id": 0, "name": "Dirty Plate", "source": ["Fried Donut", "Fried Donut Bar", "Fried Donut 8", "Baked Cupcake"], "emoji": "🍽", "fileId": "1WqirGMGMpxKI8NlvwSUN9lJiO8k9ID34" },
-    { "id": 1, "name": "Dirty Cool Cup", "source": "Cool Cup", "emoji": "🥤", "fileId": "1qvWAVqMv0qrMWa0jTGPeJ4zMVZTWAp1k" },
-    { "id": 2, "name": "Dirty Hot Cup", "source": "Hot Cup", "emoji": "☕", "fileId": "1qvWAVqMv0qrMWa0jTGPeJ4zMVZTWAp1k" }
-  ]
-}

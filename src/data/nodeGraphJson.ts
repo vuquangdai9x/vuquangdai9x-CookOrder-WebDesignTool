@@ -1,9 +1,9 @@
 // Reading a graph document back out of a JSON file.
 //
-// The counterpart to Map Process's "⬇ JSON" export, and it holds the same
-// contract `csvToGraph` does: **total on garbage**. A designer importing a
-// hand-edited or older file must get a document plus a list of what could not
-// be read, never a throw that loses their file with a stack trace.
+// The counterpart to Map Process's "⬇ JSON" export. **Total on garbage**: a
+// designer importing a hand-edited or older file must get a document plus a
+// list of what could not be read, never a throw that loses their file with a
+// stack trace.
 //
 // So every bucket the rest of the code indexes into is guaranteed present
 // afterwards — `doc.vertices.ingredient`, `doc.edges.process`,

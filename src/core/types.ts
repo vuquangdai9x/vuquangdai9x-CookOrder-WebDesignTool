@@ -178,11 +178,6 @@ export interface MapDef {
   cookedIngredients: CookedIngredientDef[];
   /** What served dishes leave behind on the grid — see DirtyObjectDef. */
   dirtyObjects: DirtyObjectDef[];
-  /**
-   * Bundled transparent-PNG avatar images (paths relative to src/assets/) —
-   * Play mode picks one at random per customer card, stable for its lifetime.
-   */
-  customerAvatars: string[];
   tools: CookingToolDef[];
   levels: LevelConfig[];
   /**

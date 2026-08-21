@@ -1,9 +1,12 @@
-// Turns the JSON map data (level configs stored as canonical strings) into the
-// fully parsed MapDef model, and back. The JSON string form is also what the
-// CSV export writes.
+// Shared level/map draft shapes. LevelData holds a level's canonical strings
+// (grid/queue/customer) plus design-time metadata; MapData/MapDef is the
+// runtime projection shape the graph system produces via
+// data/nodeGraphToMapDef.ts (nodeAsMapDef) so the Design UI it shares with
+// the graph system (gridSection.ts, queueSection.ts, estimateDifficulty.ts's
+// types) can be written against one shape regardless of which system
+// produced it.
 
-import { parseCustomers, parseGrid, parseQueueGroups, parseQueues } from "../core/parser.ts";
-import type { LevelConfig, MapDef } from "../core/types.ts";
+import type { MapDef } from "../core/types.ts";
 
 export interface LevelData {
   id: number;
@@ -39,25 +42,3 @@ export interface LevelData {
 }
 
 export type MapData = Omit<MapDef, "levels"> & { levels: LevelData[] };
-
-export function toLevelConfig(d: LevelData): LevelConfig {
-  return {
-    id: d.id,
-    name: d.name,
-    weather: d.weather,
-    levelTag: d.levelTag,
-    featureUnlock: d.featureUnlock,
-    shuffleDistance: d.shuffleDistance,
-    serveableSlots: d.serveableSlots,
-    queues: parseQueues(d.queueString),
-    queueGroups: parseQueueGroups(d.queueString),
-    grid: parseGrid(d.gridString),
-    customers: parseCustomers(d.customerString),
-    outOfSlotPolicy: d.outOfSlotPolicy,
-    boosterCharges: d.boosterCharges,
-  };
-}
-
-export function toMapDef(data: MapData): MapDef {
-  return { ...data, levels: data.levels.map(toLevelConfig) };
-}

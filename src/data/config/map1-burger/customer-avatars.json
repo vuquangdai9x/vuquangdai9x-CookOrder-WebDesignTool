@@ -1,8 +1,0 @@
-{
-  "_note": "Transparent-PNG customer avatars. Play mode picks one at random per customer card (stable for the card's lifetime) and draws it covering the whole card. Paths are relative to src/assets/.",
-  "avatars": [
-    "Map1-burger/customers/Pet_1.1.png",
-    "Map1-burger/customers/Pet_2.1.png",
-    "Map1-burger/customers/Pet_3.1.png"
-  ]
-}

@@ -13,7 +13,15 @@ namespace CookingGraph
             public int Index;
         }
 
-        public static CustomerOrderData Parse(string source)
+        /// <param name="customerIds">
+        /// Optional customer-catalog lookup, indexed the same way the string's
+        /// 6th field (customerIndex) is: when given and the index is in range,
+        /// <see cref="CustomerData.customerId"/> is resolved from it. Left
+        /// <c>string.Empty</c> when this is null, the field is absent/blank, or
+        /// the index is out of range — never throws for a bad/missing lookup,
+        /// since gameplay already treats an empty id as "random".
+        /// </param>
+        public static CustomerOrderData Parse(string source, IReadOnlyList<string> customerIds = null)
         {
             if (source == null)
                 throw new CookingGraphFormatException("Customer string is null", 0, string.Empty);
@@ -23,8 +31,8 @@ namespace CookingGraph
             foreach (var customerToken in source.Split(new[] { '|' }, StringSplitOptions.None))
             {
                 var fields = customerToken.Split(new[] { ';' }, StringSplitOptions.None);
-                if (fields.Length != 4 && fields.Length != 5)
-                    Fail($"Customer must have 4 or 5 semicolon-separated fields, got {fields.Length}", source, source.IndexOf(customerToken, StringComparison.Ordinal));
+                if (fields.Length != 4 && fields.Length != 5 && fields.Length != 6)
+                    Fail($"Customer must have 4, 5 or 6 semicolon-separated fields, got {fields.Length}", source, source.IndexOf(customerToken, StringComparison.Ordinal));
                 var customer = new CustomerData
                 {
                     typeId = ParseInt(fields[0], source),
@@ -33,10 +41,17 @@ namespace CookingGraph
                 };
                 if (!string.IsNullOrEmpty(fields[3]))
                     customer.dishes.AddRange(SplitDishes(fields[3], source).Select(token => ParseDish(token, source)));
-                if (fields.Length == 5)
+                if (fields.Length >= 5 && !string.IsNullOrEmpty(fields[4]))
                 {
                     customer.hasStaffAmount = true;
                     customer.staffAmount = ParseInt(fields[4], source);
+                }
+                if (fields.Length == 6 && !string.IsNullOrEmpty(fields[5]))
+                {
+                    customer.hasCustomerIndex = true;
+                    customer.customerIndex = ParseInt(fields[5], source);
+                    if (customerIds != null && customer.customerIndex >= 0 && customer.customerIndex < customerIds.Count)
+                        customer.customerId = customerIds[customer.customerIndex] ?? string.Empty;
                 }
                 result.customers.Add(customer);
             }
@@ -44,10 +59,10 @@ namespace CookingGraph
         }
 
         /// <summary>Parses and validates group nesting and quantity limits against a generated graph.</summary>
-        public static CustomerOrderData Parse(string source, CookingGraphAsset graph)
+        public static CustomerOrderData Parse(string source, CookingGraphAsset graph, IReadOnlyList<string> customerIds = null)
         {
             if (graph == null) throw new ArgumentNullException(nameof(graph));
-            var data = Parse(source);
+            var data = Parse(source, customerIds);
             foreach (var member in data.customers
                          .SelectMany(customer => customer.dishes)
                          .Where(dish => dish?.root != null)
@@ -59,11 +74,11 @@ namespace CookingGraph
             return data;
         }
 
-        public static bool TryParse(string source, out CustomerOrderData data, out CookingGraphFormatException error)
+        public static bool TryParse(string source, out CustomerOrderData data, out CookingGraphFormatException error, IReadOnlyList<string> customerIds = null)
         {
             try
             {
-                data = Parse(source);
+                data = Parse(source, customerIds);
                 error = null;
                 return true;
             }
@@ -75,11 +90,11 @@ namespace CookingGraph
             }
         }
 
-        public static bool TryParse(string source, CookingGraphAsset graph, out CustomerOrderData data, out CookingGraphFormatException error)
+        public static bool TryParse(string source, CookingGraphAsset graph, out CustomerOrderData data, out CookingGraphFormatException error, IReadOnlyList<string> customerIds = null)
         {
             try
             {
-                data = Parse(source, graph);
+                data = Parse(source, graph, customerIds);
                 error = null;
                 return true;
             }
@@ -177,7 +192,15 @@ namespace CookingGraph
                     customer.weatherEffect.ToString(CultureInfo.InvariantCulture),
                     string.Join(",", customer.dishes.Select(SerializeDish))
                 };
-                if (customer.hasStaffAmount) fields.Add(customer.staffAmount.ToString(CultureInfo.InvariantCulture));
+                if (customer.hasCustomerIndex)
+                {
+                    fields.Add(customer.hasStaffAmount ? customer.staffAmount.ToString(CultureInfo.InvariantCulture) : string.Empty);
+                    fields.Add(customer.customerIndex.ToString(CultureInfo.InvariantCulture));
+                }
+                else if (customer.hasStaffAmount)
+                {
+                    fields.Add(customer.staffAmount.ToString(CultureInfo.InvariantCulture));
+                }
                 return string.Join(";", fields);
             }));
         }

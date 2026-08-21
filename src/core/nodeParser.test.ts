@@ -130,8 +130,29 @@ describe("customers", () => {
   });
 
   it("rejects a customer with the wrong number of fields", () => {
-    expect(() => parseNodeCustomers("0;60;{c0:17}")).toThrow(/4 or 5/);
-    expect(() => parseNodeCustomers("0;1;2;{c0:17};3;4")).toThrow(/4 or 5/);
+    expect(() => parseNodeCustomers("0;60;{c0:17}")).toThrow(/4, 5 or 6/);
+    expect(() => parseNodeCustomers("0;1;2;{c0:17};3;4;5")).toThrow(/4, 5 or 6/);
+  });
+
+  it("parses a customerIndex in the optional 6th field", () => {
+    const s = "0;0;0;{c0:17};;7";
+    const [parsed] = parseNodeCustomers(s);
+    expect(parsed.customerIndex).toBe(7);
+    expect(parsed.staffAmount).toBeUndefined();
+    expect(serializeNodeCustomers([parsed])).toBe(s);
+  });
+
+  it("carries both staffAmount and customerIndex together", () => {
+    const s = "1;0;0;;3;7";
+    const [parsed] = parseNodeCustomers(s);
+    expect(parsed).toEqual({ typeId: 1, waitTime: 0, weatherEff: 0, dishes: [], staffAmount: 3, customerIndex: 7 });
+    expect(serializeNodeCustomers([parsed])).toBe(s);
+  });
+
+  it("omits customerIndex when it was absent, so round-trip stays byte-exact", () => {
+    const s = "0;30;0;{c3:13}";
+    expect(parseNodeCustomers(s)[0].customerIndex).toBeUndefined();
+    expect(serializeNodeCustomers(parseNodeCustomers(s))).toBe(s);
   });
 
   it("rejects a non-integer field rather than coercing it", () => {

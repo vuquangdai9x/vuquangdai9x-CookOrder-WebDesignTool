@@ -32,7 +32,6 @@ import { History, bindUndoRedoKeys } from "../history.ts";
 import { dirtyIconEl, iconEl, toolIconEl } from "../icon.ts";
 import { autoLayout, layoutKey } from "./autoLayout.ts";
 import type { Layout } from "./autoLayout.ts";
-import { csvToGraph, graphToCsv } from "../../data/nodeGraphCsv.ts";
 import { reorderToolProcesses } from "../../data/nodeGraphEdit.ts";
 import {
   EDGE_KIND_NAMES,
@@ -60,6 +59,12 @@ import type {
   VertexKindName,
 } from "../../data/nodeGraphTypes.ts";
 import { downloadFile, importLevelsCsv, levelsCsv } from "../../data/sheetSource.ts";
+import {
+  getCustomerCatalog,
+  parseCustomersCsv,
+  serializeCustomersCsv,
+  setCustomerCatalog,
+} from "../../data/customerCatalog.ts";
 import { parseGraphJson, vertexCount } from "../../data/nodeGraphJson.ts";
 import {
   idTablesAreReorders,
@@ -266,10 +271,10 @@ export class MapProcessView {
       button("⬇ Graph JSON", () => this.exportJson(), { title: "Download this graph as JSON" }),
       button("⬇ Graph PNG", () => void this.exportPng(), { title: "Download the whole graph as a PNG" }),
       button("⬆ Graph JSON", () => this.importJson(), { title: "Replace this graph from a JSON file" }),
-      button("⬇ Graph CSV", () => this.exportCsv(), { title: "Download this graph as CSV" }),
-      button("⬆ Graph CSV", () => this.importCsv(), { title: "Replace this graph from a CSV file" }),
       button("⬇ Levels CSV", () => this.exportLevelsCsv(), { title: "Download every level in this map as CSV" }),
       button("⬆ Levels CSV", () => this.importLevelsCsv(), { title: "Replace every level in this map from CSV" }),
+      button("⬇ Customers CSV", () => this.exportCustomersCsv(), { title: "Download the customer catalog (shared across every map) as CSV" }),
+      button("⬆ Customers CSV", () => this.importCustomersCsv(), { title: "Replace the customer catalog (shared across every map) from CSV" }),
       button("💾 Save draft", () => this.save(), { class: "primary" }),
     );
   }
@@ -2801,10 +2806,6 @@ Continue?`,
     input.click();
   }
 
-  private exportCsv(): void {
-    downloadFile(this.downloadNames().graphCsv, graphToCsv(this.doc), "text/csv");
-  }
-
   private exportLevelsCsv(): void {
     downloadFile(this.downloadNames().levelsCsv, levelsCsv({ levels: this.project.levels }), "text/csv");
   }
@@ -2840,32 +2841,28 @@ Continue?`,
     input.click();
   }
 
-  private importCsv(): void {
+  private exportCustomersCsv(): void {
+    downloadFile("customers.csv", serializeCustomersCsv(getCustomerCatalog()), "text/csv");
+  }
+
+  private importCustomersCsv(): void {
     const input = el("input", { type: "file", accept: ".csv,text/csv" }) as HTMLInputElement;
     input.addEventListener("change", () => {
       const file = input.files?.[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        const { doc, issues } = csvToGraph(String(reader.result));
-        const vertexCount = VERTEX_KIND_NAMES.reduce((n, k) => n + doc.vertices[k].length, 0);
-        if (vertexCount === 0) {
-          alert(`No vertices found in ${file.name}. Nothing was changed.`);
-          return;
+        try {
+          const entries = parseCustomersCsv(String(reader.result));
+          if (entries.length === 0) throw new Error("CSV has no customer rows");
+          if (!confirm(`Replace all ${getCustomerCatalog().length} customer(s) with ${entries.length} row(s) from ${file.name}? This roster is shared across every map.`)) {
+            return;
+          }
+          setCustomerCatalog(entries);
+          this.flashStatus(`Customer catalog imported (${entries.length} row(s)).`);
+        } catch (error) {
+          alert(`Could not import customers CSV.\n\n${error instanceof Error ? error.message : String(error)}`);
         }
-        const summary = issues.length
-          ? `\n\n${issues.length} row(s) could not be read:\n` +
-            issues.slice(0, 8).map((i) => `  line ${i.line}: ${i.message}`).join("\n") +
-            (issues.length > 8 ? "\n  …" : "")
-          : "";
-        if (!confirm(`Replace the current graph with ${vertexCount} vertices from ${file.name}?${summary}`)) {
-          return;
-        }
-        this.doc = doc;
-        this.doc.layout = autoLayout(this.doc);
-        this.selection = null;
-        this.selected.clear();
-        this.commit(`import ${file.name}`);
       };
       reader.readAsText(file);
     });

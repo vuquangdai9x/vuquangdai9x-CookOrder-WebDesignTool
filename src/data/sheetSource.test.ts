@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAP1_DATA } from "./configLoader.ts";
+import burgerLevelsCsv from "./config/nodegraph/maps/LevelData-1-Burger.csv?raw";
 import {
   columnLetter,
   importLevelsCsv,
@@ -10,23 +10,26 @@ import {
   REMOTE_SHEET_COLUMNS,
 } from "./sheetSource.ts";
 
+/** Committed graph-native level data — the CSV the app itself loads, not a derived fixture. */
+const burgerLevels = { levels: importLevelsCsv(burgerLevelsCsv) };
+
 describe("CSV export (level data only — no map/ingredient/tool definitions)", () => {
   it("writes one levels row per level with the canonical strings intact", () => {
-    const csv = levelsCsv(MAP1_DATA);
+    const csv = levelsCsv(burgerLevels);
     const lines = csv.split("\r\n");
-    expect(lines).toHaveLength(MAP1_DATA.levels.length + 1);
+    expect(lines).toHaveLength(burgerLevels.levels.length + 1);
     expect(lines[0]).toContain("QueueString");
     expect(lines[0]).not.toContain("GridWidth");
     // A level with grid effects (commas + "#") survives the round trip through CSV quoting.
-    const levelWithEffect = MAP1_DATA.levels.find((l) => l.gridString.includes("#"));
+    const levelWithEffect = burgerLevels.levels.find((l) => l.gridString.includes("#"));
     expect(levelWithEffect).toBeDefined();
-    const rowIndex = MAP1_DATA.levels.indexOf(levelWithEffect!) + 1; // +1 for header row
+    const rowIndex = burgerLevels.levels.indexOf(levelWithEffect!) + 1; // +1 for header row
     const parsedRow = parseCsv(lines[rowIndex])[0];
     expect(parsedRow[8]).toBe(levelWithEffect!.gridString); // GridString column
   });
 
   it("does not contain any definition tables", () => {
-    const csv = levelsCsv(MAP1_DATA);
+    const csv = levelsCsv(burgerLevels);
     expect(csv).not.toContain("-- Raw Ingredients --");
     expect(csv).not.toContain("-- Cooking Tools --");
   });
@@ -58,9 +61,9 @@ describe("parseCsv", () => {
 
 describe("CSV import", () => {
   it("round-trips every level through export then import", () => {
-    const csv = levelsCsv(MAP1_DATA);
+    const csv = levelsCsv(burgerLevels);
     const imported = importLevelsCsv(csv);
-    expect(imported).toEqual(MAP1_DATA.levels);
+    expect(imported).toEqual(burgerLevels.levels);
   });
 
   it("restores optional OutOfSlotPolicy and BoosterCharges columns", () => {

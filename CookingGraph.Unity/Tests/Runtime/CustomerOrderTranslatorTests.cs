@@ -31,6 +31,51 @@ namespace CookingGraph.Tests
         }
 
         [Test]
+        public void CustomerIndexRoundTripsWithNoStaffAmount()
+        {
+            const string source = "0;0;0;{c0:17};;7";
+            var data = CustomerOrderTranslator.Parse(source);
+            Assert.That(data.customers[0].hasCustomerIndex, Is.True);
+            Assert.That(data.customers[0].customerIndex, Is.EqualTo(7));
+            Assert.That(data.customers[0].hasStaffAmount, Is.False);
+            Assert.That(CustomerOrderTranslator.Serialize(data), Is.EqualTo(source));
+        }
+
+        [Test]
+        public void CustomerIndexRoundTripsAlongsideStaffAmount()
+        {
+            const string source = "1;0;0;;3;7";
+            var data = CustomerOrderTranslator.Parse(source);
+            Assert.That(data.customers[0].hasStaffAmount, Is.True);
+            Assert.That(data.customers[0].staffAmount, Is.EqualTo(3));
+            Assert.That(data.customers[0].hasCustomerIndex, Is.True);
+            Assert.That(data.customers[0].customerIndex, Is.EqualTo(7));
+            Assert.That(CustomerOrderTranslator.Serialize(data), Is.EqualTo(source));
+        }
+
+        [Test]
+        public void CustomerIdIsResolvedFromTheOptionalLookupAndEmptyOtherwise()
+        {
+            var ids = new[] { "alpha", "beta", "gamma" };
+            var resolved = CustomerOrderTranslator.Parse("0;0;0;{c0:17};;1", ids);
+            Assert.That(resolved.customers[0].customerId, Is.EqualTo("beta"));
+
+            // No lookup supplied: the index still parses, but nothing resolves it.
+            var noLookup = CustomerOrderTranslator.Parse("0;0;0;{c0:17};;1");
+            Assert.That(noLookup.customers[0].customerIndex, Is.EqualTo(1));
+            Assert.That(noLookup.customers[0].customerId, Is.EqualTo(string.Empty));
+
+            // Out-of-range index: resolves to empty rather than throwing.
+            var outOfRange = CustomerOrderTranslator.Parse("0;0;0;{c0:17};;99", ids);
+            Assert.That(outOfRange.customers[0].customerId, Is.EqualTo(string.Empty));
+
+            // Absent field: no index, no id.
+            var absent = CustomerOrderTranslator.Parse("0;0;0;{c0:17}", ids);
+            Assert.That(absent.customers[0].hasCustomerIndex, Is.False);
+            Assert.That(absent.customers[0].customerId, Is.EqualTo(string.Empty));
+        }
+
+        [Test]
         public void RepetitionPreservesIngredientQuantity()
         {
             var root = CustomerOrderTranslator.Parse("0;0;0;{c0:17.{g0:18.18.19}}").customers[0].dishes[0].root;

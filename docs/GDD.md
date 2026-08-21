@@ -205,11 +205,12 @@ All three level-config strings are authored/parsed by the tool and must **round-
 0;0;0;1.0.6,0.1.2.5#4|1;0;0;;3|0;60;1;0.1.2.3.6#5:4#2:1,1.0.5.2.3|...
 ```
 
-- `|` separates customers; `;` separates the customer params: `typeId ; waitTime ; weatherEff ; order [; staffAmount]`.
+- `|` separates customers; `;` separates the customer params: `typeId ; waitTime ; weatherEff ; order [; staffAmount [; customerIndex]]`.
   - `typeId`: row id from the **customer types** definition table (§4) — `0` = Customer (orders dishes), `1` = Staff (see below); new types are just new rows plus a registered behavior, no format change needed.
   - `waitTime`: patience timer in seconds, 0 = no limit.
   - `weatherEff`: 1 = customer affected by weather (halved timer + minigame in the real game).
   - `staffAmount` (5th field, optional): for Staff, how many dirty stacks they clear on arrival (even a not-full stack counts); absent = 1. Meaningless for other types.
+  - `customerIndex` (6th field, optional): row index into the customer catalog (`config/general/customers.csv`) this arrival's identity/avatar is pinned to; absent or blank = random (a Type=Normal row from the current map, chosen at render time). Writing a customerIndex with no staffAmount leaves the 5th field blank — `typeId;waitTime;weatherEff;order;;customerIndex` — the same blank-field convention Staff's empty dish list already uses.
   - (The sheet's legacy 6-param form also had `delay`, `completePrev`, `vip` — dropped from the game; the import converter strips them. The parser also still accepts the pre-typeId 3- and 4-field forms — `waitTime;weatherEff;order` and `waitTime;weatherEff;;staffAmount` — inferring `typeId` from whether the dish list is empty; re-serializing always emits the current typeId-first form.)
 - The order: `,` separates dishes; inside a dish, cooked-ingredient ids are separated by `.` (e.g. `0.1.2.5`), followed by optional dish effects (`#4`). The parser also accepts legacy digit-run form (`0125#4`) when all ids are single-digit. Staff has no order (empty field between the two `;;`).
 

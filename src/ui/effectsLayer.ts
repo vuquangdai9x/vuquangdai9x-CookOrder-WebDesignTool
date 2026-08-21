@@ -2,7 +2,7 @@
 // burst when a customer's order completes. Uses the Web Animations API so the
 // sim never has to know about frames — it just waits for onfinish.
 
-import { el } from "../dom.ts";
+import { el } from "./dom.ts";
 
 export interface Point {
   x: number;

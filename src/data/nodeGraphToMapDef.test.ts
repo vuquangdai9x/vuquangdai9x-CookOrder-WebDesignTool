@@ -4,11 +4,8 @@ import burgerLevelsCsv from "./config/nodegraph/maps/LevelData-1-Burger.csv?raw"
 import { importLevelsCsv } from "./sheetSource.ts";
 import { nodeAsMapDef, nodeLevelAsLevelConfig } from "./nodeGraphToMapDef.ts";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
-import type { LevelData } from "./mapLoader.ts";
 import { buildIdIndex } from "./nodeIdTable.ts";
 import { buildIndex } from "../core/nodeIndex.ts";
-import { parseQueues } from "../core/parser.ts";
-import { estimateDifficulty } from "../ui/design/estimateDifficulty.ts";
 
 const doc = burgerJson as unknown as NodeGraphMap;
 const projected = nodeAsMapDef(doc);
@@ -139,65 +136,5 @@ describe("nodeLevelAsLevelConfig", () => {
     expect(level.queues.length).toBeGreaterThan(0);
     expect(level.grid).toHaveLength(projected.map.gridWidth * projected.map.gridHeight);
     expect(level.serveableSlots).toBe(levels[0].serveableSlots);
-  });
-});
-
-/**
- * The Phase 8 gate, stated as the plan states it: **Estimate Difficulty picks
- * chicken.** Write this test first and it fails loudly; without it, a one-hop
- * projection fails SILENTLY — the level simply reads as unsolvable.
- */
-describe("the difficulty estimator, on node data", () => {
-  const CUTS = ["chicken-breast", "chicken-wing", "chicken-thigh", "chicken-nugget"].map(dataId);
-
-  it("has to use a SYNTHETIC level, because Map 1 never queues chicken", () => {
-    // Worth pinning: the gate cannot be tested on authored data at all. Raw
-    // ids 9-12 appear in no Map 1 queue, so a test that only ran real levels
-    // would pass while proving nothing about the chain.
-    const queued = levels.flatMap((data: LevelData) =>
-      parseQueues(data.queueString).flatMap((lane) => lane.map((item) => item.id)),
-    );
-    expect(CUTS.filter((id) => queued.includes(id))).toEqual([]);
-  });
-
-  /** A level built to make the solver choose chicken, since no authored one does. */
-  const syntheticChicken: LevelData = {
-    id: 900,
-    name: "synthetic-chicken",
-    weather: "Normal",
-    levelTag: "",
-    featureUnlock: "",
-    serveableSlots: 2,
-    shuffleDistance: 0,
-    queueString: `${CUTS[0]},${CUTS[1]}%${CUTS[2]},${CUTS[3]}`,
-    gridString: ",,,,,,,,,",
-    customerString:
-      `0;0;0;{c2:{g1:${dataId("chicken-breast-fried")}}}` +
-      `|0;0;0;{c2:{g1:${dataId("chicken-wing-fried")}}}` +
-      `|0;0;0;{c2:{g1:${dataId("chicken-thigh-fried")}}}` +
-      `|0;0;0;{c2:{g1:${dataId("chicken-nugget-fried")}}}`,
-  };
-
-  it("picks chicken, rather than scoring it at zero and ignoring it", () => {
-    const level = nodeLevelAsLevelConfig(projected, syntheticChicken);
-    expect(level.customers[0].dishes[0].cookedIds).toEqual([dataId("chicken-breast-fried")]);
-
-    const result = estimateDifficulty(projected.map, level);
-    expect(result.totalPicks).toBeGreaterThan(0);
-    const picked = result.occupancyHistory.flatMap((sample) => sample.pickedNames);
-    expect(picked.filter((name) => /chick/i.test(name)).length).toBeGreaterThan(0);
-  });
-
-  it("and solves that level, which one-hop scoring could not", () => {
-    const result = estimateDifficulty(projected.map, nodeLevelAsLevelConfig(projected, syntheticChicken));
-    expect(result.servedCount).toBe(4);
-    expect(result.solvable).toBe(true);
-  });
-
-  it("runs to a real verdict on every committed level, never throwing", () => {
-    for (const data of levels) {
-      const level = nodeLevelAsLevelConfig(projected, data);
-      expect(() => estimateDifficulty(projected.map, level), data.name).not.toThrow();
-    }
   });
 });

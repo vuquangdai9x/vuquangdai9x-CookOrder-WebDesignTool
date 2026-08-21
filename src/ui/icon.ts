@@ -7,7 +7,7 @@
 // blocked image degrades gracefully in exactly one place.
 
 import type { CookingToolDef, ElementDef, MapDef } from "../core/types.ts";
-import { BOOSTER_PARAMS, GLOBAL_DEFS, MAP1_DATA } from "../data/configLoader.ts";
+import { BOOSTER_PARAMS, GLOBAL_DEFS } from "../data/configLoader.ts";
 import { el } from "./dom.ts";
 import { localImageUrl } from "./localImages.ts";
 
@@ -134,7 +134,9 @@ interface IconMapSource {
   tools: CookingToolDef[];
 }
 
-let activeMap: IconMapSource = MAP1_DATA as unknown as MapDef;
+const EMPTY_ICON_MAP: IconMapSource = { rawIngredients: [], cookedIngredients: [], dirtyObjects: [], tools: [] };
+
+let activeMap: IconMapSource = EMPTY_ICON_MAP;
 
 /** Called whenever the active map is established or changes (see main.ts). */
 export function setIconMap(map: IconMapSource): void {

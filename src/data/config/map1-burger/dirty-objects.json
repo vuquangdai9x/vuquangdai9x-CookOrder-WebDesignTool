@@ -1,8 +1,0 @@
-{
-  "_note": "Created when customer done. \"source\" is a cooked ingredient's name (or any one of several) — a customer's dish that contains it spawns this dirty object instead of the generic dirty dish when they leave. Image (fileId) is preloaded and used instead of the emoji, which is only the fallback. dirty_chick_box's From Ingredient list is \"9,10,11,12\" in MapDefinitions.csv's Map1_burger dirty-objects table, i.e. cooked ids 9-12 (Fried Breast/Wing/Thigh/Nugget) — the 2026-08 reimport corrected this from an earlier version that wrongly listed Fried Potato (cooked id 13) instead of Fried Breast (cooked id 9), a leftover from before chick_breast_fried was inserted into the recipe_piece table.",
-  "cookedIngredients": [
-    { "id": 0, "name": "Dirty Plate", "source": "Sliced Bun", "emoji": "🍽", "fileId": "1WqirGMGMpxKI8NlvwSUN9lJiO8k9ID34", "localImage": "Map1-burger/dirty-objects/map1-burger-dirty-plate.png" },
-    { "id": 1, "name": "Dirty Cup", "source": "Soda Cup", "emoji": "🥤", "fileId": "1qvWAVqMv0qrMWa0jTGPeJ4zMVZTWAp1k", "localImage": "Map1-burger/dirty-objects/mpa1-burger-dirty-cup.png" },
-    { "id": 2, "name": "Dirty Chick Box", "source": ["Fried Breast", "Fried Wing", "Fried Thigh", "Fried Nugget"], "emoji": "🍱", "fileId": "1DRgGjWYznwhgow9rlsy9-s7LP09XHOMq" }
-  ]
-}

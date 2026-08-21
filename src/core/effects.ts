@@ -25,6 +25,9 @@ export const CELL_COLOR_LOCK = 4;
 export const CUSTOMER_NORMAL = 0;
 export const CUSTOMER_STAFF = 1;
 
+/** Sentinel dirty-object id for maps with no typed dirty objects (the generic dish). */
+export const DIRTY_DISH_ID = -99;
+
 // ---------- queue item effects ----------
 
 registerQueueEffect(EFFECT_NONE, {});

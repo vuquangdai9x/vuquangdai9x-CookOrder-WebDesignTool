@@ -529,18 +529,55 @@ footer {
   flex: none;
 }
 
-/* Random per-customer avatar (see PlayView.appendAvatar) — a transparent-PNG
-   character sitting behind the actual content, faint and left-aligned. */
+/* Per-customer avatar (see NodePlayView.appendAvatar) — pinned via
+   customerIndex, or a random Normal-type stand-in — sitting behind the actual
+   content, faint and right-aligned.
+   iconEl() returns a <span> wrapper (image or emoji text) — the fit/position
+   rules that used to sit directly on an <img> now target the nested one; the
+   emoji fallback still fills the same box so a missing image degrades to a
+   faded giant emoji instead of vanishing outright. */
 .customer-avatar {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  object-position: right;
   opacity: 0.2;
   pointer-events: none;
   z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 4rem;
+  overflow: hidden;
+}
+.customer-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: right;
+}
+
+/* Design-mode customer card background — same idea as .customer-avatar, tuned
+   for the smaller editor card instead of the full-size play card. */
+.customer-avatar-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.25;
+  pointer-events: none;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 3rem;
+  overflow: hidden;
+}
+.customer-avatar-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: right;
 }
 
 .customer-content {
@@ -2628,6 +2665,41 @@ td input {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+/* Change Avatar dialog (ui/nodedesign/customerAvatarDialog.ts) — one <details>
+   foldout per Base Map, each holding a wider/bigger version of the shared
+   .ctx-picker thumbnail grid (normally sized for a small inline context-menu
+   expansion). */
+.avatar-dialog-panel {
+  max-width: 42rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.avatar-map-group {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+}
+
+.avatar-map-group summary {
+  cursor: pointer;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.avatar-map-group .ctx-picker {
+  max-width: none;
+  margin-top: 0.5rem;
+}
+
+.avatar-map-group .ctx-pick {
+  width: 4.2rem;
+  height: 4.2rem;
 }
 
 .auto-generate-panel h3 {

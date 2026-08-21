@@ -8,12 +8,7 @@
     "gridWidth": 5,
     "gridHeight": 2,
     "dirtyStackHeight": 5,
-    "visibleRows": 3,
-    "customerAvatars": [
-      "Map1-burger/customers/Pet_1.1.png",
-      "Map1-burger/customers/Pet_2.1.png",
-      "Map1-burger/customers/Pet_3.1.png"
-    ]
+    "visibleRows": 3
   },
   "idTable": {
     "ingredient": [

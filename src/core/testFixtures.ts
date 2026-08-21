@@ -29,7 +29,6 @@ export const testMap: MapDef = {
   })),
   cookedIngredients: [0, 1, 2, 3].map((id) => ({ id, name: `cooked${id}`, icon: "" })),
   dirtyObjects: [],
-  customerAvatars: [],
   tools: [
     {
       id: 0,

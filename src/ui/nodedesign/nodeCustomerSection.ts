@@ -38,7 +38,10 @@ import {
 } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
-import { cookedIconEl } from "../icon.ts";
+import { cookedIconEl, iconEl } from "../icon.ts";
+import { customerAvatarIconSpec } from "../customerAvatar.ts";
+import { getCustomerCatalog } from "../../data/customerCatalog.ts";
+import { openCustomerAvatarDialog } from "./customerAvatarDialog.ts";
 import {
   DEFAULT_DISH_COUNT_SEQUENCE,
   DEFAULT_MAX_DISH_SLOTS,
@@ -567,6 +570,13 @@ function customerCard(
   const timed = customer.weatherEff !== 0 || customer.waitTime > 0;
   const card = el("div", { class: `customer-card${staff ? " staff" : ""}${timed ? " timed" : ""}` });
 
+  if (customer.customerIndex !== undefined) {
+    const entry = getCustomerCatalog().find((e) => e.index === customer.customerIndex);
+    if (entry) {
+      card.append(iconEl(customerAvatarIconSpec(entry), { className: "customer-avatar-bg" }));
+    }
+  }
+
   const cost = estimate?.perCustomer.find((c) => c.index === index);
   if (cost) card.style.setProperty("--customer-color", customerColor(index));
   if (cost && estimate) {
@@ -1020,8 +1030,22 @@ function cardMenu(
       },
     })),
     {
-      label: "Duplicate",
+      label: "Change avatar…",
       separator: true,
+      onSelect: () => {
+        openCustomerAvatarDialog({
+          catalog: getCustomerCatalog(),
+          currentBaseMap: deps.ix.doc.map.id,
+          selectedIndex: customer.customerIndex,
+          onPick: (catalogIndex) => {
+            customer.customerIndex = catalogIndex;
+            section.commit("Change customer avatar");
+          },
+        });
+      },
+    },
+    {
+      label: "Duplicate",
       onSelect: () => {
         draft.splice(index + 1, 0, structuredClone(customer));
         section.commit("Duplicate customer", 1, 0);

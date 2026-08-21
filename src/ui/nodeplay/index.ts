@@ -35,10 +35,17 @@ import {
   customerTypeIconEl,
   boosterIconEl,
 } from "../icon.ts";
-import { localImageUrl } from "../localImages.ts";
-import { CELL_COLOR_LOCK, CELL_INGREDIENT_SLOT, EFFECT_FREEZE, EFFECT_HOLDING_KEY } from "../../core/effects.ts";
+import { customerAvatarIconSpec, randomNormalCustomer } from "../customerAvatar.ts";
+import { getCustomerCatalog } from "../../data/customerCatalog.ts";
+import type { CustomerCatalogEntry } from "../../data/customerCatalog.ts";
+import {
+  CELL_COLOR_LOCK,
+  CELL_INGREDIENT_SLOT,
+  DIRTY_DISH_ID,
+  EFFECT_FREEZE,
+  EFFECT_HOLDING_KEY,
+} from "../../core/effects.ts";
 import { BOOSTER_PARAMS, GLOBAL_DEFS, KEY_COLORS } from "../../data/configLoader.ts";
-import { DIRTY_DISH_ID } from "../../core/sim.ts";
 import { NodeSimulation } from "../../core/nodeSim.ts";
 import type { NodeCustomerState, NodeQueueCell } from "../../core/nodeSim.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
@@ -52,8 +59,8 @@ import { listNodeMaps, type NodeProjectState } from "../../data/nodeProject.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
 import { renderGroupOverlay } from "./groupOverlay.ts";
 import { replayScoreStepIndex } from "./replayScoreStep.ts";
-import { centerOf, EffectsLayer } from "../play/effectsLayer.ts";
-import type { Point } from "../play/effectsLayer.ts";
+import { centerOf, EffectsLayer } from "../effectsLayer.ts";
+import type { Point } from "../effectsLayer.ts";
 import type { NodeFlight } from "../../core/nodeSim.ts";
 import type { EstimateReplayStep } from "../design/estimateDifficulty.ts";
 
@@ -115,7 +122,7 @@ export class NodePlayView {
   private speedId = "x1";
   private paused = false;
   private toolbarFolded = false;
-  private customerAvatarByIndex = new Map<number, string>();
+  private customerAvatarByIndex = new Map<number, CustomerCatalogEntry>();
 
   // ---------- flight animation ----------
   //
@@ -890,7 +897,7 @@ export class NodePlayView {
       class: `customer-card${servable ? " servable" : " waiting"}${c.isStaff ? " staff" : ""}`,
       "data-customer": String(c.index),
     });
-    this.appendAvatar(card, c.index);
+    this.appendAvatar(card, c);
     if (servable && !c.isStaff && c.timeLeft !== Infinity) {
       const fill = el("div", { class: "wait-progress-fill" });
       const total = c.config.waitTime || 1;
@@ -951,7 +958,7 @@ export class NodePlayView {
       "data-customer": String(c.index),
       title: "Next in line — their order is revealed when a serve slot frees up",
     });
-    this.appendAvatar(card, c.index);
+    this.appendAvatar(card, c);
     card.append(
       el("div", { class: "customer-content" }, [
         el("div", { class: "customer-head" }, [
@@ -963,17 +970,23 @@ export class NodePlayView {
     return card;
   }
 
-  private appendAvatar(card: HTMLElement, index: number): void {
-    const avatars = this.projected.map.customerAvatars;
-    if (avatars.length === 0) return;
-    let path = this.customerAvatarByIndex.get(index);
-    if (!path) {
-      path = avatars[Math.floor(Math.random() * avatars.length)];
-      this.customerAvatarByIndex.set(index, path);
+  private appendAvatar(card: HTMLElement, c: NodeCustomerState): void {
+    const catalog = getCustomerCatalog();
+    let entry = c.config.customerIndex !== undefined
+      ? catalog.find((e) => e.index === c.config.customerIndex)
+      : undefined;
+    if (!entry) {
+      // No pin, or the pin no longer resolves — a stable-per-card random
+      // Normal-type pick from the current map, cached for this card's lifetime
+      // exactly as the old random-pool did.
+      entry = this.customerAvatarByIndex.get(c.index);
+      if (!entry) {
+        entry = randomNormalCustomer(catalog, this.project.doc.map.id);
+        if (entry) this.customerAvatarByIndex.set(c.index, entry);
+      }
     }
-    const url = localImageUrl(path);
-    if (!url) return;
-    card.append(el("img", { src: url, alt: "", class: "customer-avatar" }));
+    if (!entry) return;
+    card.append(iconEl(customerAvatarIconSpec(entry), { className: "customer-avatar" }));
   }
 
   private middleTier(): HTMLElement {

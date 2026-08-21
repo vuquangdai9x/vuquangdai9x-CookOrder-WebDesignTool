@@ -1,4 +1,4 @@
-// `parseGraphJson` holds the same contract `csvToGraph` does: total on garbage.
+// `parseGraphJson` is total on garbage.
 //
 // The import button points at a designer's own file. A throw there loses that
 // file behind a stack trace, so every malformed case below must come back as a

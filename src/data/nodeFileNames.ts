@@ -2,7 +2,6 @@ import type { NodeMapEntry } from "./nodeProject.ts";
 
 export interface NodeDownloadNames {
   graphJson: string;
-  graphCsv: string;
   graphPng: string;
   levelsCsv: string;
 }
@@ -35,7 +34,6 @@ export function nodeDownloadNames(
   const stem = `${index}-${name}`;
   return {
     graphJson: `Graph-${stem}.json`,
-    graphCsv: `Graph-${stem}.csv`,
     graphPng: `Graph-${stem}.png`,
     levelsCsv: `LevelData-${stem}.csv`,
   };

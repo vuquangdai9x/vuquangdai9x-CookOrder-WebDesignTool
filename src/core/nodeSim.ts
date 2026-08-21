@@ -43,11 +43,10 @@
 // it dispatches.
 
 import "./effects.ts"; // registers built-in behaviors
-import { CUSTOMER_STAFF, EFFECT_FREEZE, EFFECT_HIDDEN } from "./effects.ts";
+import { CUSTOMER_STAFF, DIRTY_DISH_ID, EFFECT_FREEZE, EFFECT_HIDDEN } from "./effects.ts";
 import type { EffectContext } from "./registry.ts";
 import { getCellEffect, getQueueEffect } from "./registry.ts";
-import { DIRTY_DISH_ID } from "./sim.ts";
-import type { FlightKind, LoseReason, SimEvent, SimStatus } from "./sim.ts";
+import type { FlightKind, LoseReason, SimEvent, SimStatus } from "./simTypes.ts";
 import type {
   EffectInstance,
   GridCellConfig,

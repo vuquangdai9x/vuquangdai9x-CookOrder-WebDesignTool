@@ -67,7 +67,7 @@ namespace CookingGraph.Editor
         {
             F("id", "string", true), F("name", "string", true), F("gridWidth", "int", true, 4),
             F("gridHeight", "int", true, 4), F("dirtyStackHeight", "int", true, 3),
-            F("visibleRows", "int", true, 3), F("customerAvatars", "string[]")
+            F("visibleRows", "int", true, 3)
         };
 
         public static readonly IReadOnlyDictionary<string, VertexDefinition> Vertices = new[]

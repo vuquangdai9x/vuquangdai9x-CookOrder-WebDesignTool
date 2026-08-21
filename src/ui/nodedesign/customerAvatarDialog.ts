@@ -1,0 +1,81 @@
+// "Change avatar" — a modal picker over the customer catalog, grouped into
+// foldouts by Base Map. The current level's map opens expanded (the designer
+// is steered toward its own cast); every other map's foldout starts
+// collapsed but is still fully browsable — nothing here limits a pick to the
+// current map, it's just the default focus.
+
+import { pickerGrid } from "../contextMenu.ts";
+import { button, el } from "../dom.ts";
+import { iconEl } from "../icon.ts";
+import { customerAvatarIconSpec } from "../customerAvatar.ts";
+import type { CustomerCatalogEntry } from "../../data/customerCatalog.ts";
+import { NODE_DOCS } from "../../data/nodeProject.ts";
+
+export interface CustomerAvatarDialogOptions {
+  catalog: CustomerCatalogEntry[];
+  /** The open level's map id (e.g. "burger") — whose foldout starts expanded. */
+  currentBaseMap: string;
+  selectedIndex: number | undefined;
+  onPick: (catalogIndex: number | undefined) => void;
+}
+
+/** Base Map values in graph map order, then any unrecognised ones, then "" (unassigned) last. */
+function groupOrder(catalog: CustomerCatalogEntry[]): string[] {
+  const known = [...NODE_DOCS].sort((a, b) => a.index - b.index).map((d) => d.doc.map.id);
+  const present = new Set(catalog.map((e) => e.baseMap));
+  const ordered = known.filter((id) => present.has(id));
+  const rest = [...present].filter((id) => id !== "" && !known.includes(id)).sort();
+  const out = [...ordered, ...rest];
+  if (present.has("")) out.push("");
+  return out;
+}
+
+export function openCustomerAvatarDialog(opts: CustomerAvatarDialogOptions): void {
+  const close = () => overlay.remove();
+
+  const groups = groupOrder(opts.catalog);
+  const sections = groups.map((baseMap) => {
+    const rows = opts.catalog.filter((e) => e.baseMap === baseMap);
+    const isCurrent = baseMap === opts.currentBaseMap;
+    const grid = pickerGrid(
+      rows.map((entry) => ({
+        id: entry.index,
+        label: entry.name || `#${entry.index}${entry.type ? ` (${entry.type})` : ""}`,
+        icon: iconEl(customerAvatarIconSpec(entry), { size: 64 }),
+      })),
+      (catalogIndex) => {
+        opts.onPick(catalogIndex);
+        close();
+      },
+      opts.selectedIndex,
+    );
+    return el("details", { class: "avatar-map-group", ...(isCurrent ? { open: "" } : {}) }, [
+      el("summary", {}, [baseMap || "Unassigned", ` (${rows.length})`]),
+      grid,
+    ]);
+  });
+
+  const panel = el("div", { class: "avatar-dialog-panel" }, [
+    button(
+      "Random (clear pin)",
+      () => {
+        opts.onPick(undefined);
+        close();
+      },
+      { class: "full-btn", title: "Unpin — Play mode shows a random Normal-type customer from this level's map" },
+    ),
+    ...sections,
+  ]);
+
+  const overlay = el("div", { class: "overlay-panel" }, [
+    el("div", { class: "definitions-head" }, [
+      el("h2", {}, ["Change Avatar"]),
+      button("✕ Close", close, { class: "primary" }),
+    ]),
+    panel,
+  ]);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.body.append(overlay);
+}

@@ -102,6 +102,10 @@ namespace CookingGraph
         public List<DishOrderData> dishes = new List<DishOrderData>();
         public bool hasStaffAmount;
         public int staffAmount;
+        public bool hasCustomerIndex;
+        public int customerIndex;
+        /// <summary>Resolved from customerIndex via the customerIds lookup passed to Parse, when one is given. Empty when unresolved — gameplay treats an empty id as random.</summary>
+        public string customerId = string.Empty;
     }
 
     [Serializable]

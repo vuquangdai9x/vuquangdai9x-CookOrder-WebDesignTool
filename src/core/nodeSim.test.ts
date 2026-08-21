@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
 import burgerJson from "../data/config/nodegraph/maps/Graph-1-Burger.json";
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
-import { validateNodeGraph } from "../data/nodeGraphValidate.ts";
-import { cookedName, legacyLevelToNode, legacyToGraph, pickupName, rawName } from "./legacyToGraph.ts";
 import { buildIndex } from "./nodeIndex.ts";
 import { parseNodeCustomers } from "./nodeParser.ts";
 import { NodeSimulation } from "./nodeSim.ts";
 import type { NodeLevelConfig } from "./nodeSim.ts";
 import { parseGrid, parseQueueGroups, parseQueues } from "./parser.ts";
 import { chainedPotato } from "./nodeTestFixtures.ts";
-import { EMPTY_GRID, level, testMap } from "./testFixtures.ts";
+import { EMPTY_GRID } from "./testFixtures.ts";
 
 const burger = buildIndex(burgerJson as unknown as NodeGraphMap);
 const ing = (name: string) => {
@@ -444,61 +442,5 @@ describe("pickPolicy: wanted-only", () => {
     expect(check.ok).toBe(false);
     expect(check.reason).toContain("Cheese");
     expect(s.pick(0)).toBe(false);
-  });
-});
-
-describe("legacyToGraph — the parity adapter", () => {
-  const legacyLevel = level({
-    queueString: "0,1",
-    gridString: EMPTY_GRID,
-    customerString: "0;0;0.1",
-  });
-  const doc = legacyToGraph(testMap, [legacyLevel]);
-
-  it("produces a graph with no validation errors", () => {
-    expect(validateNodeGraph(doc).errors.map((e) => e.message)).toEqual([]);
-  });
-
-  it("merges a tool-less raw and its cooked form into ONE vertex", () => {
-    // testMap ingredient 2 has no recipe: raw 2 and cooked 2 are the same thing.
-    // Addressed through the adapter's naming scheme rather than a legacy id
-    // stamped on the vertex — the shipped format carries no legacy ids.
-    expect(pickupName(testMap, 2)).toBe(cookedName(2));
-    const merged = doc.vertices.ingredient.find((v) => v.name === cookedName(2))!;
-    expect(merged.pickupable).toBe(true);
-    expect(buildIndex(doc).lookup.servable.has(merged.name)).toBe(true);
-  });
-
-  it("keeps a raw that needs a tool separate from its output", () => {
-    expect(pickupName(testMap, 0)).toBe(rawName(0));
-    const raw = doc.vertices.ingredient.find((v) => v.name === rawName(0))!;
-    const cooked = doc.vertices.ingredient.find((v) => v.name === cookedName(0))!;
-    expect(raw.name).not.toBe(cooked.name);
-    expect(buildIndex(doc).lookup.servable.has(raw.name)).toBe(false);
-    expect(cooked.pickupable).toBeUndefined();
-  });
-
-  it("infers a composite from ingredients that appear in the same dish", () => {
-    // Legacy has no composites at all; cooked 0 and 1 are only related by
-    // having been ordered together.
-    const withBoth = doc.vertices.composite.find((c) => {
-      const bases = doc.edges.base.find((e) => e.from === c.name);
-      return bases?.to.endsWith("-bases");
-    });
-    expect(withBoth).toBeDefined();
-    const options = doc.edges.option.filter((e) => e.from === `${withBoth!.name}-bases`);
-    expect(options).toHaveLength(2);
-  });
-
-  it("runs the projected level to a win, exactly as the legacy sim does", () => {
-    const ix = buildIndex(doc);
-    const projected = legacyLevelToNode(doc, legacyLevel);
-    expect(projected.unplaced).toEqual([]);
-    const s = new NodeSimulation(ix, projected.level);
-    expect(s.issues).toEqual([]);
-    s.pick(0);
-    s.pick(0);
-    s.runToEnd();
-    expect(s.status).toBe("won");
   });
 });

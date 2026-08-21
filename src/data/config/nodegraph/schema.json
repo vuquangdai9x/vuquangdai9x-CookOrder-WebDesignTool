@@ -125,11 +125,6 @@
       "description": "Queue rows shown in Play: 1 interactable front row plus previews."
     },
     {
-      "name": "customerAvatars",
-      "type": "string[]",
-      "description": "Bundled avatar paths (relative to src/assets/) Play mode draws behind each customer card; one is picked at random per customer."
-    },
-    {
       "name": "idTable",
       "type": "string",
       "description": "The five id spaces (ingredient, composite, group, tool, dirty), each an ORDERED list. A row's INDEX is the number level data carries: idTable.ingredient[13] is what a queue digit 13 picks up, and idTable.composite[0] is what a dish's {c0: names. There is no stored id field — the position is the id. Reordering a space therefore renumbers it and re-aims every level string that indexed into it; the editor confirms first. A row is { node } or, once retired, { node: null, retired } — retired rows are kept in place so later rows never shift."
