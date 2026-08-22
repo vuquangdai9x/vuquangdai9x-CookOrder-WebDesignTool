@@ -87,6 +87,22 @@ interface ReplayState {
   index: number;
   busy: boolean;
   message: string;
+  /**
+   * Forward stepping without animation. Off, Next animates the pick at x5 the
+   * way it always has; on, it jumps the same way Prev already does — rebuild
+   * from the start and fast-forward — so both directions land identically.
+   */
+  instant: boolean;
+}
+
+/** Live nodes of the replay toolbar, kept across refreshes so a slider drag survives one. */
+interface ReplayToolbarEls {
+  root: HTMLElement;
+  previous: HTMLButtonElement;
+  next: HTMLButtonElement;
+  slider: HTMLInputElement;
+  counter: HTMLElement;
+  message: HTMLElement;
 }
 
 /**
@@ -174,6 +190,7 @@ export class NodePlayView {
   private barEls = new Map<string, HTMLElement>();
   private replay: ReplayState | null = null;
   private replayKeyHandler: ((event: KeyboardEvent) => void) | null = null;
+  private replayEls: ReplayToolbarEls | null = null;
 
   constructor(
     root: HTMLElement,
@@ -188,7 +205,13 @@ export class NodePlayView {
     this.onSelectLevel = onSelectLevel;
     this.onSelectMap = onSelectMap;
     if (replaySteps) {
-      this.replay = { steps: replaySteps, index: 0, busy: false, message: "Initial state" };
+      this.replay = {
+        steps: replaySteps,
+        index: 0,
+        busy: false,
+        message: "Initial state",
+        instant: false,
+      };
       this.replayKeyHandler = (event) => {
         if (event.key === "ArrowRight") {
           event.preventDefault();
@@ -284,6 +307,10 @@ export class NodePlayView {
    */
   private mount(): void {
     this.page = el("div", { class: "play-page" });
+    // Replay renders EVERY lane (drained ones included) with a score chip
+    // beside its head, so the 3:4 portrait width can't hold them. The count
+    // goes to CSS, which widens the replay page to fit instead of scrolling.
+    if (this.replay) this.page.style.setProperty("--replay-lanes", String(this.sim.columnCount));
     this.boostersEl = this.boostersBar();
     if (this.replay) this.boostersEl.style.display = "none";
     // The boosters bar is a SIBLING of `.play-page`, not a child: the page has
@@ -763,31 +790,98 @@ export class NodePlayView {
 
   /** Rebuilds just the toolbar in place, leaving the tiers untouched. */
   private refreshToolbar(): void {
+    // Replay's toolbar is patched, never replaced: rebuilding it mid-drag
+    // would tear the step slider out of the DOM and cancel the drag.
+    if (this.replay) {
+      this.syncReplayToolbar();
+      this.refreshHud();
+      return;
+    }
     const existing = this.root.querySelector(".play-toolbar");
     if (existing) existing.replaceWith(this.toolbar());
     this.refreshHud();
   }
 
-  /** Play-mode toolbar variant used by estimate replay. The board below is unchanged. */
+  /**
+   * Play-mode toolbar variant used by estimate replay. The board below is
+   * unchanged. Built once and cached in `replayEls`: every later refresh
+   * patches those nodes (see syncReplayToolbar) so the step slider keeps its
+   * identity — and therefore an in-progress drag — across a jump.
+   */
   private replayToolbar(): HTMLElement {
+    if (this.replayEls) {
+      this.syncReplayToolbar();
+      return this.replayEls.root;
+    }
     const state = this.replay!;
     const previous = button("◀ Prev", () => this.replayPrevious(), {
       title: "Previous solver state (Left Arrow)",
     }) as HTMLButtonElement;
     const next = button("Next ▶", () => this.replayNext(), {
       class: "primary",
-      title: "Animate the next solver step at ×5 speed (Right Arrow)",
+      title: "Next solver step (Right Arrow)",
     }) as HTMLButtonElement;
-    previous.disabled = state.busy || state.index === 0;
-    next.disabled = state.busy || state.index >= state.steps.length;
-    return el("div", { class: "play-toolbar estimate-replay-toolbar" }, [
+    const counter = el("strong", {});
+    const message = el("span", { class: "muted" });
+
+    const instant = el("input", { type: "checkbox" }) as HTMLInputElement;
+    instant.checked = state.instant;
+    instant.addEventListener("change", () => {
+      state.instant = instant.checked;
+      this.syncReplayToolbar();
+    });
+    const instantToggle = el("label", {
+      class: "field small replay-instant-toggle",
+      title: "Off: Next animates the step at ×5. On: Next jumps straight to the resulting state, like Prev.",
+    }, [instant, el("span", {}, ["Instant forward (no animation)"])]);
+
+    // Scrubbing rebuilds the sim from step 0 every input event, which is the
+    // same deterministic path Prev takes — cheap enough to run per drag frame
+    // and guaranteed to agree with stepping there one at a time.
+    const slider = el("input", {
+      type: "range",
+      class: "replay-slider",
+      min: "0",
+      step: "1",
+      title: "Jump to any solver step",
+    }) as HTMLInputElement;
+    slider.addEventListener("input", () => {
+      if (!this.replay || this.replay.busy) return;
+      this.replayGoTo(Number(slider.value));
+    });
+
+    const root = el("div", { class: "play-toolbar estimate-replay-toolbar" }, [
       previous,
       next,
-      el("strong", {}, [`Step ${state.index}/${state.steps.length}`]),
-      el("span", { class: "muted" }, [state.message]),
+      counter,
+      instantToggle,
+      message,
       el("span", { class: "spacer" }),
       el("div", { class: "hud", id: "play-hud" }),
+      el("div", { class: "replay-slider-row" }, [slider]),
     ]);
+    this.replayEls = { root, previous, next, slider, counter, message };
+    this.syncReplayToolbar();
+    return root;
+  }
+
+  /** Push the current replay position into the cached toolbar nodes. */
+  private syncReplayToolbar(): void {
+    const state = this.replay;
+    const els = this.replayEls;
+    if (!state || !els) return;
+    els.previous.disabled = state.busy || state.index === 0;
+    els.next.disabled = state.busy || state.index >= state.steps.length;
+    els.next.textContent = state.instant ? "Next ⏭" : "Next ▶";
+    els.next.title = state.instant
+      ? "Jump to the next solver state instantly (Right Arrow)"
+      : "Animate the next solver step at ×5 speed (Right Arrow)";
+    els.counter.textContent = `Step ${state.index}/${state.steps.length}`;
+    els.message.textContent = state.message;
+    els.slider.max = String(state.steps.length);
+    els.slider.disabled = state.busy;
+    // Only write while idle: assigning during a drag would fight the thumb.
+    if (els.slider.value !== String(state.index)) els.slider.value = String(state.index);
   }
 
   /** Capture the same on-screen origins a real click uses before removing queue tiles. */
@@ -802,6 +896,10 @@ export class NodePlayView {
   private replayNext(): void {
     const state = this.replay;
     if (!state || state.busy || state.index >= state.steps.length) return;
+    if (state.instant) {
+      this.replayGoTo(state.index + 1);
+      return;
+    }
     const step = state.steps[state.index];
     this.sim.level.serveableSlots = step.serveableSlots;
     this.sim.tick(0);
@@ -847,11 +945,22 @@ export class NodePlayView {
     }, TICK_MS);
   }
 
-  /** Go back instantly by deterministically rebuilding and replaying prior picks without animation. */
   private replayPrevious(): void {
     const state = this.replay;
     if (!state || state.busy || state.index === 0) return;
-    const target = state.index - 1;
+    this.replayGoTo(state.index - 1);
+  }
+
+  /**
+   * Jump to any step instantly by deterministically rebuilding and replaying
+   * prior picks without animation. Backward, forward and slider scrubbing all
+   * come through here, so every instant move lands on the same state.
+   */
+  private replayGoTo(stepIndex: number): void {
+    const state = this.replay;
+    if (!state || state.busy) return;
+    const target = Math.max(0, Math.min(state.steps.length, Math.round(stepIndex)));
+    if (target === state.index) return;
     this.stopClock();
     this.animating.clear();
     document.querySelectorAll(".fx-layer .fx-flier").forEach((node) => node.remove());
@@ -872,7 +981,11 @@ export class NodePlayView {
       this.sim.completeAllFlights();
     }
     state.index = reached;
-    state.message = reached === 0 ? "Initial state" : `State after step ${reached}`;
+    state.message = reached < target
+      ? `Step ${reached + 1} cannot be replayed from this state`
+      : reached === 0
+        ? "Initial state"
+        : `State after step ${reached}`;
     this.pendingPickOrigins = [];
     this.fullRender();
     this.refreshToolbar();

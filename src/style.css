@@ -2499,8 +2499,26 @@ td input {
   margin-right: auto;
 }
 
+/*
+ * Replay drops the 3:4 portrait width: it renders every queue lane, drained
+ * ones included, each carrying a score chip (min-width 7rem on .queue-lane
+ * below). The page is therefore at least wide enough for all of them —
+ * --replay-lanes is set inline by nodeplay's mount() — so the lane row is
+ * enveloped rather than scrolled. Portrait width stays the floor, and the
+ * viewport the ceiling.
+ */
 .estimate-replay-host .play-page {
-  height: min(calc(100vh - 13rem), 820px);
+  /* 14rem is the overlay chrome above it: padding + head + the now two-row
+     toolbar (buttons, then the full-width step slider). */
+  height: min(calc(100vh - 14rem), 820px);
+  aspect-ratio: auto;
+  width: min(
+    100%,
+    max(
+      calc(min(100vh - 14rem, 820px) * 0.75),
+      calc(var(--replay-lanes, 3) * 9rem + 2.6rem)
+    )
+  );
 }
 
 .queue-lane.replay-picked {
@@ -2509,7 +2527,37 @@ td input {
 }
 
 .estimate-replay-host .queue-lanes.play {
-  justify-content: flex-start;
+  justify-content: center;
+  /* The page above is sized to fit every lane, so there is nothing to scroll
+     to — and a scrollbar here would eat into the tile height. */
+  overflow-x: hidden;
+}
+
+/* Full-width scrub bar: its own row under the wrapping replay toolbar. */
+.replay-slider-row {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+}
+
+.replay-slider-row .replay-slider {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.replay-slider-row .replay-slider:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.replay-instant-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .estimate-replay-host .queue-lane {
