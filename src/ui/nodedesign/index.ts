@@ -34,6 +34,7 @@ import { openNodeGenerateDialog } from "./nodeGenerateDialog.ts";
 import { openNodeEstimateReplay } from "../nodeplay/index.ts";
 import { parseGrid, parseQueueGroups, parseQueues } from "../../core/parser.ts";
 import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
+import type { NodeLevelConfig } from "../../core/nodeSim.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import { orderIdIndex, resolveOrder } from "../../core/nodeOrder.ts";
@@ -154,6 +155,10 @@ export class NodeDesignView {
         }),
       recipeDemand: () =>
         nodeDemandByRaw(this.projected.ix, orderIdIndex(this.projected.ix), this.customers.draft),
+      // The tool/slot half of the deadlock audit runs the real simulation, so
+      // it needs the whole level — built from the LIVE drafts, exactly as
+      // runEstimate does, not from the last-saved strings.
+      deadlockLevel: () => ({ ix: this.projected.ix, level: this.liveLevel() }),
     };
 
     this.customers = createNodeCustomerSection({
@@ -391,14 +396,19 @@ export class NodeDesignView {
     });
   }
 
-  /** Estimate with the same graph-native engine used by Play and replay. */
-  private runEstimateWith(scenario: EstimateScenario): void {
+  /** The open level with every section's live draft folded in, not its saved strings. */
+  private liveLevel(): NodeLevelConfig {
     const level = toNodeLevelConfig(this.level);
-    // The estimator reads live drafts, not the saved strings.
     level.customers = this.customers.draft;
     level.grid = this.grid.draft;
     level.queues = this.queues.draft.queues;
     level.queueGroups = toCoordGroups(this.queues.draft);
+    return level;
+  }
+
+  /** Estimate with the same graph-native engine used by Play and replay. */
+  private runEstimateWith(scenario: EstimateScenario): void {
+    const level = this.liveLevel();
     try {
       this.estimate = estimateNodeDifficulty(this.projected.ix, structuredClone(level), { scenario });
     } catch (err) {

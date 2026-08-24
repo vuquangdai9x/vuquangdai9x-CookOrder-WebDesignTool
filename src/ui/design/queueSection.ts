@@ -40,6 +40,10 @@ import { changeClass, cidOf, leafStatus, tagAllNew, tagNew } from "./changeTrack
 import { checkQueueThaw } from "./queueThawCheck.ts";
 import type { ThawReport } from "./queueThawCheck.ts";
 import type { ThawWorkerRequest } from "./queueThawWorker.ts";
+import type { GraphIndex } from "../../core/nodeIndex.ts";
+import type { NodeLevelConfig } from "../../core/nodeSim.ts";
+import { checkToolDeadlock } from "./toolDeadlockCheck.ts";
+import type { ToolDeadlockReport } from "./toolDeadlockCheck.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
 import { openAutoGenerateQueueDialog } from "./autoGenerateQueueDialog.ts";
 import { defaultCurve, openCurveDialog, parseCurve, serializeCurve } from "./curveEditor.ts";
@@ -88,6 +92,13 @@ export interface QueueSectionDeps {
    * graph-aware walk so Recipe Pieces includes every input of a process.
    */
   recipeDemand?(): Map<Id, RawDemand>;
+  /**
+   * The live level in graph form, for the tool/slot half of the deadlock audit
+   * (toolDeadlockCheck.ts) — that one drives the real simulation, so it needs
+   * the customers and the grid too, not just these lanes. Omitted by hosts that
+   * cannot supply one; the audit then checks the queue's ice only.
+   */
+  deadlockLevel?(): { ix: GraphIndex; level: NodeLevelConfig } | null;
   /** Legacy Design only: converts the live queue string to the active graph's current ids. */
   convertToNewFormat?(legacyString: string): string;
 }
@@ -132,7 +143,7 @@ interface QueueUiState {
    * an older queue" while STILL flagging the slots it blamed — the flags stay
    * until the designer re-runs it.
    */
-  thaw: { report: ThawReport; signature: string } | null;
+  thaw: { report: ThawReport; signature: string; tools: ToolDeadlockReport | null } | null;
   /** A full (uncapped) audit is running in the worker — see runFullThawCheck. */
   thawRunning: boolean;
 }
@@ -293,21 +304,23 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
       button("✨ Auto Generate", () => startQueueAutoGenerate(sec, deps), {
         title: "Fill every lane from the customer orders' ingredient demand",
       }),
-      button("🧊 Validate Ice", (event) => {
+      button("🚦 Validate Deadlock", (event) => {
         // The audit is a second of straight-line work, so paint a busy label
         // first — a click that looks like it did nothing is worse than a wait.
         const btn = event.currentTarget as HTMLButtonElement;
         const label = btn.textContent;
-        btn.textContent = "🧊 Validating…";
+        btn.textContent = "🚦 Validating…";
         btn.disabled = true;
         // A plain timer, deliberately NOT requestAnimationFrame: rAF never fires
         // in a hidden or non-compositing tab, which would leave the button stuck
         // on "Validating…" and the audit never run.
         setTimeout(() => {
           const groups = toCoordGroups(sec.draft);
+          const supplied = deps.deadlockLevel?.() ?? null;
           ui.thaw = {
             report: checkQueueThaw(sec.draft.queues, groups),
             signature: serializeQueues(sec.draft.queues, groups),
+            tools: supplied ? checkToolDeadlock(supplied.ix, supplied.level) : null,
           };
           btn.textContent = label;
           btn.disabled = false;
@@ -315,7 +328,7 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
         }, 0);
       }, {
         class: "validate-ice-btn",
-        title: "Check every pick order for a Freeze deadlock, and how much unplanned play jams",
+        title: "Check for dead ends: frozen slots that can never thaw, and tool/preservation slots that can never free up",
       }),
     ],
     menuItems: (draft) => [
@@ -386,6 +399,7 @@ function renderBody(
   if (audit) {
     const stale = audit.signature !== serializeQueues(draft.queues, toCoordGroups(draft));
     const panel = thawPanel(audit.report, stale);
+    if (audit.tools) panel.append(toolPanel(audit.tools));
     // Only a truncated walk leaves a question open — offer to finish it.
     if (audit.report.budgetHit && !ui.thawRunning) {
       panel.append(
@@ -667,8 +681,9 @@ function runFullThawCheck(section: Section<QueueDraft>, ui: QueueUiState): void 
     opts: { maxStates: 20_000_000, timeBudgetMs: Number.POSITIVE_INFINITY, randomRuns: 2000, sampleBudgetMs: 4000 },
   };
   const signature = serializeQueues(section.draft.queues, groups);
+  const tools = ui.thaw?.tools ?? null;
   const finish = (report: ThawReport) => {
-    ui.thaw = { report, signature };
+    ui.thaw = { report, signature, tools };
     ui.thawRunning = false;
     section.render();
   };
@@ -697,6 +712,56 @@ function runFullThawCheck(section: Section<QueueDraft>, ui: QueueUiState): void 
     finish(checkQueueThaw(request.queues, request.groups, request.opts));
   };
   worker.postMessage(request);
+}
+
+/**
+ * The tool/slot half of the audit — see toolDeadlockCheck.ts. Tool jams are
+ * called out separately from grid-space jams: a tool that can never free a slot
+ * is an authoring bug, while a board that fills up is a difficulty problem.
+ */
+function toolPanel(report: ToolDeadlockReport): HTMLElement {
+  const total = report.runs.length + report.randomRuns;
+  const jammed = report.runs.filter((r) => !r.ok).length + report.randomBlocked;
+  const wrap = el("div", { class: `queue-thaw-tools ${report.clean ? "safe" : report.toolBlocked > 0 ? "deadlock" : "risky"}` }, [
+    el("div", { class: "queue-thaw-head" }, [
+      report.clean
+        ? `✓ Tools & slots: no run jammed (${total} playthroughs).`
+        : `${report.toolBlocked > 0 ? "⚠" : "▲"} Tools & slots: ${jammed}/${total} playthroughs jammed — ${report.toolBlocked} on a tool or preservation slot, ${report.gridBlocked} on grid space.`,
+    ]),
+  ]);
+  if (report.clean) return wrap;
+
+  wrap.append(
+    el(
+      "div",
+      { class: "queue-thaw-strategies" },
+      report.runs.map((run) =>
+        el("span", { class: `queue-thaw-strategy ${run.ok ? "ok" : "bad"}`, title: run.reasons.join("\n") || "finished" }, [
+          `${run.ok ? "✓" : "✗"} ${run.name}`,
+        ]),
+      ),
+    ),
+  );
+  wrap.append(
+    el(
+      "div",
+      { class: "queue-thaw-reasons" },
+      report.reasonCounts.slice(0, 6).map((entry) =>
+        el("div", { class: `queue-thaw-reason ${entry.kind}` }, [`${entry.reason} — ${entry.count} run(s)`]),
+      ),
+    ),
+  );
+  if (report.toolSnapshot.length) {
+    wrap.append(
+      el("div", { class: "queue-thaw-foot" }, [
+        "At the jam: " +
+          report.toolSnapshot
+            .map((t) => `${t.tool} [${t.slots.join(", ")}]${t.preservation ? ` (+${t.preservation} preserve)` : ""}`)
+            .join(" · "),
+      ]),
+    );
+  }
+  return wrap;
 }
 
 function thawPanel(report: ThawReport, stale: boolean): HTMLElement {
