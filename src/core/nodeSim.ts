@@ -439,7 +439,7 @@ export class NodeSimulation {
     return true;
   }
 
-  /** Remaining adjacent-picks-to-thaw for a frozen queue item — see sim.ts's freezeCount(). */
+  /** Remaining side-adjacent picks needed to thaw a frozen queue item. */
   freezeCount(item: QueueItem): number {
     const freeze = item.effects.find((e) => e.effectId === EFFECT_FREEZE);
     if (!freeze) return 0;
@@ -1155,16 +1155,20 @@ export class NodeSimulation {
   // ---------- picking ----------
 
   /**
-   * Adjacency-based Freeze thaw — see sim.ts. Called from applyPick() with the
-   * picked cells' PRE-removal coordinates.
+   * Adjacency-based Freeze thaw. Called from applyPick() with the picked
+   * cells' PRE-removal coordinates.
+   *
+   * SIDEWAYS ONLY: picking in the lane to the left or the right breaks ice,
+   * picking above or below it in its OWN lane does not. A frozen slot rides
+   * its lane down as the items in front of it are taken, so counting those
+   * same-lane picks would thaw every frozen slot for free just by emptying its
+   * queue — the status would cost the player nothing.
    */
   private decrementAdjacentFreezes(pickedCells: { x: number; y: number }[]): void {
     for (const { x, y } of pickedCells) {
       const neighbors = [
         { x: x - 1, y },
         { x: x + 1, y },
-        { x, y: y - 1 },
-        { x, y: y + 1 },
       ];
       for (const n of neighbors) {
         const cell = this.queueGrid[n.x]?.[n.y];
@@ -1207,7 +1211,7 @@ export class NodeSimulation {
         if (effect.effectId === EFFECT_FREEZE) {
           const remaining = this.freezeCount(cell.item);
           if (remaining > 0) {
-            return { ok: false, reason: `Frozen — pick ${remaining} adjacent slot(s) to break the ice` };
+            return { ok: false, reason: `Frozen — pick ${remaining} slot(s) beside it (left/right lane) to break the ice` };
           }
           continue;
         }

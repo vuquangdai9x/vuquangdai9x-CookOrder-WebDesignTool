@@ -23,8 +23,9 @@ import { estimateNodeDifficulty } from "../design/nodeEstimateDifficulty.ts";
 import { defaultScenario } from "../design/estimateScenario.ts";
 import type { EstimateScenario } from "../design/estimateScenario.ts";
 import { openEstimateScenarioDialog } from "../design/estimateScenarioDialog.ts";
+import { customerColor } from "../design/customerColors.ts";
 import { createGridSection } from "../design/gridSection.ts";
-import { createQueueSection, startQueueAutoGenerate, toCoordGroups, toQueueDraft } from "../design/queueSection.ts";
+import { createQueueSection, startQueueAutoGenerate, toCoordGroups } from "../design/queueSection.ts";
 import { generateNodeQueueLanes, nodeDemandByRaw } from "./nodeQueueGenerate.ts";
 import type { QueueDraft, QueueSectionDeps } from "../design/queueSection.ts";
 import type { Section } from "../design/section.ts";
@@ -171,6 +172,7 @@ export class NodeDesignView {
         if (this.estimate) openNodeEstimateReplay(this.project, this.level.id, this.estimate.replaySteps);
       },
       currentEstimate: () => this.estimate,
+      onHoverCustomer: (index) => this.highlightCustomer(index),
       onAutoGenerate: () =>
         openNodeGenerateDialog({
           ix: this.projected.ix,
@@ -200,7 +202,11 @@ export class NodeDesignView {
     });
 
     this.queues = createQueueSection(this.queueDeps);
-    this.queues.draft = toQueueDraft(this.queueDeps.parse());
+    // NOTE: do not reassign this.queues.draft here. createQueueSection already
+    // parses and tags the draft, and Section's history keeps that same tagged
+    // snapshot as its saved baseline. Swapping in a second toQueueDraft() call
+    // hands every item a FRESH _cid, so change tracking matched nothing and
+    // painted the whole queue green-dashed 'added' on load and on level switch.
     this.grid.render();
     this.queues.render();
 
@@ -302,17 +308,9 @@ export class NodeDesignView {
     }
     picker.addEventListener("change", () => this.selectLevel(Number(picker.value)));
 
-    const stackInput = el("input", {
-      type: "number",
-      value: String(this.project.doc.map.dirtyStackHeight),
-      min: "1",
-      title: "Applies to every level in this map",
-    }) as HTMLInputElement;
-    stackInput.addEventListener("change", () => {
-      this.project.doc.map.dirtyStackHeight = Math.max(1, Number(stackInput.value) || 1);
-      this.onChange();
-    });
-
+    // Dirty stack height is a graph-level property, edited in Map Process, and
+    // Serve slots is superseded by the dynamic serve window — neither belongs
+    // on the level bar any more. Both values are still read from the data.
     const metaField = (label: string, value: string | number, type: string, apply: (v: string) => void) => {
       const input = el("input", { value: String(value), type }) as HTMLInputElement;
       input.addEventListener("change", () => {
@@ -348,7 +346,6 @@ export class NodeDesignView {
     return el("div", { class: "level-bar" }, [
       el("label", { class: "field small" }, ["Map", mapPicker]),
       el("label", { class: "field small" }, ["Level", picker]),
-      el("label", { class: "field small" }, ["Dirty stack", stackInput]),
       this.layoutToggle(),
       selectField(
         "Weather",
@@ -358,9 +355,6 @@ export class NodeDesignView {
       ),
       selectField("Tag", TAGS, this.level.levelTag, (v) => (this.level.levelTag = v)),
       metaField("Unlock", this.level.featureUnlock, "text", (v) => (this.level.featureUnlock = v)),
-      metaField("Serve slots", this.level.serveableSlots, "number", (v) => {
-        this.level.serveableSlots = Math.max(1, Number(v) || 1);
-      }),
       el("span", { class: "spacer" }),
       button("+ Level", () => this.addLevel()),
       button("🗑 Level", () => this.deleteLevel(), { class: "danger" }),
@@ -417,6 +411,42 @@ export class NodeDesignView {
     this.customers.render();
     this.queues.render();
     this.refreshReplayButton();
+  }
+
+  /**
+   * Hover feedback for one customer: their queue tiles and their points on the
+   * estimate chart light up together. Driven by direct class toggles rather
+   * than a re-render — the queue body is expensive to rebuild, and a rebuild
+   * mid-hover would drop the cursor's own target out from under it.
+   */
+  private highlightCustomer(index: number | null): void {
+    const cids = new Set<string>();
+    if (index !== null && this.estimate) {
+      for (const [cid, slot] of this.estimate.byCid) {
+        if (slot.customerIndex === index) cids.add(cid);
+      }
+    }
+    const on = index !== null && cids.size > 0;
+    const queueRoot = this.queues?.element;
+    if (queueRoot) {
+      queueRoot.classList.toggle("customer-focus", on);
+      if (on) queueRoot.style.setProperty("--focus-color", customerColor(index!));
+      queueRoot.querySelectorAll<HTMLElement>(".queue-tile").forEach((tile) => {
+        const cid = tile.dataset.cid;
+        tile.classList.toggle("customer-hit", !!cid && cids.has(cid));
+      });
+    }
+    // The chart lives in the customers section, and its points carry the owning
+    // customer directly (see occupancyChart.ts).
+    const chart = this.customers?.element.querySelector<HTMLElement>(".occupancy-chart");
+    if (chart) {
+      chart.classList.toggle("customer-focus", index !== null);
+      if (index !== null) chart.style.setProperty("--focus-color", customerColor(index));
+      chart.querySelectorAll<SVGElement>(".occupancy-point").forEach((point) => {
+        const owner = point.dataset.customer;
+        point.classList.toggle("customer-hit", index !== null && owner === String(index));
+      });
+    }
   }
 
   /** Section headers persist while their bodies re-render, so update this control explicitly. */

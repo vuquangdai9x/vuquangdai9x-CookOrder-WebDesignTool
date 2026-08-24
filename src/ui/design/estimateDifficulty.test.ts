@@ -1,47 +1,53 @@
 import { describe, expect, it } from "vitest";
 import type { CustomerCost } from "./estimateDifficulty.ts";
-import { difficultyColor, difficultyRatio } from "./estimateDifficulty.ts";
+import { pickQuality, pickQualityColor, pickQualityLabel } from "./estimateDifficulty.ts";
 
-describe("difficultyColor", () => {
-  it("is green at 0 and red at 1", () => {
-    expect(difficultyColor(0)).toBe("hsl(120, 70%, 45%)");
-    expect(difficultyColor(1)).toBe("hsl(0, 70%, 45%)");
+const cost = (over: Partial<CustomerCost> = {}): CustomerCost => ({
+  index: 0,
+  gridOccupied: 0,
+  gridWaste: 0,
+  picks: 0,
+  detours: 0,
+  randomPicks: 0,
+  bestPicks: 0,
+  ...over,
+});
+
+describe("pickQuality", () => {
+  it("is red as soon as one pick had to be random, however good the rest were", () => {
+    expect(pickQuality(cost({ picks: 10, bestPicks: 9, randomPicks: 1 }))).toBe("random");
   });
 
-  it("clamps out-of-range ratios instead of producing an invalid hue", () => {
-    expect(difficultyColor(-5)).toBe(difficultyColor(0));
-    expect(difficultyColor(5)).toBe(difficultyColor(1));
+  it("is green when every pick was the best available match", () => {
+    expect(pickQuality(cost({ picks: 4, bestPicks: 4 }))).toBe("best");
   });
 
-  it("moves monotonically from green to red as the ratio rises", () => {
-    const hueOf = (c: string) => Number(c.match(/hsl\((-?\d+)/)![1]);
-    expect(hueOf(difficultyColor(0.25))).toBeGreaterThan(hueOf(difficultyColor(0.75)));
+  it("is green for a customer the solver never had to pick for", () => {
+    expect(pickQuality(cost())).toBe("best");
+  });
+
+  it("is yellow when some picks were detours or fetched ahead of their base", () => {
+    expect(pickQuality(cost({ picks: 4, bestPicks: 3, detours: 1 }))).toBe("mixed");
+    expect(pickQuality(cost({ picks: 4, bestPicks: 0 }))).toBe("mixed");
+  });
+
+  it("maps each state to a distinct red/yellow/green", () => {
+    expect(pickQualityColor("random")).toBe("hsl(0, 70%, 45%)");
+    expect(pickQualityColor("mixed")).toBe("hsl(45, 85%, 50%)");
+    expect(pickQualityColor("best")).toBe("hsl(120, 70%, 45%)");
   });
 });
 
-const cost = (gridOccupied: number): CustomerCost => ({
-  index: 0, gridOccupied, gridWaste: 0, picks: 0, detours: 0,
-});
-
-describe("difficultyRatio", () => {
-  it("scales against this level's worst customer, not a fixed board size", () => {
-    // A customer occupying 3 cells is the WORST in an easy level (max 3) —
-    // full red — but only middling in a harder level (max 10).
-    expect(difficultyRatio(3, [cost(1), cost(3)])).toBe(1);
-    expect(difficultyRatio(3, [cost(1), cost(3), cost(10)])).toBeCloseTo(0.3);
+describe("pickQualityLabel", () => {
+  it("names the random picks that made a customer red", () => {
+    expect(pickQualityLabel(cost({ picks: 6, bestPicks: 4, randomPicks: 2 }))).toContain("2 random pick(s)");
   });
 
-  it("zero occupied is always zero, regardless of how hard the level is", () => {
-    expect(difficultyRatio(0, [cost(0), cost(8)])).toBe(0);
+  it("counts the shortfall for a yellow customer", () => {
+    expect(pickQualityLabel(cost({ picks: 5, bestPicks: 2 }))).toContain("3 of 5 pick(s)");
   });
 
-  it("returns 0 when every customer in the level occupies nothing, instead of dividing by zero", () => {
-    expect(difficultyRatio(0, [cost(0), cost(0)])).toBe(0);
-    expect(Number.isFinite(difficultyRatio(0, []))).toBe(true);
-  });
-
-  it("the worst customer in the level always reads exactly 1 (full red)", () => {
-    const perCustomer = [cost(2), cost(7), cost(4)];
-    expect(difficultyRatio(7, perCustomer)).toBe(1);
+  it("says plainly when nothing had to be picked", () => {
+    expect(pickQualityLabel(cost())).toBe("No pick was needed for this customer");
   });
 });

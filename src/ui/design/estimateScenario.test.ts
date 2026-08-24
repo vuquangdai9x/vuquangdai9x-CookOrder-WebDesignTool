@@ -15,7 +15,6 @@ describe("estimateScenario", () => {
     expect(cfg.maxPairDishes).toBe(5);
     expect(cfg.rngSeed).toBe(0x5eed);
     expect(cfg.hiddenStatus).toBe(false);
-    expect(cfg.dynamicServeWindow).toBe(true);
   });
 
   it("substitutes each field's off value when its toggle is unticked", () => {
@@ -34,6 +33,5 @@ describe("estimateScenario", () => {
     expect(cfg.hiddenStatus).toBe(true);
     expect(cfg.scoreBase).toBe(5);
     expect(cfg.scoreReady).toBe(850);
-    expect(cfg.dynamicServeWindow).toBe(true);
   });
 });

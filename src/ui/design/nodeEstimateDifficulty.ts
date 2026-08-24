@@ -29,6 +29,8 @@ interface DemandClaim {
   target: number;
   base: boolean;
   multiInput: boolean;
+  /** The claim is placeable right now — a base, or a slot whose gate is open. */
+  ready: boolean;
 }
 
 interface DemandUnit {
@@ -37,12 +39,19 @@ interface DemandUnit {
   priority: number;
   base: boolean;
   multiInput: boolean;
+  ready: boolean;
   requirements: Map<number, number>;
 }
 
 interface PickupValue {
   score: number;
   customerIndex: number;
+  /**
+   * The strongest claim on this ingredient is placeable right now, so taking
+   * it is the best kind of pick rather than work parked ahead of its base.
+   * Drives CustomerCost.bestPicks and the customer card's colour cue.
+   */
+  ready: boolean;
 }
 
 function seededRng(seed = 0x5eed): () => number {
@@ -65,13 +74,11 @@ function serveableWindow(sim: NodeSimulation, cfg: ResolvedScenario): number {
 
 /**
  * Keep the serve window in step with who is at the counter, then let pending
- * customers walk in. With the dynamic window disabled the level's own
- * serveableSlots is held fixed, but the promotion loop still has to run or the
- * counter would never refill.
+ * customers walk in.
  */
-function syncWindow(sim: NodeSimulation, cfg: ResolvedScenario, fixedSlots: number): void {
+function syncWindow(sim: NodeSimulation, cfg: ResolvedScenario): void {
   for (let guard = 0; guard < 8; guard++) {
-    sim.level.serveableSlots = cfg.dynamicServeWindow ? serveableWindow(sim, cfg) : fixedSlots;
+    sim.level.serveableSlots = serveableWindow(sim, cfg);
     if (sim.status !== "playing") return;
     if (sim.active.length >= sim.level.serveableSlots || sim.pending.length === 0) return;
     const before = sim.active.length;
@@ -106,7 +113,6 @@ export function estimateNodeDifficulty(
   const cfg = resolveScenario(opts.scenario);
   const rng = opts.rng ?? (cfg.enabled.rngSeed ? seededRng(cfg.rngSeed) : Math.random);
   const maxIterations = opts.maxIterations ?? cfg.maxIterations;
-  const fixedSlots = Math.max(1, level.serveableSlots ?? 1);
   const sim = new NodeSimulation(ix, level, {
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
     instantFlights: true,
@@ -280,6 +286,7 @@ export function estimateNodeDifficulty(
             priority,
             base,
             multiInput,
+            ready: base || open,
             requirements: rawRequirements(slot.ing),
           });
         });
@@ -307,6 +314,7 @@ export function estimateNodeDifficulty(
           target: unit.target,
           base: unit.base,
           multiInput: unit.multiInput,
+          ready: unit.ready,
         });
         claims.set(leaf, list);
       }
@@ -331,6 +339,7 @@ export function estimateNodeDifficulty(
       let score = 0;
       let customerIndex = -1;
       let strongest = 0;
+      let ready = false;
       for (const [leaf, amount] of contribution) {
         let capacity = amount;
         let leafScore = 0;
@@ -344,6 +353,7 @@ export function estimateNodeDifficulty(
           if (claim.priority > strongest) {
             strongest = claim.priority;
             customerIndex = claim.customerIndex;
+            ready = claim.ready;
           }
         }
         const needed = list.reduce((sum, claim) => sum + Math.max(0, claim.units), 0);
@@ -373,7 +383,7 @@ export function estimateNodeDifficulty(
           }
         }
       }
-      values.set(ing, { score, customerIndex });
+      values.set(ing, { score, customerIndex, ready });
     }
     return values;
   };
@@ -383,7 +393,7 @@ export function estimateNodeDifficulty(
   const costFor = (index: number): CustomerCost => {
     let cost = costs.get(index);
     if (!cost) {
-      cost = { index, gridOccupied: 0, gridWaste: 0, picks: 0, detours: 0 };
+      cost = { index, gridOccupied: 0, gridWaste: 0, picks: 0, detours: 0, randomPicks: 0, bestPicks: 0 };
       costs.set(index, cost);
     }
     return cost;
@@ -395,11 +405,16 @@ export function estimateNodeDifficulty(
     return gridTight ? cfg.scoreSweeperUrgent : cfg.scoreSweeper;
   };
 
-  const valueOfCell = (x: number, y: number): { score: number; customerIndex: number } => {
+  const valueOfCell = (x: number, y: number): PickupValue => {
     const cell = sim.queueGrid[x]?.[y];
-    if (!cell) return { score: 0, customerIndex: -1 };
-    if (cell.item.kind === "sweeper") return { score: sweeperValue(), customerIndex: -1 };
-    return pickupValues.get(cell.ing) ?? { score: 0, customerIndex: -1 };
+    if (!cell) return { score: 0, customerIndex: -1, ready: false };
+    // A sweeper taken while stacks are dirty is the correct play, not a
+    // compromise, so it counts as a ready (best) pick.
+    if (cell.item.kind === "sweeper") {
+      const score = sweeperValue();
+      return { score, customerIndex: -1, ready: score > 0 };
+    }
+    return pickupValues.get(cell.ing) ?? { score: 0, customerIndex: -1, ready: false };
   };
 
   const scoreLane = (x: number, depth: number) => {
@@ -409,6 +424,7 @@ export function estimateNodeDifficulty(
     let immediate = 0;
     let immediateCustomer = -1;
     let strongestImmediate = 0;
+    let immediateReady = false;
     let footprint = 0;
     for (const cell of sim.pickTargets(x)) {
       const value = valueOfCell(cell.x, cell.y);
@@ -416,6 +432,7 @@ export function estimateNodeDifficulty(
       if (value.score > strongestImmediate) {
         strongestImmediate = value.score;
         immediateCustomer = value.customerIndex;
+        immediateReady = value.ready;
       }
       const queued = sim.queueGrid[cell.x]?.[cell.y];
       if (queued?.item.kind === "ingredient") footprint += Math.max(1, ix.terminalYield[queued.ing] ?? 1);
@@ -446,6 +463,9 @@ export function estimateNodeDifficulty(
       score: Math.max(0, immediate + future - detourPenalty),
       customerIndex: strongestImmediate > 0 ? immediateCustomer : futureCustomer,
       fromFront: strongestImmediate > 0,
+      // Best only when the thing actually being picked is placeable now —
+      // a lookahead-driven dig never qualifies.
+      best: strongestImmediate > 0 && immediateReady,
     };
   };
 
@@ -458,6 +478,7 @@ export function estimateNodeDifficulty(
     detour: boolean,
     score = 0,
     random = false,
+    best = false,
   ): boolean => {
     const cells = sim.pickTargets(lane);
     if (cells.length === 0) return false;
@@ -480,13 +501,16 @@ export function estimateNodeDifficulty(
     const cost = costFor(customerIndex);
     cost.picks++;
     if (detour) cost.detours++;
+    if (random) cost.randomPicks++;
+    else if (best) cost.bestPicks++;
     settle(sim);
-    syncWindow(sim, cfg, fixedSlots);
+    syncWindow(sim, cfg);
     const stillActive = new Set(sim.active.map((customer) => customer.index));
     occupancyHistory.push({
       ...sampleOccupancy(),
       score,
       random,
+      customerIndex,
       pickedNames: items.map((cell) => nameOfItem(cell.item, cell.ing)),
       completesCustomers: [...activeBefore].filter((index) => !stillActive.has(index)),
     });
@@ -520,7 +544,7 @@ export function estimateNodeDifficulty(
   };
 
   settle(sim);
-  syncWindow(sim, cfg, fixedSlots);
+  syncWindow(sim, cfg);
 
   while (sim.status === "playing" && iterations < maxIterations) {
     iterations++;
@@ -533,7 +557,7 @@ export function estimateNodeDifficulty(
         halted = "Nothing left to pick and nothing cooking — the queues ran dry.";
         break;
       }
-      syncWindow(sim, cfg, fixedSlots);
+      syncWindow(sim, cfg);
       continue;
     }
 
@@ -543,7 +567,7 @@ export function estimateNodeDifficulty(
       pickable.has(lane) ? scoreLane(lane, depth) : null,
     );
     currentReplayLaneScores = scoresByLane.map((value) => value?.score ?? null);
-    let best = { lane: -1, score: 0, customerIndex: -1, fromFront: false };
+    let best = { lane: -1, score: 0, customerIndex: -1, fromFront: false, best: false };
     for (const lane of lanes) {
       const candidate = scoresByLane[lane]!;
       if (candidate.score > best.score) best = { lane, ...candidate };
@@ -553,7 +577,7 @@ export function estimateNodeDifficulty(
       const owner = best.customerIndex >= 0
         ? best.customerIndex
         : (sim.active.find(isOrdering)?.index ?? sim.active[0]?.index ?? 0);
-      if (!take(best.lane, owner, !best.fromFront, best.score, false)) break;
+      if (!take(best.lane, owner, !best.fromFront, best.score, false, best.best)) break;
       measure();
       continue;
     }

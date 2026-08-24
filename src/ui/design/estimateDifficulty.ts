@@ -36,6 +36,20 @@ export interface CustomerCost {
   picks: number;
   /** Of those, how many were digging/flow picks rather than a wanted ingredient. */
   detours: number;
+  /**
+   * Picks where nothing reachable scored at all, so the solver just took
+   * something to keep the queues moving. One of these means a player serving
+   * this customer has to guess.
+   */
+  randomPicks: number;
+  /**
+   * Picks that were the best available move: the front item was itself wanted,
+   * either for a dish base or for a slot whose gate is already open. A sweeper
+   * taken while the grid is dirty counts too — that is the correct play, not a
+   * guess. Everything else (digging toward a buried piece, or fetching a piece
+   * whose base is not down yet) is neither random nor best.
+   */
+  bestPicks: number;
 }
 
 /** Grid pressure snapshot taken right after one pick has fully settled. */
@@ -57,6 +71,8 @@ export interface OccupancySample {
   pickedNames: string[];
   /** Customer index(es) whose order was fully served as a result of this pick, if any — drives the chart's per-completion marker. Usually empty or one entry. */
   completesCustomers: number[];
+  /** Customer this pick was attributed to — lets hovering a customer card light up their own points on the chart. -1 when the solver had no owner for it. */
+  customerIndex: number;
 }
 
 export interface EstimateResult {
@@ -108,28 +124,44 @@ export interface EstimateOptions {
 export const SCORE_BASE = 100;
 
 /**
- * Green→red for a 0..1 severity ratio — used by customerSection.ts's
- * per-customer difficulty bar. A straight hue sweep (green 120° to red 0°)
- * rather than a lightness/opacity ramp, so the color reads at a glance
- * without needing to compare bars side by side.
+ * The three-state cue drawn on top of a customer card. It answers "how much
+ * is the player guessing while serving this customer":
+ *   "random" — at least one pick had nothing matching reachable, so the
+ *              player must take a random ingredient. Red.
+ *   "best"   — every pick was the best available move: a dish base, or a
+ *              piece for a slot whose base is already down. Green.
+ *   "mixed"  — everything in between; no guessing, but detours and pieces
+ *              fetched ahead of their base. Yellow.
+ * A customer the solver never had to pick for reads "best": nothing was
+ * forced on the player for them.
  */
-export function difficultyColor(ratio: number): string {
-  const clamped = Math.min(1, Math.max(0, ratio));
-  const hue = 120 * (1 - clamped);
-  return `hsl(${hue.toFixed(0)}, 70%, 45%)`;
+export type PickQuality = "random" | "best" | "mixed";
+
+export function pickQuality(cost: CustomerCost): PickQuality {
+  if (cost.randomPicks > 0) return "random";
+  return cost.bestPicks >= cost.picks ? "best" : "mixed";
 }
 
-/**
- * How severe one customer's peak grid footprint is, relative to the worst
- * customer *in the same level* — not the board's raw capacity. A single
- * customer's own order almost never fills the whole board (two customers
- * share it, alongside waste and dirty stacks), so scaling against total grid
- * cells left every bar clustered in green/yellow with no real customer ever
- * reading red. Scaling against this level's own worst offender instead
- * guarantees the color always spans the full range: the hardest customer in
- * any given level reads true red, an untouched one reads true green.
- */
-export function difficultyRatio(occupied: number, perCustomer: CustomerCost[]): number {
-  const worst = perCustomer.reduce((n, c) => Math.max(n, c.gridOccupied), 0);
-  return worst > 0 ? occupied / worst : 0;
+const PICK_QUALITY_COLOR: Record<PickQuality, string> = {
+  random: "hsl(0, 70%, 45%)",
+  mixed: "hsl(45, 85%, 50%)",
+  best: "hsl(120, 70%, 45%)",
+};
+
+export function pickQualityColor(quality: PickQuality): string {
+  return PICK_QUALITY_COLOR[quality];
+}
+
+/** Tooltip for the cue — says which picks earned the color. */
+export function pickQualityLabel(cost: CustomerCost): string {
+  switch (pickQuality(cost)) {
+    case "random":
+      return `${cost.randomPicks} random pick(s): nothing matching was reachable, so the player has to guess`;
+    case "best":
+      return cost.picks === 0
+        ? "No pick was needed for this customer"
+        : `All ${cost.picks} pick(s) were the best available match`;
+    default:
+      return `${cost.picks - cost.bestPicks} of ${cost.picks} pick(s) were detours, or fetched before their base was down`;
+  }
 }

@@ -647,9 +647,9 @@ footer {
   border-style: dashed;
 }
 
-/* Estimate Difficulty's per-customer severity strip (see estimateDifficulty.ts
-   difficultyColor()) — pinned to the card's top edge; .customer-card's own
-   overflow:hidden clips it to the card's rounded corners for free. */
+/* Estimate Difficulty's per-customer pick-quality cue (red/yellow/green, see
+   estimateDifficulty.ts pickQuality()) — pinned to the card's top edge;
+   .customer-card's own overflow:hidden clips it to the rounded corners. */
 .difficulty-bar {
   position: absolute;
   top: 0;
@@ -4322,4 +4322,93 @@ td input {
 .scenario-row.disabled .scrub-input {
   cursor: default;
   opacity: 0.4;
+}
+
+/* ---------- hover a customer card: light up what is theirs ---------- */
+/* Driven from nodedesign/index.ts's highlightCustomer, which sets
+   --focus-color to that customer's own colour and tags the matching queue
+   tiles / chart points with .customer-hit. Everything else fades back so the
+   customer's own picks read as a shape, not a scatter of outlines. */
+
+.design-section.customer-focus .queue-tile:not(.add-tile):not(.empty) {
+  opacity: 0.28;
+}
+
+.design-section.customer-focus .queue-tile.customer-hit:not(.add-tile):not(.empty) {
+  opacity: 1;
+  outline: 2px solid var(--focus-color, var(--accent));
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.35);
+}
+
+.occupancy-chart.customer-focus .occupancy-point {
+  opacity: 0.25;
+}
+
+.occupancy-chart.customer-focus .occupancy-point.customer-hit {
+  opacity: 1;
+  r: 4.2px;
+  stroke: var(--focus-color, var(--accent));
+  stroke-width: 1.6;
+}
+
+/* Ice-deadlock check on the Ingredient Queue (design/queueThawCheck.ts) —
+   hidden entirely when the queue has no frozen slots. */
+.queue-thaw {
+  margin: 0.35rem 0;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  background: var(--panel-2);
+}
+
+.queue-thaw.safe { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.queue-thaw.risky { color: #e8c34a; border-color: color-mix(in srgb, #e8c34a 55%, var(--line)); }
+.queue-thaw.deadlock { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+.queue-thaw.unknown { color: var(--accent); }
+
+.queue-thaw.stale { opacity: 0.75; border-style: dashed; }
+
+.queue-thaw-head { font-weight: 600; }
+
+.queue-thaw-stale,
+.queue-thaw-foot {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.queue-thaw-stats,
+.queue-thaw-strategies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  margin-top: 0.3rem;
+  color: var(--text);
+  font-size: 0.74rem;
+}
+
+.queue-thaw-ratio { font-weight: 700; }
+
+.queue-thaw-strategy.ok { color: var(--ok); }
+.queue-thaw-strategy.bad { color: var(--bad); }
+
+/* A frozen slot the deadlock check blames for the jam — stays red until the
+   queue is edited and the check clears it. */
+.queue-tile.thaw-blocked {
+  outline: 2px solid var(--bad);
+  outline-offset: -2px;
+  background: rgba(224, 90, 90, 0.22);
+}
+
+.queue-tile.thaw-blocked .tile-freeze-count {
+  color: #fff;
+  background: var(--bad);
+}
+
+.queue-thaw.running { color: var(--accent); border-style: dashed; }
+
+.queue-thaw-actions {
+  margin-top: 0.4rem;
 }

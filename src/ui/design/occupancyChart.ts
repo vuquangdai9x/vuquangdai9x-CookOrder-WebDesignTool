@@ -328,6 +328,11 @@ export function occupancyChartEl(
       cx: String(PAD.left + plot.x[i]), cy: String(toAbs(plot.occupiedY[i])), r: "2.3",
       class: "occupancy-point", fill: color,
     });
+    // Hovering a customer card lights up that customer's own step points —
+    // the caller finds them by this attribute (see nodedesign/index.ts's
+    // highlightCustomer). Tagged here rather than styled here, because the
+    // chart owns no hover state of its own.
+    if (history[i].customerIndex >= 0) point.dataset.customer = String(history[i].customerIndex);
     svg.append(point);
     pointEls.push(point);
   }

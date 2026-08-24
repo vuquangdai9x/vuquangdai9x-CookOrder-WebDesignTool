@@ -143,16 +143,6 @@ export function openEstimateScenarioDialog(deps: EstimateScenarioDeps): void {
 
     for (const group of SCENARIO_GROUPS) {
       const rows: HTMLElement[] = [];
-      if (group === "Run controls") {
-        rows.push(
-          toggleRow(
-            "Dynamic serve window",
-            "ON: the window opens to 2 customers whenever their dishes fit the pairing limit. OFF: pinned to the level's own Serve slots.",
-            scenario.dynamicServeWindow,
-            (on) => (scenario.dynamicServeWindow = on),
-          ),
-        );
-      }
       for (const spec of SCENARIO_FIELDS) {
         if (spec.group === group) rows.push(fieldRow(spec));
       }

@@ -46,8 +46,6 @@ export interface EstimateScenario {
    * simulated.
    */
   hiddenStatus: boolean;
-  /** OFF pins the serve window to the level's own serveableSlots. */
-  dynamicServeWindow: boolean;
   fields: Record<ScenarioFieldKey, ScenarioField>;
 }
 
@@ -307,12 +305,11 @@ export const SCENARIO_FIELD_BY_KEY = new Map(SCENARIO_FIELDS.map((spec) => [spec
 export function defaultScenario(): EstimateScenario {
   const fields = {} as Record<ScenarioFieldKey, ScenarioField>;
   for (const spec of SCENARIO_FIELDS) fields[spec.key] = { enabled: true, value: spec.def };
-  return { hiddenStatus: false, dynamicServeWindow: true, fields };
+  return { hiddenStatus: false, fields };
 }
 
 export type ResolvedScenario = Record<ScenarioFieldKey, number> & {
   hiddenStatus: boolean;
-  dynamicServeWindow: boolean;
   /** Per-field toggle state, for the one place where OFF is not just a number. */
   enabled: Record<ScenarioFieldKey, boolean>;
 };
@@ -325,7 +322,6 @@ export function resolveScenario(scenario?: EstimateScenario | null): ResolvedSce
     : base;
   const out = {
     hiddenStatus: merged.hiddenStatus,
-    dynamicServeWindow: merged.dynamicServeWindow,
     enabled: {} as Record<ScenarioFieldKey, boolean>,
   } as ResolvedScenario;
   for (const spec of SCENARIO_FIELDS) {

@@ -14,7 +14,7 @@ const s = (
   random = false,
   pickedNames: string[] = [],
   completesCustomers: number[] = [],
-): OccupancySample => ({ occupied, dirty, score, random, pickedNames, completesCustomers });
+): OccupancySample => ({ occupied, dirty, score, random, pickedNames, completesCustomers, customerIndex: 0 });
 
 describe("scaleOccupancy", () => {
   it("maps 0 to the plot's bottom edge and capacity to its top edge", () => {

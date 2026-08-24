@@ -426,6 +426,42 @@ describe("unsatisfiableSlots", () => {
   });
 });
 
+describe("Freeze thaws sideways only", () => {
+  // "#1:n" is the Freeze status with n picks still owed. Lane 1 holds a frozen
+  // front; lane 0 sits beside it and lane 2 does not touch it.
+  const frozenLevel = () =>
+    sim({ queueString: "14,14%14#1:2,14%14,14", customerString: "0;0;0;{c0:17}" }, { instantFlights: true });
+
+  it("breaks ice from the lane beside it", () => {
+    const s = frozenLevel();
+    const ice = s.queueGrid[1][0]!.item;
+    expect(s.freezeCount(ice)).toBe(2);
+    expect(s.canPick(1).ok).toBe(false);
+    expect(s.pick(0)).toBe(true);
+    expect(s.freezeCount(ice)).toBe(1);
+    expect(s.pick(2)).toBe(true);
+    expect(s.freezeCount(ice)).toBe(0);
+    expect(s.canPick(1).ok).toBe(true);
+  });
+
+  it("does NOT break ice from the item ahead of it in its own lane", () => {
+    // Lane 1 front is free, the frozen item is right behind it. Picking the
+    // front is a same-lane (vertical) pick and must leave the ice untouched.
+    const s = sim({ queueString: "14,14%14,14#1:2", customerString: "0;0;0;{c0:17}" }, { instantFlights: true });
+    const ice = s.queueGrid[1][1]!.item;
+    expect(s.freezeCount(ice)).toBe(2);
+    expect(s.pick(1)).toBe(true);
+    expect(s.freezeCount(ice)).toBe(2);
+  });
+
+  it("only reaches one lane out — a pick two lanes away leaves the ice alone", () => {
+    const s = sim({ queueString: "14,14%14,14%14#1:2,14", customerString: "0;0;0;{c0:17}" }, { instantFlights: true });
+    const ice = s.queueGrid[2][0]!.item;
+    expect(s.pick(0)).toBe(true);
+    expect(s.freezeCount(ice)).toBe(2);
+  });
+});
+
 describe("pickPolicy: wanted-only", () => {
   it("is OFF by default, so a queue-flow pick still works", () => {
     const s = sim({ queueString: "5,0", customerString: "0;0;0;{c0:17}" });

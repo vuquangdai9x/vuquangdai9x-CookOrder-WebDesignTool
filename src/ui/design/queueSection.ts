@@ -37,6 +37,9 @@ import { ingredientIconEl, statusIconEl } from "../icon.ts";
 import { appendLine, createOverlay, railColor, railSegments } from "../queueGroupVisuals.ts";
 import type { Point } from "../queueGroupVisuals.ts";
 import { changeClass, cidOf, leafStatus, tagAllNew, tagNew } from "./changeTracking.ts";
+import { checkQueueThaw } from "./queueThawCheck.ts";
+import type { ThawReport } from "./queueThawCheck.ts";
+import type { ThawWorkerRequest } from "./queueThawWorker.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
 import { openAutoGenerateQueueDialog } from "./autoGenerateQueueDialog.ts";
 import { defaultCurve, openCurveDialog, parseCurve, serializeCurve } from "./curveEditor.ts";
@@ -121,6 +124,17 @@ interface QueueUiState {
    * saved; does nothing until the estimate has been run at least once.
    */
   showPickup: boolean;
+  /**
+   * Last ice-deadlock audit (queueThawCheck.ts) and the queue string it ran
+   * against. The audit is a button rather than an on-every-edit check because
+   * an exhaustive walk of a big frozen queue costs far too much to run on every
+   * keystroke. Keeping the signature lets the panel say "these results are for
+   * an older queue" while STILL flagging the slots it blamed — the flags stay
+   * until the designer re-runs it.
+   */
+  thaw: { report: ThawReport; signature: string } | null;
+  /** A full (uncapped) audit is running in the worker — see runFullThawCheck. */
+  thawRunning: boolean;
 }
 
 /** Tags every lane (container identity) and every item within it (leaf identity). */
@@ -248,6 +262,8 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
     drawerOpen: false,
     selection: new Set(),
     showPickup: false,
+    thaw: null,
+    thawRunning: false,
   };
 
   const section: Section<QueueDraft> = new Section<QueueDraft>({
@@ -276,6 +292,30 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
       }, { class: "add-queue-btn", title: `Append a new queue (max ${MAX_COLUMNS})` }),
       button("✨ Auto Generate", () => startQueueAutoGenerate(sec, deps), {
         title: "Fill every lane from the customer orders' ingredient demand",
+      }),
+      button("🧊 Validate Ice", (event) => {
+        // The audit is a second of straight-line work, so paint a busy label
+        // first — a click that looks like it did nothing is worse than a wait.
+        const btn = event.currentTarget as HTMLButtonElement;
+        const label = btn.textContent;
+        btn.textContent = "🧊 Validating…";
+        btn.disabled = true;
+        // A plain timer, deliberately NOT requestAnimationFrame: rAF never fires
+        // in a hidden or non-compositing tab, which would leave the button stuck
+        // on "Validating…" and the audit never run.
+        setTimeout(() => {
+          const groups = toCoordGroups(sec.draft);
+          ui.thaw = {
+            report: checkQueueThaw(sec.draft.queues, groups),
+            signature: serializeQueues(sec.draft.queues, groups),
+          };
+          btn.textContent = label;
+          btn.disabled = false;
+          sec.render();
+        }, 0);
+      }, {
+        class: "validate-ice-btn",
+        title: "Check every pick order for a Freeze deadlock, and how much unplanned play jams",
       }),
     ],
     menuItems: (draft) => [
@@ -340,6 +380,31 @@ function renderBody(
   body.append(shuffleCurveBar(section, deps));
   body.append(recipeFoldout(section, deps, ui, draft));
   body.append(toolbar(section, deps, ui));
+  // Results of the last Validate Ice run, if any. Flagged slots survive edits
+  // on purpose — they stay red until the audit is run again.
+  const audit = ui.thaw;
+  if (audit) {
+    const stale = audit.signature !== serializeQueues(draft.queues, toCoordGroups(draft));
+    const panel = thawPanel(audit.report, stale);
+    // Only a truncated walk leaves a question open — offer to finish it.
+    if (audit.report.budgetHit && !ui.thawRunning) {
+      panel.append(
+        el("div", { class: "queue-thaw-actions" }, [
+          button("⏱ Run full check", () => runFullThawCheck(section, ui), {
+            title: "Walk every reachable state with no time limit, in a background worker. Can take a minute on a large frozen queue.",
+          }),
+        ]),
+      );
+    }
+    body.append(panel);
+  }
+  if (ui.thawRunning) {
+    body.append(
+      el("div", { class: "queue-thaw running" }, [
+        "⏳ Full ice check running in the background — the editor stays usable, results land here when it finishes.",
+      ]),
+    );
+  }
 
   const lanes = el("div", { class: `queue-lanes${ui.removeMode ? " remove-mode" : ""}` });
   lanes.style.setProperty("--tile-zoom", String(ui.zoom));
@@ -347,14 +412,20 @@ function renderBody(
   // Read fresh on every render so it tracks the latest Estimate Difficulty
   // run (the customers section re-renders this one via onCommit's
   // refreshQueueReadout) — see estimateDifficulty.ts.
-  const estimate = ui.showPickup ? (deps.currentEstimate?.() ?? null) : null;
+  const latestEstimate = deps.currentEstimate?.() ?? null;
+  const estimate = ui.showPickup ? latestEstimate : null;
 
   // Compared against once per render — reordering/adding/removing during a
   // render doesn't shift this baseline out from under the diff.
   const savedQueues = section.savedState.queues;
   const maxRows = draft.queues.reduce((h, q) => Math.max(h, q.length), 0);
   draft.queues.forEach((lane, laneIndex) => {
-    lanes.append(laneEl(section, deps, ui, draft, lane, laneIndex, savedQueues, maxRows, estimate));
+    lanes.append(
+      laneEl(
+        section, deps, ui, draft, lane, laneIndex, savedQueues, maxRows, estimate, latestEstimate,
+        audit?.report.culprits ?? EMPTY_CULPRITS,
+      ),
+    );
   });
 
   // Lane reordering: drag a lane by its header.
@@ -499,6 +570,8 @@ function laneEl(
   savedQueues: QueueItem[][],
   maxRows: number,
   estimate: EstimateResult | null,
+  latestEstimate: EstimateResult | null,
+  thawCulprits: Set<string>,
 ): HTMLElement {
   const node = el("div", {
     class: `queue-lane${ui.activeLane === laneIndex ? " active" : ""} ${changeClass(laneStatus(lane, savedQueues))}`,
@@ -519,7 +592,12 @@ function laneEl(
 
   const tiles = el("div", { class: "lane-tiles" });
   lane.forEach((item, itemIndex) => {
-    tiles.append(tileEl(section, deps, ui, draft, lane, item, itemIndex, savedQueues, estimate));
+    tiles.append(
+      tileEl(
+        section, deps, ui, draft, lane, item, itemIndex, savedQueues, estimate, latestEstimate,
+        thawCulprits.has(`${laneIndex}:${itemIndex}`),
+      ),
+    );
   });
 
   const addTile = el("div", { class: "queue-tile add-tile" }, ["＋"]);
@@ -571,6 +649,114 @@ function laneEl(
   return node;
 }
 
+const EMPTY_CULPRITS: Set<string> = new Set();
+
+/** Results of the last Validate Ice run — see queueThawCheck.ts for the three passes. */
+/**
+ * Runs the audit with no time cap, off the main thread. The exhaustive pass on
+ * a big frozen queue is over a million states and tens of seconds — worth
+ * waiting for when a designer wants "no dead end EXISTS" rather than "none
+ * found in the time allowed", but only if the editor stays usable meanwhile.
+ * Falls back to running it inline if the browser refuses the worker.
+ */
+function runFullThawCheck(section: Section<QueueDraft>, ui: QueueUiState): void {
+  const groups = toCoordGroups(section.draft);
+  const request: ThawWorkerRequest = {
+    queues: structuredClone(section.draft.queues),
+    groups,
+    opts: { maxStates: 20_000_000, timeBudgetMs: Number.POSITIVE_INFINITY, randomRuns: 2000, sampleBudgetMs: 4000 },
+  };
+  const signature = serializeQueues(section.draft.queues, groups);
+  const finish = (report: ThawReport) => {
+    ui.thaw = { report, signature };
+    ui.thawRunning = false;
+    section.render();
+  };
+
+  ui.thawRunning = true;
+  section.render();
+
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL("./queueThawWorker.ts", import.meta.url), { type: "module" });
+  } catch {
+    setTimeout(() => finish(checkQueueThaw(request.queues, request.groups, request.opts)), 0);
+    return;
+  }
+  worker.onmessage = (event: MessageEvent<{ ok: boolean; report?: ThawReport; error?: string }>) => {
+    worker.terminate();
+    if (event.data.ok && event.data.report) finish(event.data.report);
+    else {
+      ui.thawRunning = false;
+      section.render();
+      alert(`Full ice check failed: ${event.data.error ?? "unknown error"}`);
+    }
+  };
+  worker.onerror = () => {
+    worker.terminate();
+    finish(checkQueueThaw(request.queues, request.groups, request.opts));
+  };
+  worker.postMessage(request);
+}
+
+function thawPanel(report: ThawReport, stale: boolean): HTMLElement {
+  const mark = report.verdict === "safe" ? "✓ " : report.verdict === "deadlock" ? "⚠ " : report.verdict === "risky" ? "▲ " : "? ";
+  const head = el("div", { class: "queue-thaw-head" }, [mark, report.message]);
+  const panel = el("div", { class: `queue-thaw ${report.verdict}${stale ? " stale" : ""}` }, [head]);
+
+  if (report.trivial) return panel;
+
+  if (stale) {
+    panel.append(
+      el("div", { class: "queue-thaw-stale" }, [
+        "Queue changed since this ran — flagged slots are from the older check. Run Validate Ice again.",
+      ]),
+    );
+  }
+
+  // The headline number the designer asked for: of all the ways play can go,
+  // how many jam. Random orders are the honest denominator; the exhaustive
+  // state counts sit beside them.
+  const jamPct = report.randomRuns ? Math.round((report.randomStuck / report.randomRuns) * 100) : 0;
+  panel.append(
+    el("div", { class: "queue-thaw-stats" }, [
+      el("span", { class: "queue-thaw-ratio", title: "Random pick orders played to the end that ended with nothing legal to pick" }, [
+        `deadlock / pick paths: ${report.randomStuck} / ${report.randomRuns} (${jamPct}%)`,
+      ]),
+      el("span", { title: "Reachable board states that end the queue, versus states with nothing legal left" }, [
+        `states: ${report.successStates} finish · ${report.deadEndStates} dead end`,
+      ]),
+      el("span", { title: "Fewest legal picks available at any reachable moment — 1 means the player has no choice there" }, [
+        `tightness: ${report.tightness}`,
+      ]),
+      el("span", { title: "Frozen slots with only one lane beside them that can ever break the ice" }, [
+        `single-source ice: ${report.singleSourceFrozen.length}`,
+      ]),
+    ]),
+  );
+
+  if (report.strategies.length) {
+    panel.append(
+      el(
+        "div",
+        { class: "queue-thaw-strategies" },
+        report.strategies.map((s) =>
+          el("span", { class: `queue-thaw-strategy ${s.ok ? "ok" : "bad"}`, title: `${s.name}: ${s.ok ? "finished" : "stuck"} after ${s.picks} pick(s)` }, [
+            `${s.ok ? "✓" : "✗"} ${s.name}`,
+          ]),
+        ),
+      ),
+    );
+  }
+
+  panel.append(
+    el("div", { class: "queue-thaw-foot" }, [
+      `${report.statesExplored} state(s) in ${report.elapsedMs.toFixed(0)}ms${report.budgetHit ? " — search truncated, not exhaustive" : ""}`,
+    ]),
+  );
+  return panel;
+}
+
 function tileEl(
   section: Section<QueueDraft>,
   deps: QueueSectionDeps,
@@ -581,6 +767,15 @@ function tileEl(
   itemIndex: number,
   savedQueues: QueueItem[][],
   estimate: EstimateResult | null,
+  /**
+   * The last estimate regardless of the "Show pickup order" toggle. Only its
+   * customer assignment is used, and only as a data attribute: hovering a
+   * customer card highlights their tiles even when the pickup overlay is off
+   * (see nodedesign/index.ts's highlightCustomer).
+   */
+  latestEstimate: EstimateResult | null,
+  /** This slot's ice is part of why the queue deadlocks — see queueThawCheck.ts. */
+  thawBlocked: boolean,
 ): HTMLElement {
   const freeze = item.effects.find((e) => e.effectId === EFFECT_FREEZE);
   const key = item.effects.find((e) => e.effectId === EFFECT_HOLDING_KEY);
@@ -601,6 +796,7 @@ function tileEl(
       selected ? "selected" : "",
       group ? `group-${group.kind}` : "",
       hidden ? "hidden-slot" : "",
+      thawBlocked ? "thaw-blocked" : "",
       autoColor ? "auto-color" : "",
       slot?.detour ? "pickup-detour" : "",
       changeClass(tileStatus(item, savedQueues)),
@@ -609,6 +805,8 @@ function tileEl(
       .join(" "),
   });
   if (cid) tile.dataset.cid = cid;
+  const owner = cid ? latestEstimate?.byCid.get(cid)?.customerIndex : undefined;
+  if (owner !== undefined && owner >= 0) tile.dataset.customer = String(owner);
   if (autoColor) tile.style.setProperty("--auto-color", autoColor);
 
   tile.append(
@@ -646,13 +844,29 @@ function tileEl(
     (e) => e.effectId !== EFFECT_HOLDING_KEY && e.effectId !== EFFECT_HIDDEN,
   );
   if (cornerEffects.length) {
+    const corner = cornerEffects[0];
+    // Freeze's count gets its own bottom-right badge below, matching Play, so
+    // the corner icon does not repeat it.
+    const showParam = corner.params.length > 0 && corner.effectId !== EFFECT_FREEZE;
     tile.append(
       el("span", { class: "tile-corner" }, [
-        statusIconEl(cornerEffects[0].effectId, 48),
-        ...(cornerEffects[0].params.length
-          ? [el("small", {}, [String(cornerEffects[0].params[0])])]
-          : []),
+        statusIconEl(corner.effectId, 48),
+        ...(showParam ? [el("small", {}, [String(corner.params[0])])] : []),
       ]),
+    );
+  }
+  // Same bottom-right thaw counter Play draws, so a designer reads the cost of
+  // a frozen slot without opening the status editor.
+  if (freeze) {
+    tile.append(
+      el(
+        "span",
+        {
+          class: "tile-freeze-count",
+          title: `Frozen — needs ${freeze.params[0] ?? 0} pick(s) in the lane to its left or right to thaw`,
+        },
+        [String(freeze.params[0] ?? 0)],
+      ),
     );
   }
   // Design mode never masks the ingredient — a designer has to see what they
