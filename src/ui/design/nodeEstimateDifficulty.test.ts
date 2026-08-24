@@ -6,6 +6,7 @@ import coffeeLevelsCsv from "../../data/config/nodegraph/maps/LevelData-2-Coffee
 import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import { importLevelsCsv } from "../../data/sheetSource.ts";
+import { defaultScenario } from "./estimateScenario.ts";
 import { estimateNodeDifficulty } from "./nodeEstimateDifficulty.ts";
 
 function settle(sim: NodeSimulation): boolean {
@@ -83,6 +84,64 @@ describe("estimateNodeDifficulty", () => {
     expect(teacup).toBeGreaterThan(blockedMilk);
     expect(estimate.replaySteps.slice(0, 2).map((step) => step.lane)).toEqual([0, 1]);
     expect(estimate.solvable).toBe(true);
+  });
+
+  it("treats a hidden row as revealed once the Hidden slot toggle is off", () => {
+    // Lane 0 hides the coffee bean behind a milk that cannot be placed until
+    // the hot-coffee base exists, so only lookahead can see the bean's worth.
+    const build = () => {
+      const level = coffeeLevel();
+      level.queues = [
+        [
+          { kind: "ingredient", id: 10, effects: [] },
+          { kind: "ingredient", id: 9, effects: [{ effectId: 2, params: [] }] },
+        ],
+        [{ kind: "ingredient", id: 8, effects: [] }],
+      ];
+      level.queueGroups = [];
+      level.customers = [{
+        typeId: 0,
+        waitTime: 0,
+        weatherEff: 0,
+        dishes: [{
+          root: {
+            kind: "composite",
+            id: 3,
+            members: [
+              { kind: "ingredient", id: 24 },
+              { kind: "ingredient", id: 10 },
+            ],
+          },
+          effects: [],
+        }],
+      }];
+      return level;
+    };
+
+    const hiddenOn = defaultScenario();
+    hiddenOn.hiddenStatus = true;
+    const hiddenOff = defaultScenario();
+
+    const respected = estimateNodeDifficulty(ix, build(), { scenario: hiddenOn });
+    const revealed = estimateNodeDifficulty(ix, build(), { scenario: hiddenOff });
+    expect(revealed.replaySteps[0].laneScores[0]!).toBeGreaterThan(
+      respected.replaySteps[0].laneScores[0]!,
+    );
+    // Default scenario must reproduce a run with no scenario at all.
+    const untouched = estimateNodeDifficulty(ix, build());
+    expect(revealed.replaySteps.map((step) => step.lane)).toEqual(
+      untouched.replaySteps.map((step) => step.lane),
+    );
+  });
+
+  it("drops lookahead entirely when the row decay field is disabled", () => {
+    const scenario = defaultScenario();
+    scenario.fields.rowDecay.enabled = false;
+    const flat = estimateNodeDifficulty(ix, coffeeLevel(), { scenario });
+    const normal = estimateNodeDifficulty(ix, coffeeLevel());
+    expect(flat.replaySteps.map((step) => step.lane)).not.toEqual(
+      normal.replaySteps.map((step) => step.lane),
+    );
   });
 
   it("reaches a resting state after Map 2 Level 5 replay step 8", () => {

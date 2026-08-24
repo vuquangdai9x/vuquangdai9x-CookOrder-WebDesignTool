@@ -5,6 +5,7 @@
 // solver produced it.
 
 import type { LoseReason } from "../../core/simTypes.ts";
+import type { EstimateScenario } from "./estimateScenario.ts";
 
 /** What one queue tile turned out to be worth, once the solver got to it. */
 export interface EstimateSlot {
@@ -92,8 +93,10 @@ export interface EstimateReplayStep {
 export interface EstimateOptions {
   /** Overrides the default seeded PRNG used to break ties between useless picks. */
   rng?: () => number;
-  /** Safety valve against a pathological level; default 5000. */
+  /** Safety valve against a pathological level; overrides the scenario field. */
   maxIterations?: number;
+  /** Scoring scenario from the pre-run modal; omitted means every default. */
+  scenario?: EstimateScenario;
 }
 
 /**

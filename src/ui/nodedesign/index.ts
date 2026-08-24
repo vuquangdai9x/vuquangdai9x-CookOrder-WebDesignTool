@@ -20,6 +20,9 @@
 import { button, el } from "../dom.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
 import { estimateNodeDifficulty } from "../design/nodeEstimateDifficulty.ts";
+import { defaultScenario } from "../design/estimateScenario.ts";
+import type { EstimateScenario } from "../design/estimateScenario.ts";
+import { openEstimateScenarioDialog } from "../design/estimateScenarioDialog.ts";
 import { createGridSection } from "../design/gridSection.ts";
 import { createQueueSection, startQueueAutoGenerate, toCoordGroups, toQueueDraft } from "../design/queueSection.ts";
 import { generateNodeQueueLanes, nodeDemandByRaw } from "./nodeQueueGenerate.ts";
@@ -60,6 +63,12 @@ export class NodeDesignView {
   private queueDeps!: QueueSectionDeps;
   /** Last Estimate Difficulty run for the OPEN level; cleared on any level switch. */
   private estimate: EstimateResult | null = null;
+  /**
+   * Scoring scenario the modal opens with. Kept on the view rather than per
+   * level: a designer tuning the solver wants the same scenario while they
+   * click through levels, and it is a view setting, not level data.
+   */
+  private scenario: EstimateScenario = defaultScenario();
   private warningsEl = el("div", { class: "warnings" });
   private layoutMode: LayoutMode = "stack";
 
@@ -216,8 +225,8 @@ export class NodeDesignView {
 
   private stackLayout(): HTMLElement {
     return el("div", { class: "design-stack" }, [
-      this.customers.element,
       this.grid.element,
+      this.customers.element,
       this.queues.element,
     ]);
   }
@@ -377,8 +386,19 @@ export class NodeDesignView {
     this.selectLevel(this.project.levels[Math.max(0, at - 1)].id);
   }
 
-  /** Estimate with the same graph-native engine used by Play and replay. */
+  /** Ask for the scoring scenario first, then estimate with it. */
   private runEstimate(): void {
+    openEstimateScenarioDialog({
+      scenario: this.scenario,
+      onRun: (scenario) => {
+        this.scenario = scenario;
+        this.runEstimateWith(scenario);
+      },
+    });
+  }
+
+  /** Estimate with the same graph-native engine used by Play and replay. */
+  private runEstimateWith(scenario: EstimateScenario): void {
     const level = toNodeLevelConfig(this.level);
     // The estimator reads live drafts, not the saved strings.
     level.customers = this.customers.draft;
@@ -386,7 +406,7 @@ export class NodeDesignView {
     level.queues = this.queues.draft.queues;
     level.queueGroups = toCoordGroups(this.queues.draft);
     try {
-      this.estimate = estimateNodeDifficulty(this.projected.ix, structuredClone(level));
+      this.estimate = estimateNodeDifficulty(this.projected.ix, structuredClone(level), { scenario });
     } catch (err) {
       this.estimate = null;
       this.refreshReplayButton();

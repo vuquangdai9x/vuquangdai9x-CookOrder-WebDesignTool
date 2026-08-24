@@ -425,6 +425,36 @@ footer {
   white-space: nowrap;
 }
 
+/* Foldable section title (Grid): the whole heading is the hit target, and a
+   collapsed section keeps its header row so Save/kebab/string stay reachable. */
+.section-head h2.section-fold {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.section-head h2.section-fold:hover,
+.section-head h2.section-fold:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.section-fold-marker {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.design-section.collapsed {
+  padding-bottom: 0.35rem;
+}
+
+.design-section.collapsed .section-head {
+  margin-bottom: 0;
+}
+
 .section-actions {
   flex: 0 0 auto;
   margin-left: auto; /* fallback when there's no .section-string to fill the gap */
@@ -4193,4 +4223,103 @@ td input {
   border-radius: 8px;
   color: #8b1f1f;
   background: #fff0f0;
+}
+
+/* ---------- Scoring Scenario dialog (design/estimateScenarioDialog.ts) ---------- */
+
+.scenario-panel {
+  max-width: 52rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.scenario-lead {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.scenario-group {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.scenario-group > summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 0.15rem 0;
+}
+
+.scenario-group-body {
+  margin-top: 0.35rem;
+}
+
+.scenario-row {
+  display: grid;
+  grid-template-columns: 16rem 1fr auto 7rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.22rem 0.4rem;
+  border-radius: 6px;
+  background: var(--panel-2);
+  margin-bottom: 0.2rem;
+}
+
+.scenario-row.disabled .scenario-hint,
+.scenario-row.disabled .scenario-toggle {
+  opacity: 0.45;
+}
+
+.scenario-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.scenario-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenario-off {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Drag-scrubbable number field: sideways cursor, and no spinner stealing the
+   right edge the drag needs. */
+.scrub-input {
+  cursor: ew-resize;
+  width: 100%;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  touch-action: none;
+}
+
+.scrub-input.scrubbing {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.scrub-input::-webkit-outer-spin-button,
+.scrub-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.scenario-row.disabled .scrub-input {
+  cursor: default;
+  opacity: 0.4;
 }

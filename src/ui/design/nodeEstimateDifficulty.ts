@@ -7,6 +7,8 @@ import { NodeSimulation } from "../../core/nodeSim.ts";
 import type { NodeCustomerState, NodeLevelConfig } from "../../core/nodeSim.ts";
 import type { QueueItem } from "../../core/types.ts";
 import { cidOf } from "./changeTracking.ts";
+import { resolveScenario } from "./estimateScenario.ts";
+import type { ResolvedScenario } from "./estimateScenario.ts";
 import type {
   CustomerCost,
   EstimateOptions,
@@ -16,15 +18,9 @@ import type {
   EstimateReplayStep,
 } from "./estimateDifficulty.ts";
 
-const DEFAULT_MAX_ITERATIONS = 5000;
-const MAX_PAIR_DISHES = 5;
-const SCORE_BASE = 1000;
-const SCORE_READY = 850;
-const SCORE_BLOCKED = 260;
-const SCORE_BLOCKED_TIGHT = 60;
-const SCORE_SWEEPER = 500;
-const SCORE_SWEEPER_URGENT = 1400;
-const ROW_DECAY = 0.5;
+// Every former tuning constant now lives in estimateScenario.ts, where the
+// pre-run Scoring Scenario modal can edit or disable it. resolveScenario()
+// with no argument yields exactly the values that used to be hard-coded here.
 
 interface DemandClaim {
   units: number;
@@ -60,16 +56,22 @@ function seededRng(seed = 0x5eed): () => number {
 const isOrdering = (customer: NodeCustomerState): boolean =>
   customer.config.typeId !== CUSTOMER_STAFF;
 
-function serveableWindow(sim: NodeSimulation): number {
+function serveableWindow(sim: NodeSimulation, cfg: ResolvedScenario): number {
   const upcoming = [...sim.active, ...sim.pending];
   if (upcoming.length < 2) return 1;
   const dishes = upcoming[0].dishes.length + upcoming[1].dishes.length;
-  return dishes <= MAX_PAIR_DISHES ? 2 : 1;
+  return dishes <= cfg.maxPairDishes ? 2 : 1;
 }
 
-function syncWindow(sim: NodeSimulation): void {
+/**
+ * Keep the serve window in step with who is at the counter, then let pending
+ * customers walk in. With the dynamic window disabled the level's own
+ * serveableSlots is held fixed, but the promotion loop still has to run or the
+ * counter would never refill.
+ */
+function syncWindow(sim: NodeSimulation, cfg: ResolvedScenario, fixedSlots: number): void {
   for (let guard = 0; guard < 8; guard++) {
-    sim.level.serveableSlots = serveableWindow(sim);
+    sim.level.serveableSlots = cfg.dynamicServeWindow ? serveableWindow(sim, cfg) : fixedSlots;
     if (sim.status !== "playing") return;
     if (sim.active.length >= sim.level.serveableSlots || sim.pending.length === 0) return;
     const before = sim.active.length;
@@ -101,8 +103,10 @@ export function estimateNodeDifficulty(
   level: NodeLevelConfig,
   opts: EstimateOptions = {},
 ): EstimateResult {
-  const rng = opts.rng ?? seededRng();
-  const maxIterations = opts.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+  const cfg = resolveScenario(opts.scenario);
+  const rng = opts.rng ?? (cfg.enabled.rngSeed ? seededRng(cfg.rngSeed) : Math.random);
+  const maxIterations = opts.maxIterations ?? cfg.maxIterations;
+  const fixedSlots = Math.max(1, level.serveableSlots ?? 1);
   const sim = new NodeSimulation(ix, level, {
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
     instantFlights: true,
@@ -257,13 +261,19 @@ export function estimateNodeDifficulty(
           const open = dish.gateOpen(slotIndex);
           const multiInput = hasMultiInputRoute(slot.ing);
           const depth = productionDepth(slot.ing);
-          let priority = base ? SCORE_BASE : open ? SCORE_READY : gridTight ? SCORE_BLOCKED_TIGHT : SCORE_BLOCKED;
+          let priority = base
+            ? cfg.scoreBase
+            : open
+              ? cfg.scoreReady
+              : gridTight
+                ? cfg.scoreBlockedTight
+                : cfg.scoreBlocked;
           // Long chains must start early, and every input of a multi-input
           // process that produces the composite base is itself base-critical.
-          priority += Math.min(180, depth * 45);
-          if (multiInput) priority += base ? 260 : 120;
-          priority += Math.max(0, 4 - remainingCount) * 25;
-          priority /= 1 + customerPosition * 0.12;
+          priority += Math.min(cfg.depthBonusCap, depth * cfg.depthBonusPerLevel);
+          if (multiInput) priority += base ? cfg.multiInputBaseBonus : cfg.multiInputBonus;
+          priority += Math.max(0, 4 - remainingCount) * cfg.nearCompletionBonus;
+          priority /= 1 + customerPosition * cfg.customerPositionDecay;
           units.push({
             target: slot.ing,
             customerIndex: customer.index,
@@ -341,7 +351,7 @@ export function estimateNodeDifficulty(
         if (needed > 0 && available > 0) {
           // Exactly-enough or scarce ingredients must not be postponed behind
           // plentiful alternatives. Cap the bonus so priority still dominates.
-          leafScore *= 1 + Math.min(0.45, (needed / available) * 0.2);
+          leafScore *= 1 + Math.min(cfg.scarcityCap, (needed / available) * cfg.scarcityFactor);
         }
         score += leafScore;
       }
@@ -358,7 +368,9 @@ export function estimateNodeDifficulty(
           const otherInputsReady = [...unit.requirements].every(([leaf, needed]) =>
             candidateLeaves.has(leaf) || (committedLeaves.get(leaf) ?? 0) >= needed,
           );
-          if (otherInputsReady) score += unit.priority * (unit.multiInput ? 0.45 : 0.2);
+          if (otherInputsReady) {
+            score += unit.priority * (unit.multiInput ? cfg.lastInputBonusMulti : cfg.lastInputBonusSingle);
+          }
         }
       }
       values.set(ing, { score, customerIndex });
@@ -380,7 +392,7 @@ export function estimateNodeDifficulty(
   const sweeperValue = (): number => {
     const { dirty } = countGrid();
     if (dirty === 0) return 0;
-    return gridTight ? SCORE_SWEEPER_URGENT : SCORE_SWEEPER;
+    return gridTight ? cfg.scoreSweeperUrgent : cfg.scoreSweeper;
   };
 
   const valueOfCell = (x: number, y: number): { score: number; customerIndex: number } => {
@@ -416,17 +428,19 @@ export function estimateNodeDifficulty(
     let futureCustomer = -1;
     for (let y = 1; y < depth; y++) {
       const cell = sim.queueGrid[x]?.[y];
-      if (!cell || sim.isHidden(x, y)) continue;
+      // With the Hidden-slot scenario toggle off, a hidden row is scored as if
+      // it had already been revealed.
+      if (!cell || (cfg.hiddenStatus && sim.isHidden(x, y))) continue;
       const value = valueOfCell(x, y);
       if (value.score === 0) continue;
-      const decayed = value.score * ROW_DECAY ** y;
+      const decayed = value.score * cfg.rowDecay ** y;
       if (decayed > future) {
         future = decayed;
         futureCustomer = value.customerIndex;
       }
     }
     const detourPenalty = immediate === 0
-      ? Math.max(1, footprint) * (gridTight ? 160 : 30)
+      ? Math.max(1, footprint) * (gridTight ? cfg.detourPenaltyTight : cfg.detourPenalty)
       : 0;
     return {
       score: Math.max(0, immediate + future - detourPenalty),
@@ -467,7 +481,7 @@ export function estimateNodeDifficulty(
     cost.picks++;
     if (detour) cost.detours++;
     settle(sim);
-    syncWindow(sim);
+    syncWindow(sim, cfg, fixedSlots);
     const stillActive = new Set(sim.active.map((customer) => customer.index));
     occupancyHistory.push({
       ...sampleOccupancy(),
@@ -506,12 +520,12 @@ export function estimateNodeDifficulty(
   };
 
   settle(sim);
-  syncWindow(sim);
+  syncWindow(sim, cfg, fixedSlots);
 
   while (sim.status === "playing" && iterations < maxIterations) {
     iterations++;
     measure();
-    gridTight = countGrid().free * 2 <= sim.grid.length;
+    gridTight = countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
     pickupValues = buildPickupValues();
     const lanes = pickableLanes(sim);
     if (lanes.length === 0) {
@@ -519,7 +533,7 @@ export function estimateNodeDifficulty(
         halted = "Nothing left to pick and nothing cooking — the queues ran dry.";
         break;
       }
-      syncWindow(sim);
+      syncWindow(sim, cfg, fixedSlots);
       continue;
     }
 

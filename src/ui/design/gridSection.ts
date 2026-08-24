@@ -39,6 +39,9 @@ export function createGridSection(deps: GridSectionDeps): Section<GridCellConfig
   const section: Section<GridCellConfig[]> = new Section<GridCellConfig[]>({
     title: "Grid",
     saveLabel: "Save Grid",
+    // Grid sits above Customers in the stack layout, where it is the section a
+    // designer most often wants out of the way.
+    collapsible: true,
     initial: deps.parse(),
     renderBody: (draft, body) => renderBody(section, deps, draft, body),
     onCommit: () => deps.onCommit?.(),

@@ -18,6 +18,13 @@ export interface SectionOptions<T> {
   /** Extra kebab-menu entries beyond Undo/Redo. */
   menuItems?(draft: T): MenuItem[];
   /**
+   * Lets the title act as a foldout: clicking it hides the body, leaving just
+   * the header (with its dirty badge, string preview and actions) on screen.
+   * Collapsed state lives on the section element, so it survives body
+   * re-renders and level switches.
+   */
+  collapsible?: boolean;
+  /**
    * Renders the draft's current canonical string (the same format saved to
    * the level) inline in the header, next to the title/Save/kebab, so a
    * designer can see the exact string a level would serialize to without
@@ -84,8 +91,30 @@ export class Section<T> {
     // any) takes whatever's left in the middle; Save/kebab/Write are pinned
     // to the far right in their own no-wrap group — see .section-head in
     // style.css.
+    const title = el("h2", {}, [opts.title]);
+    if (opts.collapsible) {
+      title.classList.add("section-fold");
+      title.tabIndex = 0;
+      title.title = "Click to fold this section away";
+      const marker = el("span", { class: "section-fold-marker" }, ["▾"]);
+      title.prepend(marker);
+      const toggle = () => {
+        const collapsed = this.element.classList.toggle("collapsed");
+        this.body.hidden = collapsed;
+        marker.textContent = collapsed ? "▸" : "▾";
+        title.setAttribute("aria-expanded", String(!collapsed));
+      };
+      title.setAttribute("aria-expanded", "true");
+      title.addEventListener("click", toggle);
+      title.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        toggle();
+      });
+    }
+
     const left = el("div", { class: "section-head-left" }, [
-      el("h2", {}, [opts.title]),
+      title,
       this.badge,
       this.counters,
     ]);
