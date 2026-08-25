@@ -30,11 +30,12 @@ import { createCurveWithPresets, defaultCurve, parseCurve, serializeCurve } from
 import type { CurveState } from "../design/curveEditor.ts";
 import type { EstimateScenario } from "../design/estimateScenario.ts";
 import {
-  createIngredientWeightGrid,
   DEFAULT_INGREDIENT_WEIGHT,
-  parseIngredientWeights,
-  serializeIngredientWeights,
+  parseWeightSet,
+  serializeWeightSet,
 } from "../design/ingredientWeightEditor.ts";
+import type { WeightSet } from "../design/ingredientWeightEditor.ts";
+import { createDishWeightEditor } from "../levelpath/dishWeightEditor.ts";
 import { generateLevel } from "../levelpath/generateLevel.ts";
 import type { GenerateLevelResult } from "../levelpath/generateLevel.ts";
 import { loadConfig } from "../levelpath/config.ts";
@@ -72,19 +73,28 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
   const storedCounts = deps.level.customerDishesSequence
     ? parseDishCountSequence(deps.level.customerDishesSequence)
     : [];
-  const initialCounts = existing.length
-    ? existing.map((c) => (c.typeId === 1 ? -1 : c.dishes.length))
-    : storedCounts.length
-      ? storedCounts
+  // The RECORDED sequence is what the editor shows — the instruction, not the
+  // outcome. A level with customers but no recorded sequence gets one Auto
+  // entry per customer, which is what "the curve decides all of them" looks
+  // like written down.
+  const initialCounts = storedCounts.length
+    ? storedCounts
+    : existing.length
+      ? existing.map((c) => (c.typeId === 1 ? -1 : 0))
       : [...DEFAULT_DISH_COUNT_SEQUENCE];
+  /** What each customer currently orders — shown as a badge beside its field. */
+  const actualCounts = existing.map((c) => c.dishes.length);
 
-  const storedWeights = deps.level.ingredientWeights
-    ? parseIngredientWeights(deps.level.ingredientWeights)
-    : null;
-  let weightsByDataId =
-    storedWeights && storedWeights.size > 0
+  const storedWeights = parseWeightSet(deps.level.ingredientWeights ?? "");
+  const initialWeights: WeightSet =
+    storedWeights.ingredients.size > 0
       ? storedWeights
-      : new Map(deps.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]));
+      : {
+          ingredients: new Map(
+            deps.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]),
+          ),
+          composites: storedWeights.composites,
+        };
 
   /**
    * Which fields the level ALREADY records, and which the designer touched here.
@@ -116,14 +126,20 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
       ? structuredClone(cachedCurve)
       : defaultCurve(1, DEFAULT_MAX_DISH_SLOTS);
 
-  const weightGrid = createIngredientWeightGrid(deps.projected.map, weightsByDataId, (next) => {
-    weightsByDataId = next;
-    touched.weights = true;
+  const weightEditor = createDishWeightEditor({
+    projected: deps.projected,
+    ix: deps.ix,
+    ids: deps.ids,
+    initial: initialWeights,
+    onChange: () => (touched.weights = true),
   });
 
   // The obstacle budget is authored, not rolled, so the dialog edits the
   // level's own record and writes it straight back — same as the weights.
-  const obstacles = createObstacleEditor(parseObstacles(deps.level.obstacleData));
+  const obstacles = createObstacleEditor({
+    initial: parseObstacles(deps.level.obstacleData),
+    gridCells: deps.ix.doc.map.gridWidth * deps.ix.doc.map.gridHeight,
+  });
 
   const seedInput = el("input", {
     type: "number",
@@ -137,28 +153,36 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
     "Leave it blank to let the generator pick one — it will try several until the level is winnable, " +
     "then write the winning one back here.";
 
+  /**
+   * One collapsible section. Open by default, every one of them: the dialog is
+   * a checklist of what a generate will use, and a designer who opens it to
+   * check one number should not have to expand four things to find it. The
+   * folds are for getting long sections OUT of the way once you know what they
+   * hold, not for hiding them until asked.
+   */
+  const section = (title: string, body: (Node | string)[]): HTMLElement =>
+    el("details", { class: "generate-section", open: "" }, [
+      el("summary", {}, [title]),
+      el("div", { class: "generate-section-body" }, body),
+    ]);
+
   const panel = el("div", { class: "auto-generate-panel auto-generate-sheet" }, [
-    el("h3", {}, ["Customers (dish count per customer — -1 = Staff, 0 = Auto)"]),
-    dishCountEditor(initialCounts, (next) => {
-      dishCounts = next;
-      touched.counts = true;
-    }),
-    el("h3", {}, ["Ingredient Weights"]),
-    el("div", { class: "ingredient-toggle-actions" }, [
-      button("Enable All", () => weightGrid.setAll(DEFAULT_INGREDIENT_WEIGHT), { class: "small-btn" }),
-      button("Disable All", () => weightGrid.setAll(0), { class: "small-btn" }),
+    section("Customers (dish count per customer — -1 = Staff, 0 = Auto)", [
+      dishCountEditor(initialCounts, (next) => {
+        dishCounts = next;
+        touched.counts = true;
+      }, actualCounts),
     ]),
-    weightGrid.element,
-    el("h3", {}, ["Complexity Curve (total ingredients per customer, by normalized order position)"]),
-    createCurveWithPresets(curveState, (next) => {
-      curveState = next;
-      cachedCurve = next;
-      touched.curve = true;
-    }),
-    el("h3", {}, ["Obstacles"]),
-    obstacles.element,
-    el("h3", {}, ["Random Seed"]),
-    el("label", { class: "field" }, ["Seed (blank = pick one)", seedInput]),
+    section("Generator Weights", [weightEditor.element]),
+    section("Complexity Curve (total ingredients per customer, by normalized order position)", [
+      createCurveWithPresets(curveState, (next) => {
+        curveState = next;
+        cachedCurve = next;
+        touched.curve = true;
+      }),
+    ]),
+    section("Obstacles", [obstacles.element]),
+    section("Random Seed", [el("label", { class: "field" }, ["Seed (blank = pick one)", seedInput])]),
     el("p", { class: "muted" }, [
       "Each dish picks an orderable first, then fills its slots — so every generated dish is " +
         "well-formed by construction, respects each slot's cap, and fills a required topping. " +
@@ -168,64 +192,81 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
     ]),
     el("div", { class: "auto-generate-actions" }, [
       button("Cancel", close),
-      button(
-        "Generate",
-        (event) => {
-          if (
-            deps.currentCustomers().length > 0 &&
-            !confirm("Auto-generate replaces every customer AND the whole queue in this level. Continue?")
-          ) {
-            return;
-          }
-          // The pipeline reads its inputs off the level, so the dialog's job is
-          // to record what the designer chose and then hand over.
-          if (had.weights || touched.weights) {
-            deps.level.ingredientWeights = serializeIngredientWeights(weightsByDataId);
-          }
-          if (had.counts || touched.counts || countsFromExisting) {
-            deps.level.customerDishesSequence = serializeDishCountSequence(dishCounts);
-          }
-          if (had.curve || touched.curve) {
-            deps.level.complexityCurve = serializeCurve(curveState);
-          }
-          deps.level.obstacleData = serializeObstacles(obstacles.config);
-          const seed = seedInput.value.trim();
-          if (seed === "") delete deps.level.randomSeed;
-          else deps.level.randomSeed = Math.max(0, Math.trunc(Number(seed) || 0)) >>> 0;
-
-          // A full pipeline run is seconds of straight-line work, so paint a
-          // busy label before starting it: a click that looks like it did
-          // nothing is worse than a wait. The timer (not rAF) is deliberate —
-          // rAF never fires in a hidden tab.
-          const btn = event.currentTarget as HTMLButtonElement;
-          btn.textContent = "Generating…";
-          btn.disabled = true;
-          setTimeout(() => {
-            const result = generateLevel(
-              deps.level,
-              {
-                ix: deps.ix,
-                ids: deps.ids,
-                projected: deps.projected,
-                ...(deps.scenario ? { scenario: deps.scenario } : {}),
-              },
-              // How big a generated level may be is a project-wide setting,
-              // edited in Level Path's config bar. Reading it here rather than
-              // duplicating the control keeps one answer to the question.
-              { bounds: loadConfig().bounds },
-            );
-            deps.onGenerated(result);
-            close();
-            const notes = [...result.errors, ...result.warnings];
-            if (notes.length > 0) {
-              alert(`${result.ok ? "Generated with warnings" : "Generate failed"}:\n\n${notes.join("\n")}`);
-            }
-          }, 0);
-        },
-        { class: "primary" },
-      ),
+      // Two buttons rather than a checkbox, because they are two different
+      // requests and the difference matters. Plain Generate honours a pinned
+      // seed absolutely — if that seed cannot make a playable level, it says
+      // so. "Generate until valid" says the designer wants a working level more
+      // than they want that exact number, and walks upward from it. Only they
+      // can decide which, so it is never inferred.
+      button("🎲 Generate until valid", (event) => run(event, true), {
+        class: "generate-until-valid",
+        title:
+          "Keep walking the seed upward until a level passes both the difficulty estimate and the " +
+          "deadlock audit. Starts from the seed above when one is set, otherwise from a fresh one.",
+      }),
+      button("Generate", (event) => run(event, false), { class: "primary" }),
     ]),
   ]);
+
+  /** Shared by both buttons — they differ only in whether the seed may move. */
+  function run(event: MouseEvent, searchFromSeed: boolean): void {
+    if (
+      deps.currentCustomers().length > 0 &&
+      !confirm("Auto-generate replaces every customer AND the whole queue in this level. Continue?")
+    ) {
+      return;
+    }
+    // The pipeline reads its inputs off the level, so the dialog's job is to
+    // record what the designer chose and then hand over.
+    if (had.weights || touched.weights) {
+      deps.level.ingredientWeights = serializeWeightSet(weightEditor.weights);
+    }
+    if (had.counts || touched.counts || countsFromExisting) {
+      deps.level.customerDishesSequence = serializeDishCountSequence(dishCounts);
+    }
+    if (had.curve || touched.curve) {
+      deps.level.complexityCurve = serializeCurve(curveState);
+    }
+    deps.level.obstacleData = serializeObstacles(obstacles.config);
+    const seed = seedInput.value.trim();
+    if (seed === "") delete deps.level.randomSeed;
+    else deps.level.randomSeed = Math.max(0, Math.trunc(Number(seed) || 0)) >>> 0;
+
+    // A full pipeline run is seconds of straight-line work — and a seed search
+    // is many of them — so paint a busy label before starting: a click that
+    // looks like it did nothing is worse than a wait. The timer (not rAF) is
+    // deliberate; rAF never fires in a hidden tab.
+    const btn = event.currentTarget as HTMLButtonElement;
+    const label = btn.textContent;
+    btn.textContent = searchFromSeed ? "Searching…" : "Generating…";
+    btn.disabled = true;
+    setTimeout(() => {
+      const result = generateLevel(
+        deps.level,
+        {
+          ix: deps.ix,
+          ids: deps.ids,
+          projected: deps.projected,
+          ...(deps.scenario ? { scenario: deps.scenario } : {}),
+        },
+        // How big a generated level may be is a project-wide setting, edited in
+        // Level Path's config bar. Reading it here rather than duplicating the
+        // control keeps one answer to the question.
+        { bounds: loadConfig().bounds, ...(searchFromSeed ? { searchFromSeed: true } : {}) },
+      );
+      btn.textContent = label;
+      btn.disabled = false;
+      deps.onGenerated(result);
+      close();
+      const notes = [...result.errors, ...result.warnings];
+      if (result.ok && searchFromSeed && result.seedsTried > 1) {
+        notes.unshift(`Walked ${result.seedsTried} seeds to find one that works; settled on ${result.seed}.`);
+      }
+      if (notes.length > 0) {
+        alert(`${result.ok ? "Generated with notes" : "Generate failed"}:\n\n${notes.join("\n")}`);
+      }
+    }, 0);
+  }
 
   const overlay = el("div", { class: "overlay-panel" }, [
     el("div", { class: "definitions-head" }, [

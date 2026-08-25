@@ -4,7 +4,7 @@ import { buildIndex } from "../../core/nodeIndex.ts";
 import { buildIdIndex } from "../../data/nodeIdTable.ts";
 import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
-import { serializeIngredientWeights } from "../design/ingredientWeightEditor.ts";
+import { parseWeightSet, serializeIngredientWeights } from "../design/ingredientWeightEditor.ts";
 import {
   applyWeightRepair,
   ingredientDistribution,
@@ -101,6 +101,19 @@ describe("repairIngredientWeights", () => {
 
   it("has nothing to say about a level with no customers", () => {
     expect(repairIngredientWeights(level({ customerString: "" }), ix, ids)).toBeNull();
+  });
+
+  it("carries the dish-type weights through untouched", () => {
+    // The repair reads the CUSTOMER string, which says nothing about dish-type
+    // weights — dropping them here is how a repair silently became a delete.
+    const target = level({ ingredientWeights: "c0:80;c2:30" });
+    const repair = repairIngredientWeights(target, ix, ids)!;
+    expect(repair.composites.get(0)).toBe(80);
+
+    applyWeightRepair(target, repair);
+    const after = parseWeightSet(target.ingredientWeights ?? "");
+    expect([...after.composites]).toEqual([[0, 80], [2, 30]]);
+    expect(after.ingredients.get(ingredientId)).toBe(100);
   });
 
   it("writes the repair back and reports what it did", () => {

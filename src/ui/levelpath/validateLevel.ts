@@ -127,8 +127,12 @@ export function validateLevel(
         budgetMs: opts.budgetMs ?? 400,
       });
       if (!tools.clean) {
-        const headline = tools.reasonCounts[0]?.reason ?? "a slot never freed up";
-        const line = `Deadlock in ${tools.toolBlocked + tools.gridBlocked} run(s): ${headline}`;
+        const top = tools.reasonCounts[0];
+        // Counted from the REASON, not from toolBlocked + gridBlocked: a run
+        // can jam for a reason that is neither (classifyReason's "other"), and
+        // summing the two classified buckets then reported "Deadlock in 0
+        // run(s)" — a sentence that says a jam happened zero times.
+        const line = `Deadlock in ${top?.count ?? 1} run(s): ${top?.reason ?? "a slot never freed up"}`;
         if (tools.toolBlocked > 0) errors.push(line);
         else warnings.push(line);
       }

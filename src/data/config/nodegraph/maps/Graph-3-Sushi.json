@@ -475,49 +475,57 @@
         "name": "nigiri",
         "displayName": "nigiri",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "emoji": "🍣"
       },
       {
         "name": "sashimi-with-topping",
         "displayName": "sashimi-with-topping",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🐟"
       },
       {
         "name": "sushi-with-topping",
         "displayName": "sushi-with-topping",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🍣"
       },
       {
         "name": "teacup-with-topping",
         "displayName": "teacup-with-topping",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🍵"
       },
       {
         "name": "sushi",
         "displayName": "sushi",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "emoji": "🍣"
       },
       {
         "name": "seaweed-and-rice",
         "displayName": "seaweed-and-rice",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "emoji": "🍚"
       },
       {
         "name": "gunkan-with-topping",
         "displayName": "gunkan-with-topping",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "emoji": "🍙"
       },
       {
         "name": "nigiri-with-topping",
         "displayName": "nigiri-with-topping",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🍱"
       }
     ],
     "dirty": [

@@ -41,9 +41,11 @@ import {
 import type { CurveState } from "../design/curveEditor.ts";
 import {
   DEFAULT_INGREDIENT_WEIGHT,
-  parseIngredientWeights,
-  serializeIngredientWeights,
+  emptyWeightSet,
+  parseWeightSet,
+  serializeWeightSet,
 } from "../design/ingredientWeightEditor.ts";
+import type { WeightSet } from "../design/ingredientWeightEditor.ts";
 import { estimateNodeDifficulty } from "../design/nodeEstimateDifficulty.ts";
 import { validateLevel } from "./validateLevel.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
@@ -64,6 +66,7 @@ import {
   placeQueueObstacles,
   rollObstacles,
   serializeObstacles,
+  dropUnkeyedLocks,
 } from "./obstacles.ts";
 import type { ObstacleConfig } from "./obstacles.ts";
 import { parseQueues, serializeQueues } from "../../core/parser.ts";
@@ -90,6 +93,16 @@ import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 export interface GenerateBounds {
   minCustomers: number;
   maxCustomers: number;
+  /**
+   * Dishes the whole level should end up with.
+   *
+   * No longer an input to the roll — every customer is generated on AUTO and
+   * the complexity curve decides their load, so nothing here dials the total
+   * directly any more. It is a GUARDRAIL instead: a build landing outside this
+   * range is reported. That is what the number was actually for ("levels of
+   * this map should be 10-40 dishes"), and it stays honest about the curve
+   * being what produces it.
+   */
   minTotalDishes: number;
   maxTotalDishes: number;
   /**
@@ -112,9 +125,6 @@ export const DEFAULT_BOUNDS: GenerateBounds = {
   minComplexityMaxY: 5,
   maxComplexityMaxY: 15,
 };
-
-/** Dishes one customer may be handed while the total is distributed. */
-const MAX_DISHES_PER_CUSTOMER = 5;
 
 /**
  * Bounds that cannot contradict themselves, whatever the config bar holds.
@@ -208,43 +218,50 @@ const randInt = (rand: () => number, min: number, max: number): number =>
 
 // ---------- steps 2..6: filling in what the level does not have ----------
 
-/** A weight per ingredient the graph can actually put in a dish, 20..100. */
-export function randomIngredientWeights(projected: ProjectedMap, rand: () => number): Map<Id, number> {
-  const weights = new Map<Id, number>();
+/**
+ * A weight per ingredient AND per dish type, 20..100 each.
+ *
+ * Dish types are rolled too, so a generated stretch varies in what customers
+ * order and not only in what goes inside it — with every type at 100 the mix is
+ * the same on every level, which is exactly the sameness the roll exists to
+ * break up.
+ */
+export function randomIngredientWeights(
+  projected: ProjectedMap,
+  rand: () => number,
+  ctx?: { ix: GraphIndex; ids: IdIndex },
+): WeightSet {
+  const ingredients = new Map<Id, number>();
   for (const ingredient of projected.map.cookedIngredients) {
-    weights.set(ingredient.id, randInt(rand, 20, DEFAULT_INGREDIENT_WEIGHT));
+    ingredients.set(ingredient.id, randInt(rand, 20, DEFAULT_INGREDIENT_WEIGHT));
   }
-  return weights;
+
+  const composites = new Map<Id, number>();
+  if (ctx) {
+    for (const composite of ctx.ix.orderables) {
+      const dataId = ctx.ids.byNode.composite.get(ctx.ix.compositeName[composite]);
+      if (dataId !== undefined) composites.set(dataId, randInt(rand, 20, DEFAULT_INGREDIENT_WEIGHT));
+    }
+  }
+  return { ingredients, composites };
 }
 
 /**
- * A dish-count-per-customer sequence: 5..10 customers sharing 10..40 dishes.
+ * A dish-count-per-customer sequence: 5..10 customers, every one on AUTO.
  *
- * Every customer starts at one dish and the remainder is handed out one at a
- * time, so nobody is left with zero — a customer who orders nothing is a Staff
- * customer, a deliberate authoring choice, not something a random split should
- * invent.
+ * Only the customer count is rolled. Each entry is 0, which means "the
+ * complexity curve decides" — and that is the point: the curve is the thing
+ * that shapes a level, so a second random source handing out dish counts
+ * behind it was fighting the shape the designer drew. A customer's load now
+ * comes from exactly one place.
+ *
+ * The specials are the exception, and they are set later by `planCustomers`:
+ * a shipper or boss IS a big order, so its count is the one thing about it
+ * that cannot be left to a curve.
  */
 export function randomDishCountSequence(rand: () => number, rawBounds?: GenerateBounds): number[] {
   const bounds = normalizeBounds(rawBounds);
-  const customers = randInt(rand, bounds.minCustomers, bounds.maxCustomers);
-  const lowest = Math.max(bounds.minTotalDishes, customers);
-  const highest = Math.max(
-    lowest,
-    Math.min(bounds.maxTotalDishes, customers * MAX_DISHES_PER_CUSTOMER),
-  );
-  const total = randInt(rand, lowest, highest);
-
-  const counts = new Array<number>(customers).fill(1);
-  let remaining = total - customers;
-  let guard = remaining * 8 + 16;
-  while (remaining > 0 && guard-- > 0) {
-    const at = Math.floor(rand() * customers) % customers;
-    if (counts[at] >= MAX_DISHES_PER_CUSTOMER) continue;
-    counts[at]++;
-    remaining--;
-  }
-  return counts;
+  return new Array<number>(randInt(rand, bounds.minCustomers, bounds.maxCustomers)).fill(0);
 }
 
 /**
@@ -324,6 +341,18 @@ export interface GenerateLevelOptions {
    * one at all would spin.
    */
   seedBudgetMs?: number;
+  /**
+   * Treat a PINNED seed as the search's starting point rather than its only
+   * candidate — "Generate until valid".
+   *
+   * Off by default, and that default is the important half: a pinned seed is a
+   * promise that this level reproduces from this number, so the pipeline
+   * normally reports failure rather than quietly delivering a level built from
+   * a different one. Turning this on is the designer saying "I want a working
+   * level more than I want that exact seed", which is a choice only they can
+   * make — so it is a button they press, never an inference.
+   */
+  searchFromSeed?: boolean;
 }
 
 export interface GenerateLevelResult {
@@ -355,12 +384,14 @@ interface Candidate {
 }
 
 interface BuildConfig {
-  weights: Map<Id, number>;
+  weights: WeightSet;
   dishCounts: number[];
   complexity: CurveState;
   laneCount: number;
   shuffleCurve: CurveState;
   obstacles: ObstacleConfig;
+  /** Size guardrails, for the post-build dish-total check. */
+  bounds?: GenerateBounds;
   /** Multiplies every generated patience timer — the retry ladder's handle. */
   timeScale: number;
   /** Skip the deadlock audits — for callers that only want playability. */
@@ -398,12 +429,21 @@ function buildCandidate(
   // The weight grid speaks DATA ids; the generator speaks dense indices. This
   // is the one place the two numbering systems meet, same as the dialog's.
   const denseWeights = new Map<number, number>();
-  for (const [dataId, weight] of config.weights) {
+  for (const [dataId, weight] of config.weights.ingredients) {
     const dense = ctx.projected.denseOf.get(dataId);
     if (dense !== undefined && weight > 0) denseWeights.set(dense, weight);
   }
+  // Composites have their own data-id space, and no projection map — the graph
+  // index resolves them by name, which is the id table's whole purpose.
+  const denseComposites = new Map<number, number>();
+  for (const [dataId, weight] of config.weights.composites) {
+    const name = ctx.ids.byId.composite.get(dataId);
+    const dense = name === undefined ? undefined : ctx.ix.compositeByName.get(name);
+    if (dense !== undefined) denseComposites.set(dense, weight);
+  }
 
   const plan = planCustomers(config.dishCounts, config.obstacles, rand);
+  const sizeBounds = normalizeBounds(config.bounds);
 
   let customers: NodeCustomerConfig[];
   try {
@@ -411,6 +451,7 @@ function buildCandidate(
       dishCounts: plan.dishCounts,
       roles: plan.roles,
       weights: denseWeights,
+      ...(denseComposites.size > 0 ? { compositeWeights: denseComposites } : {}),
       curve: config.complexity,
       random: rand,
       onWarning: (message) => warnings.push(message),
@@ -456,6 +497,16 @@ function buildCandidate(
       }
     }
   }
+  // The dish total is an outcome now, not an input — so it is checked rather
+  // than dialled. A level outside the configured range is still delivered; the
+  // designer is simply told, because the fix is the curve, not another retry.
+  const totalDishes = customers.reduce((n, customer) => n + customer.dishes.length, 0);
+  if (totalDishes < sizeBounds.minTotalDishes || totalDishes > sizeBounds.maxTotalDishes) {
+    warnings.push(
+      `${totalDishes} dishes, outside the configured ${sizeBounds.minTotalDishes}-${sizeBounds.maxTotalDishes} — raise or lower the complexity curve to move it.`,
+    );
+  }
+
   const grid = placeGridObstacles({
     gridString: level.gridString,
     width: ctx.ix.doc.map.gridWidth,
@@ -489,11 +540,14 @@ function buildCandidate(
   });
   warnings.push(...decorated.warnings);
   const queueString = decorated.queueString;
+  // Every colour lock must have its keys, per colour — the grid pass could not
+  // know how many keys would fit, so the surplus locks come off here.
+  const gridString = dropUnkeyedLocks(grid.gridString, decorated.keyedColors);
 
   // Verify against exactly the strings that will be saved, not the in-memory
   // objects they came from: a level that only works before serialization is a
   // level that does not work.
-  const probe: LevelData = { ...level, customerString, queueString, gridString: grid.gridString };
+  const probe: LevelData = { ...level, customerString, queueString, gridString };
   let estimate: EstimateResult | null = null;
   try {
     estimate = estimateNodeDifficulty(ctx.ix, toNodeLevelConfig(probe), {
@@ -507,12 +561,12 @@ function buildCandidate(
       warnings,
       estimate: null,
       ok: false,
-      gridString: grid.gridString,
+      gridString,
       failure: `Estimate failed: ${(err as Error).message}`,
     };
   }
 
-  const built = { customerString, queueString, gridString: grid.gridString, warnings, estimate };
+  const built = { customerString, queueString, gridString, warnings, estimate };
   if (!estimate.solvable) {
     return {
       ...built,
@@ -578,9 +632,21 @@ export function resolveConfig(
   // happened to make, which is not something a seed should encode.
   const rand = seededRng(seed ^ 0x9e3779b9);
 
-  const storedWeights = reroll ? null : parseIngredientWeights(level.ingredientWeights ?? "");
-  const weights =
-    storedWeights && storedWeights.size > 0 ? storedWeights : randomIngredientWeights(ctx.projected, rand);
+  const storedWeights = reroll ? emptyWeightSet() : parseWeightSet(level.ingredientWeights ?? "");
+  const rolled =
+    storedWeights.ingredients.size > 0
+      ? null
+      : randomIngredientWeights(ctx.projected, rand, { ix: ctx.ix, ids: ctx.ids });
+  // A record from before dish types were weightable has ingredients but no
+  // composites; it keeps its ingredients and gets rolled types, rather than
+  // being thrown away wholesale.
+  const weights: WeightSet = rolled ?? {
+    ingredients: storedWeights.ingredients,
+    composites:
+      storedWeights.composites.size > 0
+        ? storedWeights.composites
+        : randomIngredientWeights(ctx.projected, rand, { ix: ctx.ix, ids: ctx.ids }).composites,
+  };
 
   const storedCounts = reroll ? [] : parseDishCountSequence(level.customerDishesSequence ?? "");
   const dishCounts = storedCounts.length > 0 ? storedCounts : randomDishCountSequence(rand, bounds);
@@ -638,7 +704,8 @@ export function generateLevel(
   let lastEstimate: EstimateResult | null = null;
 
   const startedAt = performance.now();
-  const seedBudget = pinned ? 1 : MAX_SEED_ATTEMPTS;
+  const searching = !pinned || opts.searchFromSeed === true;
+  const seedBudget = searching ? MAX_SEED_ATTEMPTS : 1;
   const timeBudget = opts.seedBudgetMs ?? DEFAULT_SEED_BUDGET_MS;
   let ranOutOfTime = false;
 
@@ -690,6 +757,7 @@ export function generateLevel(
           shuffleCurve,
           obstacles,
           timeScale,
+          ...(opts.bounds ? { bounds: opts.bounds } : {}),
           ...(opts.skipDeadlock !== undefined ? { skipDeadlock: opts.skipDeadlock } : {}),
           ...(opts.deadlockRuns !== undefined ? { deadlockRuns: opts.deadlockRuns } : {}),
         },
@@ -719,7 +787,7 @@ export function generateLevel(
       }
 
       level.randomSeed = seed;
-      level.ingredientWeights = serializeIngredientWeights(weights);
+      level.ingredientWeights = serializeWeightSet(weights);
       level.customerDishesSequence = serializeDishCountSequence(dishCounts);
       level.complexityCurve = serializeCurve(complexity);
       level.shuffleCurve = serializeCurve(shuffleCurve);
@@ -748,15 +816,15 @@ export function generateLevel(
       };
     }
 
-    if (pinned) {
+    if (!searching) {
       errors.push(
-        `Pinned seed ${seed} produced no winnable level down to shuffle 0. Clear the seed to let the generator try others.`,
+        `Pinned seed ${seed} produced no winnable level down to shuffle 0. Clear the seed, or use Generate until valid, to let the generator try others.`,
       );
       break;
     }
   }
 
-  if (!pinned) {
+  if (searching) {
     errors.push(
       ranOutOfTime
         ? `No playable level after ${seedsTried} seed(s) and ${attempts} build(s) — the ${Math.round(timeBudget / 1000)}s search budget ran out.`

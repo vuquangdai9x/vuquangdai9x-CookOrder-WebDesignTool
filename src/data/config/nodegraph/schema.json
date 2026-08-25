@@ -344,6 +344,11 @@
           "type": "bool",
           "default": false,
           "description": "The topping slot must be filled. False = a bare base is a legal order (plain fries). Checked when a designer authors a dish and honoured by the customer auto-generator, which fills the slot rather than leaving it empty."
+        },
+        {
+          "name": "emoji",
+          "type": "string",
+          "description": "Glyph identifying this dish type wherever it is listed rather than drawn — the generator's dish-type weights, the Auto Generate config, the Level Path table. A composite has no artwork of its own (it IS the assembly of its parts), so this is what makes one dish type tellable from another at a glance."
         }
       ]
     },
@@ -611,6 +616,11 @@
       "id": "WARN-ORPHAN-OUTPUT",
       "severity": "warning",
       "description": "An ingredient produced by a tool but consumed by nothing and not reachable from any orderable."
+    },
+    {
+      "id": "WARN-UNUSED-DEAD-NODE",
+      "severity": "warning",
+      "description": "A node that cannot be obtained (or a group with no options) which no orderable reaches either. Nothing can break on it, so it is a leftover rather than a fault — unfinished art, a route planned and not yet wired, a node kept for later."
     },
     {
       "id": "WARN-UNUSED-PICKUP",

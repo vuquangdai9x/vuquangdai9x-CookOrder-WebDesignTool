@@ -3,6 +3,16 @@ import { parseGrid, parseQueueGroups, parseQueues } from "../../core/parser.ts";
 import { seededRng } from "./generateLevel.ts";
 import { CELL_COLOR_LOCK, STATUS_FREEZE, STATUS_HIDDEN, STATUS_HOLDING_KEY } from "./levelStats.ts";
 import {
+  BOSS_MAX,
+  obstacleMax,
+  QUEUE_OBSTACLE_MAX,
+  SHIPPER_MAX,
+  TIMED_CUSTOMER_MAX,
+} from "./obstacleEditor.ts";
+import {
+  dropUnkeyedLocks,
+  OBSTACLE_FIELDS,
+  obstacleValue,
   rollObstacles,
   CELL_BLOCKED,
   CELL_INGREDIENT_SLOT,
@@ -62,6 +72,42 @@ describe("the obstacle string", () => {
 
   it("summarises only what is set", () => {
     expect(obstacleSummary(config({ boss: 1, frozen: 2 })).map((s) => s.count)).toEqual([2, 1]);
+  });
+});
+
+describe("obstacleMax", () => {
+  it("caps every grid obstacle at the size of the board", () => {
+    // There is nowhere to put the n+1th, so anything above this is unplaceable
+    // by definition and would just warn about the surplus on every run.
+    for (const key of ["blocked", "orderLock", "ingredientLock", "lockKey"] as const) {
+      expect(obstacleMax(key, 16)).toBe(16);
+      expect(obstacleMax(key, 36)).toBe(36);
+    }
+  });
+
+  it("never returns a zero ceiling, which would make the bar undraggable", () => {
+    expect(obstacleMax("blocked", 0)).toBeGreaterThan(0);
+  });
+
+  it("caps the queue and customer obstacles at their own limits", () => {
+    for (const key of ["hidden", "frozen", "linked", "combined"] as const) {
+      expect(obstacleMax(key, 16)).toBe(QUEUE_OBSTACLE_MAX);
+    }
+    expect(obstacleMax("timed", 16)).toBe(TIMED_CUSTOMER_MAX);
+    expect(obstacleMax("shipper", 16)).toBe(SHIPPER_MAX);
+    // A level with two finales has no finale.
+    expect(obstacleMax("boss", 16)).toBe(BOSS_MAX);
+  });
+
+  it("keeps a rolled budget inside every ceiling", () => {
+    // The roll and the editor must agree, or a rolled level opens with a bar
+    // already past its own maximum.
+    for (let seed = 1; seed <= 200; seed++) {
+      const rolled = rollObstacles({ customers: 40, dishes: 200, gridCells: 16 }, seededRng(seed));
+      for (const field of OBSTACLE_FIELDS) {
+        expect(obstacleValue(rolled, field.key)).toBeLessThanOrEqual(obstacleMax(field.key, 16));
+      }
+    }
   });
 });
 
@@ -231,6 +277,46 @@ describe("placeGridObstacles", () => {
   });
 });
 
+describe("dropUnkeyedLocks", () => {
+  const gridWith = (locks: [number, number][]): string =>
+    locks.map(([color, count]) => `#${CELL_COLOR_LOCK}:${color}:${count}`).join(",");
+
+  it("keeps every lock its keys can open", () => {
+    const grid = gridWith([[1, 1], [2, 1]]);
+    expect(dropUnkeyedLocks(grid, [1, 2])).toBe(grid);
+  });
+
+  it("removes a lock whose colour was never keyed", () => {
+    // A lock the player is told how to open and never can is worse than no lock.
+    const kept = parseGrid(dropUnkeyedLocks(gridWith([[1, 1], [2, 1]]), [1]));
+    const colors = kept.flatMap((c) => c.effects).filter((e) => e.effectId === CELL_COLOR_LOCK);
+    expect(colors).toHaveLength(1);
+    expect(colors[0].params[0]).toBe(1);
+  });
+
+  it("counts keys PER COLOUR, not in total", () => {
+    // Two red locks and two blue keys is not "four of each" — the reds are
+    // still unopenable, and a total-only check would pass this.
+    const kept = parseGrid(dropUnkeyedLocks(gridWith([[1, 1], [1, 1]]), [2, 2]));
+    expect(kept.flatMap((c) => c.effects).filter((e) => e.effectId === CELL_COLOR_LOCK)).toHaveLength(0);
+  });
+
+  it("honours a lock that needs several keys of one colour", () => {
+    const oneKey = parseGrid(dropUnkeyedLocks(gridWith([[1, 2]]), [1]));
+    expect(oneKey.flatMap((c) => c.effects).filter((e) => e.effectId === CELL_COLOR_LOCK)).toHaveLength(0);
+
+    const twoKeys = parseGrid(dropUnkeyedLocks(gridWith([[1, 2]]), [1, 1]));
+    expect(twoKeys.flatMap((c) => c.effects).filter((e) => e.effectId === CELL_COLOR_LOCK)).toHaveLength(1);
+  });
+
+  it("leaves cells that are not colour locks alone", () => {
+    const grid = `#${CELL_BLOCKED},#${CELL_COLOR_LOCK}:1:1`;
+    const kept = parseGrid(dropUnkeyedLocks(grid, []));
+    expect(kept[0].effects).toEqual([{ effectId: CELL_BLOCKED, params: [] }]);
+    expect(kept[1].effects).toEqual([]);
+  });
+});
+
 describe("placeQueueObstacles", () => {
   const run = (overrides: Partial<Record<string, number>>, seed = 7, lockColors: number[] = []) =>
     placeQueueObstacles({
@@ -351,6 +437,22 @@ describe("placeQueueObstacles", () => {
       rand: seededRng(1),
     });
     expect(result.warnings.join(" ")).toMatch(/Only placed \d+\/20 hidden slots/);
+  });
+
+  it("reports which colours it managed to key", () => {
+    const result = run({}, 4, [1, 3, 5]);
+    expect(result.keyedColors.sort()).toEqual([1, 3, 5]);
+  });
+
+  it("keys as many as fit and says how many it could not", () => {
+    const result = placeQueueObstacles({
+      queueString: queueOf(2, 2),
+      config: config({}),
+      lockColors: [1, 2, 3, 4, 5],
+      rand: seededRng(3),
+    });
+    expect(result.keyedColors.length).toBeLessThan(5);
+    expect(result.warnings.join(" ")).toMatch(/removed rather than left unopenable/);
   });
 
   it("leaves an unreadable queue alone instead of throwing", () => {

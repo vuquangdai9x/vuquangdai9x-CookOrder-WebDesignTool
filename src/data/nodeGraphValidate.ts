@@ -69,19 +69,23 @@ export function validateNodeGraph(doc: NodeGraphMap): GraphValidation {
     });
   };
 
+  // Computed once: three checks need to know whether a broken node is one
+  // anything actually asks for.
+  const reached = reachableFromOrderables(lk);
+
   checkNamespace(doc, add);
   checkRefs(doc, lk, add);
-  checkUniqueProducer(doc, add);
+  checkUniqueProducer(doc, reached, add);
   checkAcyclic(doc, lk, add);
   checkComposites(doc, lk, add);
-  checkGroups(doc, add);
+  checkGroups(doc, reached, add);
   checkDirtyStacks(doc, add);
   checkProcessCapabilities(doc, add);
   checkSlotPoints(doc, add);
   checkTraceable(doc, lk, add);
   checkRebuildable(lk, add);
   checkIdTable(doc, lk, add);
-  checkWarnings(doc, lk, add);
+  checkWarnings(doc, reached, add);
 
   return {
     errors: issues.filter((i) => i.severity === "error"),
@@ -166,8 +170,48 @@ function checkRefs(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
   }
 }
 
+/**
+ * Everything an orderable can eventually reach, walking base/topping/option
+ * edges down and production edges backwards.
+ *
+ * Shared by the warning pass and by the "nothing can obtain this" checks,
+ * because whether a broken node MATTERS depends entirely on whether anything
+ * asks for it — see checkUniqueProducer.
+ */
+function reachableFromOrderables(lk: GraphLookup): Set<string> {
+  const reached = new Set<string>();
+  const walk = (node: string): void => {
+    if (reached.has(node)) return;
+    reached.add(node);
+    const kind = lk.kindOf.get(node);
+    if (kind === "ingredient") {
+      const edge = lk.producerOf.get(node);
+      if (edge) {
+        reached.add(edge.from);
+        for (const tool of edge.chainTools ?? []) reached.add(tool);
+        edge.inputs.forEach((i) => walk(i.ingredient));
+      }
+      return;
+    }
+    if (kind === "group") {
+      for (const opt of lk.optionsOf.get(node) ?? []) walk(opt.to);
+      return;
+    }
+    if (kind === "composite") {
+      const base = lk.baseOf.get(node);
+      if (base) walk(base);
+      const topping = lk.toppingOf.get(node);
+      if (topping) walk(topping);
+      const dirty = lk.dirtyOf.get(node);
+      if (dirty) reached.add(dirty);
+    }
+  };
+  for (const orderable of lk.orderables) walk(orderable);
+  return reached;
+}
+
 /** At most one tool may produce an ingredient — what makes a backward trace deterministic. */
-function checkUniqueProducer(doc: NodeGraphMap, add: Add): void {
+function checkUniqueProducer(doc: NodeGraphMap, reached: Set<string>, add: Add): void {
   const producers = new Map<string, string[]>();
   for (const e of doc.edges.process) {
     const list = producers.get(e.to) ?? [];
@@ -185,6 +229,19 @@ function checkUniqueProducer(doc: NodeGraphMap, add: Add): void {
   }
   for (const ingredient of doc.vertices.ingredient) {
     if (producers.has(ingredient.name) || ingredient.pickupable) continue;
+    // Unobtainable AND unwanted is not a broken graph, it is a leftover — art
+    // that was drawn, a route that was planned and never wired, a node kept for
+    // later. Nothing can reach it, so nothing can break on it, and reporting it
+    // as an ERROR meant a map with an honest scrap of unfinished work looked
+    // exactly as alarming as one with a genuinely impossible dish.
+    if (!reached.has(ingredient.name)) {
+      add(
+        "WARN-UNUSED-DEAD-NODE",
+        `"${ingredient.name}" cannot be obtained, but nothing orders it either — an unused leftover.`,
+        { vertexKind: "ingredient", vertexName: ingredient.name },
+      );
+      continue;
+    }
     add(
       "INV-UNIQUE-PRODUCER",
       `"${ingredient.name}" is not pickupable and no tool produces it — nothing can ever obtain it.`,
@@ -273,7 +330,7 @@ function checkComposites(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
   void lk;
 }
 
-function checkGroups(doc: NodeGraphMap, add: Add): void {
+function checkGroups(doc: NodeGraphMap, reached: Set<string>, add: Add): void {
   const optionCount = new Map<string, number>();
   for (const e of doc.edges.option) optionCount.set(e.from, (optionCount.get(e.from) ?? 0) + 1);
   for (const group of doc.vertices.group) {
@@ -288,10 +345,15 @@ function checkGroups(doc: NodeGraphMap, add: Add): void {
       );
     }
     if (count === 0) {
-      add("INV-GROUP-NONEMPTY", `Group "${group.name}" has no options — nothing can fill it.`, {
-        vertexKind: "group",
-        vertexName: group.name,
-      });
+      // Same reasoning as the unobtainable-ingredient case above: an empty
+      // group no orderable reaches cannot stop anything from being made.
+      add(
+        reached.has(group.name) ? "INV-GROUP-NONEMPTY" : "WARN-UNUSED-DEAD-NODE",
+        reached.has(group.name)
+          ? `Group "${group.name}" has no options — nothing can fill it.`
+          : `Group "${group.name}" has no options, but nothing reaches it either — an unused leftover.`,
+        { vertexKind: "group", vertexName: group.name },
+      );
     } else if (count === 1 && (group.maxQuantity ?? -1) === 1) {
       // One option and room for exactly one pick: the designer wrote a choice
       // that has nothing to choose between.
@@ -495,37 +557,7 @@ function checkIdTable(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
   }
 }
 
-function checkWarnings(doc: NodeGraphMap, lk: GraphLookup, add: Add): void {
-  // Everything reachable from any orderable, following production and assembly.
-  const reached = new Set<string>();
-  const walk = (node: string): void => {
-    if (reached.has(node)) return;
-    reached.add(node);
-    const kind = lk.kindOf.get(node);
-    if (kind === "ingredient") {
-      const edge = lk.producerOf.get(node);
-      if (edge) {
-        reached.add(edge.from);
-        for (const tool of edge.chainTools ?? []) reached.add(tool);
-        edge.inputs.forEach((i) => walk(i.ingredient));
-      }
-      return;
-    }
-    if (kind === "group") {
-      for (const opt of lk.optionsOf.get(node) ?? []) walk(opt.to);
-      return;
-    }
-    if (kind === "composite") {
-      const base = lk.baseOf.get(node);
-      if (base) walk(base);
-      const topping = lk.toppingOf.get(node);
-      if (topping) walk(topping);
-      const dirty = lk.dirtyOf.get(node);
-      if (dirty) reached.add(dirty);
-    }
-  };
-  for (const orderable of lk.orderables) walk(orderable);
-
+function checkWarnings(doc: NodeGraphMap, reached: Set<string>, add: Add): void {
   for (const e of doc.edges.process) {
     if (!reached.has(e.to)) {
       add("WARN-ORPHAN-OUTPUT", `"${e.to}" is produced by ${e.from} but no orderable ever needs it.`, {

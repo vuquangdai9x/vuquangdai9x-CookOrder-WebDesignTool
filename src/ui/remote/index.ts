@@ -285,6 +285,18 @@ export class RemoteDataView {
     return this.isLive(entry) || this.options.createLevel !== undefined;
   }
 
+  /**
+   * Bulk applies overwrite one side wholesale, so make the destination explicit
+   * before anything moves. Per-level buttons stay unguarded — they touch one row.
+   */
+  private confirmOverwrite(action: "sheet-to-tool" | "tool-to-sheet", group?: Group): boolean {
+    const scope = group ? `map "${group.title}"` : "EVERY map";
+    const message = action === "tool-to-sheet"
+      ? `This OVERWRITES the Google Sheet with tool data for ${scope}.\n\nSheet values that differ will be lost. Continue?`
+      : `This OVERWRITES local tool data with sheet data for ${scope}.\n\nUnsaved local level changes will be lost. Continue?`;
+    return confirm(message);
+  }
+
   private ensureLevel(entry: LevelEntry): LevelData | undefined {
     const existing = this.level(entry);
     if (existing) return existing;
@@ -801,6 +813,7 @@ export class RemoteDataView {
 
   private async runAll(action: "load" | "sheet-to-tool" | "tool-to-sheet", group?: Group): Promise<void> {
     const groupTitle = group?.title;
+    if (action !== "load" && !this.confirmOverwrite(action, group)) return;
     const statusEl = () => groupTitle ? this.groupStatusByTitle.get(groupTitle) : this.pageStatusEl;
     const initialStatus = statusEl();
     if (initialStatus) initialStatus.textContent = "Working…";

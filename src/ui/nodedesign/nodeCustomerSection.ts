@@ -57,10 +57,11 @@ import { occupancyChartEl } from "../design/occupancyChart.ts";
 import type { ChartVisibility } from "../design/occupancyChart.ts";
 import {
   DEFAULT_INGREDIENT_WEIGHT,
-  openIngredientWeightsDialog,
-  parseIngredientWeights,
-  serializeIngredientWeights,
+  parseWeightSet,
+  serializeWeightSet,
 } from "../design/ingredientWeightEditor.ts";
+import type { WeightSet } from "../design/ingredientWeightEditor.ts";
+import { openDishWeightDialog } from "../levelpath/dialogs.ts";
 import { Section } from "../design/section.ts";
 import { createObstacleEditor } from "../levelpath/obstacleEditor.ts";
 import { parseObstacles, serializeObstacles } from "../levelpath/obstacles.ts";
@@ -383,7 +384,7 @@ function renderBody(
   body: HTMLElement,
   chartUi: ChartUi,
 ): void {
-  body.append(levelParamsBar(section, deps));
+  body.append(levelParamsBar(section, deps, ids));
 
   const estimate = deps.currentEstimate?.() ?? null;
   if (estimate) {
@@ -488,20 +489,35 @@ function estimateBar(
 function levelParamsBar(
   section: Section<NodeCustomerConfig[]>,
   deps: NodeCustomerSectionDeps,
+  ids: IdIndex,
 ): HTMLElement {
   const refresh = () => {
     deps.onSaved();
     section.render();
   };
 
-  const weightsField = readOnlyField("Ingredient Weights", deps.level.ingredientWeights ?? "", () => {
-    const initial = deps.level.ingredientWeights
-      ? parseIngredientWeights(deps.level.ingredientWeights)
-      : new Map(deps.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]));
-    openIngredientWeightsDialog(deps.projected.map, initial, (weights) => {
-      deps.level.ingredientWeights = serializeIngredientWeights(weights);
-      refresh();
-    });
+  // "Generator Weights" rather than "Ingredient Weights": the record now
+  // carries the DISH TYPE weights too, and the label was the only thing still
+  // claiming otherwise.
+  const weightsField = readOnlyField("Generator Weights", deps.level.ingredientWeights ?? "", () => {
+    const stored = parseWeightSet(deps.level.ingredientWeights ?? "");
+    const initial: WeightSet =
+      stored.ingredients.size > 0
+        ? stored
+        : {
+            ingredients: new Map(
+              deps.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]),
+            ),
+            composites: stored.composites,
+          };
+    openDishWeightDialog(
+      deps.level.name,
+      { projected: deps.projected, ix: deps.ix, ids, initial },
+      (weights) => {
+        deps.level.ingredientWeights = serializeWeightSet(weights);
+        refresh();
+      },
+    );
   });
 
   const dishSeqField = readOnlyField(
@@ -541,10 +557,14 @@ function levelParamsBar(
       refresh();
     },
     () => {
-      openObstacleDialog(parseObstacles(deps.level.obstacleData), (config) => {
-        deps.level.obstacleData = serializeObstacles(config);
-        refresh();
-      });
+      openObstacleDialog(
+        parseObstacles(deps.level.obstacleData),
+        deps.ix.doc.map.gridWidth * deps.ix.doc.map.gridHeight,
+        (config) => {
+          deps.level.obstacleData = serializeObstacles(config);
+          refresh();
+        },
+      );
     },
   );
 
@@ -580,9 +600,13 @@ function editableField(
 }
 
 /** The grouped obstacle editor in a modal, for the Edit button beside the raw field. */
-function openObstacleDialog(initial: ObstacleConfig, onApply: (config: ObstacleConfig) => void): void {
+function openObstacleDialog(
+  initial: ObstacleConfig,
+  gridCells: number,
+  onApply: (config: ObstacleConfig) => void,
+): void {
   const close = () => overlay.remove();
-  const editor = createObstacleEditor(initial);
+  const editor = createObstacleEditor({ initial, gridCells });
   const panel = el("div", { class: "auto-generate-panel auto-generate-sheet" }, [
     editor.element,
     el("div", { class: "auto-generate-actions" }, [

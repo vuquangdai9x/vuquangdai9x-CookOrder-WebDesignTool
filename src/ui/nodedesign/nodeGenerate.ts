@@ -51,6 +51,16 @@ export interface NodeGenerateOptions {
   roles?: CustomerRole[];
   /** Dense ingredient index -> selection weight (0-100). 0/absent = excluded. */
   weights: Map<number, number>;
+  /**
+   * Dense COMPOSITE index -> how often a customer orders that dish type
+   * (0-100). 0 excludes the type entirely.
+   *
+   * Absent means "no preference", and the dish type is then scored by the
+   * average weight of the ingredients it can hold — the behaviour from before
+   * dish types were weightable, kept so a level recorded without them
+   * regenerates the way it always did.
+   */
+  compositeWeights?: Map<number, number>;
   curve: CurveState;
   maxDishSlots?: number;
   /** Injectable for deterministic tests; defaults to Math.random. */
@@ -423,14 +433,21 @@ export function generateNodeCustomers(
   // dish budget, then resolve the result: the orderable enters the random dish-
   // type pool iff at least one enabled combination satisfies all of its real
   // base, nested-base, topping, group-minimum, and quantity rules.
+  // A dish type weighted 0 is out before anything else is asked about it: the
+  // generator picks the TYPE first, so a zero there means the type is simply
+  // not in the draw, however its ingredients are weighted.
+  const typeWeights = opts.compositeWeights;
   const candidates = ix.orderables.filter((composite) => {
+    if (typeWeights && (typeWeights.get(composite) ?? 0) <= 0) return false;
     const slots = ix.slotsOfComposite[composite] ?? [];
     const probe = buildDish(ix, ids, composite, 1, initialWeightOf, () => 0, maxDishSlots);
     return probe !== null && resolveOrder(ix, probe, ids).issues.length === 0 && slots.length > 0;
   });
   if (candidates.length === 0 && counts.some((count) => count !== -1)) {
     warn(
-      "No dish type is eligible: no enabled ingredient combination satisfies its base, required topping, or minimum quantities.",
+      typeWeights && ix.orderables.every((composite) => (typeWeights.get(composite) ?? 0) <= 0)
+        ? "No dish type is eligible: every dish type is weighted 0."
+        : "No dish type is eligible: no enabled ingredient combination satisfies its base, required topping, or minimum quantities.",
     );
   }
 
@@ -463,9 +480,14 @@ export function generateNodeCustomers(
 
     const dishes: NodeDish[] = [];
     for (let d = 0; d < dishCount; d++) {
+      // Step one of building a dish: WHICH dish. Drawn from the configured
+      // type weights when there are any, so "burgers are common, salads are
+      // rare" is a thing a designer can say directly rather than approximate by
+      // weighting ingredients.
       const orderable = weightedPick(
         candidates,
         (composite) => {
+          if (typeWeights) return typeWeights.get(composite) ?? 0;
           const options = [...new Set((ix.slotsOfComposite[composite] ?? []).flatMap((slot) => slot.options))];
           if (options.length === 0) return 0;
           return options.reduce((sum, ing) => sum + adaptive.weightOf(ing), 0) / options.length;

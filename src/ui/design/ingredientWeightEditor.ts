@@ -15,20 +15,64 @@ import { cookedIconEl } from "../icon.ts";
 /** Weight assigned to a newly-enabled ingredient (Enable All, or a fresh default set). */
 export const DEFAULT_INGREDIENT_WEIGHT = 100;
 
-/** "3:100;7:40" -> Map{3:100, 7:40}. Malformed entries are skipped rather than throwing — this is read-back design metadata. */
-export function parseIngredientWeights(s: string): Map<Id, number> {
-  const weights = new Map<Id, number>();
-  if (!s || !s.trim()) return weights;
+/**
+ * The two halves of a generator's weight record.
+ *
+ * COMPOSITES are the dish types a customer may order; INGREDIENTS are what goes
+ * inside whichever type was picked. They are separate because the choice is
+ * made in that order — pick the dish, then fill it — and a single flat list
+ * cannot express "burgers are common but this rare sauce is fine when one
+ * shows up".
+ */
+export interface WeightSet {
+  ingredients: Map<Id, number>;
+  composites: Map<Id, number>;
+}
+
+export const emptyWeightSet = (): WeightSet => ({ ingredients: new Map(), composites: new Map() });
+
+/**
+ * `"c0:100;c1:40;3:100;7:40"` — a `c` prefix marks a COMPOSITE id, everything
+ * else is an ingredient id.
+ *
+ * The prefix keeps the format backward compatible: every string written before
+ * composites existed parses to the same ingredient map it always did, and its
+ * empty composite half means "no preference", which is exactly what those
+ * levels meant.
+ */
+export function parseWeightSet(s: string): WeightSet {
+  const set = emptyWeightSet();
+  if (!s || !s.trim()) return set;
   for (const part of s.split(";")) {
     if (!part) continue;
-    const [idStr, weightStr] = part.split(":");
-    const id = Number(idStr);
+    const [rawKey, weightStr] = part.split(":");
+    const key = rawKey?.trim() ?? "";
+    const composite = key.startsWith("c") || key.startsWith("C");
+    const idText = composite ? key.slice(1) : key;
+    // An empty id is junk, not id 0 — `Number("")` is 0, so without this a
+    // truncated entry like "c:" would silently overwrite the real composite 0.
+    if (idText.trim() === "") continue;
+    const id = Number(idText);
     const weight = Number(weightStr);
-    if (Number.isFinite(id) && Number.isFinite(weight)) {
-      weights.set(id, Math.max(0, Math.min(100, weight)));
-    }
+    if (!Number.isFinite(id) || !Number.isFinite(weight)) continue;
+    const clamped = Math.max(0, Math.min(100, weight));
+    (composite ? set.composites : set.ingredients).set(id, clamped);
   }
-  return weights;
+  return set;
+}
+
+/** Composites first, then ingredients — a stable order so the string diffs cleanly. */
+export function serializeWeightSet(set: WeightSet): string {
+  const composites = [...set.composites.entries()]
+    .filter(([, w]) => w > 0)
+    .sort((a, b) => a[0] - b[0])
+    .map(([id, w]) => `c${id}:${Math.round(w)}`);
+  return [...composites, serializeIngredientWeights(set.ingredients)].filter(Boolean).join(";");
+}
+
+/** "3:100;7:40" -> Map{3:100, 7:40}. Malformed entries are skipped rather than throwing — this is read-back design metadata. */
+export function parseIngredientWeights(s: string): Map<Id, number> {
+  return parseWeightSet(s).ingredients;
 }
 
 /** Only nonzero weights are written — a weight of 0 (disabled) carries no information worth keeping. */
@@ -43,12 +87,18 @@ export function serializeIngredientWeights(weights: Map<Id, number>): string {
 export interface IngredientWeightGrid {
   element: HTMLElement;
   setAll(value: number): void;
+  /**
+   * Re-marks which ingredients are unreachable. Called when a composite's
+   * weight changes, since that is what decides reachability.
+   */
+  setUnreachable(ids: Set<Id>): void;
 }
 
 export function createIngredientWeightGrid(
   map: MapDef,
   initial: Map<Id, number>,
   onChange: (weights: Map<Id, number>) => void,
+  unreachable: Set<Id> = new Set(),
 ): IngredientWeightGrid {
   const weights = new Map(initial);
   const grid = el("div", { class: "weight-grid" });
@@ -78,6 +128,12 @@ export function createIngredientWeightGrid(
 
     const col = { id: c.id, column, fill, label, track };
     cols.push(col);
+    // An ingredient whose every dish type is switched off can never be picked,
+    // whatever its own weight says. Showing it greyed rather than hiding it is
+    // deliberate: the weight is still there and still means something the
+    // moment a composite is turned back on, and hiding rows would make the
+    // grid's shape jump every time a dish type is toggled.
+    column.classList.toggle("unreachable", unreachable.has(c.id));
 
     const applyFromPointer = (clientY: number) => {
       const rect = track.getBoundingClientRect();
@@ -105,6 +161,9 @@ export function createIngredientWeightGrid(
     element: grid,
     setAll(value) {
       for (const col of cols) setWeight(col.id, value, col);
+    },
+    setUnreachable(ids) {
+      for (const col of cols) col.column.classList.toggle("unreachable", ids.has(col.id));
     },
   };
 }

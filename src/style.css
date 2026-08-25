@@ -5061,13 +5061,11 @@ td input {
 }
 
 /* ---------- Level Path: the trailing add-level row ---------- */
-/* Inside the scrolling body, sticky to its bottom edge, so it is reachable
-   from anywhere in a sixty-level map instead of only from the end. */
+/* The plain last row of the list. It scrolls with the rows rather than
+   floating over them: a level is appended at the END, so the control belongs
+   where the new row will actually appear. */
 
 .lp-add-row {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
   display: flex;
   padding: 0.25rem;
   background: var(--panel);
@@ -5084,4 +5082,128 @@ td input {
 
 .lp-add-level-btn:hover {
   color: var(--accent);
+}
+
+/* ---------- generator weights: dish types + ingredients ---------- */
+
+.dish-weight-editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.dish-grid .dish-col {
+  min-width: 4.5rem;
+}
+
+.dish-name {
+  font-size: 0.65rem;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.15;
+  max-width: 4.5rem;
+  overflow-wrap: anywhere;
+}
+
+.dish-col .icon-dish {
+  font-size: 1.6rem;
+}
+
+/* An ingredient no enabled dish type can hold. Greyed rather than hidden: the
+   weight is still real and still applies the moment its dish type comes back,
+   and removing rows would make the grid jump on every toggle. */
+.weight-col.unreachable {
+  opacity: 0.32;
+  filter: grayscale(1);
+}
+
+.weight-col.unreachable .weight-track {
+  cursor: not-allowed;
+}
+
+/* Dish-type tags lead the weights cell, separated from the ingredient tags. */
+.lp-weight-tag.dish {
+  border: 1px solid var(--accent);
+}
+
+.lp-dish-emoji {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.lp-weight-sep {
+  flex: 0 0 100%;
+  height: 1px;
+  background: var(--line);
+  margin: 0.1rem 0;
+}
+
+/* ---------- Auto Generate modal: foldout sections ---------- */
+/* Open by default — the dialog is a checklist of what a generate will use, and
+   the folds exist to get a long section out of the way once you know what it
+   holds, not to hide it until asked. */
+
+.generate-section {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.generate-section > summary {
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  color: var(--accent);
+  user-select: none;
+}
+
+.generate-section > summary:hover {
+  background: var(--panel-2);
+}
+
+.generate-section-body {
+  padding: 0.2rem 0.6rem 0.6rem;
+}
+
+/* The nested weight editor already labels its two halves; drop its top margin
+   so the headings do not float away from the fold they belong to. */
+.generate-section-body .dish-weight-editor > h3:first-child {
+  margin-top: 0.2rem;
+}
+
+/* ---------- dish-count: the CURRENT count, beside the instruction ---------- */
+/* The field is what the generator is told; the badge is what the level holds
+   right now. Two different facts, so two different places. */
+
+.dish-count-item {
+  position: relative;
+}
+
+.dish-count-actual {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  font-size: 0.58rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* ---------- obstacle budget: the same bars as the weight grid ---------- */
+
+.obstacle-grid .obstacle-col {
+  min-width: 4.2rem;
+}
+
+.obstacle-icon {
+  font-size: 1.3rem;
+  line-height: 1.4;
+}
+
+.obstacle-max {
+  font-size: 0.6rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }

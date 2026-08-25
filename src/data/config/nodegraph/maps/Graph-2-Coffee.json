@@ -258,7 +258,7 @@
       {
         "name": "donut-8",
         "displayName": "donut-8",
-        "pickupable": true,
+        "pickupable": false,
         "usageNum": 1,
         "price": 0,
         "localImage": "Map2-coffee/ingredients/donut-8.png"
@@ -266,7 +266,7 @@
       {
         "name": "donut-bar",
         "displayName": "donut-bar",
-        "pickupable": true,
+        "pickupable": false,
         "usageNum": 1,
         "price": 0,
         "localImage": "Map2-coffee/ingredients/donut-bar.png"
@@ -432,49 +432,57 @@
         "name": "cool-coffee-with-milk",
         "displayName": "cool-coffee-with-milk",
         "orderable": false,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🧋"
       },
       {
         "name": "hot-coffee-latte",
         "displayName": "hot-coffee-latte",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "☕"
       },
       {
         "name": "cool-coffee-with-cream",
         "displayName": "cool-coffee-with-cream",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🧋"
       },
       {
         "name": "cool-coffee-with-milk-ice",
         "displayName": "cool-coffee-with-milk-ice",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🥤"
       },
       {
         "name": "whiping-cream-with-topping",
         "displayName": "whiping-cream-with-topping",
         "orderable": false,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🍦"
       },
       {
         "name": "cupcake-with-cream",
         "displayName": "cupcake-with-cream",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🧁"
       },
       {
         "name": "donut-with-topping",
         "displayName": "donut-with-topping",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "emoji": "🍩"
       },
       {
         "name": "donut-with-glaze",
         "displayName": "donut-with-glaze",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "emoji": "🍪"
       }
     ],
     "dirty": [
@@ -595,28 +603,6 @@
           }
         ],
         "amount": 1
-      },
-      {
-        "from": "fryer",
-        "to": "donut-8-fried",
-        "inputs": [
-          {
-            "ingredient": "donut-8",
-            "slot": 0
-          }
-        ],
-        "amount": 1
-      },
-      {
-        "from": "fryer",
-        "to": "donut-bar-fried",
-        "inputs": [
-          {
-            "ingredient": "donut-bar",
-            "slot": 0
-          }
-        ],
-        "amount": 1
       }
     ],
     "base": [
@@ -645,12 +631,12 @@
         "to": "cupcake-baked"
       },
       {
-        "from": "donut-with-glaze",
-        "to": "single-donut-fried"
-      },
-      {
         "from": "donut-with-topping",
         "to": "donut-with-glaze"
+      },
+      {
+        "from": "donut-with-glaze",
+        "to": "donut-fried"
       }
     ],
     "topping": [
@@ -727,21 +713,6 @@
         "from": "fruits",
         "to": "blueberry",
         "maxQuantity": 1
-      },
-      {
-        "from": "single-donut-fried",
-        "to": "donut-fried",
-        "maxQuantity": -1
-      },
-      {
-        "from": "single-donut-fried",
-        "to": "donut-8-fried",
-        "maxQuantity": -1
-      },
-      {
-        "from": "single-donut-fried",
-        "to": "donut-bar-fried",
-        "maxQuantity": -1
       },
       {
         "from": "glazes",
@@ -926,7 +897,7 @@
     },
     "ingredient:donut-bar": {
       "x": 80.91688537109377,
-      "y": -970.1184973046866
+      "y": -971.2184973046866
     },
     "tool:fryer": {
       "x": 352.6284353710934,

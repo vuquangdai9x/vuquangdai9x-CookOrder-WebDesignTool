@@ -185,6 +185,16 @@ export interface GroupVertex {
 export interface CompositeVertex {
   name: string;
   displayName: string;
+  /**
+   * Glyph shown wherever this dish type is LISTED rather than drawn.
+   *
+   * A composite has no artwork of its own — it is the assembly of its parts,
+   * and what a player sees is the stack of ingredients. But the generator's
+   * dish-type weights, the Auto Generate config and the Level Path table all
+   * need to tell one dish type from another in a row of small controls, and a
+   * column of identical plate glyphs does not.
+   */
+  emoji?: string;
   /** A customer may order this — a graph root, where the tracer starts. */
   orderable?: boolean;
   /**

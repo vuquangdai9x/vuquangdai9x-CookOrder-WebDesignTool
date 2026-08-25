@@ -486,17 +486,20 @@
       {
         "name": "burger",
         "displayName": "Burger",
-        "orderable": true
+        "orderable": true,
+        "emoji": "🍔"
       },
       {
         "name": "soda",
         "displayName": "Soda",
-        "orderable": true
+        "orderable": true,
+        "emoji": "🥤"
       },
       {
         "name": "fried-basket",
         "displayName": "Fried Basket",
-        "orderable": true
+        "orderable": true,
+        "emoji": "🍟"
       }
     ],
     "dirty": [

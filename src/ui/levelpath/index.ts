@@ -24,6 +24,7 @@
 
 import { button, el } from "../dom.ts";
 import { showContextMenu } from "../contextMenu.ts";
+import type { MenuItem } from "../contextMenu.ts";
 import { hideBlockingOverlay, showBlockingOverlay } from "../loadingOverlay.ts";
 import { iconEl } from "../icon.ts";
 import { setIconMap } from "../icon.ts";
@@ -33,9 +34,8 @@ import type { CurveState } from "../design/curveEditor.ts";
 import { evaluateCurve } from "../design/curveEditor.ts";
 import {
   DEFAULT_INGREDIENT_WEIGHT,
-  openIngredientWeightsDialog,
-  parseIngredientWeights,
-  serializeIngredientWeights,
+  parseWeightSet,
+  serializeWeightSet,
 } from "../design/ingredientWeightEditor.ts";
 import {
   DEFAULT_MAX_DISH_SLOTS,
@@ -77,10 +77,24 @@ import type { LevelPathConfig } from "./config.ts";
 import {
   openBatchGenerateDialog,
   openDishSequenceDialog,
+  openDishWeightDialog,
   openNewMapDialog,
   openObstacleBudgetDialog,
 } from "./dialogs.ts";
 import { obstacleSummary, parseObstacles, serializeObstacles } from "./obstacles.ts";
+import { orderableRows } from "./dishWeightEditor.ts";
+import {
+  canPasteAll,
+  canPasteField,
+  clipboard,
+  copyAll,
+  copyField,
+  FIELD_LABEL,
+  LEVEL_FIELD,
+  pasteAll,
+  pasteField,
+} from "./generatorClipboard.ts";
+import type { GeneratorField } from "./generatorClipboard.ts";
 import {
   DEFAULT_SHUFFLE_MAX_Y,
   generateLevel,
@@ -150,42 +164,7 @@ function isRowControl(target: EventTarget | null): boolean {
   );
 }
 
-/** The four generator inputs a row can carry, clear and re-roll independently. */
-type GeneratorField = "weights" | "dishes" | "complexity" | "shuffle";
 
-const FIELD_LABEL: Record<GeneratorField, string> = {
-  weights: "Ingredient weights",
-  dishes: "Dish sequence",
-  complexity: "Complexity curve",
-  shuffle: "Shuffle curve",
-};
-
-/**
- * Read/write access to each generator field, in one table.
- *
- * `undefined` DELETES rather than writing an empty string, because the pipeline
- * asks `if (level.complexityCurve)` — an empty string would behave the same
- * today but is a second representation of "absent" waiting to disagree with the
- * first.
- */
-const LEVEL_FIELD_OF: Record<GeneratorField, (level: LevelData, value: string | undefined) => void> = {
-  weights: (level, value) => {
-    if (value === undefined) delete level.ingredientWeights;
-    else level.ingredientWeights = value;
-  },
-  dishes: (level, value) => {
-    if (value === undefined) delete level.customerDishesSequence;
-    else level.customerDishesSequence = value;
-  },
-  complexity: (level, value) => {
-    if (value === undefined) delete level.complexityCurve;
-    else level.complexityCurve = value;
-  },
-  shuffle: (level, value) => {
-    if (value === undefined) delete level.shuffleCurve;
-    else level.shuffleCurve = value;
-  },
-};
 
 export interface LevelPathDeps {
   /** The live project for the open map. Held by reference so other tabs see the same edits. */
@@ -606,10 +585,9 @@ export class LevelPathView {
       body.append(this.row(entry, level, index, columns));
     });
 
-    // The add-row deliberately sits INSIDE the scrolling table rather than
-    // under it: on a map of sixty levels, a button below the table is a button
-    // you have to scroll the whole list to reach, and "add a level" is a thing
-    // you do from wherever you happen to be.
+    // Plain last row of the list, scrolling with it — a level is appended at
+    // the END, and a control that floats over the rows reads as chrome rather
+    // than as the place the next row will appear.
     body.append(this.addLevelRow(entry));
 
     Sortable.create(body, {
@@ -629,9 +607,9 @@ export class LevelPathView {
     return el("div", { class: "lp-table" }, [header, body]);
   }
 
-  /** The trailing "+ Add Level" row. Not `.lp-row`, so Sortable will not drag it. */
+  /** The trailing "+ Level" row. Not `.lp-row`, so Sortable will not drag it. */
   private addLevelRow(entry: MapEntry): HTMLElement {
-    const add = button("＋ Add Level", () => this.addLevel(entry), {
+    const add = button("＋ Level", () => this.addLevel(entry), {
       class: "lp-add-level-btn",
       title: "Append a blank level to this map",
     });
@@ -662,6 +640,8 @@ export class LevelPathView {
    * this resets how the level would be GENERATED, not what it currently is.
    */
   private clearGeneratorData(targets: { entry: MapEntry; level: LevelData }[]): void {
+    // Kept in step with the clipboard's field list, plus the seed — see the
+    // doc comment above for why the seed belongs to Clear but never to Copy.
     if (targets.length > 1) {
       const names = targets.slice(0, 6).map((t) => t.level.name).join(", ");
       const more = targets.length > 6 ? `, +${targets.length - 6} more` : "";
@@ -942,7 +922,7 @@ ${names}${more}`)) {
       case "dishes":
         return [this.withFieldMenu(this.dishSequenceCell(entry, level), entry, level, "dishes")];
       case "obstacles":
-        return [this.obstacleCell(entry, level)];
+        return [this.withFieldMenu(this.obstacleCell(entry, level), entry, level, "obstacles")];
       case "complexity":
         return [
           this.withFieldMenu(
@@ -990,13 +970,13 @@ ${names}${more}`)) {
    * therefore a real authoring act, not a delete — it hands the decision back.
    */
   private setField(entry: MapEntry, level: LevelData, field: GeneratorField, value: string): void {
-    LEVEL_FIELD_OF[field](level, value);
+    LEVEL_FIELD[field].set(level, value);
     this.persist(entry);
     this.refreshRow(entry, level);
   }
 
   private clearField(entry: MapEntry, level: LevelData, field: GeneratorField): void {
-    LEVEL_FIELD_OF[field](level, undefined);
+    LEVEL_FIELD[field].set(level, undefined);
     this.persist(entry);
     this.refreshRow(entry, level);
   }
@@ -1021,14 +1001,15 @@ ${names}${more}`)) {
       this.config.bounds,
     );
     const value =
-      field === "weights" ? serializeIngredientWeights(rolled.weights)
+      field === "weights" ? serializeWeightSet(rolled.weights)
       : field === "dishes" ? serializeDishCountSequence(rolled.dishCounts)
       : field === "complexity" ? serializeCurve(rolled.complexity)
+      : field === "obstacles" ? serializeObstacles(rolled.obstacles)
       : serializeCurve(rolled.baseShuffle);
     this.setField(entry, level, field, value);
   }
 
-  /** Right-click on any generator cell: clear it, or roll it again. */
+  /** Right-click on any generator cell: copy, paste, clear, or roll it again. */
   private withFieldMenu(
     cell: HTMLElement,
     entry: MapEntry,
@@ -1036,9 +1017,24 @@ ${names}${more}`)) {
     field: GeneratorField,
   ): HTMLElement {
     cell.addEventListener("contextmenu", (event) => {
-      const items = [
+      const held = clipboard();
+      const items: MenuItem[] = [
+        {
+          label: "⧉ Copy",
+          onSelect: () => copyField(level, field),
+        },
+        {
+          label: canPasteField(field) ? `📋 Paste (from ${held?.source})` : "📋 Paste",
+          disabled: !canPasteField(field),
+          onSelect: () => {
+            if (!pasteField(level, field)) return;
+            this.persist(entry);
+            this.refreshRow(entry, level);
+          },
+        },
         {
           label: "🎲 Regenerate from seed",
+          separator: true,
           onSelect: () => this.rerollField(entry, level, field),
         },
         {
@@ -1050,8 +1046,9 @@ ${names}${more}`)) {
       if (field === "weights") {
         // Only the weights have a second source of truth to be restored FROM —
         // the customer string says what the level actually orders.
-        items.unshift({
+        items.splice(2, 0, {
           label: "↻ Rebuild from customers",
+          separator: true,
           onSelect: () => this.rebuildWeights(entry, level),
         });
       }
@@ -1066,17 +1063,44 @@ ${names}${more}`)) {
       alert("This level has no readable customer orders to rebuild the weights from.");
       return;
     }
-    level.ingredientWeights = serializeIngredientWeights(weightsFromDistribution(counts));
+    // Rebuilds the INGREDIENT half only. The dish-type weights are a separate
+    // decision the customer string has nothing to say about, so they survive.
+    level.ingredientWeights = serializeWeightSet({
+      ingredients: weightsFromDistribution(counts),
+      composites: parseWeightSet(level.ingredientWeights ?? "").composites,
+    });
     this.persist(entry);
     this.refreshRow(entry, level);
   }
 
-  /** Ingredient weights as icon+number tags that wrap to the column's width. */
+  /**
+   * The generator's weights as icon+number tags: DISH TYPES first, then
+   * ingredients, in the order the generator reads them.
+   *
+   * The dish types are the more informative half at a glance — "this level is
+   * mostly burgers" is visible from the tag row, while the ingredient mix
+   * needs the dialog — so they lead, separated by a rule.
+   */
   private weightsCell(entry: MapEntry, level: LevelData): HTMLElement {
-    const weights = parseIngredientWeights(level.ingredientWeights ?? "");
-    const wrap = el("div", { class: "lp-weights", title: "Click to edit the generator's ingredient weights" });
+    const set = parseWeightSet(level.ingredientWeights ?? "");
+    const weights = set.ingredients;
+    const wrap = el("div", { class: "lp-weights", title: "Click to edit the generator's dish-type and ingredient weights" });
 
-    if (weights.size === 0) {
+    for (const row of orderableRows(entry.ix, entry.ids)) {
+      const weight = set.composites.get(row.dataId);
+      if (weight === undefined || weight <= 0) continue;
+      const tag = el("span", { class: "lp-weight-tag dish" }, [
+        el("span", { class: "lp-dish-emoji" }, [row.emoji]),
+        el("span", {}, [String(weight)]),
+      ]);
+      tag.title = `${row.name} — dish type weight ${weight}`;
+      wrap.append(tag);
+    }
+    if (wrap.childElementCount > 0 && weights.size > 0) {
+      wrap.append(el("span", { class: "lp-weight-sep" }, []));
+    }
+
+    if (weights.size === 0 && wrap.childElementCount === 0) {
       wrap.append(el("span", { class: "lp-blank" }, ["— not set —"]));
     } else {
       for (const [dataId, weight] of [...weights].sort((a, b) => b[1] - a[1])) {
@@ -1102,20 +1126,26 @@ ${names}${more}`)) {
     }
 
     wrap.addEventListener("click", () => {
+      const stored = parseWeightSet(level.ingredientWeights ?? "");
       const initial =
-        weights.size > 0
-          ? weights
-          : new Map<Id, number>(
-              entry.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]),
-            );
+        stored.ingredients.size > 0
+          ? stored
+          : {
+              ingredients: new Map<Id, number>(
+                entry.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]),
+              ),
+              composites: stored.composites,
+            };
       // The weight grid resolves its icons through the global icon map, which
       // belongs to whichever map the app has open — borrow it for the map this
       // row belongs to. Icons are baked into elements at creation, so restoring
       // it right after the (synchronous) build leaves the dialog correct.
       this.borrowIconMap(entry, () =>
-        openIngredientWeightsDialog(entry.projected.map, initial, (next) => {
-          this.setField(entry, level, "weights", serializeIngredientWeights(next));
-        }),
+        openDishWeightDialog(
+          level.name,
+          { projected: entry.projected, ix: entry.ix, ids: entry.ids, initial },
+          (next) => this.setField(entry, level, "weights", serializeWeightSet(next)),
+        ),
       );
     });
     return wrap;
@@ -1198,11 +1228,16 @@ ${names}${more}`)) {
     }
 
     wrap.addEventListener("click", () => {
-      openObstacleBudgetDialog(level.name, config, (next) => {
-        level.obstacleData = serializeObstacles(next);
-        this.persist(entry);
-        this.refreshRow(entry, level);
-      });
+      openObstacleBudgetDialog(
+        level.name,
+        config,
+        entry.project.doc.map.gridWidth * entry.project.doc.map.gridHeight,
+        (next) => {
+          level.obstacleData = serializeObstacles(next);
+          this.persist(entry);
+          this.refreshRow(entry, level);
+        },
+      );
     });
     return wrap;
   }
@@ -1404,6 +1439,25 @@ ${names}${more}`)) {
         {
           label: `🚦 Validate${single ? "" : ` (${targets.length})`}`,
           onSelect: () => void this.validateLevels(targets),
+        },
+        // Copy/paste is single-selection only: "paste onto these twelve
+        // levels" is a bulk edit with no undo, and the menu it would sit in is
+        // the same one Delete lives in.
+        {
+          label: "⧉ Copy generator data",
+          disabled: !single,
+          separator: true,
+          onSelect: () => copyAll(level),
+        },
+        {
+          label: canPasteAll() ? `📋 Paste generator data (from ${clipboard()?.source})` : "📋 Paste generator data",
+          disabled: !single || !canPasteAll(),
+          onSelect: () => {
+            const applied = pasteAll(level);
+            if (applied.length === 0) return;
+            this.persist(entry);
+            this.refreshRow(entry, level);
+          },
         },
         {
           label: `🧹 Clear generator data${single ? "" : ` (${targets.length})`}`,

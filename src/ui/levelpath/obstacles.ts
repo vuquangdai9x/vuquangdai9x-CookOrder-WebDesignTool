@@ -69,19 +69,27 @@ export function emptyObstacles(): ObstacleConfig {
   };
 }
 
-/** Every field, flattened — what the editor renders and what the string carries. */
+/**
+ * Every field, flattened — what the editor renders and what the string carries.
+ *
+ * The icon lives HERE rather than in a second table beside the summary, so the
+ * editor row and the table cell can never end up showing different symbols for
+ * the same obstacle. Where the game already has a symbol for a status (the
+ * cell- and ingredient-status tables), that is the one used, so a designer
+ * reading a budget sees the same glyph they see on the board.
+ */
 export const OBSTACLE_FIELDS = [
-  { key: "blocked", group: "Grid", label: "Blocked", hint: "Cells locked for the whole level." },
-  { key: "orderLock", group: "Grid", label: "Lock by order", hint: "Cells that open after N orders are served." },
-  { key: "ingredientLock", group: "Grid", label: "Ingredient lock", hint: "Cells that open once N of one ingredient have been used." },
-  { key: "lockKey", group: "Grid", label: "Lock & key", hint: "Colour-locked cells, each with a matching key-carrying queue ingredient. One number, because the two halves are one mechanic." },
-  { key: "hidden", group: "Queue", label: "Hidden", hint: "Queue slots whose ingredient the player cannot see until it reaches the front." },
-  { key: "frozen", group: "Queue", label: "Frozen", hint: "Queue slots that need neighbouring picks before they thaw." },
-  { key: "linked", group: "Queue", label: "Linked", hint: "Pairs chained across two adjacent columns; pickable only once both reach the front." },
-  { key: "combined", group: "Queue", label: "Combined", hint: "Straight runs of 2-3 adjacent slots that move and are picked as one block." },
-  { key: "timed", group: "Customer", label: "Have timer", hint: "Customers given a patience timer." },
-  { key: "shipper", group: "Customer", label: "Shipper", hint: "Big orders (4-5 dishes) with a Shipper avatar." },
-  { key: "boss", group: "Customer", label: "Boss", hint: "Big orders (4-5 dishes) with a Boss avatar. Always arrives last." },
+  { key: "blocked", group: "Grid", icon: "⛔", label: "Blocked", hint: "Cells locked for the whole level." },
+  { key: "orderLock", group: "Grid", icon: "🔒", label: "Lock by order", hint: "Cells that open after N orders are served." },
+  { key: "ingredientLock", group: "Grid", icon: "🍽", label: "Ingredient lock", hint: "Cells that open once N of one ingredient have been used." },
+  { key: "lockKey", group: "Grid", icon: "🎨", label: "Lock & key", hint: "Colour-locked cells, each with a matching key-carrying queue ingredient. One number, because the two halves are one mechanic." },
+  { key: "hidden", group: "Queue", icon: "❔", label: "Hidden", hint: "Queue slots whose ingredient the player cannot see until it reaches the front." },
+  { key: "frozen", group: "Queue", icon: "🧊", label: "Frozen", hint: "Queue slots that need neighbouring picks before they thaw." },
+  { key: "linked", group: "Queue", icon: "🔗", label: "Linked", hint: "Pairs chained across two adjacent columns; pickable only once both reach the front." },
+  { key: "combined", group: "Queue", icon: "🧩", label: "Combined", hint: "Straight runs of 2-3 adjacent slots that move and are picked as one block." },
+  { key: "timed", group: "Customer", icon: "⏱", label: "Have timer", hint: "Customers given a patience timer." },
+  { key: "shipper", group: "Customer", icon: "🚚", label: "Shipper", hint: "Big orders (4-5 dishes) with a Shipper avatar." },
+  { key: "boss", group: "Customer", icon: "👑", label: "Boss", hint: "Big orders (4-5 dishes) with a Boss avatar. Always arrives last." },
 ] as const;
 
 export type ObstacleFieldKey = (typeof OBSTACLE_FIELDS)[number]["key"];
@@ -143,21 +151,8 @@ export const hasObstacles = (config: ObstacleConfig): boolean =>
 
 /** A short human summary for the table cell: "⛔2 🧊3 👑1". */
 export function obstacleSummary(config: ObstacleConfig): { icon: string; count: number; label: string }[] {
-  const ICONS: Record<ObstacleFieldKey, string> = {
-    blocked: "⛔",
-    orderLock: "🔒",
-    ingredientLock: "🍽",
-    lockKey: "🎨",
-    hidden: "❔",
-    frozen: "🧊",
-    linked: "🔗",
-    combined: "🧩",
-    timed: "⏱",
-    shipper: "🚚",
-    boss: "👑",
-  };
   return OBSTACLE_FIELDS.filter((field) => obstacleValue(config, field.key) > 0).map((field) => ({
-    icon: ICONS[field.key],
+    icon: field.icon,
     count: obstacleValue(config, field.key),
     label: field.label,
   }));
@@ -400,6 +395,15 @@ export interface QueuePlacementInput {
 
 export interface QueuePlacementResult {
   queueString: string;
+  /**
+   * Colours a key was actually placed for, one entry per key.
+   *
+   * The grid pass runs first and cannot know how many free queue slots there
+   * will be, so this is how the two halves are reconciled: any lock whose
+   * colour is not in here has no key and gets removed from the board. See
+   * dropUnkeyedLocks.
+   */
+  keyedColors: number[];
   warnings: string[];
 }
 
@@ -433,9 +437,13 @@ export function placeQueueObstacles(input: QueuePlacementInput): QueuePlacementR
   try {
     lanes = parseQueues(input.queueString);
   } catch {
-    return { queueString: input.queueString, warnings: ["Queue string could not be read; no slot obstacles added."] };
+    return {
+      queueString: input.queueString,
+      keyedColors: [],
+      warnings: ["Queue string could not be read; no slot obstacles added."],
+    };
   }
-  if (lanes.length === 0) return { queueString: input.queueString, warnings };
+  if (lanes.length === 0) return { queueString: input.queueString, keyedColors: [], warnings };
 
   const taken = new Set<string>();
   const groups: QueueGroup[] = [];
@@ -485,16 +493,20 @@ export function placeQueueObstacles(input: QueuePlacementInput): QueuePlacementR
   // inside a linked pair, is legal to write and awful to play.
   const singles = pool.filter((c) => usable(c));
 
-  const keys = input.lockColors.slice(0, singles.length);
-  for (const colorId of keys) {
+  // One key per lock, placed before anything else can claim the slots — a lock
+  // without its key is an unopenable cell, which is strictly worse than one
+  // fewer hidden slot.
+  const keyedColors: number[] = [];
+  for (const colorId of input.lockColors) {
     const cell = singles.pop();
     if (!cell) break;
     addEffect(at(cell)!, { effectId: STATUS_HOLDING_KEY, params: [colorId] });
     taken.add(cellKey(cell));
+    keyedColors.push(colorId);
   }
-  if (keys.length < input.lockColors.length) {
+  if (keyedColors.length < input.lockColors.length) {
     warnings.push(
-      `Only ${keys.length}/${input.lockColors.length} colour locks got a key — the queue has too few free slots, so the rest can never open.`,
+      `The queue had room for only ${keyedColors.length}/${input.lockColors.length} keys, so ${input.lockColors.length - keyedColors.length} colour lock(s) were removed rather than left unopenable.`,
     );
   }
 
@@ -528,7 +540,47 @@ export function placeQueueObstacles(input: QueuePlacementInput): QueuePlacementR
     warnings.push(`Only placed ${placed}/${input.config.queue.frozen} frozen slots — every remaining row would have frozen solid.`);
   }
 
-  return { queueString: serializeQueues(lanes, groups), warnings };
+  return { queueString: serializeQueues(lanes, groups), keyedColors, warnings };
+}
+
+/**
+ * Removes colour locks the queue could not key, so every remaining lock has
+ * exactly as many keys as it needs, PER COLOUR.
+ *
+ * This is the reconciliation the two passes need. The grid is placed first
+ * (its locks are what tell the queue how many keys to emit), but how many keys
+ * fit depends on the queue — so the only place the invariant can actually be
+ * enforced is here, after both. Leaving the surplus lock on the board would be
+ * a cell the player can see, is told how to open, and never can.
+ */
+export function dropUnkeyedLocks(gridString: string, keyedColors: number[]): string {
+  let cells: GridCellConfig[];
+  try {
+    cells = parseGrid(gridString);
+  } catch {
+    return gridString;
+  }
+
+  // Keys still available per colour; a lock consumes as many as its keyCount.
+  const available = new Map<number, number>();
+  for (const colorId of keyedColors) available.set(colorId, (available.get(colorId) ?? 0) + 1);
+
+  let changed = false;
+  const kept = cells.map((cell) => {
+    const lock = cell.effects.find((effect) => effect.effectId === CELL_COLOR_LOCK);
+    if (!lock) return cell;
+    const colorId = lock.params[0] ?? 0;
+    const needed = Math.max(1, lock.params[1] ?? 1);
+    const have = available.get(colorId) ?? 0;
+    if (have < needed) {
+      changed = true;
+      return { effects: [] };
+    }
+    available.set(colorId, have - needed);
+    return cell;
+  });
+
+  return changed ? serializeGrid(kept) : gridString;
 }
 
 function addEffect(item: QueueItem, effect: EffectInstance): void {

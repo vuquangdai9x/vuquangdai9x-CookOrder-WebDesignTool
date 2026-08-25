@@ -41,8 +41,6 @@ import type { GenerateContext } from "./generateLevel.ts";
 
 const MIN_CUSTOMERS = DEFAULT_BOUNDS.minCustomers;
 const MAX_CUSTOMERS = DEFAULT_BOUNDS.maxCustomers;
-const MIN_TOTAL_DISHES = DEFAULT_BOUNDS.minTotalDishes;
-const MAX_TOTAL_DISHES = DEFAULT_BOUNDS.maxTotalDishes;
 
 const doc = burgerJson as unknown as NodeGraphMap;
 const ix = buildIndex(doc);
@@ -67,30 +65,32 @@ function blank(overrides: Partial<LevelData> = {}): LevelData {
 }
 
 describe("randomDishCountSequence", () => {
-  it("stays inside the customer and total-dish bounds for every seed", () => {
+  it("rolls only the customer count, and puts every one on Auto", () => {
     for (let seed = 1; seed <= 200; seed++) {
       const counts = randomDishCountSequence(seededRng(seed));
-      const total = counts.reduce((n, c) => n + c, 0);
       expect(counts.length).toBeGreaterThanOrEqual(MIN_CUSTOMERS);
       expect(counts.length).toBeLessThanOrEqual(MAX_CUSTOMERS);
-      expect(total).toBeGreaterThanOrEqual(MIN_TOTAL_DISHES);
-      expect(total).toBeLessThanOrEqual(MAX_TOTAL_DISHES);
-      // Nobody is left ordering nothing — that would silently mean "Staff".
-      expect(counts.every((c) => c >= 1)).toBe(true);
+      // 0 = Auto. The complexity curve is the ONE thing that shapes a level's
+      // per-customer load; a second random source behind it fought that shape.
+      expect(counts.every((c) => c === 0)).toBe(true);
     }
+  });
+
+  it("produces a range of level lengths", () => {
+    const lengths = new Set(
+      Array.from({ length: 60 }, (_, i) => randomDishCountSequence(seededRng(i + 1)).length),
+    );
+    expect(lengths.size).toBeGreaterThan(3);
   });
 });
 
 describe("configurable bounds", () => {
-  it("honours a custom customer and dish range", () => {
-    const bounds = { ...DEFAULT_BOUNDS, minCustomers: 2, maxCustomers: 3, minTotalDishes: 4, maxTotalDishes: 6 };
+  it("honours a custom customer range", () => {
+    const bounds = { ...DEFAULT_BOUNDS, minCustomers: 2, maxCustomers: 3 };
     for (let seed = 1; seed <= 100; seed++) {
       const counts = randomDishCountSequence(seededRng(seed), bounds);
-      const total = counts.reduce((n, c) => n + c, 0);
       expect(counts.length).toBeGreaterThanOrEqual(2);
       expect(counts.length).toBeLessThanOrEqual(3);
-      expect(total).toBeGreaterThanOrEqual(4);
-      expect(total).toBeLessThanOrEqual(6);
     }
   });
 
@@ -118,11 +118,8 @@ describe("configurable bounds", () => {
       ...DEFAULT_BOUNDS,
       minCustomers: 6,
       maxCustomers: 1,
-      minTotalDishes: 12,
-      maxTotalDishes: 2,
     });
     expect(counts.length).toBe(6);
-    expect(counts.every((c) => c >= 1)).toBe(true);
   });
 });
 
@@ -196,7 +193,8 @@ describe("resolveConfig", () => {
     const second = resolveConfig(level, ctx, 1234, true);
     expect(second.dishCounts).toEqual(first.dishCounts);
     expect(second.complexity).toEqual(first.complexity);
-    expect([...second.weights]).toEqual([...first.weights]);
+    expect([...second.weights.ingredients]).toEqual([...first.weights.ingredients]);
+    expect([...second.weights.composites]).toEqual([...first.weights.composites]);
   });
 
   it("keeps what the level records when not rerolling", () => {

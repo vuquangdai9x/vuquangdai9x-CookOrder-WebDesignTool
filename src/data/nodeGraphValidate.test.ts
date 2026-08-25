@@ -253,3 +253,48 @@ describe("warnings", () => {
     expect(warnings.find((w) => w.invariantId === "WARN-EMPTY-TOOL")!.message).toContain("idle-tool");
   });
 });
+
+describe("unused dead nodes", () => {
+  /** An ingredient nothing produces, nothing picks up, and nothing orders. */
+  const withLeftover = (): NodeGraphMap => {
+    const doc = structuredClone(burger) as unknown as NodeGraphMap;
+    doc.vertices.ingredient.push({ name: "leftover-art", displayName: "Leftover" });
+    return doc;
+  };
+
+  it("reports a leftover as a warning, not an error", () => {
+    // Nothing can reach it, so nothing can break on it. Reporting it as an
+    // error made a map with an honest scrap of unfinished work look exactly
+    // as alarming as one with a genuinely impossible dish.
+    const result = validateNodeGraph(withLeftover());
+    expect(result.errors.some((i) => i.vertexName === "leftover-art")).toBe(false);
+    expect(
+      result.warnings.some(
+        (i) => i.vertexName === "leftover-art" && i.invariantId === "WARN-UNUSED-DEAD-NODE",
+      ),
+    ).toBe(true);
+  });
+
+  it("still errors when something actually orders the unobtainable node", () => {
+    const doc = structuredClone(burger) as unknown as NodeGraphMap;
+    // Make a REACHED ingredient unobtainable: drop its producer and its pickup.
+    const producer = doc.edges.process[0];
+    const victim = producer.to;
+    doc.edges.process = doc.edges.process.filter((e) => e.to !== victim);
+    const vertex = doc.vertices.ingredient.find((v) => v.name === victim);
+    if (vertex) vertex.pickupable = false;
+
+    const result = validateNodeGraph(doc);
+    expect(
+      result.errors.some(
+        (i) => i.vertexName === victim && i.invariantId === "INV-UNIQUE-PRODUCER",
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves the bundled maps free of errors", () => {
+    // The whole point of the change: an unfinished donut route in Map 2 is a
+    // note, not a broken graph.
+    expect(validateNodeGraph(burger as unknown as NodeGraphMap).errors).toEqual([]);
+  });
+});

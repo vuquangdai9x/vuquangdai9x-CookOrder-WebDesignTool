@@ -22,8 +22,8 @@ import type { IdIndex } from "../../data/nodeIdTable.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import {
   DEFAULT_INGREDIENT_WEIGHT,
-  parseIngredientWeights,
-  serializeIngredientWeights,
+  parseWeightSet,
+  serializeWeightSet,
 } from "../design/ingredientWeightEditor.ts";
 
 /**
@@ -85,6 +85,8 @@ export function weightsFromDistribution(counts: Map<Id, number>): Map<Id, number
 
 export interface WeightRepair {
   weights: Map<Id, number>;
+  /** The dish-type half, preserved as recorded — the repair has no opinion on it. */
+  composites: Map<Id, number>;
   /** Ingredients the customers order that the record had switched off. */
   contradicted: Id[];
   /** True when there were no weights recorded at all. */
@@ -104,7 +106,8 @@ export function repairIngredientWeights(
   const counts = ingredientDistribution(level, ix, ids);
   if (counts.size === 0) return null; // no customers to learn from
 
-  const recorded = parseIngredientWeights(level.ingredientWeights ?? "");
+  const stored = parseWeightSet(level.ingredientWeights ?? "");
+  const recorded = stored.ingredients;
   const wasEmpty = recorded.size === 0;
   const contradicted = [...counts.keys()].filter((dataId) => (recorded.get(dataId) ?? 0) <= 0);
   if (!wasEmpty && contradicted.length === 0) return null;
@@ -116,12 +119,23 @@ export function repairIngredientWeights(
   for (const [dataId, weight] of recorded) {
     if (!rebuilt.has(dataId) && weight > 0) rebuilt.set(dataId, weight);
   }
-  return { weights: rebuilt, contradicted: contradicted.sort((a, b) => a - b), wasEmpty };
+  return {
+    weights: rebuilt,
+    // The DISH TYPE weights are carried through untouched. They are a separate
+    // authoring decision, the customer string says nothing that contradicts
+    // them, and dropping them here is how a repair silently became a delete.
+    composites: stored.composites,
+    contradicted: contradicted.sort((a, b) => a - b),
+    wasEmpty,
+  };
 }
 
 /** Applies a repair to the level, returning the one-line note for its Status cell. */
 export function applyWeightRepair(level: LevelData, repair: WeightRepair): string {
-  level.ingredientWeights = serializeIngredientWeights(repair.weights);
+  level.ingredientWeights = serializeWeightSet({
+    ingredients: repair.weights,
+    composites: repair.composites,
+  });
   return repair.wasEmpty
     ? "Ingredient weights filled in from the customer string."
     : `Ingredient weights rebuilt from the customer string — ${repair.contradicted.length} ordered ingredient(s) were recorded as disabled.`;
