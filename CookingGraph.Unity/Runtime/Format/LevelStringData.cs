@@ -64,6 +64,66 @@ namespace CookingGraph
     }
     #endregion
 
+    #region Prep Grid
+    /// <summary>
+    /// Cell-type ids a grid string carries. The behaviour behind each one lives in the simulation
+    /// (GAMEPLAY_RULES.md §14.2) and depends on live counters, so this enum only names the ids —
+    /// it exists so a scene does not carry magic numbers.
+    /// </summary>
+    public enum CellStatusId
+    {
+        Normal = 0,
+        Blocked = 1,
+        OrderLock = 2,
+        IngredientSlot = 3,
+        ColorLock = 4
+    }
+
+    /// <summary>One prep-grid cell. No effects at all is a plain blank cell.</summary>
+    [Serializable]
+    public sealed class GridCellData
+    {
+        public List<EffectData> effects = new List<EffectData>();
+
+        public bool IsBlank => effects == null || effects.Count == 0;
+
+        public bool Has(CellStatusId status)
+        {
+            if (effects == null) return false;
+            foreach (var effect in effects)
+                if (effect != null && effect.effectId == (int)status) return true;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The prep grid, in scan order: left to right, top to bottom. Width and height are -1 until the
+    /// layout is parsed against a graph, because the string itself carries only a flat cell run.
+    /// </summary>
+    [Serializable]
+    public sealed class GridLayoutData
+    {
+        public List<GridCellData> cells = new List<GridCellData>();
+        public int width = -1;
+        public int height = -1;
+
+        public bool HasDimensions => width > 0 && height > 0;
+
+        /// <summary>Scan-order index of a coordinate, or -1 when it is unknown or off the grid.</summary>
+        public int IndexOf(int x, int y)
+        {
+            if (!HasDimensions || x < 0 || y < 0 || x >= width || y >= height) return -1;
+            return y * width + x;
+        }
+
+        public GridCellData CellAt(int x, int y)
+        {
+            var index = IndexOf(x, y);
+            return index >= 0 && index < cells.Count ? cells[index] : null;
+        }
+    }
+    #endregion
+
     #region Customer Order
     public enum OrderMemberKind
     {

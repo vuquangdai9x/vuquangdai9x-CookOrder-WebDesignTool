@@ -1,6 +1,6 @@
 {
   "name": "com.daivq.cookinggraph",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "displayName": "Cooking Graph",
   "description": "CookOrder graph authoring, runtime graph assets, and level-string translators.",
   "unity": "6000.0",

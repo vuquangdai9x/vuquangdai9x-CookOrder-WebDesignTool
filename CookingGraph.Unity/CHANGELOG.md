@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2
+
+- Added `GridLayoutTranslator`, completing the set of three level-string translators. It parses and
+  serializes the prep-grid string, and its graph overload checks the cell count against the map's
+  `gridWidth * gridHeight`, fills in the grid shape (`CellAt(x, y)`), and resolves Ingredient-slot
+  cells through the ingredient id table.
+- Added `CellStatusId` for the cell-type ids a grid string carries.
+
 ## 0.1.1
 
 - Preservation slots are now a first-class part of the package: the `preservation` edge kind, the

@@ -25,9 +25,10 @@ diverges will disagree with every level's designed win-rate.
 
 What this package already ships (see `README.md`): the graph JSON importer, `CookingGraphAsset` +
 typed node ScriptableObjects (including tool slot points, `preservationSlots` and the preservation
-edges, with `CookingGraphPreservation` resolving what each buffer accepts), and the level-string
-translators (`IngredientQueueTranslator`, `CustomerOrderTranslator`). **It does not ship a runtime
-simulation** — sections 5–14 are what the gameplay scene has to implement.
+edges, with `CookingGraphPreservation` resolving what each buffer accepts), and a translator for
+each of the three level strings (`IngredientQueueTranslator`, `GridLayoutTranslator`,
+`CustomerOrderTranslator`). **It does not ship a runtime simulation** — sections 5–14 are what the
+gameplay scene has to implement.
 
 ---
 
@@ -248,6 +249,8 @@ One level = one CSV row / one `LevelData`:
 * `,` separates cells in **scan order**: left→right, top→bottom, exactly `gridWidth * gridHeight`
   entries. Cell index `i` ⇒ `x = i % gridWidth`, `y = i / gridWidth`.
 * An empty entry is a blank cell; otherwise the entry is an effect list (cell type + params, §14.2).
+* In Unity: `GridLayoutTranslator.Parse(gridString, graph)` — the graph overload enforces the cell
+  count, fills in `width`/`height` so `CellAt(x, y)` works, and resolves Ingredient-slot cells.
 
 ### 4.3 Customer string
 
@@ -909,8 +912,9 @@ The Coffee map exercises the harder paths: `coffee-machine` has two slot points
 ## 18. Implementation checklist for the gameplay scene
 
 **Data in** — load a `CookingGraphAsset` (graph + id table) and one level row (three strings +
-scalars). Parse with `IngredientQueueTranslator` / `CustomerOrderTranslator`; parse the grid string
-into `gridWidth * gridHeight` effect lists.
+scalars). Parse all three with the package's translators: `IngredientQueueTranslator`,
+`GridLayoutTranslator` and `CustomerOrderTranslator`, using the `CookingGraphAsset` overloads so
+unresolved ids fail loudly.
 
 **Build** — the precomputed index of §5 (dense interning, steps, slot layouts, terminal output/yield,
 reachability bitsets, slot trees, `dirtyOf`, `usageNum`/`servable`/`pickupable`). Preservation is

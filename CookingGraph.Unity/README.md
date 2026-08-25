@@ -14,7 +14,12 @@ The graph JSON remains the source of truth. Without a config, generated runtime 
 
 ```csharp
 IngredientQueueData queues = IngredientQueueTranslator.Parse(queueString, graphAsset);
+GridLayoutData grid = GridLayoutTranslator.Parse(gridString, graphAsset);
 CustomerOrderData customers = CustomerOrderTranslator.Parse(customerString, graphAsset);
+
+// The grid string is a flat run of cells in scan order; the map header supplies the shape.
+GridCellData cell = grid.CellAt(2, 1);
+bool blocked = cell.Has(CellStatusId.Blocked);
 
 // Queue ingredients expose both the positional index and typed asset.
 int ingredientIndex = queues.columns[0].items[0].index;
@@ -24,14 +29,17 @@ IngredientNodeAsset ingredient = queues.columns[0].items[0].ingredient;
 int memberIndex = customers.customers[0].dishes[0].root.index;
 CookingNodeAsset memberAsset = customers.customers[0].dishes[0].root.asset;
 
-// Both formats support canonical round-tripping.
+// All three formats support canonical round-tripping.
 string queueAgain = IngredientQueueTranslator.Serialize(queues);
+string gridAgain = GridLayoutTranslator.Serialize(grid);
 string customersAgain = CustomerOrderTranslator.Serialize(customers);
 ```
 
 Use the overloads that receive `CookingGraphAsset` for runtime data. They reject unresolved table indices and populate asset references. The graph-less overloads remain available for syntax-only parsing and canonical interchange; their asset-reference fields are null.
 
 The customer translator accepts the graph grammar (`{c0:...}` / `{g0:...}`) only. `TryParse` overloads return a `CookingGraphFormatException` containing the failing source position and context.
+
+The grid string carries no dimensions of its own, so only the graph overload can shape it: it checks the cell count against `gridWidth * gridHeight` — a grid of the wrong length silently shifts every later cell, so it is rejected rather than padded — fills in `width`/`height`, and verifies that any Ingredient-slot cell resolves through the ingredient id table. Read that one back with `GridLayoutTranslator.TryGetIngredientSlot`; it is the only cell effect whose parameters name a node, since OrderLock counts customers and ColorLock names a key colour. `GridLayoutTranslator.Blank(graph)` produces an all-blank grid string for a new level.
 
 ## Generation
 
