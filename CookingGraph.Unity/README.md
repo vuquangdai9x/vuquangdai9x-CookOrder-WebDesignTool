@@ -40,3 +40,25 @@ Create a **Cooking Graph > Generation Config** asset from Unity's **Assets > Cre
 The first successful generation creates typed node assets and one `CookingGraphAsset`. Later runs are labeled **Sync** and update active assets in place so their GUIDs remain stable. Removed graph nodes are detached from the runtime graph but their asset files are retained and reported as orphans.
 
 Local image paths, direct `imageURL` values, and Drive IDs remain in interchangeable JSON but are not copied into runtime assets or included in synchronization fingerprints. Assign a `Sprite` to each generated node asset; the editor canvas uses it in preference to the JSON emoji.
+
+## Preservation slots
+
+A tool may declare `preservationSlots` — waiting positions outside its recipe layout — plus one
+`preservation` edge naming what they accept. A matching pickup enters the buffer first, advances
+into a free process slot on its own, and is refused while every position is occupied. The edge may
+point at a group, in which case the buffer accepts every concrete option of that group:
+
+```csharp
+// Concrete ingredients this tool's buffer accepts, groups already expanded.
+IReadOnlyList<IngredientNodeAsset> accepted = CookingGraphPreservation.IngredientsFor(graph, tool);
+
+// The reverse: tools a pickup may be buffered in, in graph order.
+IReadOnlyList<ToolNodeAsset> tools = CookingGraphPreservation.ToolsFor(graph, ingredient);
+
+// Both at once, for a runtime that indexes this up front.
+Dictionary<ToolNodeAsset, List<IngredientNodeAsset>> lookup = CookingGraphPreservation.BuildLookup(graph);
+```
+
+Validation treats the slot count and the wiring as one rule: slots with nothing wired can never be
+entered, and an edge with no slots declares a buffer that does not exist. Either half alone is an
+error, because in play both look like a silent stall.

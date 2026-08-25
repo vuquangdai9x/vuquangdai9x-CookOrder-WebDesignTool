@@ -60,7 +60,7 @@ namespace CookingGraph.Editor
     {
         public const int SupportedVersion = 1;
         public static readonly string[] VertexKinds = { "ingredient", "tool", "group", "composite", "dirty" };
-        public static readonly string[] EdgeKinds = { "process", "base", "topping", "option", "leavesDirty" };
+        public static readonly string[] EdgeKinds = { "process", "preservation", "base", "topping", "option", "leavesDirty" };
         public static readonly string[] IdSpaces = { "ingredient", "composite", "group", "tool", "dirty" };
 
         public static readonly IReadOnlyList<GraphFieldDefinition> MapFields = new[]
@@ -75,26 +75,35 @@ namespace CookingGraph.Editor
             new VertexDefinition("ingredient", "Ingredient", "#6bbf59",
                 F("name", "string", true), F("displayName", "string", true), F("pickupable", "bool", false, false),
                 F("usageNum", "int", false, 1), F("price", "int", false, 0),
-                F("code", "string"), F("emoji", "string"), F("localImage", "string"), F("fileId", "string")),
+                F("code", "string"), F("emoji", "string"), F("localImage", "string"), F("imageURL", "string"), F("fileId", "string")),
+            // preservationSlots are waiting positions OUTSIDE the recipe layout: a matching pickup
+            // enters the buffer first, advances into a free process slot on its own, and is blocked
+            // while every buffered position is taken. Which ingredients they accept comes from the
+            // tool's single preservation edge, never from this number.
             new VertexDefinition("tool", "Tool", "#f0a441",
                 F("name", "string", true), F("displayName", "string", true), F("slotConfigs", "slotConfig[]", true),
+                F("preservationSlots", "int", false, 0),
                 F("cookingTime", "number", true, 1f), F("upgradeCosts", "int[]"), F("emoji", "string"),
-                F("localImage", "string"), F("fileId", "string"), F("runtimeToolId", "int")),
+                F("localImage", "string"), F("imageURL", "string"), F("fileId", "string"), F("runtimeToolId", "int")),
             new VertexDefinition("group", "Group", "#a978de",
                 F("name", "string", true), F("displayName", "string", true), F("minQuantity", "int", false, 0),
                 F("maxQuantity", "int", false, -1)),
             new VertexDefinition("composite", "Composite", "#4f8fdb",
                 F("name", "string", true), F("displayName", "string", true), F("orderable", "bool", false, false),
-                F("toppingRequired", "bool", false, false)),
+                F("toppingRequired", "bool", false, false), F("emoji", "string")),
             new VertexDefinition("dirty", "Dirty", "#888888",
                 F("name", "string", true), F("displayName", "string", true), F("maxStack", "int"), F("emoji", "string"),
-                F("localImage", "string"), F("fileId", "string"), F("runtimeDirtyId", "int"))
+                F("localImage", "string"), F("imageURL", "string"), F("fileId", "string"), F("runtimeDirtyId", "int"))
         }.ToDictionary(value => value.Kind);
 
         public static readonly IReadOnlyDictionary<string, EdgeDefinition> Edges = new[]
         {
             new EdgeDefinition("process", "Process", new[] { "tool" }, new[] { "ingredient" },
                 F("inputs", "processInput[]", true), F("amount", "int", true, 1), F("auto", "bool", true, true), F("duration", "number"), F("chainTools", "ref[]", false, null, "tool")),
+            // Declares what this tool's preservation buffer accepts: one ingredient, or every
+            // concrete option of one group. At most one per tool, so the buffer's contents are
+            // never ambiguous.
+            new EdgeDefinition("preservation", "Preserves", new[] { "tool" }, new[] { "ingredient", "group" }),
             new EdgeDefinition("base", "Base", new[] { "composite" }, new[] { "ingredient", "group", "composite" }),
             new EdgeDefinition("topping", "Topping", new[] { "composite" }, new[] { "ingredient", "group", "composite" }),
             new EdgeDefinition("option", "Option", new[] { "group" }, new[] { "ingredient", "group", "composite" }, F("maxQuantity", "int", false, -1)),

@@ -248,6 +248,7 @@ namespace CookingGraph.Editor
             switch (kind)
             {
                 case "process": return new Color(.95f, .63f, .25f);
+                case "preservation": return new Color(.95f, .82f, .55f);
                 case "base": return new Color(.25f, .65f, .95f);
                 case "topping": return new Color(.75f, .45f, .95f);
                 case "option": return new Color(.45f, .85f, .55f);

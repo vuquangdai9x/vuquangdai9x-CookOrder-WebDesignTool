@@ -41,6 +41,18 @@ namespace CookingGraph
         public CookingNodeAsset to;
     }
 
+    /// <summary>
+    /// What one tool's preservation buffer accepts. <see cref="to"/> is an ingredient or a group;
+    /// a group means every concrete ingredient reachable through its options
+    /// (see <see cref="CookingGraphPreservation"/>).
+    /// </summary>
+    [Serializable]
+    public sealed class PreservationEdgeAssetData
+    {
+        public ToolNodeAsset from;
+        public CookingNodeAsset to;
+    }
+
     [Serializable]
     public sealed class OptionEdgeAssetData
     {
@@ -77,6 +89,7 @@ namespace CookingGraph
         public List<CompositeNodeAsset> composites = new List<CompositeNodeAsset>();
         public List<DirtyNodeAsset> dirtyObjects = new List<DirtyNodeAsset>();
         public List<ProcessEdgeAssetData> processEdges = new List<ProcessEdgeAssetData>();
+        public List<PreservationEdgeAssetData> preservationEdges = new List<PreservationEdgeAssetData>();
         public List<NodeEdgeAssetData> baseEdges = new List<NodeEdgeAssetData>();
         public List<NodeEdgeAssetData> toppingEdges = new List<NodeEdgeAssetData>();
         public List<OptionEdgeAssetData> optionEdges = new List<OptionEdgeAssetData>();

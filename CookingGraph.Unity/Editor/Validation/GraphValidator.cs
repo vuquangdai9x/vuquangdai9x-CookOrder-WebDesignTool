@@ -38,16 +38,50 @@ namespace CookingGraph.Editor
             var byName = nodes.GroupBy(pair => pair.Node.Value<string>("name") ?? string.Empty, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
             var servable = DerivedServable(document);
+            // What an orderable can actually reach, computed once: it decides whether a broken node
+            // is a fault or a leftover. See ValidateProduction.
+            var reached = ReachableFromOrderables(document);
 
             ValidateFields(nodes, issues);
             ValidateNamespace(byName, issues);
             ValidateEdges(document, byName, issues);
             ValidateIdTables(document, byName, servable, issues);
-            ValidateProduction(document, issues);
-            ValidateComposition(document, byName, issues);
+            ValidateProduction(document, reached, issues);
+            ValidateComposition(document, byName, reached, issues);
             ValidateCycles(document, byName, issues);
-            ValidateWarnings(document, byName, issues);
+            ValidateWarnings(document, reached, issues);
             return issues;
+        }
+
+        /// <summary>
+        /// Everything an orderable composite can reach: down base/topping/option edges, then
+        /// backwards through the process edges that make each ingredient (tool, chain tools and
+        /// inputs included).
+        /// </summary>
+        private static HashSet<string> ReachableFromOrderables(GraphJsonDocument document)
+        {
+            var reached = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var root in GraphJsonDocument.Array(document.Vertices, "composite").OfType<JObject>()
+                         .Where(node => node.Value<bool?>("orderable") == true).Select(node => node.Value<string>("name")))
+                CollectComposition(root, document, reached);
+
+            var processes = GraphJsonDocument.Array(document.Edges, "process").OfType<JObject>().ToList();
+            // An order reaches finished ingredients through composition edges; the pickupable raws
+            // and intermediate outputs that make those ingredients are used too, even though they
+            // are not dish slots.
+            for (var expanded = true; expanded;)
+            {
+                expanded = false;
+                foreach (var process in processes.Where(edge => reached.Contains(edge.Value<string>("to"))))
+                {
+                    if (reached.Add(process.Value<string>("from"))) expanded = true;
+                    foreach (var input in (process["inputs"] as JArray ?? new JArray()).OfType<JObject>())
+                        if (reached.Add(input.Value<string>("ingredient"))) expanded = true;
+                    foreach (var tool in (process["chainTools"] as JArray ?? new JArray()).Values<string>())
+                        if (reached.Add(tool)) expanded = true;
+                }
+            }
+            return reached;
         }
 
         private static void ValidateFields(IEnumerable<(string Kind, JObject Node)> nodes, ICollection<GraphIssue> issues)
@@ -100,9 +134,35 @@ namespace CookingGraph.Editor
             }
 
             DuplicateCap(document, "process", "to", issues, "INV-UNIQUE-PRODUCER");
+            DuplicateCap(document, "preservation", "from", issues, "INV-REF");
             DuplicateCap(document, "base", "from", issues, "INV-BASE-REQUIRED");
             DuplicateCap(document, "topping", "from", issues, "INV-TOPPING-REQUIRED");
             DuplicateCap(document, "leavesDirty", "from", issues, "INV-REF");
+            ValidatePreservation(document, issues);
+        }
+
+        /// <summary>
+        /// A tool's buffer size and the edge naming what it holds are two halves of one rule, so
+        /// either half alone is a fault: slots with nothing wired can never be entered, and an edge
+        /// with no slots declares a buffer that does not exist. Both would show up in play as a
+        /// silent stall rather than as an error.
+        /// </summary>
+        private static void ValidatePreservation(GraphJsonDocument document, ICollection<GraphIssue> issues)
+        {
+            var edges = GraphJsonDocument.Array(document.Edges, "preservation").OfType<JObject>().ToList();
+            foreach (var tool in GraphJsonDocument.Array(document.Vertices, "tool").OfType<JObject>())
+            {
+                var name = tool.Value<string>("name");
+                var token = tool["preservationSlots"];
+                var slots = tool.Value<int?>("preservationSlots") ?? 0;
+                if (token != null && (token.Type != JTokenType.Integer || slots < 0))
+                    Error(issues, "INV-REF", $"Tool '{name}' has preservationSlots '{token}'; it must be a non-negative integer.", name);
+                var wired = edges.Count(edge => edge.Value<string>("from") == name);
+                if (slots > 0 && wired == 0)
+                    Error(issues, "INV-REF", $"Tool '{name}' has {slots} preservation slot(s) but no ingredient or group is wired to them.", name);
+                if (slots <= 0 && wired > 0)
+                    Error(issues, "INV-REF", $"Tool '{name}' has a preservation edge but preservationSlots is zero.", name);
+            }
         }
 
         private static void ValidateIdTables(GraphJsonDocument document, IReadOnlyDictionary<string, List<(string Kind, JObject Node)>> byName, ISet<string> servable, ICollection<GraphIssue> issues)
@@ -135,7 +195,7 @@ namespace CookingGraph.Editor
             }
         }
 
-        private static void ValidateProduction(GraphJsonDocument document, ICollection<GraphIssue> issues)
+        private static void ValidateProduction(GraphJsonDocument document, ISet<string> reached, ICollection<GraphIssue> issues)
         {
             var processes = GraphJsonDocument.Array(document.Edges, "process").OfType<JObject>().ToList();
             var producers = processes.GroupBy(edge => edge.Value<string>("to") ?? string.Empty).ToDictionary(group => group.Key, group => group.ToList());
@@ -144,8 +204,15 @@ namespace CookingGraph.Editor
                 var name = ingredient.Value<string>("name");
                 var count = producers.TryGetValue(name ?? string.Empty, out var rows) ? rows.Count : 0;
                 if (count > 1) Error(issues, "INV-UNIQUE-PRODUCER", $"Ingredient '{name}' has {count} producer edges.", name);
-                if (count == 0 && ingredient.Value<bool?>("pickupable") != true)
+                if (count != 0 || ingredient.Value<bool?>("pickupable") == true) continue;
+                // Unobtainable AND unwanted is not a broken graph, it is a leftover — art that was
+                // drawn, a route planned and never wired, a node kept for later. Nothing reaches it,
+                // so nothing can break on it, and reporting it as an error makes a map with an
+                // honest scrap of unfinished work look as alarming as a genuinely impossible dish.
+                if (reached.Contains(name))
                     Error(issues, "INV-UNIQUE-PRODUCER", $"Ingredient '{name}' is neither pickupable nor produced.", name);
+                else
+                    Warning(issues, "WARN-UNUSED-DEAD-NODE", $"Ingredient '{name}' cannot be obtained, but nothing orders it either — an unused leftover.", name);
             }
 
             var stableSlots = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -181,7 +248,7 @@ namespace CookingGraph.Editor
             }
         }
 
-        private static void ValidateComposition(GraphJsonDocument document, IReadOnlyDictionary<string, List<(string Kind, JObject Node)>> byName, ICollection<GraphIssue> issues)
+        private static void ValidateComposition(GraphJsonDocument document, IReadOnlyDictionary<string, List<(string Kind, JObject Node)>> byName, ISet<string> reached, ICollection<GraphIssue> issues)
         {
             var bases = GraphJsonDocument.Array(document.Edges, "base").OfType<JObject>().ToList();
             var toppings = GraphJsonDocument.Array(document.Edges, "topping").OfType<JObject>().ToList();
@@ -223,7 +290,11 @@ namespace CookingGraph.Editor
                 if (min < 0 || (max >= 0 && min > max))
                     Error(issues, "INV-GROUP-QUANTITY", $"Group '{name}' has minQuantity {min} and maxQuantity {max}; the minimum must be non-negative and no greater than a finite maximum.", name);
                 var count = options.Count(edge => edge.Value<string>("from") == name);
-                if (count == 0) Error(issues, "INV-GROUP-NONEMPTY", $"Group '{name}' has no options.", name);
+                // Same reasoning as the unobtainable ingredient above: an empty group no orderable
+                // reaches cannot stop anything from being made.
+                if (count == 0 && reached.Contains(name)) Error(issues, "INV-GROUP-NONEMPTY", $"Group '{name}' has no options — nothing can fill it.", name);
+                if (count == 0 && !reached.Contains(name))
+                    Warning(issues, "WARN-UNUSED-DEAD-NODE", $"Group '{name}' has no options, but nothing reaches it either — an unused leftover.", name);
                 if (count == 1 && (group.Value<int?>("maxQuantity") ?? -1) == 1)
                     Warning(issues, "WARN-DEGENERATE-CHOICE", $"Group '{name}' has one option and permits one pick.", name);
             }
@@ -257,7 +328,7 @@ namespace CookingGraph.Editor
                 }
         }
 
-        private static void ValidateWarnings(GraphJsonDocument document, IReadOnlyDictionary<string, List<(string Kind, JObject Node)>> byName, ICollection<GraphIssue> issues)
+        private static void ValidateWarnings(GraphJsonDocument document, ISet<string> reachable, ICollection<GraphIssue> issues)
         {
             var processes = GraphJsonDocument.Array(document.Edges, "process").OfType<JObject>().ToList();
             foreach (var tool in GraphJsonDocument.Array(document.Vertices, "tool").OfType<JObject>())
@@ -266,26 +337,6 @@ namespace CookingGraph.Editor
                 if (!processes.Any(edge => edge.Value<string>("from") == name)) Warning(issues, "WARN-EMPTY-TOOL", $"Tool '{name}' has no process edges.", name);
             }
 
-            var orderRoots = GraphJsonDocument.Array(document.Vertices, "composite").OfType<JObject>()
-                .Where(node => node.Value<bool?>("orderable") == true).Select(node => node.Value<string>("name")).ToList();
-            var reachable = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var root in orderRoots) CollectComposition(root, document, reachable);
-            // An order reaches finished ingredients through composition edges;
-            // the pickupable raws and intermediate outputs that make those
-            // ingredients are also used, even though they are not dish slots.
-            var expanded = true;
-            while (expanded)
-            {
-                expanded = false;
-                foreach (var process in processes.Where(edge => reachable.Contains(edge.Value<string>("to"))))
-                {
-                    if (reachable.Add(process.Value<string>("from"))) expanded = true;
-                    foreach (var input in (process["inputs"] as JArray ?? new JArray()).OfType<JObject>())
-                        if (reachable.Add(input.Value<string>("ingredient"))) expanded = true;
-                    foreach (var tool in (process["chainTools"] as JArray ?? new JArray()).Values<string>())
-                        if (reachable.Add(tool)) expanded = true;
-                }
-            }
             foreach (var ingredient in GraphJsonDocument.Array(document.Vertices, "ingredient").OfType<JObject>())
             {
                 var name = ingredient.Value<string>("name");

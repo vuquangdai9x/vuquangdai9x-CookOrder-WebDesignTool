@@ -24,8 +24,9 @@ diverges will disagree with every level's designed win-rate.
 | Booster / global params | `data/config/general/boosters.json` |
 
 What this package already ships (see `README.md`): the graph JSON importer, `CookingGraphAsset` +
-typed node ScriptableObjects, and the level-string translators
-(`IngredientQueueTranslator`, `CustomerOrderTranslator`). **It does not ship a runtime
+typed node ScriptableObjects (including tool slot points, `preservationSlots` and the preservation
+edges, with `CookingGraphPreservation` resolving what each buffer accepts), and the level-string
+translators (`IngredientQueueTranslator`, `CustomerOrderTranslator`). **It does not ship a runtime
 simulation** — sections 5–14 are what the gameplay scene has to implement.
 
 ---
@@ -304,7 +305,8 @@ The sim never scans the graph in its hot loop. Build these once (`core/nodeIndex
   (point-major: every lane of point 0, then of point 1, …), and `laneCount` = the widest point.
 * `preservationSlots[tool]`, `preservationIngredients[tool]`, `preservationToolsForInput[ing]` —
   resolved from the preservation edge (a wired group expands to all its concrete ingredient
-  options, recursively).
+  options, recursively). In Unity these come straight off `ToolNodeAsset.preservationSlots` and
+  `CookingGraphPreservation.BuildLookup(graph)` — do not re-derive the group expansion.
 * `terminalOutput[ing]` / `terminalYield[ing]` / `chainDepth[ing]` — follow `recipeForInput` until
   the output is **servable** or nothing consumes it; yield is the product of `amount` along the
   way. This is what a pickup *actually becomes* (raw chicken breast → fried breast, not the coated
@@ -911,7 +913,8 @@ scalars). Parse with `IngredientQueueTranslator` / `CustomerOrderTranslator`; pa
 into `gridWidth * gridHeight` effect lists.
 
 **Build** — the precomputed index of §5 (dense interning, steps, slot layouts, terminal output/yield,
-reachability bitsets, slot trees, `dirtyOf`, `usageNum`/`servable`/`pickupable`).
+reachability bitsets, slot trees, `dirtyOf`, `usageNum`/`servable`/`pickupable`). Preservation is
+already resolved for you: `ToolNodeAsset.preservationSlots` plus `CookingGraphPreservation`.
 
 **Simulate** — a pure C# class with no `MonoBehaviour`, no coroutines and no `Time.deltaTime` inside:
 `Tick(float dt)`, `Pick(int column)`, `PickAt(int x, int y)`, `CompleteFlight(int id)`, plus the

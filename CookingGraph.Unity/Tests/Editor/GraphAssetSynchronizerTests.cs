@@ -108,10 +108,36 @@ namespace CookingGraph.Editor.Tests
         }
 
         [Test]
+        public void PreservationSlotsAndEdgesReachTheRuntimeGraph()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            ((JArray)document.Vertices["tool"]).Add(new JObject
+            {
+                ["name"] = "grinder",
+                ["displayName"] = "Grinder",
+                ["slotConfigs"] = new JArray(new JObject { ["name"] = "Slot", ["slot"] = 1 }),
+                ["preservationSlots"] = 2,
+                ["cookingTime"] = 1
+            });
+            document.IdTable["tool"] = new JArray("grinder");
+            ((JArray)document.Edges["preservation"]).Add(new JObject { ["from"] = "grinder", ["to"] = "bun" });
+
+            var graph = GraphAssetSynchronizer.Synchronize(document, "fixture.json", null);
+            var grinder = graph.tools.Single();
+            var bun = graph.ingredients.Single(asset => asset.nodeName == "bun");
+
+            Assert.That(grinder.preservationSlots, Is.EqualTo(2));
+            Assert.That(graph.preservationEdges, Has.Count.EqualTo(1));
+            Assert.That(graph.preservationEdges[0].from, Is.SameAs(grinder));
+            Assert.That(graph.preservationEdges[0].to, Is.SameAs(bun));
+            Assert.That(CookingGraphPreservation.IngredientsFor(graph, grinder), Is.EqualTo(new[] { bun }));
+        }
+
+        [Test]
         public void DirtyNodeMaxStackIsGeneratedAsOptionalRuntimeData()
         {
             var document = GraphJsonDocumentTests.MinimalDocument();
-            document.Vertices["dirty"].Add(new JObject
+            ((JArray)document.Vertices["dirty"]).Add(new JObject
             {
                 ["name"] = "dirty-plate",
                 ["displayName"] = "Dirty Plate",

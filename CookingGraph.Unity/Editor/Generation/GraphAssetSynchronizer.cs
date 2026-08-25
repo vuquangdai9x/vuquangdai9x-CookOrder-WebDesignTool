@@ -227,6 +227,11 @@ namespace CookingGraph.Editor
                 }).ToList(),
                 chainTools = (edge["chainTools"] as JArray ?? new JArray()).Select(token => Resolve<ToolNodeAsset>(lookup, token.Value<string>())).ToList()
             }).ToList();
+            graph.preservationEdges = GraphJsonDocument.Array(document.Edges, "preservation").OfType<JObject>().Select(edge => new PreservationEdgeAssetData
+            {
+                from = Resolve<ToolNodeAsset>(lookup, edge.Value<string>("from")),
+                to = Resolve<CookingNodeAsset>(lookup, edge.Value<string>("to"))
+            }).ToList();
             graph.baseEdges = SimpleEdges(document, "base", lookup);
             graph.toppingEdges = SimpleEdges(document, "topping", lookup);
             graph.optionEdges = GraphJsonDocument.Array(document.Edges, "option").OfType<JObject>().Select(edge => new OptionEdgeAssetData
@@ -272,6 +277,7 @@ namespace CookingGraph.Editor
                     {
                         name = slot.Value<string>("name") ?? string.Empty, slot = slot.Value<int?>("slot") ?? 1
                     }).ToList();
+                    tool.preservationSlots = Math.Max(0, json.Value<int?>("preservationSlots") ?? 0);
                     tool.upgradeCosts = (json["upgradeCosts"] as JArray ?? new JArray()).Select(token => token.Value<int>()).ToList();
                     tool.runtimeToolId = OptionalIntOf(json, "runtimeToolId");
                     break;

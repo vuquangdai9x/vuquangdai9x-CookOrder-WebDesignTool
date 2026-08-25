@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -53,6 +54,84 @@ namespace CookingGraph.Editor.Tests
                 ["name"] = "dirty-plate", ["displayName"] = "Dirty Plate", ["maxStack"] = 0
             });
             Assert.That(GraphValidator.Validate(document).Any(issue => issue.Code == "INV-DIRTY-STACK"), Is.True);
+        }
+
+        [Test]
+        public void UnobtainableNodeIsAnErrorOnlyWhenAnOrderableReachesIt()
+        {
+            var unreachable = GraphJsonDocumentTests.MinimalDocument();
+            ((JArray)unreachable.Vertices["ingredient"]).Add(new JObject { ["name"] = "donut", ["displayName"] = "Donut" });
+            ((JArray)unreachable.Vertices["group"]).Add(new JObject { ["name"] = "leftovers", ["displayName"] = "Leftovers" });
+            var leftover = GraphValidator.Validate(unreachable);
+            Assert.That(leftover.Where(issue => issue.Severity == GraphIssueSeverity.Error), Is.Empty,
+                "unfinished work nothing orders is a leftover, not a broken graph");
+            Assert.That(leftover.Count(issue => issue.Code == "WARN-UNUSED-DEAD-NODE"), Is.EqualTo(2));
+
+            var ordered = GraphJsonDocumentTests.MinimalDocument();
+            ((JArray)ordered.Vertices["ingredient"]).Add(new JObject { ["name"] = "donut", ["displayName"] = "Donut" });
+            ((JArray)ordered.Edges["topping"]).Add(new JObject { ["from"] = "burger", ["to"] = "donut" });
+            Assert.That(GraphValidator.Validate(ordered).Any(issue => issue.Code == "INV-UNIQUE-PRODUCER"), Is.True);
+        }
+
+        [Test]
+        public void PreservationSlotsAndWiringMustAgree()
+        {
+            var slotsOnly = GraphJsonDocumentTests.MinimalDocument();
+            AddGrinder(slotsOnly, 1);
+            Assert.That(PreservationErrors(slotsOnly), Is.Not.Empty, "slots with nothing wired can never be entered");
+
+            var edgeOnly = GraphJsonDocumentTests.MinimalDocument();
+            AddGrinder(edgeOnly, 0);
+            ((JArray)edgeOnly.Edges["preservation"]).Add(new JObject { ["from"] = "grinder", ["to"] = "bun" });
+            Assert.That(PreservationErrors(edgeOnly), Is.Not.Empty, "an edge declares a buffer that does not exist");
+        }
+
+        [Test]
+        public void WiredPreservationBufferIsClean()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            AddGrinder(document, 1);
+            ((JArray)document.Edges["preservation"]).Add(new JObject { ["from"] = "grinder", ["to"] = "bun" });
+            Assert.That(PreservationErrors(document), Is.Empty);
+        }
+
+        [Test]
+        public void ToolTakesAtMostOnePreservationEdge()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            AddGrinder(document, 2);
+            ((JArray)document.Vertices["ingredient"]).Add(new JObject { ["name"] = "salt", ["displayName"] = "Salt", ["pickupable"] = true });
+            ((JArray)document.Edges["preservation"]).Add(new JObject { ["from"] = "grinder", ["to"] = "bun" });
+            ((JArray)document.Edges["preservation"]).Add(new JObject { ["from"] = "grinder", ["to"] = "salt" });
+            Assert.That(PreservationErrors(document), Is.Not.Empty);
+        }
+
+        [Test]
+        public void PreservationCannotPointAtAComposite()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            AddGrinder(document, 1);
+            ((JArray)document.Edges["preservation"]).Add(new JObject { ["from"] = "grinder", ["to"] = "burger" });
+            Assert.That(GraphValidator.Validate(document).Any(issue => issue.Code == "INV-REF"), Is.True);
+        }
+
+        private static void AddGrinder(GraphJsonDocument document, int preservationSlots)
+        {
+            ((JArray)document.Vertices["tool"]).Add(new JObject
+            {
+                ["name"] = "grinder",
+                ["displayName"] = "Grinder",
+                ["slotConfigs"] = new JArray(new JObject { ["name"] = "Slot", ["slot"] = 1 }),
+                ["preservationSlots"] = preservationSlots,
+                ["cookingTime"] = 1
+            });
+        }
+
+        private static IEnumerable<GraphIssue> PreservationErrors(GraphJsonDocument document)
+        {
+            return GraphValidator.Validate(document)
+                .Where(issue => issue.Severity == GraphIssueSeverity.Error && issue.Message.Contains("preservation"))
+                .ToList();
         }
 
         [Test]
