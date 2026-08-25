@@ -39,6 +39,16 @@ export interface LevelData {
   shuffleCurve?: string;
   /** Free-text design note from the level data snapshot's "Design Note" column — design-time only, not consumed by Play/sim. */
   designNote?: string;
+  /**
+   * Seed every random draw in the generate pipeline is taken from, so the same
+   * seed rebuilds the same level (see ui/levelpath/generateLevel.ts).
+   *
+   * Absent means "no seed pinned yet" — the pipeline mints one and writes it
+   * back, which is what makes a generated level reproducible after the fact.
+   * A pinned seed is also a promise the pipeline keeps: it will never silently
+   * reseed a level whose seed the designer chose, it reports failure instead.
+   */
+  randomSeed?: number;
 }
 
 export type MapData = Omit<MapDef, "levels"> & { levels: LevelData[] };

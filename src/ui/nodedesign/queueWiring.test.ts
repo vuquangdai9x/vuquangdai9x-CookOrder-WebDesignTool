@@ -16,6 +16,8 @@
 import { describe, expect, it } from "vitest";
 import queueSectionSrc from "../design/queueSection.ts?raw";
 import nodeDesignSrc from "./index.ts?raw";
+import generateLevelSrc from "../levelpath/generateLevel.ts?raw";
+import generateDialogSrc from "./nodeGenerateDialog.ts?raw";
 
 describe("the queue section's generator is swappable", () => {
   it("runAutoGenerate prefers deps.generateLanes over the legacy generator", () => {
@@ -44,11 +46,33 @@ describe("node Design supplies its own generator", () => {
     expect(nodeDesignSrc).toContain("nodeDemandByRaw(");
   });
 
-  it("routes BOTH entry points through the section, not a private copy", () => {
-    // The chained call from the customer generator goes through the same
-    // startQueueAutoGenerate the button uses, so there is one path to keep
-    // right rather than two that can drift.
-    expect(nodeDesignSrc).toContain("startQueueAutoGenerate(this.queues, this.queueDeps, true)");
+  it("has no private copy of the section's generate path", () => {
     expect(nodeDesignSrc).not.toContain("private autoGenerateQueue");
+  });
+});
+
+// The second entry point used to be a chained call into the queue section's own
+// Auto Generate. It is now the whole-level pipeline, which builds the queue
+// itself so it can verify the customers and their queue TOGETHER — a level is
+// winnable or not as one thing, and two independently-successful halves were
+// exactly how an unwinnable level got produced.
+//
+// The invariant that mattered has not changed: whichever path builds the queue
+// for generated customers must be the graph-aware one, not the legacy
+// one-input-per-recipe generator. Only the seam it lives on has moved.
+describe("Auto Generate builds the whole level through the shared pipeline", () => {
+  it("Design's dialog runs the pipeline rather than customers alone", () => {
+    expect(generateDialogSrc).toContain("generateLevel(deps.level, {");
+    expect(generateDialogSrc).not.toContain("startQueueAutoGenerate");
+  });
+
+  it("the pipeline queues with the graph-aware generator", () => {
+    expect(generateLevelSrc).toContain("generateNodeQueueLanes({");
+    expect(generateLevelSrc).not.toContain("generateQueueLanes({");
+  });
+
+  it("the pipeline verifies each build with the estimator before accepting it", () => {
+    expect(generateLevelSrc).toContain("estimateNodeDifficulty(");
+    expect(generateLevelSrc).toContain("estimate.solvable");
   });
 });

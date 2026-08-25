@@ -197,6 +197,7 @@ const LEVELS_CSV_HEADER = [
   "ServeableSlots", "QueueString", "GridString", "CustomerString",
   "OutOfSlotPolicy", "BoosterCharges",
   "IngredientWeights", "CustomerDishesSequence", "ComplexityCurve", "ShuffleCurve", "DesignNote",
+  "RandomSeed",
 ];
 
 /** Level data only: metadata, customer, grid and queue strings — no map/ingredient/tool definitions. */
@@ -207,6 +208,7 @@ export function levelsCsv(map: Pick<MapData, "levels">): string {
     l.outOfSlotPolicy ?? "", (l.boosterCharges ?? []).join("|"),
     l.ingredientWeights ?? "", l.customerDishesSequence ?? "", l.complexityCurve ?? "",
     l.shuffleCurve ?? "", l.designNote ?? "",
+    l.randomSeed ?? "",
   ]);
   return toCsv([LEVELS_CSV_HEADER, ...rows]);
 }
@@ -235,6 +237,7 @@ export function importLevelsCsv(text: string): LevelData[] {
       serveableSlots, queueString, gridString, customerString,
       outOfSlotPolicy, boosterCharges,
       ingredientWeights, customerDishesSequence, complexityCurve, shuffleCurve, designNote,
+      randomSeed,
     ] = r;
     if (!id || Number.isNaN(Number(id))) {
       throw new Error(`Row ${i + 1}: invalid Level_ID "${id ?? ""}"`);
@@ -263,6 +266,11 @@ export function importLevelsCsv(text: string): LevelData[] {
     if (complexityCurve) level.complexityCurve = complexityCurve;
     if (shuffleCurve) level.shuffleCurve = shuffleCurve;
     if (designNote) level.designNote = designNote;
+    // Seed 0 is a legal seed, so the guard is parseability rather than
+    // truthiness — "0" has to survive a CSV round-trip like any other value.
+    if (randomSeed !== undefined && randomSeed.trim() !== "" && Number.isFinite(Number(randomSeed))) {
+      level.randomSeed = Math.trunc(Number(randomSeed));
+    }
     return level;
   });
 }

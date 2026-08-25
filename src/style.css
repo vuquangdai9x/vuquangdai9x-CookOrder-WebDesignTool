@@ -4432,3 +4432,418 @@ td input {
 .queue-thaw-reason.tool { color: var(--bad); }
 .queue-thaw-reason.grid { color: var(--muted); }
 .queue-thaw-reason.other { color: var(--muted); }
+
+/* ==================== Level Path (ui/levelpath/) ==================== */
+/* A whole game's levels on one page. The table is flex rows rather than a real
+   <table>: every column's width is a custom property on .lp-surface, so a
+   resize drag and the width-scale scrubber both update ONE element instead of
+   restyling several thousand cells, and Sortable can drag whole rows. */
+
+.lp-config {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+
+.lp-scale-field input {
+  width: 5.5rem;
+}
+
+.lp-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.lp-maps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* ---------- one map's foldout ---------- */
+
+.lp-map {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.lp-map-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+  user-select: none;
+  background: var(--panel-2);
+}
+
+.lp-map-head:hover {
+  background: #3a3d47;
+}
+
+.lp-map-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.lp-fold-marker {
+  color: var(--muted);
+  width: 0.8rem;
+}
+
+.lp-map-stats {
+  display: flex;
+  gap: 0.7rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.lp-map-stat b {
+  color: var(--text);
+}
+
+.lp-map-actions {
+  display: flex;
+  gap: 0.35rem;
+  cursor: default;
+}
+
+/* ---------- the table ---------- */
+
+
+
+.lp-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+  min-width: min-content;
+}
+
+.lp-head-row {
+  background: var(--panel-2);
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.lp-row.selected {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.lp-row.sortable-ghost {
+  opacity: 0.35;
+}
+
+.lp-cell {
+  min-width: 0;
+  padding: 0.25rem 0.35rem;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid #3a3a3a;
+  font-size: 0.8rem;
+  overflow: hidden;
+}
+
+.lp-cell input,
+.lp-cell select {
+  width: 100%;
+  min-width: 0;
+  font-size: 0.78rem;
+  padding: 0.1rem 0.25rem;
+}
+
+.lp-head {
+  position: relative;
+  font-weight: 600;
+}
+
+/* The resize grip sits ON the column edge, so the cursor lands on the line the
+   designer is aiming at rather than a few pixels inside the next column. */
+.lp-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+}
+
+.lp-resize:hover {
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+/* ---------- info cells ---------- */
+
+.lp-index {
+  width: 100%;
+  cursor: grab;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lp-index:active {
+  cursor: grabbing;
+}
+
+.lp-blank {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ---------- generator cells ---------- */
+
+.lp-editable,
+.lp-weights,
+.lp-curve {
+  width: 100%;
+  cursor: pointer;
+  border: 1px dashed transparent;
+  border-radius: 4px;
+  padding: 0.1rem 0.15rem;
+  overflow: hidden;
+}
+
+.lp-editable:hover,
+.lp-weights:hover,
+.lp-curve:hover {
+  border-color: var(--accent);
+}
+
+.lp-editable {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+.lp-weights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  max-height: 3.6rem;
+  overflow-y: auto;
+}
+
+.lp-weight-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0 0.15rem;
+  border-radius: 4px;
+  background: var(--panel-2);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-curve-svg {
+  width: 100%;
+  height: 2.1rem;
+  display: block;
+}
+
+.lp-curve.unset .lp-curve-svg {
+  opacity: 0.35;
+}
+
+.lp-curve-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.lp-curve-label {
+  fill: var(--muted);
+  font-size: 8px;
+}
+
+/* ---------- actions and status ---------- */
+
+.lp-actions {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.lp-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  width: 100%;
+  max-height: 4.5rem;
+  overflow-y: auto;
+}
+
+.lp-status-ok { color: var(--ok); }
+.lp-status-error { color: var(--bad); }
+.lp-status-warn { color: #e8c34a; }
+.lp-status-note { color: var(--muted); }
+
+/* ---------- new map ---------- */
+
+.lp-new-map {
+  display: flex;
+  justify-content: center;
+}
+
+.lp-new-map-btn {
+  width: 100%;
+  padding: 0.7rem;
+  font-size: 1rem;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+
+.lp-new-map-btn:hover {
+  color: var(--accent);
+}
+
+.lp-dialog-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* ---------- Level Path: frozen header + frozen level column ---------- */
+/* The table is its own scrollport rather than letting the page scroll it. That
+   is what makes both freezes possible at once: `position: sticky` anchors to
+   the nearest scrolling ancestor, so a header that should hold still while the
+   rows move vertically and a level column that should hold still while the
+   statistics move horizontally need the SAME box to be doing both scrolls. */
+
+.lp-table {
+  overflow: auto;
+  max-height: 72vh;
+  padding-bottom: 0.3rem;
+}
+
+.lp-head-row {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+/* The frozen column paints its own background: the columns sliding underneath
+   would otherwise show straight through it. `--lp-row-tint` is the row's
+   weather colour, layered over the panel so the tint survives the freeze. */
+.lp-cell-index {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background-color: var(--panel);
+  background-image: linear-gradient(var(--lp-row-tint, transparent), var(--lp-row-tint, transparent));
+  box-shadow: 1px 0 0 var(--line);
+}
+
+.lp-head-row .lp-cell-index {
+  /* Above both sticky layers — it is the one cell that is frozen twice. */
+  z-index: 6;
+  background-color: var(--panel-2);
+  background-image: none;
+}
+
+.lp-row.selected .lp-cell-index {
+  background-color: #3a3428;
+}
+
+/* ---------- Level Path: ingredient weight tags ---------- */
+/* Fixed box, image fitted inside. Without this the tag is laid out at the
+   artwork's natural size, so the whole row jumps the moment the image loads. */
+
+.lp-weight-tag .icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  min-width: 1.05rem;
+  font-size: 0.8rem;
+  flex: 0 0 auto;
+}
+
+.lp-weight-tag .icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ---------- Level Path: per-column gradient editor ---------- */
+
+.lp-config-hint {
+  color: var(--muted);
+  font-size: 0.72rem;
+  max-width: 14rem;
+  line-height: 1.3;
+}
+
+.lp-gradient-swatch {
+  height: 1.4rem;
+  margin: 0.25rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.lp-gradient-note {
+  margin: 0 0.5rem 0.3rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-gradient-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.lp-gradient-row span {
+  width: 2.2rem;
+  flex: 0 0 auto;
+}
+
+/* A rainbow track, so the slider says what it controls without a label. */
+.lp-hue-slider {
+  flex: 1 1 auto;
+  min-width: 9rem;
+  padding: 0;
+  border: none;
+  background: linear-gradient(
+    90deg,
+    hsl(0, 70%, 50%),
+    hsl(60, 70%, 50%),
+    hsl(120, 70%, 50%),
+    hsl(180, 70%, 50%),
+    hsl(240, 70%, 50%),
+    hsl(300, 70%, 50%),
+    hsl(360, 70%, 50%)
+  );
+  border-radius: 4px;
+  height: 0.9rem;
+  accent-color: var(--accent);
+}
+
+.lp-gradient-actions {
+  display: flex;
+  gap: 0.3rem;
+  margin: 0.4rem 0.5rem 0.15rem;
+}

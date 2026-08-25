@@ -1,9 +1,11 @@
 // "Scoring Scenario" modal — shown by Node Design right before an Estimate
 // Difficulty run (see nodedesign/index.ts's runEstimate). Every solver knob in
 // estimateScenario.ts gets one row: a toggle, and a number input that can be
-// drag-scrubbed left/right as well as typed into.
+// drag-scrubbed left/right as well as typed into. The scrubber gesture itself
+// lives in ui/scrubInput.ts, shared with the Level Path config bar.
 
 import { button, el } from "../dom.ts";
+import { formatScrub, makeScrubber } from "../scrubInput.ts";
 import {
   SCENARIO_FIELDS,
   SCENARIO_GROUPS,
@@ -16,98 +18,6 @@ export interface EstimateScenarioDeps {
   scenario: EstimateScenario;
   /** Called with the edited scenario when the designer hits Run. */
   onRun(scenario: EstimateScenario): void;
-}
-
-/**
- * Drag step for a value, sized relative to its own magnitude so one mouse
- * sweep means about the same *proportion* everywhere: 1000 moves in steps of
- * 10, 0.5 in steps of 0.001. Snapped to a power of ten so the numbers stay
- * round, and floored at what the field's decimals can even represent.
- */
-function dragStep(value: number, decimals: number): number {
-  const floor = 10 ** -decimals;
-  const magnitude = Math.abs(value);
-  if (!Number.isFinite(magnitude) || magnitude < floor) return floor;
-  return Math.max(floor, 10 ** (Math.floor(Math.log10(magnitude)) - 2));
-}
-
-const roundTo = (value: number, decimals: number): number =>
-  Number(value.toFixed(Math.min(10, decimals + 2)));
-
-const format = (value: number, decimals: number): string =>
-  decimals === 0 ? String(Math.round(value)) : String(roundTo(value, decimals));
-
-/**
- * Turn a number input into a scrubber: press and drag sideways to change it,
- * click without moving to type as usual. The step is recomputed from the
- * *current* value on every pointer move, so a field crossing an order of
- * magnitude speeds up or slows down with it instead of crawling or exploding.
- * Shift drags 10x coarser, Alt 10x finer.
- */
-function makeScrubber(
-  input: HTMLInputElement,
-  spec: ScenarioFieldSpec,
-  onChange: (value: number) => void,
-): void {
-  input.classList.add("scrub-input");
-  let dragging = false;
-  let moved = false;
-  let startX = 0;
-  /**
-   * Previous pointer x — deltas come from this rather than movementX, which
-   * some browsers zero out while a pointer is captured.
-   */
-  let lastX = 0;
-  let accumulated = 0;
-
-  const commit = (value: number): void => {
-    const clamped = Math.max(spec.min, roundTo(value, spec.decimals));
-    input.value = format(clamped, spec.decimals);
-    onChange(clamped);
-  };
-
-  input.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
-    dragging = true;
-    moved = false;
-    startX = event.clientX;
-    lastX = event.clientX;
-    accumulated = Number(input.value) || 0;
-  });
-
-  input.addEventListener("pointermove", (event) => {
-    if (!dragging) return;
-    const delta = event.clientX - startX;
-    if (!moved) {
-      if (Math.abs(delta) < 3) return;
-      moved = true;
-      // Only capture once it is clearly a drag, so a plain click still focuses
-      // the field for typing.
-      input.setPointerCapture(event.pointerId);
-      input.classList.add("scrubbing");
-      input.blur();
-    }
-    event.preventDefault();
-    const scale = event.shiftKey ? 10 : event.altKey ? 0.1 : 1;
-    const pixels = event.clientX - lastX;
-    lastX = event.clientX;
-    accumulated += pixels * dragStep(accumulated, spec.decimals) * scale;
-    accumulated = Math.max(spec.min, accumulated);
-    commit(accumulated);
-  });
-
-  const stop = (event: PointerEvent): void => {
-    if (!dragging) return;
-    dragging = false;
-    input.classList.remove("scrubbing");
-    if (input.hasPointerCapture(event.pointerId)) input.releasePointerCapture(event.pointerId);
-  };
-  input.addEventListener("pointerup", stop);
-  input.addEventListener("pointercancel", stop);
-
-  input.addEventListener("change", () => {
-    commit(Number(input.value) || 0);
-  });
 }
 
 export function openEstimateScenarioDialog(deps: EstimateScenarioDeps): void {
@@ -175,10 +85,10 @@ export function openEstimateScenarioDialog(deps: EstimateScenarioDeps): void {
       step: String(10 ** -spec.decimals),
       min: String(spec.min),
     }) as HTMLInputElement;
-    input.value = format(field.value, spec.decimals);
+    input.value = formatScrub(field.value, spec.decimals);
     makeScrubber(input, spec, (value) => (field.value = value));
 
-    const offNote = el("span", { class: "scenario-off" }, [`off = ${format(spec.off, spec.decimals)}`]);
+    const offNote = el("span", { class: "scenario-off" }, [`off = ${formatScrub(spec.off, spec.decimals)}`]);
     const sync = (): void => {
       input.disabled = !box.checked;
       row.classList.toggle("disabled", !box.checked);

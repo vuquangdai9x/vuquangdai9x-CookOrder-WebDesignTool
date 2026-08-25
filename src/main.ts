@@ -1,9 +1,15 @@
 import "./style.css";
 import "./core/effects.ts"; // register built-in behaviors once
 import { GLOBAL_DEFS } from "./data/configLoader.ts";
-import { clearAllNodeDrafts, loadNodeProject, saveNodeProject } from "./data/nodeProject.ts";
+import {
+  clearAllNodeDrafts,
+  defaultNodeMapId,
+  loadNodeProject,
+  saveNodeProject,
+} from "./data/nodeProject.ts";
 import type { NodeProjectState } from "./data/nodeProject.ts";
 import { MapProcessView } from "./ui/nodegraph/index.ts";
+import { LevelPathView } from "./ui/levelpath/index.ts";
 import { NodeDesignView } from "./ui/nodedesign/index.ts";
 import { NodePlayView } from "./ui/nodeplay/index.ts";
 import { NodeRemoteDataView } from "./ui/noderemote/index.ts";
@@ -13,7 +19,7 @@ import { button, el } from "./ui/dom.ts";
 import { setIconMap } from "./ui/icon.ts";
 import { preloadMapWithOverlay } from "./ui/preloadOverlay.ts";
 
-type Mode = "mapproc" | "ndesign" | "nplay" | "nremote";
+type Mode = "mapproc" | "lpath" | "ndesign" | "nplay" | "nremote";
 
 interface ModeDef {
   id: Mode;
@@ -22,6 +28,7 @@ interface ModeDef {
 
 const MODES: ModeDef[] = [
   { id: "mapproc", label: "Map Process" },
+  { id: "lpath", label: "Level Path" },
   { id: "ndesign", label: "Design" },
   { id: "nplay", label: "Play" },
   { id: "nremote", label: "Remote Data" },
@@ -171,6 +178,28 @@ function mount(target: Mode, main: HTMLElement): void {
       dirtyProviders.push(() => view.isDirty);
       return;
     }
+    case "lpath": {
+      // Level Path spans EVERY map, so it saves each map's draft itself rather
+      // than routing through saveNodeDraft (which only knows the open one).
+      new LevelPathView(main, {
+        project: node,
+        defs: GLOBAL_DEFS,
+        onOpenDesign: (docId, levelId) => openNodeLevel(docId, levelId, "ndesign"),
+        onOpenPlay: (docId, levelId) => openNodeLevel(docId, levelId, "nplay"),
+        onReloadShell: () => {
+          // The open map's draft was discarded underneath us; reload it from
+          // storage so the in-memory copy stops being a ghost of deleted data.
+          const fresh = loadNodeProject(defaultNodeMapId());
+          node.docId = fresh.docId;
+          node.doc = fresh.doc;
+          node.levels = fresh.levels;
+          node.origin = fresh.origin;
+          nodeLevelId = node.levels[0]?.id ?? 1;
+          void render();
+        },
+      });
+      return;
+    }
     case "ndesign": {
       const view = new NodeDesignView(main, node, GLOBAL_DEFS, saveNodeDraft, nodeLevelId, (id) => {
         nodeLevelId = id;
@@ -227,6 +256,24 @@ function mount(target: Mode, main: HTMLElement): void {
 function openInNodeDesign(levelId: number): void {
   nodeLevelId = levelId;
   mode = "ndesign";
+  void render();
+}
+
+/**
+ * Open one level of one map in a given mode — Level Path's Design and Play
+ * buttons, which can point at a map the app does not currently have loaded.
+ */
+function openNodeLevel(docId: string, levelId: number, target: Mode): void {
+  if (docId !== node.docId) {
+    const next = loadNodeProject(docId);
+    node.docId = next.docId;
+    node.doc = next.doc;
+    node.levels = next.levels;
+    node.origin = next.origin;
+    saveNodeDraft();
+  }
+  nodeLevelId = levelId;
+  mode = target;
   void render();
 }
 

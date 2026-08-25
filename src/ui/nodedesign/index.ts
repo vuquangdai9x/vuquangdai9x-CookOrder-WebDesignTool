@@ -25,14 +25,21 @@ import type { EstimateScenario } from "../design/estimateScenario.ts";
 import { openEstimateScenarioDialog } from "../design/estimateScenarioDialog.ts";
 import { customerColor } from "../design/customerColors.ts";
 import { createGridSection } from "../design/gridSection.ts";
-import { createQueueSection, startQueueAutoGenerate, toCoordGroups } from "../design/queueSection.ts";
+import { createQueueSection, toCoordGroups } from "../design/queueSection.ts";
 import { generateNodeQueueLanes, nodeDemandByRaw } from "./nodeQueueGenerate.ts";
 import type { QueueDraft, QueueSectionDeps } from "../design/queueSection.ts";
 import type { Section } from "../design/section.ts";
 import { createNodeCustomerSection } from "./nodeCustomerSection.ts";
 import { openNodeGenerateDialog } from "./nodeGenerateDialog.ts";
 import { openNodeEstimateReplay } from "../nodeplay/index.ts";
-import { parseGrid, parseQueueGroups, parseQueues } from "../../core/parser.ts";
+import { parseGrid, parseQueueGroups, parseQueues, serializeGrid, serializeQueues } from "../../core/parser.ts";
+import { serializeNodeCustomers } from "../../core/nodeParser.ts";
+import {
+  cachedEstimate,
+  cacheEstimate,
+  levelSignature,
+  scenarioSignature,
+} from "../levelpath/validationCache.ts";
 import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
 import type { NodeLevelConfig } from "../../core/nodeSim.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
@@ -103,8 +110,10 @@ export class NodeDesignView {
     const next = this.project.levels.find((l) => l.id === levelId);
     if (!next) return;
     this.level = next;
-    // An estimate belongs to ONE level's queue; carrying it across would
-    // colour tiles with numbers that mean nothing here.
+    // An estimate belongs to ONE level's queue; carrying THIS one across would
+    // colour tiles with numbers that mean nothing here. The new level may have
+    // its own already, from a Validate or a generate run in Level Path — that
+    // is what adoptCachedEstimate goes looking for, once the sections exist.
     this.estimate = null;
     this.build();
     this.onLevelChange?.(levelId);
@@ -143,8 +152,8 @@ export class NodeDesignView {
       // verbatim. `deps.map` is the lossy projection, where a multi-input
       // recipe has already collapsed to its first ingredient — generating from
       // it would queue ground coffee and never a cup. Supplying this covers
-      // BOTH entry points: the section's own Auto Generate button and the
-      // chain from the customer generator.
+      // the section's own Auto Generate button. (The whole-level pipeline in
+      // levelpath/generateLevel.ts calls the same generator directly.)
       generateLanes: (laneCount, shuffleRange) =>
         generateNodeQueueLanes({
           ix: this.projected.ix,
@@ -185,14 +194,27 @@ export class NodeDesignView {
           projected: this.projected,
           level: this.level,
           currentCustomers: () => this.customers.draft,
-          onGenerate: (customers) => {
-            const removed = this.customers.draft.length;
-            this.customers.draft = customers;
-            this.customers.commit("Auto-generate customers", customers.length, removed);
+          scenario: this.scenario,
+          // The pipeline writes the customer AND queue strings straight onto
+          // the level, so the sections are rebuilt from it rather than patched:
+          // a generated level replaces both at once, and half-applying it would
+          // leave a queue that does not supply the orders beside it.
+          onGenerated: (result) => {
+            this.estimate = result.estimate;
+            // The pipeline verified this build with a real solve against the
+            // strings it just wrote. Publish it so Level Path's Validate — and
+            // this view's own Estimate button — do not pay for it again.
+            if (result.ok && result.estimate) {
+              cacheEstimate(
+                this.project.docId,
+                this.level.id,
+                levelSignature(this.level),
+                scenarioSignature(this.scenario),
+                result.estimate,
+              );
+            }
+            this.build();
             saved();
-            // Chain into the queue's own Auto Generate, exactly as legacy does,
-            // so regenerating customers doesn't leave the queue out of sync.
-            startQueueAutoGenerate(this.queues, this.queueDeps, true);
           },
         }),
     });
@@ -217,6 +239,51 @@ export class NodeDesignView {
 
     this.renderLayout();
     this.refreshWarnings();
+    this.adoptCachedEstimate();
+  }
+
+  /**
+   * Show an estimate somebody else already paid for.
+   *
+   * Level Path validates and generates whole maps at a time, and each of those
+   * runs produces exactly the estimate this view would compute for the same
+   * level. Re-solving it on open would be seconds of work to arrive at the same
+   * numbers — so if the cache holds one for these exact strings under this
+   * exact scenario, adopt it.
+   */
+  private adoptCachedEstimate(): void {
+    const cached = cachedEstimate(
+      this.project.docId,
+      this.level.id,
+      this.liveSignature(),
+      scenarioSignature(this.scenario),
+    );
+    if (!cached) return;
+    this.estimate = cached;
+    this.customers.render();
+    this.queues.render();
+    this.refreshReplayButton();
+  }
+
+  /**
+   * The cache identity of what is on screen RIGHT NOW.
+   *
+   * Serialized from the live drafts rather than read off `this.level`, because
+   * the drafts are what the estimator runs on — an unsaved queue edit has to
+   * miss the cache, and it only does if the signature sees the edit.
+   */
+  private liveSignature(): string {
+    const level = this.liveLevel();
+    return levelSignature({
+      customerString: serializeNodeCustomers(this.customers.draft),
+      gridString: serializeGrid(this.grid.draft),
+      queueString: serializeQueues(this.queues.draft.queues, toCoordGroups(this.queues.draft)),
+      weather: this.level.weather,
+      serveableSlots: level.serveableSlots,
+      shuffleDistance: level.shuffleDistance,
+      ...(level.outOfSlotPolicy ? { outOfSlotPolicy: level.outOfSlotPolicy } : {}),
+      ...(level.boosterCharges ? { boosterCharges: level.boosterCharges } : {}),
+    });
   }
 
   /** Rebuilds the wrapper around the three existing sections, keeping their drafts. */
@@ -409,8 +476,15 @@ export class NodeDesignView {
   /** Estimate with the same graph-native engine used by Play and replay. */
   private runEstimateWith(scenario: EstimateScenario): void {
     const level = this.liveLevel();
+    const signature = this.liveSignature();
+    const scenarioKey = scenarioSignature(scenario);
     try {
-      this.estimate = estimateNodeDifficulty(this.projected.ix, structuredClone(level), { scenario });
+      // Same level, same scenario, same answer — and Level Path may already
+      // have run it. Only actually solve on a miss.
+      this.estimate =
+        cachedEstimate(this.project.docId, this.level.id, signature, scenarioKey) ??
+        estimateNodeDifficulty(this.projected.ix, structuredClone(level), { scenario });
+      cacheEstimate(this.project.docId, this.level.id, signature, scenarioKey, this.estimate);
     } catch (err) {
       this.estimate = null;
       this.refreshReplayButton();
