@@ -62,7 +62,9 @@ describe("node Design supplies its own generator", () => {
 // one-input-per-recipe generator. Only the seam it lives on has moved.
 describe("Auto Generate builds the whole level through the shared pipeline", () => {
   it("Design's dialog runs the pipeline rather than customers alone", () => {
-    expect(generateDialogSrc).toContain("generateLevel(deps.level, {");
+    // Matched loosely on purpose: this pins WHICH function the dialog calls,
+    // not how the call happens to be wrapped.
+    expect(generateDialogSrc).toMatch(/generateLevel\(\s*deps\.level,/);
     expect(generateDialogSrc).not.toContain("startQueueAutoGenerate");
   });
 

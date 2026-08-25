@@ -97,18 +97,40 @@ function hueAt(gradient: ColumnGradient, t: number): number {
 }
 
 /**
+ * Which way the ramp runs.
+ *
+ * On a dark panel "more" reads as BRIGHTER; on a white one the same colour is
+ * nearly invisible and "more" has to read as DARKER. The hue and the saturation
+ * ramp are identical either way — only the lightness axis flips — so a column a
+ * designer has tuned keeps its identity across a theme switch.
+ */
+export type RampMode = "dark" | "light";
+
+/**
  * Text colour for a normalized value.
  *
  * `intensity` 0 leaves it the table's ordinary grey — the honest
  * "visualisation off" state, with no lightness ramp either, so a column that is
  * turned down cannot still be whispering. Rising intensity opens up both the
- * saturation and the dim-to-bright spread that carries the reading.
+ * saturation and the dim-to-vivid spread that carries the reading.
  */
-export function metricTextColor(t: number, intensity: number, gradient: ColumnGradient): string {
+export function metricTextColor(
+  t: number,
+  intensity: number,
+  gradient: ColumnGradient,
+  mode: RampMode = "dark",
+): string {
   const position = clamp01(t);
   const strength = Math.max(0, intensity);
   const saturation = pct(72 * (0.25 + 0.75 * position) * strength);
-  const lightness = pct(74 - 28 * (1 - position) * Math.min(1, strength));
+  const spread = Math.min(1, strength);
+  // The two ends are tuned so even the LOW end clears legibility against its
+  // own background — a faint value is still a value someone has to read, and a
+  // ramp that fades its bottom into the page is one that has lost half its rows.
+  const lightness =
+    mode === "light"
+      ? pct(28 + 28 * (1 - position) * spread)
+      : pct(74 - 24 * (1 - position) * spread);
   return `hsl(${hueAt(gradient, position).toFixed(1)}, ${saturation.toFixed(1)}%, ${lightness.toFixed(1)}%)`;
 }
 
@@ -122,19 +144,82 @@ export function metricTextColor(t: number, intensity: number, gradient: ColumnGr
  * on its own is a fill the numbers disappear into. Turning the scrubber up is
  * one drag; noticing that a column has quietly become unreadable is not.
  */
-export function metricFillColor(t: number, intensity: number, gradient: ColumnGradient): string {
+export function metricFillColor(
+  t: number,
+  intensity: number,
+  gradient: ColumnGradient,
+  mode: RampMode = "dark",
+): string {
   const position = clamp01(t);
   const strength = Math.max(0, intensity);
   const saturation = pct(62 * (0.3 + 0.7 * position) * strength);
-  const lightness = pct(18 + 16 * position);
+  // A light theme's fill has to stay well ABOVE the text it sits behind, the
+  // mirror of the dark theme's staying well below it.
+  const lightness = mode === "light" ? pct(88 - 16 * position) : pct(18 + 16 * position);
   const alpha = clamp01((0.06 + 0.3 * strength) * (0.35 + 0.65 * position));
   return `hsla(${hueAt(gradient, position).toFixed(1)}, ${saturation.toFixed(1)}%, ${lightness.toFixed(1)}%, ${alpha.toFixed(3)})`;
 }
 
+// ---------- hue <-> hex, for the editor's colour pickers ----------
+// `<input type="color">` speaks hex; the ramp model stores only a hue, because
+// saturation and lightness are what the ramp itself spends to show low versus
+// high (see metricTextColor). These two convert at that boundary and nowhere
+// else.
+
+/** A fully saturated, mid-lightness sample of a hue — what the picker opens on. */
+export function hexOfHue(hue: number): string {
+  const h = wrapHue(hue) / 60;
+  const c = 1;
+  const x = 1 - Math.abs((h % 2) - 1);
+  const [r, g, b] =
+    h < 1 ? [c, x, 0]
+    : h < 2 ? [x, c, 0]
+    : h < 3 ? [0, c, x]
+    : h < 4 ? [0, x, c]
+    : h < 5 ? [x, 0, c]
+    : [c, 0, x];
+  // Mixed halfway to white so the swatch reads as a colour rather than a
+  // fluorescent primary — the hue is identical either way.
+  const channel = (v: number) =>
+    Math.round((v * 0.5 + 0.5 * 0.5 + 0.25) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(r)}${channel(g)}${channel(b)}`;
+}
+
+/**
+ * The hue of a picked colour, or null when it has none.
+ *
+ * A grey has no hue to move to, so a pick of one is ignored rather than
+ * silently snapping the column to red (hue 0), which is what the naive
+ * conversion does.
+ */
+export function hueOfHex(hex: string): number | null {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return null;
+  const value = parseInt(match[1], 16);
+  const r = ((value >> 16) & 255) / 255;
+  const g = ((value >> 8) & 255) / 255;
+  const b = (value & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  if (delta < 1e-6) return null;
+  let hue: number;
+  if (max === r) hue = ((g - b) / delta) % 6;
+  else if (max === g) hue = (b - r) / delta + 2;
+  else hue = (r - g) / delta + 4;
+  return wrapHue(hue * 60);
+}
+
 /** A left-to-right preview of the whole ramp, for the gradient editor's swatch. */
-export function gradientPreviewCss(gradient: ColumnGradient, intensity = 1): string {
+export function gradientPreviewCss(
+  gradient: ColumnGradient,
+  intensity = 1,
+  mode: RampMode = "dark",
+): string {
   const stops = [0, 0.25, 0.5, 0.75, 1]
-    .map((t) => `${metricTextColor(t, intensity, gradient)} ${(t * 100).toFixed(0)}%`)
+    .map((t) => `${metricTextColor(t, intensity, gradient, mode)} ${(t * 100).toFixed(0)}%`)
     .join(", ");
   return `linear-gradient(90deg, ${stops})`;
 }
@@ -157,9 +242,10 @@ export function paintMetricCell(
   textIntensity: number,
   fillIntensity: number,
   gradient: ColumnGradient,
+  ramp: RampMode = "dark",
 ): void {
   cell.style.color =
-    mode === "text" || mode === "both" ? metricTextColor(t, textIntensity, gradient) : "";
+    mode === "text" || mode === "both" ? metricTextColor(t, textIntensity, gradient, ramp) : "";
   cell.style.background =
-    mode === "fill" || mode === "both" ? metricFillColor(t, fillIntensity, gradient) : "";
+    mode === "fill" || mode === "both" ? metricFillColor(t, fillIntensity, gradient, ramp) : "";
 }

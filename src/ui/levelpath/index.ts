@@ -44,6 +44,8 @@ import {
 } from "../design/autoGenerate.ts";
 import { defaultScenario } from "../design/estimateScenario.ts";
 import type { EstimateScenario } from "../design/estimateScenario.ts";
+import { makeScrubber } from "../scrubInput.ts";
+import { currentTheme, THEME_CHANGE_EVENT } from "../theme.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
 import type { GlobalDefs, Id } from "../../core/types.ts";
@@ -73,8 +75,20 @@ import {
 } from "./config.ts";
 import type { LevelPathConfig } from "./config.ts";
 import { openBatchGenerateDialog, openDishSequenceDialog, openNewMapDialog } from "./dialogs.ts";
-import { DEFAULT_SHUFFLE_MAX_Y, generateLevel, linearShuffleCurve } from "./generateLevel.ts";
+import {
+  DEFAULT_SHUFFLE_MAX_Y,
+  generateLevel,
+  linearShuffleCurve,
+  mintSeed,
+  resolveConfig,
+} from "./generateLevel.ts";
 import type { GenerateLevelResult } from "./generateLevel.ts";
+import {
+  applyWeightRepair,
+  ingredientDistribution,
+  repairIngredientWeights,
+  weightsFromDistribution,
+} from "./weightRepair.ts";
 import { openNodeGenerateDialog } from "../nodedesign/nodeGenerateDialog.ts";
 import { parseNodeCustomers } from "../../core/nodeParser.ts";
 import {
@@ -125,8 +139,47 @@ const breathe = (): Promise<void> => new Promise((resolve) => setTimeout(resolve
  */
 function isRowControl(target: EventTarget | null): boolean {
   const node = target as HTMLElement | null;
-  return !!node?.closest?.("input, select, button, textarea, .lp-editable, .lp-weights, .lp-curve");
+  return !!node?.closest?.(
+    "input, select, button, textarea, .lp-editable, .lp-tags, .lp-weights, .lp-curve",
+  );
 }
+
+/** The four generator inputs a row can carry, clear and re-roll independently. */
+type GeneratorField = "weights" | "dishes" | "complexity" | "shuffle";
+
+const FIELD_LABEL: Record<GeneratorField, string> = {
+  weights: "Ingredient weights",
+  dishes: "Dish sequence",
+  complexity: "Complexity curve",
+  shuffle: "Shuffle curve",
+};
+
+/**
+ * Read/write access to each generator field, in one table.
+ *
+ * `undefined` DELETES rather than writing an empty string, because the pipeline
+ * asks `if (level.complexityCurve)` — an empty string would behave the same
+ * today but is a second representation of "absent" waiting to disagree with the
+ * first.
+ */
+const LEVEL_FIELD_OF: Record<GeneratorField, (level: LevelData, value: string | undefined) => void> = {
+  weights: (level, value) => {
+    if (value === undefined) delete level.ingredientWeights;
+    else level.ingredientWeights = value;
+  },
+  dishes: (level, value) => {
+    if (value === undefined) delete level.customerDishesSequence;
+    else level.customerDishesSequence = value;
+  },
+  complexity: (level, value) => {
+    if (value === undefined) delete level.complexityCurve;
+    else level.complexityCurve = value;
+  },
+  shuffle: (level, value) => {
+    if (value === undefined) delete level.shuffleCurve;
+    else level.shuffleCurve = value;
+  },
+};
 
 export interface LevelPathDeps {
   /** The live project for the open map. Held by reference so other tabs see the same edits. */
@@ -182,8 +235,16 @@ export class LevelPathView {
     this.config = loadConfig();
     this.columns = buildColumns(deps.defs);
     this.root.replaceChildren(el("p", { class: "muted" }, ["Computing level statistics…"]));
+    // The statistic ramp is computed in JS, so the stylesheet's palette swap
+    // cannot reach it — these inline colours have to be recomputed by hand when
+    // the theme flips, or every number stays tuned for the theme it was painted
+    // under. Registered on window and never removed: the view lives as long as
+    // the tab is mounted, and re-mounting replaces the whole root anyway.
+    window.addEventListener(THEME_CHANGE_EVENT, this.onThemeChange);
     void this.prepare();
   }
+
+  private onThemeChange = (): void => this.repaintMetrics();
 
   /** Load every map and compute every statistic BEFORE the table exists. See the header comment. */
   private async prepare(): Promise<void> {
@@ -224,9 +285,27 @@ export class LevelPathView {
 
     let done = 0;
     for (const entry of this.entries) {
+      let repaired = false;
       for (const level of entry.project.levels) {
+        // Old levels carry weight records that contradict their own customers —
+        // ingredients the level demonstrably orders, recorded as disabled. That
+        // combination cannot have produced this level, so the record is stale
+        // and gets rebuilt from what the customers actually ask for. See
+        // weightRepair.ts for why this is the ONLY disagreement that counts.
+        const repair = repairIngredientWeights(level, entry.ix, entry.ids);
+        const note = repair ? applyWeightRepair(level, repair) : null;
+        if (note) repaired = true;
+
         entry.stats.set(level.id, computeLevelStats(level, entry.ix, entry.ids));
-        entry.status.set(level.id, this.initialStatus(entry, level));
+        const status = this.initialStatus(entry, level);
+        if (note) {
+          // Reported, not silent: this edited the designer's data, and a repair
+          // nobody is told about is indistinguishable from corruption.
+          status.warnings.push(note);
+          status.ok = false;
+        }
+        entry.status.set(level.id, status);
+
         done++;
         // Yield periodically so the overlay repaints and the tab stays
         // interruptible on a project with hundreds of levels.
@@ -235,6 +314,7 @@ export class LevelPathView {
           await breathe();
         }
       }
+      if (repaired) this.persist(entry);
     }
 
     hideBlockingOverlay();
@@ -381,10 +461,49 @@ export class LevelPathView {
     });
   }
 
+  /**
+   * Rebuilds one map's foldout, PUTTING THE SCROLL BACK.
+   *
+   * Ripping the table out of the document and hanging a new one in its place
+   * loses both the table's own scroll offsets and — because the page briefly
+   * gets shorter — the window's. A designer editing level 60 would be thrown
+   * back to level 1 by every keystroke's worth of work, which made the table
+   * unusable for exactly the long maps it exists for.
+   */
   private renderMap(entry: MapEntry): void {
+    const previous = entry.host.querySelector<HTMLElement>(".lp-table");
+    const scroll = previous ? { top: previous.scrollTop, left: previous.scrollLeft } : null;
+    const pageY = window.scrollY;
+
     entry.host.replaceChildren(this.mapHeader(entry));
     entry.host.classList.toggle("open", entry.open);
-    if (entry.open) entry.host.append(this.table(entry));
+    if (entry.open) {
+      const table = this.table(entry);
+      entry.host.append(table);
+      if (scroll) {
+        table.scrollTop = scroll.top;
+        table.scrollLeft = scroll.left;
+      }
+    }
+    if (window.scrollY !== pageY) window.scrollTo(window.scrollX, pageY);
+  }
+
+  /**
+   * Rebuilds ONE row in place — the right granularity for editing a field.
+   *
+   * Most edits change one row and nothing else, and rebuilding the whole map
+   * for them is both slower and the thing that disturbs scroll in the first
+   * place. Falls back to the whole map when the row is not on screen (its map
+   * is folded, or the level list itself changed underneath).
+   */
+  private refreshRow(entry: MapEntry, level: LevelData): void {
+    const index = entry.project.levels.indexOf(level);
+    const existing = entry.host.querySelector<HTMLElement>(`.lp-row[data-level="${level.id}"]`);
+    if (index < 0 || !existing) {
+      this.renderMap(entry);
+      return;
+    }
+    existing.replaceWith(this.row(entry, level, index, this.visibleColumns()));
   }
 
   private mapHeader(entry: MapEntry): HTMLElement {
@@ -613,6 +732,7 @@ export class LevelPathView {
       this.config.textIntensity,
       this.config.fillIntensity,
       this.gradientOf(column),
+      currentTheme(),
     );
   }
 
@@ -687,7 +807,9 @@ export class LevelPathView {
             (value) => {
               level.weather = value;
               this.persist(entry);
-              this.renderMap(entry);
+              // Weather changes the row's emoji and its tint, and nothing else
+              // on the page — so only the row is rebuilt.
+              this.refreshRow(entry, level);
             },
           ),
         ];
@@ -702,7 +824,7 @@ export class LevelPathView {
             (value) => {
               level.levelTag = value;
               this.persist(entry);
-              this.renderMap(entry);
+              this.refreshRow(entry, level);
             },
           ),
         ];
@@ -746,42 +868,135 @@ export class LevelPathView {
   private generatorCell(entry: MapEntry, level: LevelData, column: ColumnDef): (Node | string)[] {
     switch (column.id) {
       case "weights":
-        return [this.weightsCell(entry, level)];
+        return [this.withFieldMenu(this.weightsCell(entry, level), entry, level, "weights")];
       case "dishes":
-        return [this.dishSequenceCell(entry, level)];
+        return [this.withFieldMenu(this.dishSequenceCell(entry, level), entry, level, "dishes")];
       case "complexity":
         return [
-          this.curveCell(
-            level.complexityCurve
-              ? parseCurve(level.complexityCurve, defaultCurve(1, DEFAULT_MAX_DISH_SLOTS))
-              : defaultCurve(1, DEFAULT_MAX_DISH_SLOTS),
-            `Complexity curve — ${level.name}`,
-            (curve) => {
-              level.complexityCurve = serializeCurve(curve);
-              this.persist(entry);
-              this.renderMap(entry);
-            },
-            level.complexityCurve === undefined || level.complexityCurve === "",
+          this.withFieldMenu(
+            this.curveCell(
+              level.complexityCurve
+                ? parseCurve(level.complexityCurve, defaultCurve(1, DEFAULT_MAX_DISH_SLOTS))
+                : defaultCurve(1, DEFAULT_MAX_DISH_SLOTS),
+              `Complexity curve — ${level.name}`,
+              (curve) => this.setField(entry, level, "complexity", serializeCurve(curve)),
+              () => this.clearField(entry, level, "complexity"),
+              level.complexityCurve === undefined || level.complexityCurve === "",
+            ),
+            entry,
+            level,
+            "complexity",
           ),
         ];
       case "shuffle":
         return [
-          this.curveCell(
-            level.shuffleCurve
-              ? parseCurve(level.shuffleCurve, linearShuffleCurve(DEFAULT_SHUFFLE_MAX_Y))
-              : linearShuffleCurve(DEFAULT_SHUFFLE_MAX_Y),
-            `Shuffle curve — ${level.name}`,
-            (curve) => {
-              level.shuffleCurve = serializeCurve(curve);
-              this.persist(entry);
-              this.renderMap(entry);
-            },
-            level.shuffleCurve === undefined || level.shuffleCurve === "",
+          this.withFieldMenu(
+            this.curveCell(
+              level.shuffleCurve
+                ? parseCurve(level.shuffleCurve, linearShuffleCurve(DEFAULT_SHUFFLE_MAX_Y))
+                : linearShuffleCurve(DEFAULT_SHUFFLE_MAX_Y),
+              `Shuffle curve — ${level.name}`,
+              (curve) => this.setField(entry, level, "shuffle", serializeCurve(curve)),
+              () => this.clearField(entry, level, "shuffle"),
+              level.shuffleCurve === undefined || level.shuffleCurve === "",
+            ),
+            entry,
+            level,
+            "shuffle",
           ),
         ];
       default:
         return [this.seedCell(entry, level)];
     }
+  }
+
+  // ---------- generator fields: set, clear, reroll ----------
+
+  /**
+   * A generator field can legitimately be ABSENT, and absent is not the same as
+   * empty: it means "the generator decides this one". Clearing a field is
+   * therefore a real authoring act, not a delete — it hands the decision back.
+   */
+  private setField(entry: MapEntry, level: LevelData, field: GeneratorField, value: string): void {
+    LEVEL_FIELD_OF[field](level, value);
+    this.persist(entry);
+    this.refreshRow(entry, level);
+  }
+
+  private clearField(entry: MapEntry, level: LevelData, field: GeneratorField): void {
+    LEVEL_FIELD_OF[field](level, undefined);
+    this.persist(entry);
+    this.refreshRow(entry, level);
+  }
+
+  /**
+   * Re-roll one field from the level's seed — minting one first if the level
+   * has none, since "regenerate from the seed" needs a seed to be an answer
+   * rather than a coin flip.
+   *
+   * Goes through the pipeline's own `resolveConfig` rather than calling the
+   * random helpers directly, so a field rolled here is byte-identical to what a
+   * full generate would have rolled for the same seed. Re-implementing the
+   * draws per cell is how the two would drift.
+   */
+  private rerollField(entry: MapEntry, level: LevelData, field: GeneratorField): void {
+    if (level.randomSeed === undefined) level.randomSeed = mintSeed();
+    const rolled = resolveConfig(
+      level,
+      { ix: entry.ix, ids: entry.ids, projected: entry.projected },
+      level.randomSeed,
+      true,
+      this.config.bounds,
+    );
+    const value =
+      field === "weights" ? serializeIngredientWeights(rolled.weights)
+      : field === "dishes" ? serializeDishCountSequence(rolled.dishCounts)
+      : field === "complexity" ? serializeCurve(rolled.complexity)
+      : serializeCurve(rolled.baseShuffle);
+    this.setField(entry, level, field, value);
+  }
+
+  /** Right-click on any generator cell: clear it, or roll it again. */
+  private withFieldMenu(
+    cell: HTMLElement,
+    entry: MapEntry,
+    level: LevelData,
+    field: GeneratorField,
+  ): HTMLElement {
+    cell.addEventListener("contextmenu", (event) => {
+      const items = [
+        {
+          label: "🎲 Regenerate from seed",
+          onSelect: () => this.rerollField(entry, level, field),
+        },
+        {
+          label: "✕ Clear",
+          danger: true,
+          onSelect: () => this.clearField(entry, level, field),
+        },
+      ];
+      if (field === "weights") {
+        // Only the weights have a second source of truth to be restored FROM —
+        // the customer string says what the level actually orders.
+        items.unshift({
+          label: "↻ Rebuild from customers",
+          onSelect: () => this.rebuildWeights(entry, level),
+        });
+      }
+      showContextMenu(event, items, { title: `${FIELD_LABEL[field]} — ${level.name}` });
+    });
+    return cell;
+  }
+
+  private rebuildWeights(entry: MapEntry, level: LevelData): void {
+    const counts = ingredientDistribution(level, entry.ix, entry.ids);
+    if (counts.size === 0) {
+      alert("This level has no readable customer orders to rebuild the weights from.");
+      return;
+    }
+    level.ingredientWeights = serializeIngredientWeights(weightsFromDistribution(counts));
+    this.persist(entry);
+    this.refreshRow(entry, level);
   }
 
   /** Ingredient weights as icon+number tags that wrap to the column's width. */
@@ -827,9 +1042,7 @@ export class LevelPathView {
       // it right after the (synchronous) build leaves the dialog correct.
       this.borrowIconMap(entry, () =>
         openIngredientWeightsDialog(entry.projected.map, initial, (next) => {
-          level.ingredientWeights = serializeIngredientWeights(next);
-          this.persist(entry);
-          this.renderMap(entry);
+          this.setField(entry, level, "weights", serializeIngredientWeights(next));
         }),
       );
     });
@@ -846,31 +1059,61 @@ export class LevelPathView {
     }
   }
 
+  /**
+   * The dish sequence as one tag per customer, wrapping to the column's width.
+   *
+   * It used to print the raw `0;0;1;2` string, which is unreadable past about
+   * four customers and hides the two values that are not counts at all: -1 is a
+   * Staff customer and 0 is "let the curve decide". Tags give each customer its
+   * own box, so the shape of a level ("three light, then two heavy") is
+   * visible, and the two special values get their own letter and colour instead
+   * of looking like arithmetic.
+   */
   private dishSequenceCell(entry: MapEntry, level: LevelData): HTMLElement {
     const raw = level.customerDishesSequence ?? "";
-    const node = el("div", { class: "lp-editable", title: raw || "Not set — click to author a sequence" }, [
-      raw || el("span", { class: "lp-blank" }, ["— not set —"]),
-    ]);
-    node.addEventListener("click", () => {
-      openDishSequenceDialog(level.name, parseDishCountSequence(raw), (counts) => {
-        level.customerDishesSequence = serializeDishCountSequence(counts);
-        this.persist(entry);
-        this.renderMap(entry);
+    const counts = parseDishCountSequence(raw);
+    const wrap = el("div", { class: "lp-tags", title: "Click to edit the dish count per customer" });
+
+    if (counts.length === 0) {
+      wrap.append(el("span", { class: "lp-blank" }, ["— not set —"]));
+    } else {
+      counts.forEach((count, at) => {
+        const kind = count === -1 ? " staff" : count === 0 ? " auto" : "";
+        const tag = el("span", { class: `lp-count-tag${kind}` }, [
+          count === -1 ? "S" : count === 0 ? "A" : String(count),
+        ]);
+        tag.title =
+          count === -1
+            ? `Customer ${at + 1} — Staff (clears a dirty stack, orders nothing)`
+            : count === 0
+              ? `Customer ${at + 1} — Auto (the complexity curve picks the dish count)`
+              : `Customer ${at + 1} — ${count} dish(es)`;
+        wrap.append(tag);
       });
+    }
+
+    wrap.addEventListener("click", () => {
+      openDishSequenceDialog(
+        level.name,
+        counts,
+        (next) => this.setField(entry, level, "dishes", serializeDishCountSequence(next)),
+        () => this.clearField(entry, level, "dishes"),
+      );
     });
-    return node;
+    return wrap;
   }
 
   private curveCell(
     curve: CurveState,
     title: string,
     onApply: (curve: CurveState) => void,
+    onClear: () => void,
     unset: boolean,
   ): HTMLElement {
     const node = el("div", { class: `lp-curve${unset ? " unset" : ""}`, title: `${title} — click to edit` }, [
       curveThumb(curve),
     ]);
-    node.addEventListener("click", () => openCurveDialog(title, curve, onApply));
+    node.addEventListener("click", () => openCurveDialog(title, curve, onApply, onClear));
     return node;
   }
 
@@ -883,13 +1126,21 @@ export class LevelPathView {
       value: level.randomSeed === undefined ? "" : String(level.randomSeed),
     }) as HTMLInputElement;
     input.title =
-      "Pinned seed. Blank lets the generator pick one and write it back; a pinned seed is never replaced silently.";
-    input.addEventListener("change", () => {
-      const raw = input.value.trim();
-      if (raw === "") delete level.randomSeed;
-      else level.randomSeed = Math.max(0, Math.trunc(Number(raw) || 0)) >>> 0;
-      this.persist(entry);
-    });
+      "Pinned seed — drag left/right to walk through seeds, or type one. " +
+      "Blank lets the generator pick one and write it back; a pinned seed is never replaced silently.";
+    // Scrubbing a seed is how a designer shops for a level: drag, regenerate,
+    // look, drag again. `allowEmpty` is what keeps clearing the field meaning
+    // "let the generator pick" rather than "pin it to 0".
+    makeScrubber(
+      input,
+      { min: 0, max: 0xffffffff, decimals: 0, allowEmpty: true },
+      (value) => (level.randomSeed = value >>> 0),
+      (value) => {
+        if (value === null) delete level.randomSeed;
+        else level.randomSeed = value >>> 0;
+        this.persist(entry);
+      },
+    );
     return input;
   }
 
@@ -1030,9 +1281,21 @@ export class LevelPathView {
           onSelect: () => this.duplicateLevel(entry, index),
         },
         {
+          label: "✎ Go to Design",
+          separator: true,
+          onSelect: () => this.deps.onOpenDesign(entry.docId, level.id),
+        },
+        {
+          label: "▶ Go to Play",
+          onSelect: () => this.deps.onOpenPlay(entry.docId, level.id),
+        },
+        {
           label: `✨ Generate${single ? "" : ` (${targets.length})`}`,
           separator: true,
-          onSelect: () => void this.generateLevels(targets),
+          onSelect: () =>
+            single
+              ? this.openGenerateDialog(entry, level)
+              : void this.generateLevels(targets),
         },
         {
           label: `🚦 Validate${single ? "" : ` (${targets.length})`}`,
@@ -1212,7 +1475,7 @@ export class LevelPathView {
       const result = generateLevel(
         level,
         { ix: entry.ix, ids: entry.ids, projected: entry.projected, scenario: this.scenario },
-        { rerollConfig: reroll },
+        { rerollConfig: reroll, bounds: this.config.bounds },
       );
       this.applyGenerated(entry, level, result);
       touched.add(entry);

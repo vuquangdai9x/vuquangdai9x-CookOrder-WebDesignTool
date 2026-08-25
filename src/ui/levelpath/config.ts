@@ -10,6 +10,8 @@ import { button, el } from "../dom.ts";
 import { makeScrubber } from "../scrubInput.ts";
 import { STAT_VISUALIZE_OPTIONS, wrapHue } from "./metricColor.ts";
 import type { ColumnGradient, StatVisualize } from "./metricColor.ts";
+import { DEFAULT_BOUNDS, normalizeBounds } from "./generateLevel.ts";
+import type { GenerateBounds } from "./generateLevel.ts";
 
 const STORAGE_KEY = "cookorder-levelpath-view";
 
@@ -35,6 +37,8 @@ export interface LevelPathConfig {
    * coloured them, because the memory of "the green one" is the whole point.
    */
   baseHue: number;
+  /** How big a freshly generated level may be — see generateLevel.ts. */
+  bounds: GenerateBounds;
   /** Map ids whose foldout is open. */
   openMaps: string[];
 }
@@ -52,6 +56,7 @@ export function defaultConfig(): LevelPathConfig {
     widths: {},
     gradients: {},
     baseHue: Math.floor(Math.random() * 360),
+    bounds: { ...DEFAULT_BOUNDS },
     openMaps: [],
   };
 }
@@ -107,6 +112,15 @@ export function loadConfig(): LevelPathConfig {
     }
     if (typeof stored.baseHue === "number" && Number.isFinite(stored.baseHue)) {
       config.baseHue = wrapHue(stored.baseHue);
+    }
+    if (stored.bounds && typeof stored.bounds === "object") {
+      for (const key of ["minCustomers", "maxCustomers", "minTotalDishes", "maxTotalDishes"] as const) {
+        const value = stored.bounds[key];
+        if (typeof value === "number" && Number.isFinite(value)) config.bounds[key] = value;
+      }
+      // Stored bounds can be self-contradictory if they were mid-edit at the
+      // last write; the generator must never see that.
+      config.bounds = normalizeBounds(config.bounds);
     }
     if (Array.isArray(stored.openMaps)) {
       config.openMaps = stored.openMaps.filter((id): id is string => typeof id === "string");
@@ -247,6 +261,17 @@ export function createConfigPanel(deps: ConfigPanelDeps): HTMLElement {
       },
       deps.onCommit,
     ),
+    // Generator size lives here rather than in the Auto Generate dialog: it is
+    // the answer to "how long is a level in this game", which is a project-wide
+    // decision a designer sets once and then generates a hundred levels under —
+    // not something to re-answer in every dialog.
+    el("div", { class: "lp-bounds" }, [
+      el("span", { class: "lp-bounds-label" }, ["Generated size"]),
+      boundField("Customers min", config.bounds, "minCustomers", deps),
+      boundField("max", config.bounds, "maxCustomers", deps),
+      boundField("Dishes min", config.bounds, "minTotalDishes", deps),
+      boundField("max", config.bounds, "maxTotalDishes", deps),
+    ]),
     // The ramps are edited on the columns themselves, where the effect is
     // visible while dragging — but nothing about a header says "right-click
     // me", so the discoverability has to come from here.
@@ -254,4 +279,21 @@ export function createConfigPanel(deps: ConfigPanelDeps): HTMLElement {
       "Right-click a statistic column header to set its colour scale.",
     ]),
   ]);
+}
+
+/** One bound of the generated-size box. Only applies to the NEXT generate, so nothing repaints. */
+function boundField(
+  label: string,
+  bounds: GenerateBounds,
+  key: keyof GenerateBounds,
+  deps: ConfigPanelDeps,
+): HTMLElement {
+  const input = el("input", {
+    type: "number",
+    min: "1",
+    step: "1",
+    value: String(bounds[key]),
+  }) as HTMLInputElement;
+  makeScrubber(input, { min: 1, decimals: 0 }, (value) => (bounds[key] = value), () => deps.onCommit());
+  return el("label", { class: "field small lp-bound-field" }, [label, input]);
 }

@@ -31,6 +31,15 @@ export interface ScrubSpec {
   max?: number;
   /** Digits kept while scrubbing; also what the input displays. */
   decimals: number;
+  /**
+   * Whether a BLANK field is a legal value rather than zero.
+   *
+   * Level Path's random seed needs it: blank there means "the generator picks
+   * one", which is a different instruction from the seed 0. Without this, the
+   * change handler's `Number("") || 0` quietly turns "let it pick" into "pin
+   * it to zero" the moment the field is cleared and blurred.
+   */
+  allowEmpty?: boolean;
 }
 
 /**
@@ -49,7 +58,7 @@ export function makeScrubber(
   input: HTMLInputElement,
   spec: ScrubSpec,
   onChange: (value: number) => void,
-  onCommit?: (value: number) => void,
+  onCommit?: (value: number | null) => void,
 ): void {
   input.classList.add("scrub-input");
   let dragging = false;
@@ -116,6 +125,10 @@ export function makeScrubber(
   input.addEventListener("pointercancel", stop);
 
   input.addEventListener("change", () => {
+    if (spec.allowEmpty && input.value.trim() === "") {
+      onCommit?.(null);
+      return;
+    }
     onCommit?.(apply(Number(input.value) || 0));
   });
 }

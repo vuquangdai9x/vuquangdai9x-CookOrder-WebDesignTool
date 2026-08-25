@@ -8,7 +8,8 @@
 
 import { el, button } from "../dom.ts";
 import { showContextMenu } from "../contextMenu.ts";
-import { gradientPreviewCss, isMonochromatic, wrapHue } from "./metricColor.ts";
+import { currentTheme } from "../theme.ts";
+import { gradientPreviewCss, hueOfHex, hexOfHue, isMonochromatic, wrapHue } from "./metricColor.ts";
 import type { ColumnGradient } from "./metricColor.ts";
 
 export interface GradientEditorDeps {
@@ -21,11 +22,22 @@ export interface GradientEditorDeps {
   onCommit(): void;
 }
 
-function hueSlider(label: string, value: number, onInput: (hue: number) => void, onCommit: () => void): {
+/**
+ * One end of the ramp: a rainbow slider and a colour picker, both writing the
+ * same hue.
+ *
+ * The two coexist because they answer different questions. The slider is for
+ * sweeping until the column looks right against the ones beside it; the picker
+ * is for "make it exactly the blue from the style guide". Only the HUE of a
+ * picked colour is kept — its saturation and lightness are what the ramp itself
+ * has to spend to show low versus high, so honouring them would flatten the
+ * very signal the colour is carrying.
+ */
+function hueEnd(label: string, value: number, onInput: (hue: number) => void, onCommit: () => void): {
   row: HTMLElement;
   set(hue: number): void;
 } {
-  const input = el("input", {
+  const slider = el("input", {
     type: "range",
     min: "0",
     max: "359",
@@ -33,13 +45,36 @@ function hueSlider(label: string, value: number, onInput: (hue: number) => void,
     value: String(Math.round(wrapHue(value))),
     class: "lp-hue-slider",
   }) as HTMLInputElement;
-  input.addEventListener("input", () => onInput(Number(input.value)));
-  input.addEventListener("change", () => onCommit());
+
+  const picker = el("input", {
+    type: "color",
+    value: hexOfHue(value),
+    class: "lp-hue-picker",
+    title: "Pick this end's colour — its hue is what the ramp keeps",
+  }) as HTMLInputElement;
+
+  const set = (hue: number): void => {
+    slider.value = String(Math.round(wrapHue(hue)));
+    picker.value = hexOfHue(hue);
+  };
+
+  slider.addEventListener("input", () => {
+    picker.value = hexOfHue(Number(slider.value));
+    onInput(Number(slider.value));
+  });
+  slider.addEventListener("change", () => onCommit());
+
+  picker.addEventListener("input", () => {
+    const hue = hueOfHex(picker.value);
+    if (hue === null) return; // an achromatic pick names no hue to move to
+    slider.value = String(Math.round(hue));
+    onInput(hue);
+  });
+  picker.addEventListener("change", () => onCommit());
+
   return {
-    row: el("label", { class: "lp-gradient-row" }, [el("span", {}, [label]), input]),
-    set(hue) {
-      input.value = String(Math.round(wrapHue(hue)));
-    },
+    row: el("label", { class: "lp-gradient-row" }, [el("span", {}, [label]), slider, picker]),
+    set,
   };
 }
 
@@ -55,14 +90,16 @@ export function openGradientEditor(event: MouseEvent, deps: GradientEditorDeps):
   const modeNote = el("div", { class: "lp-gradient-note" });
 
   const refresh = (): void => {
-    swatch.style.background = gradientPreviewCss(state);
+    // Previewed under the live theme, so the swatch is what the column will
+    // actually look like rather than what it would look like in the other one.
+    swatch.style.background = gradientPreviewCss(state, 1, currentTheme());
     modeNote.textContent = isMonochromatic(state)
       ? `Monochromatic · hue ${Math.round(wrapHue(state.fromHue))}°`
       : `${Math.round(wrapHue(state.fromHue))}° → ${Math.round(wrapHue(state.toHue))}°`;
     deps.onChange({ ...state });
   };
 
-  const from = hueSlider("Low", state.fromHue, (hue) => {
+  const from = hueEnd("Low", state.fromHue, (hue) => {
     // Dragging the low hue of a monochromatic ramp moves BOTH ends: a ramp that
     // silently split in two the first time it was touched would be a surprise,
     // and "make this column green" is the common intent by far.
@@ -75,7 +112,7 @@ export function openGradientEditor(event: MouseEvent, deps: GradientEditorDeps):
     refresh();
   }, deps.onCommit);
 
-  const to = hueSlider("High", state.toHue, (hue) => {
+  const to = hueEnd("High", state.toHue, (hue) => {
     state.toHue = hue;
     refresh();
   }, deps.onCommit);

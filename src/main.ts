@@ -18,6 +18,8 @@ import type { NodeIconSource } from "./ui/nodegraph/iconAdapter.ts";
 import { button, el } from "./ui/dom.ts";
 import { setIconMap } from "./ui/icon.ts";
 import { preloadMapWithOverlay } from "./ui/preloadOverlay.ts";
+import { applyTheme, loadTheme, otherTheme, saveTheme, themeToggleLabel } from "./ui/theme.ts";
+import type { Theme } from "./ui/theme.ts";
 
 type Mode = "mapproc" | "lpath" | "ndesign" | "nplay" | "nremote";
 
@@ -66,6 +68,14 @@ let renderGeneration = 0;
 
 /** Spreadsheet id the Remote Data tab reads/writes — editable there. */
 let sheetIdInput = "";
+
+/**
+ * Applied before the first render so the shell never paints in one theme and
+ * then flips — the palette is an attribute on <html>, so it has to be set
+ * before anything is laid out under it.
+ */
+let theme: Theme = loadTheme();
+applyTheme(theme);
 
 function saveNodeDraft(): void {
   saveNodeProject(node);
@@ -126,6 +136,17 @@ async function render(): Promise<void> {
       button("♻ Reset node draft", () => resetNodeDraft(), {
         class: "full-btn",
         title: "Discard every Map Process draft and reload the bundled graphs",
+      }),
+      // Toggling only touches <html>'s data-theme, so there is nothing to
+      // re-render — the whole page restyles from the palette.
+      button(themeToggleLabel(theme), (event) => {
+        theme = otherTheme(theme);
+        applyTheme(theme);
+        saveTheme(theme);
+        (event.currentTarget as HTMLButtonElement).textContent = themeToggleLabel(theme);
+      }, {
+        class: "small-btn theme-toggle",
+        title: "Switch between the light and dark theme",
       }),
     ]),
   ]);

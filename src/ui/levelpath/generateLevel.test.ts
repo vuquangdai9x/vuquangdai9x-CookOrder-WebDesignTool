@@ -9,19 +9,23 @@ import { parseQueues } from "../../core/parser.ts";
 import { parseNodeCustomers } from "../../core/nodeParser.ts";
 import { parseDishCountSequence } from "../design/autoGenerate.ts";
 import {
+  DEFAULT_BOUNDS,
   generateLevel,
   linearShuffleCurve,
-  MAX_CUSTOMERS,
   MAX_ROLLED_LANES,
-  MAX_TOTAL_DISHES,
-  MIN_CUSTOMERS,
   MIN_ROLLED_LANES,
-  MIN_TOTAL_DISHES,
+  normalizeBounds,
   randomDishCountSequence,
+  resolveConfig,
   resolveLaneCount,
   seededRng,
 } from "./generateLevel.ts";
 import type { GenerateContext } from "./generateLevel.ts";
+
+const MIN_CUSTOMERS = DEFAULT_BOUNDS.minCustomers;
+const MAX_CUSTOMERS = DEFAULT_BOUNDS.maxCustomers;
+const MIN_TOTAL_DISHES = DEFAULT_BOUNDS.minTotalDishes;
+const MAX_TOTAL_DISHES = DEFAULT_BOUNDS.maxTotalDishes;
 
 const doc = burgerJson as unknown as NodeGraphMap;
 const ix = buildIndex(doc);
@@ -57,6 +61,60 @@ describe("randomDishCountSequence", () => {
       // Nobody is left ordering nothing — that would silently mean "Staff".
       expect(counts.every((c) => c >= 1)).toBe(true);
     }
+  });
+});
+
+describe("configurable bounds", () => {
+  it("honours a custom customer and dish range", () => {
+    const bounds = { minCustomers: 2, maxCustomers: 3, minTotalDishes: 4, maxTotalDishes: 6 };
+    for (let seed = 1; seed <= 100; seed++) {
+      const counts = randomDishCountSequence(seededRng(seed), bounds);
+      const total = counts.reduce((n, c) => n + c, 0);
+      expect(counts.length).toBeGreaterThanOrEqual(2);
+      expect(counts.length).toBeLessThanOrEqual(3);
+      expect(total).toBeGreaterThanOrEqual(4);
+      expect(total).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it("lets the min win when a max is left below it mid-edit", () => {
+    expect(normalizeBounds({
+      minCustomers: 8,
+      maxCustomers: 2,
+      minTotalDishes: 30,
+      maxTotalDishes: 5,
+    })).toEqual({ minCustomers: 8, maxCustomers: 8, minTotalDishes: 30, maxTotalDishes: 30 });
+  });
+
+  it("never rolls a sequence that contradicts itself under inverted bounds", () => {
+    const counts = randomDishCountSequence(seededRng(9), {
+      minCustomers: 6,
+      maxCustomers: 1,
+      minTotalDishes: 12,
+      maxTotalDishes: 2,
+    });
+    expect(counts.length).toBe(6);
+    expect(counts.every((c) => c >= 1)).toBe(true);
+  });
+});
+
+describe("resolveConfig", () => {
+  it("rolls the same field a full generate would, for the same seed", () => {
+    // The table's per-cell Regenerate goes through this; if it drifted from the
+    // pipeline, re-rolling one curve by hand would give a different level than
+    // re-rolling the whole thing.
+    const level = blank();
+    const first = resolveConfig(level, ctx, 1234, true);
+    const second = resolveConfig(level, ctx, 1234, true);
+    expect(second.dishCounts).toEqual(first.dishCounts);
+    expect(second.complexity).toEqual(first.complexity);
+    expect([...second.weights]).toEqual([...first.weights]);
+  });
+
+  it("keeps what the level records when not rerolling", () => {
+    const level = blank({ customerDishesSequence: "2;2;2" });
+    expect(resolveConfig(level, ctx, 1234, false).dishCounts).toEqual([2, 2, 2]);
+    expect(resolveConfig(level, ctx, 1234, true).dishCounts).not.toEqual([2, 2, 2]);
   });
 });
 

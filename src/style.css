@@ -1,16 +1,71 @@
-:root {
+/* ---------- palette ----------
+   Every colour a THEME has to change lives here. The rest of this file uses
+   these names, so switching themes is one block of overrides rather than an
+   audit of four thousand lines.
+
+   Decorative colours — the graph's edge strokes, a frozen tile's icy tint,
+   customer chip hues — are deliberately NOT variables. They sit on their own
+   saturated or dark backgrounds and read the same either way, and pulling them
+   in would mean maintaining two values for something that never needed one. */
+
+:root,
+:root[data-theme="dark"] {
   --bg: #1e1f24;
   --panel: #2a2c33;
   --panel-2: #33363f;
+  /* One step lighter than --panel-2: hovered headers and raised chrome. */
+  --panel-3: #3a3d47;
+  /* One step DARKER than --panel: wells and inset areas. */
+  --panel-sunken: #24262c;
   --text: #e8e8ea;
   --muted: #9a9ba1;
   --accent: #f0a441;
+  /* Text drawn ON --accent. Flips with the theme because the accent does. */
+  --on-accent: #1a1a1a;
   --ok: #6bbf59;
   --bad: #e05a5a;
+  --warn: #e8c34a;
+  /* Softened status colours, for text rather than borders or fills. */
+  --bad-soft: #ffbcbc;
+  --warn-soft: #ffdf9e;
+  --ok-border: #3c5c34;
   --line: #444;
+  --line-strong: #000;
+  --btn-border: #555;
+  --row-selected: #3a3428;
+  --shadow: #0008;
   --tile: 3.2rem;
   font-family: system-ui, sans-serif;
   color-scheme: dark;
+}
+
+/* Light theme. The structure is identical; only the palette moves. Note that
+   --on-accent inverts: the dark theme's accent is a light amber carrying dark
+   text, the light theme's is a deep amber carrying white. */
+:root[data-theme="light"] {
+  --bg: #eef0f4;
+  --panel: #ffffff;
+  --panel-2: #e4e7ee;
+  --panel-3: #d5d9e3;
+  --panel-sunken: #f4f5f8;
+  --text: #1d1f26;
+  --muted: #5d6270;
+  --accent: #b4650a;
+  --on-accent: #ffffff;
+  --ok: #2e7d32;
+  --bad: #c0392b;
+  --warn: #8a6100;
+  --bad-soft: #9c2418;
+  --warn-soft: #7a5300;
+  --ok-border: #8fbf86;
+  --line: #ccd0da;
+  --line-strong: #aab0be;
+  --btn-border: #b3b9c6;
+  --row-selected: #fbeacd;
+  --shadow: rgba(0, 0, 0, 0.22);
+  --tile: 3.2rem;
+  font-family: system-ui, sans-serif;
+  color-scheme: light;
 }
 
 * {
@@ -26,7 +81,7 @@ body {
 button {
   font: inherit;
   padding: 0.3rem 0.65rem;
-  border: 1px solid #555;
+  border: 1px solid var(--btn-border);
   border-radius: 6px;
   background: var(--panel-2);
   color: var(--text);
@@ -45,7 +100,7 @@ button:disabled {
 button.active,
 button.primary {
   background: var(--accent);
-  color: #1a1a1a;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
@@ -146,7 +201,7 @@ header {
   gap: 1rem;
   padding: 0.5rem 1rem;
   background: var(--panel);
-  border-bottom: 1px solid #000;
+  border-bottom: 1px solid var(--line-strong);
   flex-wrap: wrap;
   position: sticky;
   top: 0;
@@ -228,7 +283,7 @@ footer {
   text-align: center;
   color: var(--muted);
   background: var(--panel);
-  border-top: 1px solid #000;
+  border-top: 1px solid var(--line-strong);
   font-size: 0.95rem;
 }
 
@@ -281,7 +336,7 @@ footer {
 
 .toggle-group .small-btn.active {
   background: var(--accent);
-  color: #1a1a1a;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
@@ -352,11 +407,11 @@ footer {
   padding: 0.4rem 0.7rem;
   margin-bottom: 0.6rem;
   font-size: 0.82rem;
-  color: #ffcaca;
+  color: var(--bad-soft);
 }
 
 .warnings.ok {
-  border-color: #3c5c34;
+  border-color: var(--ok-border);
   color: var(--ok);
 }
 
@@ -488,7 +543,7 @@ footer {
 
 .dirty-badge {
   font-size: 0.72rem;
-  color: #ffb0b0;
+  color: var(--bad-soft);
   white-space: nowrap;
 }
 
@@ -1311,12 +1366,12 @@ footer {
 }
 
 .warn-badge.bad {
-  color: #ffbcbc;
+  color: var(--bad-soft);
   border-color: var(--bad);
 }
 
 .warn-badge.soft {
-  color: #ffdf9e;
+  color: var(--warn-soft);
   border-color: var(--accent);
 }
 
@@ -1345,7 +1400,7 @@ footer {
 }
 
 .piece-row.short {
-  color: #ffbcbc;
+  color: var(--bad-soft);
   border-color: var(--bad);
 }
 
@@ -1372,7 +1427,7 @@ footer {
   background: var(--panel);
   border: 1px solid #5a5d68;
   border-radius: 8px;
-  box-shadow: 0 8px 24px #0008;
+  box-shadow: 0 8px 24px var(--shadow);
   padding: 0.25rem;
   font-size: 0.82rem;
 }
@@ -1454,7 +1509,7 @@ footer {
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
   padding: 0.3rem;
-  border: 1px solid #555;
+  border: 1px solid var(--btn-border);
   border-radius: 4px;
   background: var(--panel-2);
   color: var(--text);
@@ -1621,7 +1676,7 @@ td input {
 }
 
 .sub-row td {
-  background: #24262c;
+  background: var(--panel-sunken);
 }
 
 .param-defs {
@@ -1984,7 +2039,7 @@ td input {
   align-items: center;
   justify-content: center;
   gap: 0.15rem;
-  background: #24262c;
+  background: var(--panel-sunken);
 }
 
 .tool-slot.busy {
@@ -2013,7 +2068,7 @@ td input {
 
 .bar-track {
   height: 0.45rem;
-  background: #24262c;
+  background: var(--panel-sunken);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -2281,7 +2336,7 @@ td input {
   border-radius: 10px;
   padding: 1.5rem 2rem;
   min-width: 16rem;
-  box-shadow: 0 8px 24px #0008;
+  box-shadow: 0 8px 24px var(--shadow);
 }
 
 .preload-label {
@@ -2504,7 +2559,7 @@ td input {
 
 .tool-slot.preservation-slot {
   border-color: #e6cf72;
-  background: color-mix(in srgb, #e6cf72 10%, #24262c);
+  background: color-mix(in srgb, #e6cf72 10%, var(--panel-sunken));
 }
 
 .tool-slot.preservation-slot.busy {
@@ -2691,7 +2746,7 @@ td input {
   font-size: 0.76rem;
   font-family: ui-monospace, monospace;
   padding: 0.35rem 0.5rem;
-  border: 1px solid #555;
+  border: 1px solid var(--btn-border);
   border-radius: 4px;
   background: var(--panel-2);
   color: var(--text);
@@ -3018,7 +3073,7 @@ td input {
 
 .curve-point {
   fill: var(--accent);
-  stroke: #1a1a1a;
+  stroke: var(--on-accent);
   stroke-width: 1;
   cursor: grab;
 }
@@ -4364,7 +4419,7 @@ td input {
 }
 
 .queue-thaw.safe { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
-.queue-thaw.risky { color: #e8c34a; border-color: color-mix(in srgb, #e8c34a 55%, var(--line)); }
+.queue-thaw.risky { color: var(--warn); border-color: color-mix(in srgb, #e8c34a 55%, var(--line)); }
 .queue-thaw.deadlock { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
 .queue-thaw.unknown { color: var(--accent); }
 
@@ -4421,7 +4476,7 @@ td input {
 }
 
 .queue-thaw-tools.safe .queue-thaw-head { color: var(--ok); }
-.queue-thaw-tools.risky .queue-thaw-head { color: #e8c34a; }
+.queue-thaw-tools.risky .queue-thaw-head { color: var(--warn); }
 .queue-thaw-tools.deadlock .queue-thaw-head { color: var(--bad); }
 
 .queue-thaw-reasons {
@@ -4490,7 +4545,7 @@ td input {
 }
 
 .lp-map-head:hover {
-  background: #3a3d47;
+  background: var(--panel-3);
 }
 
 .lp-map-head h2 {
@@ -4696,7 +4751,7 @@ td input {
 
 .lp-status-ok { color: var(--ok); }
 .lp-status-error { color: var(--bad); }
-.lp-status-warn { color: #e8c34a; }
+.lp-status-warn { color: var(--warn); }
 .lp-status-note { color: var(--muted); }
 
 /* ---------- new map ---------- */
@@ -4763,7 +4818,7 @@ td input {
 }
 
 .lp-row.selected .lp-cell-index {
-  background-color: #3a3428;
+  background-color: var(--row-selected);
 }
 
 /* ---------- Level Path: ingredient weight tags ---------- */
@@ -4846,4 +4901,102 @@ td input {
   display: flex;
   gap: 0.3rem;
   margin: 0.4rem 0.5rem 0.15rem;
+}
+
+/* ---------- Level Path: dish-sequence tags ---------- */
+/* Same wrapping-tag layout as the ingredient weights, minus the icons: one box
+   per customer, so the SHAPE of a level is readable at a glance instead of
+   being spelled out as "0;0;1;2". */
+
+.lp-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  max-height: 3.6rem;
+  overflow-y: auto;
+  cursor: pointer;
+  border: 1px dashed transparent;
+  border-radius: 4px;
+  padding: 0.1rem 0.15rem;
+}
+
+.lp-tags:hover {
+  border-color: var(--accent);
+}
+
+.lp-count-tag {
+  min-width: 1.15rem;
+  padding: 0 0.2rem;
+  border-radius: 3px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  line-height: 1.15rem;
+}
+
+/* The two values that are not counts get their own colour, so they cannot be
+   misread as "orders -1 dishes" or "orders none". */
+.lp-count-tag.staff {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.lp-count-tag.auto {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------- Level Path: generated-size bounds ---------- */
+
+.lp-bounds {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.lp-bounds-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  align-self: center;
+  max-width: 4.5rem;
+  line-height: 1.15;
+}
+
+.lp-bound-field input {
+  width: 3.4rem;
+}
+
+/* ---------- Level Path: gradient end colour pickers ---------- */
+
+.lp-hue-picker {
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.3rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.lp-hue-picker::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.lp-hue-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+/* ---------- header: theme toggle ---------- */
+
+.theme-toggle {
+  white-space: nowrap;
 }

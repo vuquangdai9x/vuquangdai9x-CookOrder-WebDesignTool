@@ -58,17 +58,46 @@ import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 
 // ---------- tuning constants ----------
 
-/** Customers in a freshly rolled dish sequence. */
-export const MIN_CUSTOMERS = 5;
-export const MAX_CUSTOMERS = 10;
 /**
- * Dishes across the whole level in a freshly rolled sequence. Combined with
- * the customer bounds above, a generated level averages 2..4 dishes each.
+ * How big a freshly rolled level is allowed to be.
+ *
+ * Editable from the Level Path config bar rather than fixed, because "how long
+ * is a level" is a tuning decision that changes per map and per stage of a
+ * project — and a designer who has to edit a constant to answer it will instead
+ * hand-fix every generated level.
  */
-export const MIN_TOTAL_DISHES = 10;
-export const MAX_TOTAL_DISHES = 40;
+export interface GenerateBounds {
+  minCustomers: number;
+  maxCustomers: number;
+  minTotalDishes: number;
+  maxTotalDishes: number;
+}
+
+export const DEFAULT_BOUNDS: GenerateBounds = {
+  minCustomers: 5,
+  maxCustomers: 10,
+  minTotalDishes: 10,
+  maxTotalDishes: 40,
+};
+
 /** Dishes one customer may be handed while the total is distributed. */
 const MAX_DISHES_PER_CUSTOMER = 5;
+
+/**
+ * Bounds that cannot contradict themselves, whatever the config bar holds.
+ *
+ * A max below its min is a state the two independent inputs can genuinely be
+ * left in mid-edit, and the roll below would loop or produce nonsense — so the
+ * max gives way to the min rather than the generator having to defend itself at
+ * every use.
+ */
+export function normalizeBounds(bounds: GenerateBounds = DEFAULT_BOUNDS): GenerateBounds {
+  const minCustomers = Math.max(1, Math.round(bounds.minCustomers));
+  const maxCustomers = Math.max(minCustomers, Math.round(bounds.maxCustomers));
+  const minTotalDishes = Math.max(1, Math.round(bounds.minTotalDishes));
+  const maxTotalDishes = Math.max(minTotalDishes, Math.round(bounds.maxTotalDishes));
+  return { minCustomers, maxCustomers, minTotalDishes, maxTotalDishes };
+}
 
 /** Lane count rolled for a level whose queue is still empty. */
 export const MIN_ROLLED_LANES = 3;
@@ -122,10 +151,14 @@ export function randomIngredientWeights(projected: ProjectedMap, rand: () => num
  * customer, a deliberate authoring choice, not something a random split should
  * invent.
  */
-export function randomDishCountSequence(rand: () => number): number[] {
-  const customers = randInt(rand, MIN_CUSTOMERS, MAX_CUSTOMERS);
-  const lowest = Math.max(MIN_TOTAL_DISHES, customers);
-  const highest = Math.max(lowest, Math.min(MAX_TOTAL_DISHES, customers * MAX_DISHES_PER_CUSTOMER));
+export function randomDishCountSequence(rand: () => number, rawBounds?: GenerateBounds): number[] {
+  const bounds = normalizeBounds(rawBounds);
+  const customers = randInt(rand, bounds.minCustomers, bounds.maxCustomers);
+  const lowest = Math.max(bounds.minTotalDishes, customers);
+  const highest = Math.max(
+    lowest,
+    Math.min(bounds.maxTotalDishes, customers * MAX_DISHES_PER_CUSTOMER),
+  );
   const total = randInt(rand, lowest, highest);
 
   const counts = new Array<number>(customers).fill(1);
@@ -193,6 +226,8 @@ export interface GenerateLevelOptions {
   random?: () => number;
   /** Cap on estimator work per attempt; forwarded verbatim. */
   maxIterations?: number;
+  /** How big a rolled level may be; omitted means DEFAULT_BOUNDS. */
+  bounds?: GenerateBounds;
 }
 
 export interface GenerateLevelResult {
@@ -318,13 +353,25 @@ function buildCandidate(
   };
 }
 
-/** Steps 2..6 for one seed. Rolled per seed so a retry rerolls the blanks too. */
-function resolveConfig(
+/** Everything steps 2..6 decide, for one seed. */
+export type RolledConfig = Omit<BuildConfig, "shuffleCurve"> & { baseShuffle: CurveState };
+
+/**
+ * Steps 2..6 for one seed. Rolled per seed so a retry rerolls the blanks too.
+ *
+ * Exported because the table's per-cell "Regenerate" needs exactly one field of
+ * this — and it has to be the SAME field the pipeline would have rolled, or
+ * regenerating a curve by hand would give a different level than regenerating
+ * the whole thing. Calling this with `reroll` is how that stays true instead of
+ * being re-implemented per cell.
+ */
+export function resolveConfig(
   level: LevelData,
   ctx: GenerateContext,
   seed: number,
   reroll: boolean,
-): Omit<BuildConfig, "shuffleCurve"> & { baseShuffle: CurveState } {
+  bounds?: GenerateBounds,
+): RolledConfig {
   // Config draws come from their own stream, derived from the seed: sharing
   // the build stream would make the config depend on how many draws the build
   // happened to make, which is not something a seed should encode.
@@ -335,7 +382,7 @@ function resolveConfig(
     storedWeights && storedWeights.size > 0 ? storedWeights : randomIngredientWeights(ctx.projected, rand);
 
   const storedCounts = reroll ? [] : parseDishCountSequence(level.customerDishesSequence ?? "");
-  const dishCounts = storedCounts.length > 0 ? storedCounts : randomDishCountSequence(rand);
+  const dishCounts = storedCounts.length > 0 ? storedCounts : randomDishCountSequence(rand, bounds);
 
   const complexity =
     !reroll && level.complexityCurve
@@ -382,6 +429,7 @@ export function generateLevel(
       ctx,
       seed,
       opts.rerollConfig ?? false,
+      opts.bounds,
     );
 
     // Step 8 walks the ceiling down one whole step at a time, so a level that

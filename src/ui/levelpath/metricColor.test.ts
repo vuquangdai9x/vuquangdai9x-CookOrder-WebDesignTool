@@ -116,6 +116,27 @@ describe("colour ramps", () => {
     }
   });
 
+  it("inverts the lightness ramp for a light background", () => {
+    const gradient = mono(210);
+    const darkHigh = lightOf(metricTextColor(1, 1, gradient, "dark"));
+    const darkLow = lightOf(metricTextColor(0, 1, gradient, "dark"));
+    const lightHigh = lightOf(metricTextColor(1, 1, gradient, "light"));
+    const lightLow = lightOf(metricTextColor(0, 1, gradient, "light"));
+
+    // On a dark panel "more" is brighter; on a white one it has to be darker,
+    // or the high end of every column vanishes into the page.
+    expect(darkHigh).toBeGreaterThan(darkLow);
+    expect(lightHigh).toBeLessThan(lightLow);
+    // The hue is the column's identity and must survive the theme switch.
+    expect(hueOf(metricTextColor(1, 1, gradient, "light"))).toBeCloseTo(210);
+  });
+
+  it("keeps a light-theme fill above the text it sits behind", () => {
+    const fill = lightOf(metricFillColor(1, 1, mono(210), "light"));
+    const text = lightOf(metricTextColor(1, 1, mono(210), "light"));
+    expect(fill).toBeGreaterThan(text + 20);
+  });
+
   it("normalizes hues onto the wheel", () => {
     expect(wrapHue(-30)).toBe(330);
     expect(wrapHue(400)).toBe(40);

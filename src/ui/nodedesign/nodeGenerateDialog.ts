@@ -37,6 +37,7 @@ import {
 } from "../design/ingredientWeightEditor.ts";
 import { generateLevel } from "../levelpath/generateLevel.ts";
 import type { GenerateLevelResult } from "../levelpath/generateLevel.ts";
+import { loadConfig } from "../levelpath/config.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
 import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
@@ -157,12 +158,19 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
           btn.textContent = "Generating…";
           btn.disabled = true;
           setTimeout(() => {
-            const result = generateLevel(deps.level, {
-              ix: deps.ix,
-              ids: deps.ids,
-              projected: deps.projected,
-              ...(deps.scenario ? { scenario: deps.scenario } : {}),
-            });
+            const result = generateLevel(
+              deps.level,
+              {
+                ix: deps.ix,
+                ids: deps.ids,
+                projected: deps.projected,
+                ...(deps.scenario ? { scenario: deps.scenario } : {}),
+              },
+              // How big a generated level may be is a project-wide setting,
+              // edited in Level Path's config bar. Reading it here rather than
+              // duplicating the control keeps one answer to the question.
+              { bounds: loadConfig().bounds },
+            );
             deps.onGenerated(result);
             close();
             const notes = [...result.errors, ...result.warnings];

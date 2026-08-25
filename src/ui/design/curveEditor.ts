@@ -475,8 +475,21 @@ export function parseCurve(s: string, fallback: CurveState): CurveState {
   return structuredClone(fallback);
 }
 
-/** Standalone "edit just this curve" popup — the curve editor + presets, an Apply/Cancel footer, nothing else. */
-export function openCurveDialog(title: string, initial: CurveState, onApply: (curve: CurveState) => void): void {
+/**
+ * Standalone "edit just this curve" popup — the curve editor + presets, an
+ * Apply/Cancel footer, nothing else.
+ *
+ * `onClear` is optional and adds a Clear button. It exists for callers where an
+ * ABSENT curve is meaningful rather than an error — Level Path's generator
+ * columns, where clearing one hands the choice back to the generator — and is
+ * left off where a curve must always be present.
+ */
+export function openCurveDialog(
+  title: string,
+  initial: CurveState,
+  onApply: (curve: CurveState) => void,
+  onClear?: () => void,
+): void {
   const close = () => overlay.remove();
   let curveState = structuredClone(initial);
 
@@ -484,6 +497,14 @@ export function openCurveDialog(title: string, initial: CurveState, onApply: (cu
     createCurveWithPresets(curveState, (next) => (curveState = next)),
     el("div", { class: "auto-generate-actions" }, [
       button("Cancel", close),
+      ...(onClear
+        ? [
+            button("Clear", () => { onClear(); close(); }, {
+              class: "danger",
+              title: "Remove this curve — the generator will roll a fresh one from the seed",
+            }),
+          ]
+        : []),
       button("Apply", () => { onApply(curveState); close(); }, { class: "primary" }),
     ]),
   ]);

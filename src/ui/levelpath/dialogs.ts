@@ -14,6 +14,7 @@ function openDialog(
   body: (Node | string)[],
   confirmLabel: string,
   onConfirm: () => boolean | void,
+  onClear?: () => void,
 ): void {
   const close = () => overlay.remove();
 
@@ -21,6 +22,14 @@ function openDialog(
     ...body,
     el("div", { class: "auto-generate-actions" }, [
       button("Cancel", close),
+      ...(onClear
+        ? [
+            button("Clear", () => { onClear(); close(); }, {
+              class: "danger",
+              title: "Remove this value — the generator will roll a fresh one from the seed",
+            }),
+          ]
+        : []),
       button(
         confirmLabel,
         () => {
@@ -106,6 +115,7 @@ export function openDishSequenceDialog(
   levelName: string,
   initial: number[],
   onApply: (counts: number[]) => void,
+  onClear?: () => void,
 ): void {
   let counts = [...initial];
   openDialog(
@@ -118,6 +128,7 @@ export function openDishSequenceDialog(
     ],
     "Apply",
     () => onApply(counts),
+    onClear,
   );
 }
 

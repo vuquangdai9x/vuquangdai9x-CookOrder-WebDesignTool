@@ -36,7 +36,7 @@ export interface ColumnDef {
 const NEUTRAL_STATUS_ID = 0;
 
 const INFO_COLUMNS: ColumnDef[] = [
-  { id: "index", group: "info", label: "Level", width: 132, title: "#index, weather and difficulty tag. Drag to reorder; right-click for the row menu." },
+  { id: "index", group: "info", label: "Level", width: 96, title: "#index, weather and difficulty tag. Drag to reorder; right-click for the row menu." },
   { id: "weather", group: "info", label: "Weather", width: 110 },
   { id: "tag", group: "info", label: "Tag", width: 110 },
   { id: "unlock", group: "info", label: "Unlock", width: 130, title: "featureUnlock string" },
