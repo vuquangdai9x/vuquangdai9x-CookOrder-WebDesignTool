@@ -321,6 +321,103 @@ export const BUILT_IN_CURVE_PRESETS: BuiltInCurvePreset[] = [
     name: "Upside-Down Parabola",
     keyframes: [{ x: 0, y: 1, tangent: -2 }, { x: 0.5, y: 0, tangent: 0 }, { x: 1, y: 1, tangent: 2 }],
   },
+
+  // ---- multi-peak shapes ----
+  // A tangent of 0 at every keyframe makes each segment an ease-in-out between
+  // its two values, so these read as rolling hills rather than as a zigzag.
+  // The peaks are what make them useful: a single rise tells a player the level
+  // only gets harder, while a peak-and-recover gives them somewhere to breathe
+  // and makes the NEXT peak land.
+  {
+    name: "Double Mountain",
+    keyframes: [
+      { x: 0, y: 0.1, tangent: 0 },
+      { x: 0.27, y: 1, tangent: 0 },
+      { x: 0.5, y: 0.25, tangent: 0 },
+      { x: 0.76, y: 1, tangent: 0 },
+      { x: 1, y: 0.15, tangent: 0 },
+    ],
+  },
+  {
+    name: "Triple Mountain",
+    keyframes: [
+      { x: 0, y: 0.1, tangent: 0 },
+      { x: 0.18, y: 0.9, tangent: 0 },
+      { x: 0.34, y: 0.25, tangent: 0 },
+      { x: 0.5, y: 0.95, tangent: 0 },
+      { x: 0.66, y: 0.25, tangent: 0 },
+      { x: 0.82, y: 1, tangent: 0 },
+      { x: 1, y: 0.15, tangent: 0 },
+    ],
+  },
+
+  // ---- real restaurant services ----
+  // Shapes taken from how a real kitchen's day actually loads, because the
+  // complexity curve is read across a level's ARRIVALS: a level whose orders
+  // land the way a service does feels like a shift, and a designer already
+  // knows what a lunch rush is supposed to feel like.
+  {
+    name: "Lunch & Dinner Rush",
+    keyframes: [
+      { x: 0, y: 0.1, tangent: 0 },
+      { x: 0.28, y: 0.72, tangent: 0 },
+      { x: 0.5, y: 0.22, tangent: 0 },
+      // Dinner is the bigger service almost everywhere, so the second peak is
+      // the taller one.
+      { x: 0.78, y: 1, tangent: 0 },
+      { x: 1, y: 0.18, tangent: 0 },
+    ],
+  },
+  {
+    name: "Breakfast, Lunch, Dinner",
+    keyframes: [
+      { x: 0, y: 0.15, tangent: 0 },
+      { x: 0.14, y: 0.5, tangent: 0 },
+      { x: 0.3, y: 0.2, tangent: 0 },
+      { x: 0.48, y: 0.78, tangent: 0 },
+      { x: 0.66, y: 0.25, tangent: 0 },
+      { x: 0.85, y: 1, tangent: 0 },
+      { x: 1, y: 0.2, tangent: 0 },
+    ],
+  },
+  {
+    name: "Dinner Service Only",
+    keyframes: [
+      { x: 0, y: 0.05, tangent: 0 },
+      { x: 0.55, y: 0.28, tangent: 0 },
+      { x: 0.85, y: 1, tangent: 0 },
+      { x: 1, y: 0.65, tangent: 0 },
+    ],
+  },
+  {
+    name: "Weekend Brunch Plateau",
+    keyframes: [
+      { x: 0, y: 0.15, tangent: 0 },
+      { x: 0.25, y: 0.9, tangent: 0 },
+      // A brunch does not spike, it just stays busy for hours.
+      { x: 0.62, y: 0.95, tangent: 0 },
+      { x: 0.85, y: 0.4, tangent: 0 },
+      { x: 1, y: 0.12, tangent: 0 },
+    ],
+  },
+  {
+    name: "Opening Rush",
+    keyframes: [
+      { x: 0, y: 1, tangent: 0 },
+      { x: 0.32, y: 0.55, tangent: 0 },
+      { x: 1, y: 0.15, tangent: 0 },
+    ],
+  },
+  {
+    name: "Last Orders Spike",
+    keyframes: [
+      { x: 0, y: 0.3, tangent: 0 },
+      { x: 0.62, y: 0.38, tangent: 0 },
+      // Everyone remembers they wanted dessert at the same moment.
+      { x: 0.88, y: 1, tangent: 0 },
+      { x: 1, y: 0.85, tangent: 0 },
+    ],
+  },
 ];
 
 export function loadCurvePresets(): CurvePreset[] {

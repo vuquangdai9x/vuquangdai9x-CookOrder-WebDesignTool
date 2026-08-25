@@ -122,6 +122,8 @@ describe("MapLevelProgress row schema", () => {
     row[4] = `sequence-${suffix}`;
     row[5] = `complexity-${suffix}`;
     row[6] = `shuffle-${suffix}`;
+    row[7] = `seed-${suffix}`;
+    row[8] = `obstacles-${suffix}`;
     row[15] = `customers-${suffix}`;
     row[16] = `grid-${suffix}`;
     row[17] = `queues-${suffix}`;
@@ -145,6 +147,8 @@ describe("MapLevelProgress row schema", () => {
         customerDishesSequence: "sequence-burger",
         complexityCurve: "complexity-burger",
         shuffleCurve: "shuffle-burger",
+        randomSeed: "seed-burger",
+        obstacleData: "obstacles-burger",
         customerString: "customers-burger",
         gridString: "grid-burger",
         queueString: "queues-burger",

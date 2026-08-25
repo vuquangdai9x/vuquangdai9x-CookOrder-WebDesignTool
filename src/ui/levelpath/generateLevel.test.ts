@@ -5,9 +5,25 @@ import { buildIdIndex } from "../../data/nodeIdTable.ts";
 import { nodeAsMapDef } from "../../data/nodeGraphToMapDef.ts";
 import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
-import { parseQueues } from "../../core/parser.ts";
-import { parseNodeCustomers } from "../../core/nodeParser.ts";
+import { parseGrid, parseQueues } from "../../core/parser.ts";
+import { parseNodeCustomers, serializeDish } from "../../core/nodeParser.ts";
 import { parseDishCountSequence } from "../design/autoGenerate.ts";
+import { BUILT_IN_CURVE_PRESETS } from "../design/curveEditor.ts";
+import { getCustomerCatalog, setCustomerCatalog } from "../../data/customerCatalog.ts";
+import { parseObstacles } from "./obstacles.ts";
+import { validateLevel } from "./validateLevel.ts";
+
+/** A graph with nothing in it — no seed can produce a playable level from this. */
+function emptyCtx(): GenerateContext {
+  const emptyDoc: NodeGraphMap = {
+    ...structuredClone(doc),
+    idTable: { ingredient: [], composite: [], group: [], tool: [], dirty: [] },
+    vertices: { ingredient: [], tool: [], group: [], composite: [], dirty: [] },
+    edges: { process: [], preservation: [], base: [], topping: [], option: [], leavesDirty: [] },
+  };
+  const emptyIx = buildIndex(emptyDoc);
+  return { ix: emptyIx, ids: buildIdIndex(emptyDoc.idTable), projected: nodeAsMapDef(emptyDoc, emptyIx) };
+}
 import {
   DEFAULT_BOUNDS,
   generateLevel,
@@ -15,6 +31,7 @@ import {
   MAX_ROLLED_LANES,
   MIN_ROLLED_LANES,
   normalizeBounds,
+  randomComplexityCurve,
   randomDishCountSequence,
   resolveConfig,
   resolveLaneCount,
@@ -66,7 +83,7 @@ describe("randomDishCountSequence", () => {
 
 describe("configurable bounds", () => {
   it("honours a custom customer and dish range", () => {
-    const bounds = { minCustomers: 2, maxCustomers: 3, minTotalDishes: 4, maxTotalDishes: 6 };
+    const bounds = { ...DEFAULT_BOUNDS, minCustomers: 2, maxCustomers: 3, minTotalDishes: 4, maxTotalDishes: 6 };
     for (let seed = 1; seed <= 100; seed++) {
       const counts = randomDishCountSequence(seededRng(seed), bounds);
       const total = counts.reduce((n, c) => n + c, 0);
@@ -79,15 +96,26 @@ describe("configurable bounds", () => {
 
   it("lets the min win when a max is left below it mid-edit", () => {
     expect(normalizeBounds({
+      ...DEFAULT_BOUNDS,
       minCustomers: 8,
       maxCustomers: 2,
       minTotalDishes: 30,
       maxTotalDishes: 5,
-    })).toEqual({ minCustomers: 8, maxCustomers: 8, minTotalDishes: 30, maxTotalDishes: 30 });
+      minComplexityMaxY: 12,
+      maxComplexityMaxY: 3,
+    })).toEqual({
+      minCustomers: 8,
+      maxCustomers: 8,
+      minTotalDishes: 30,
+      maxTotalDishes: 30,
+      minComplexityMaxY: 12,
+      maxComplexityMaxY: 12,
+    });
   });
 
   it("never rolls a sequence that contradicts itself under inverted bounds", () => {
     const counts = randomDishCountSequence(seededRng(9), {
+      ...DEFAULT_BOUNDS,
       minCustomers: 6,
       maxCustomers: 1,
       minTotalDishes: 12,
@@ -95,6 +123,66 @@ describe("configurable bounds", () => {
     });
     expect(counts.length).toBe(6);
     expect(counts.every((c) => c >= 1)).toBe(true);
+  });
+});
+
+describe("seededRng", () => {
+  it("gives neighbouring seeds unrelated first draws", () => {
+    // The seed walk and every "one draw decides this field" caller depend on
+    // this. A bare LCG fails it: seeds 1..60 all start within a few
+    // thousandths of each other.
+    const first = Array.from({ length: 60 }, (_, i) => seededRng(i + 1)());
+    const buckets = new Set(first.map((v) => Math.floor(v * 16)));
+    expect(buckets.size).toBeGreaterThan(8);
+  });
+
+  it("is still perfectly reproducible", () => {
+    const a = seededRng(1234);
+    const b = seededRng(1234);
+    expect([a(), a(), a()]).toEqual([b(), b(), b()]);
+  });
+});
+
+describe("randomComplexityCurve", () => {
+  it("rolls the ceiling inside the configured range", () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const curve = randomComplexityCurve(seededRng(seed));
+      expect(curve.range.maxY).toBeGreaterThanOrEqual(DEFAULT_BOUNDS.minComplexityMaxY);
+      expect(curve.range.maxY).toBeLessThanOrEqual(DEFAULT_BOUNDS.maxComplexityMaxY);
+      expect(curve.range.minY).toBe(1);
+    }
+  });
+
+  it("honours a narrowed range", () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      const curve = randomComplexityCurve(seededRng(seed), {
+        ...DEFAULT_BOUNDS,
+        minComplexityMaxY: 7,
+        maxComplexityMaxY: 7,
+      });
+      expect(curve.range.maxY).toBe(7);
+    }
+  });
+
+  it("varies both the shape and the height across seeds", () => {
+    // Rolling only the shape would give a set of levels that all peak
+    // identically, which is the thing the ceiling roll exists to avoid.
+    const shapes = new Set<string>();
+    const heights = new Set<number>();
+    for (let seed = 1; seed <= 60; seed++) {
+      const curve = randomComplexityCurve(seededRng(seed));
+      shapes.add(JSON.stringify(curve.keyframes));
+      heights.add(curve.range.maxY);
+    }
+    expect(shapes.size).toBeGreaterThan(3);
+    expect(heights.size).toBeGreaterThan(3);
+  });
+
+  it("only ever picks a shape that ships with the tool", () => {
+    const known = new Set(BUILT_IN_CURVE_PRESETS.map((p) => JSON.stringify(p.keyframes)));
+    for (let seed = 1; seed <= 60; seed++) {
+      expect(known.has(JSON.stringify(randomComplexityCurve(seededRng(seed)).keyframes))).toBe(true);
+    }
   });
 });
 
@@ -200,6 +288,96 @@ describe("generateLevel", () => {
     expect(parseQueues(level.queueString).length).toBe(4);
   });
 
+  it("builds the obstacle budget into the level it produces", () => {
+    const level = blank({ obstacleData: "blocked=2;boss=1;hidden=2" });
+    const result = generateLevel(level, ctx);
+    expect(result.ok).toBe(true);
+
+    const cells = parseGrid(level.gridString);
+    expect(cells.filter((c) => c.effects.some((e) => e.effectId === 1))).toHaveLength(2);
+
+    const items = parseQueues(level.queueString).flat();
+    expect(items.filter((i) => i.effects.some((e) => e.effectId === 2))).toHaveLength(2);
+
+    // The boss is the finale, and orders far more than a normal customer.
+    const customers = parseNodeCustomers(level.customerString);
+    const boss = customers[customers.length - 1];
+    expect(boss.dishes.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("builds the same level whether or not the catalog has avatar art", () => {
+    // Avatar draws come from their own stream, so adding a boss portrait to the
+    // catalog must not silently regenerate every level built from that seed.
+    const withoutArt = blank({ obstacleData: "boss=1", randomSeed: 4242 });
+    generateLevel(withoutArt, ctx);
+
+    const original = getCustomerCatalog();
+    setCustomerCatalog([
+      { index: 7, id: "b", name: "Boss", desc: "", type: "Boss", baseMap: doc.map.id, mapIndex: 1, fileId: "", icon: "👑" },
+    ]);
+    const withArt = blank({ obstacleData: "boss=1", randomSeed: 4242 });
+    generateLevel(withArt, ctx);
+    setCustomerCatalog(original);
+
+    // Compare the ORDERS, which is what a seed promises to reproduce. The
+    // pinned avatar is the one thing that is legitimately different.
+    const dishesOf = (level: LevelData) =>
+      parseNodeCustomers(level.customerString).map((c) => c.dishes.map(serializeDish).join(","));
+    expect(dishesOf(withArt)).toEqual(dishesOf(withoutArt));
+    expect(withArt.queueString).toBe(withoutArt.queueString);
+    expect(withArt.gridString).toBe(withoutArt.gridString);
+
+    // …and the avatar really was pinned, so this is not passing vacuously.
+    const boss = parseNodeCustomers(withArt.customerString).at(-1);
+    expect(boss?.customerIndex).toBe(7);
+  });
+
+  it("gives every colour lock a key, so no lock is unopenable", () => {
+    const level = blank({ obstacleData: "lockKey=2" });
+    expect(generateLevel(level, ctx).ok).toBe(true);
+
+    const locks = parseGrid(level.gridString)
+      .flatMap((c) => c.effects)
+      .filter((e) => e.effectId === 4)
+      .map((e) => e.params[0])
+      .sort();
+    const keys = parseQueues(level.queueString)
+      .flat()
+      .flatMap((i) => i.effects)
+      .filter((e) => e.effectId === 3)
+      .map((e) => e.params[0])
+      .sort();
+    expect(keys).toEqual(locks);
+  });
+
+  it("rolls a budget for a level that records none, and writes it back", () => {
+    const level = blank();
+    expect(generateLevel(level, ctx).ok).toBe(true);
+    // The rolled budget is recorded, so the level reproduces and the designer
+    // can see and edit what the generator chose for them.
+    expect(level.obstacleData).toBeDefined();
+    const rolled = parseObstacles(level.obstacleData);
+
+    // Scaled to THIS level rather than to a constant.
+    const counts = parseDishCountSequence(level.customerDishesSequence ?? "");
+    const customers = counts.length;
+    const gridCells = doc.map.gridWidth * doc.map.gridHeight;
+    expect(rolled.grid.blocked).toBeLessThanOrEqual(Math.min(3, Math.floor(gridCells / 8)));
+    expect(rolled.customer.timed).toBeLessThanOrEqual(Math.min(3, Math.floor(customers / 3)));
+
+    // Regenerating from the recorded seed reproduces the same budget.
+    const again = blank({ randomSeed: level.randomSeed });
+    generateLevel(again, ctx);
+    expect(again.obstacleData).toBe(level.obstacleData);
+  });
+
+  it("keeps an authored budget exactly as written", () => {
+    // "This level has a boss" is a design decision; a roll must never overwrite it.
+    const level = blank({ obstacleData: "boss=1" });
+    expect(generateLevel(level, ctx).ok).toBe(true);
+    expect(level.obstacleData).toBe("boss=1");
+  });
+
   it("says so when it had to lower the shuffle ceiling to win", () => {
     const level = blank();
     const result = generateLevel(level, ctx);
@@ -210,6 +388,36 @@ describe("generateLevel", () => {
     // the starting ceiling comes from the level when it records one.
     const lowered = result.shuffleMaxY < result.startShuffleMaxY;
     expect(result.warnings.some((w) => /Shuffle ceiling lowered/.test(w))).toBe(lowered);
+  });
+
+  it("walks the seed by one until it finds a playable level", () => {
+    // A graph that can never produce a level, so every seed fails: the walk is
+    // observable in seedsTried and in the seed it gave up on.
+    const level = blank();
+    const result = generateLevel(level, emptyCtx(), { random: () => 0, seedBudgetMs: 2000 });
+
+    expect(result.ok).toBe(false);
+    expect(result.seedsTried).toBeGreaterThan(1);
+    // Started at 0 (random: () => 0) and walked upward by one per round.
+    expect(result.seed).toBe(result.seedsTried - 1);
+  });
+
+  it("stops walking once the time budget is gone, and says so", () => {
+    const result = generateLevel(blank(), emptyCtx(), { random: () => 0, seedBudgetMs: 0 });
+    expect(result.ok).toBe(false);
+    // A budget of 0 lets exactly the first round run, then stops.
+    expect(result.seedsTried).toBe(1);
+    expect(result.errors.join(" ")).toMatch(/search budget ran out/);
+  });
+
+  it("rejects a seed whose level is solvable but deadlocks", () => {
+    // The deadlock audit is what makes the seed walk meaningful: a level can
+    // pass the estimator and still jam a tool on a different pick order.
+    const level = blank();
+    const withAudit = generateLevel(level, ctx, { deadlockRuns: 12 });
+    expect(withAudit.ok).toBe(true);
+    // Whatever it settled on survives an independent audit at the same budget.
+    expect(validateLevel(level, ix, { deadlockRuns: 12 }).errors).toEqual([]);
   });
 
   it("leaves a level untouched when no build can be verified", () => {

@@ -38,6 +38,8 @@ import {
 import { generateLevel } from "../levelpath/generateLevel.ts";
 import type { GenerateLevelResult } from "../levelpath/generateLevel.ts";
 import { loadConfig } from "../levelpath/config.ts";
+import { createObstacleEditor } from "../levelpath/obstacleEditor.ts";
+import { parseObstacles, serializeObstacles } from "../levelpath/obstacles.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
 import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
@@ -84,7 +86,30 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
       ? storedWeights
       : new Map(deps.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]));
 
+  /**
+   * Which fields the level ALREADY records, and which the designer touched here.
+   *
+   * The dialog has to show something for a field a level does not set, so it
+   * shows a sensible default — but writing that default back on Generate is
+   * what turns "the generator decides this" into "it is pinned to the dialog's
+   * placeholder". That is not a cosmetic difference: an untouched weight grid
+   * would pin every ingredient at 100, and an untouched dish list would pin
+   * three customers, instead of letting the pipeline roll the ranges the config
+   * bar configures. So each field is written back only if it was already there
+   * or the designer actually moved it.
+   */
+  const had = {
+    weights: Boolean(deps.level.ingredientWeights),
+    counts: Boolean(deps.level.customerDishesSequence),
+    curve: Boolean(deps.level.complexityCurve),
+  };
+  const touched = { weights: false, counts: false, curve: false };
+
   let dishCounts = [...initialCounts];
+  // Existing customers ARE an authored sequence, even though the level may not
+  // record one — the dialog opened showing their dish counts, and generating
+  // would otherwise silently replace them with a rolled sequence.
+  const countsFromExisting = existing.length > 0;
   let curveState = deps.level.complexityCurve
     ? parseCurve(deps.level.complexityCurve, cachedCurve ?? defaultCurve(1, DEFAULT_MAX_DISH_SLOTS))
     : cachedCurve
@@ -93,7 +118,12 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
 
   const weightGrid = createIngredientWeightGrid(deps.projected.map, weightsByDataId, (next) => {
     weightsByDataId = next;
+    touched.weights = true;
   });
+
+  // The obstacle budget is authored, not rolled, so the dialog edits the
+  // level's own record and writes it straight back — same as the weights.
+  const obstacles = createObstacleEditor(parseObstacles(deps.level.obstacleData));
 
   const seedInput = el("input", {
     type: "number",
@@ -107,9 +137,12 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
     "Leave it blank to let the generator pick one — it will try several until the level is winnable, " +
     "then write the winning one back here.";
 
-  const panel = el("div", { class: "auto-generate-panel" }, [
+  const panel = el("div", { class: "auto-generate-panel auto-generate-sheet" }, [
     el("h3", {}, ["Customers (dish count per customer — -1 = Staff, 0 = Auto)"]),
-    dishCountEditor(initialCounts, (next) => (dishCounts = next)),
+    dishCountEditor(initialCounts, (next) => {
+      dishCounts = next;
+      touched.counts = true;
+    }),
     el("h3", {}, ["Ingredient Weights"]),
     el("div", { class: "ingredient-toggle-actions" }, [
       button("Enable All", () => weightGrid.setAll(DEFAULT_INGREDIENT_WEIGHT), { class: "small-btn" }),
@@ -120,7 +153,10 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
     createCurveWithPresets(curveState, (next) => {
       curveState = next;
       cachedCurve = next;
+      touched.curve = true;
     }),
+    el("h3", {}, ["Obstacles"]),
+    obstacles.element,
     el("h3", {}, ["Random Seed"]),
     el("label", { class: "field" }, ["Seed (blank = pick one)", seedInput]),
     el("p", { class: "muted" }, [
@@ -143,9 +179,16 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
           }
           // The pipeline reads its inputs off the level, so the dialog's job is
           // to record what the designer chose and then hand over.
-          deps.level.ingredientWeights = serializeIngredientWeights(weightsByDataId);
-          deps.level.customerDishesSequence = serializeDishCountSequence(dishCounts);
-          deps.level.complexityCurve = serializeCurve(curveState);
+          if (had.weights || touched.weights) {
+            deps.level.ingredientWeights = serializeIngredientWeights(weightsByDataId);
+          }
+          if (had.counts || touched.counts || countsFromExisting) {
+            deps.level.customerDishesSequence = serializeDishCountSequence(dishCounts);
+          }
+          if (had.curve || touched.curve) {
+            deps.level.complexityCurve = serializeCurve(curveState);
+          }
+          deps.level.obstacleData = serializeObstacles(obstacles.config);
           const seed = seedInput.value.trim();
           if (seed === "") delete deps.level.randomSeed;
           else deps.level.randomSeed = Math.max(0, Math.trunc(Number(seed) || 0)) >>> 0;

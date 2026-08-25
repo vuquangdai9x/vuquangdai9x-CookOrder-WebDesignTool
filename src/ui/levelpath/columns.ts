@@ -48,6 +48,7 @@ const GENERATOR_COLUMNS: ColumnDef[] = [
   { id: "dishes", group: "generator", label: "Dish sequence", width: 150, title: "Dish count per customer — click to edit" },
   { id: "complexity", group: "generator", label: "Complexity", width: 130, title: "Total ingredients per customer, by order position — click to edit" },
   { id: "shuffle", group: "generator", label: "Shuffle", width: 130, title: "Queue displacement by lane position — click to edit" },
+  { id: "obstacles", group: "generator", label: "Obstacles", width: 190, title: "How many blocked cells, frozen slots, bosses… a generate should build in. Click to edit." },
   { id: "seed", group: "generator", label: "Seed", width: 110, title: "Random seed — the same seed rebuilds the same level. Blank lets the generator pick and pin one." },
 ];
 

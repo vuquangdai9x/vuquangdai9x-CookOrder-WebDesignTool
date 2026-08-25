@@ -30,9 +30,25 @@ import {
   slotIsUnlocked,
 } from "./nodeDishEdit.ts";
 
+/**
+ * What a customer IS, beyond how many dishes they order.
+ *
+ * Shippers and bosses are big orders with a pinned avatar. They are generated
+ * BEFORE the normal customers because they are the largest claims on the
+ * ingredient budget: the adaptive weight tracker hands whatever is scarcest to
+ * whoever asks first, so building the big orders last would assemble them from
+ * everyone else's leftovers.
+ */
+export type CustomerRole = "normal" | "shipper" | "boss";
+
 export interface NodeGenerateOptions {
   /** One entry per customer, in order. -1 = Staff, 0 = Auto (from the curve), >0 = explicit dish count. */
   dishCounts: number[];
+  /**
+   * Role per customer, parallel to `dishCounts`. Absent means every customer is
+   * normal, which is what the plain Auto Generate dialog asks for.
+   */
+  roles?: CustomerRole[];
   /** Dense ingredient index -> selection weight (0-100). 0/absent = excluded. */
   weights: Map<number, number>;
   curve: CurveState;
@@ -418,13 +434,26 @@ export function generateNodeCustomers(
     );
   }
 
-  counts.forEach((count, index) => {
+  // Specials first, then the normal customers — see CustomerRole. Each result
+  // is written back into its OWN position, so the arrival order the caller
+  // asked for survives the reordering of the work.
+  const roles = opts.roles ?? [];
+  const buildOrder = counts
+    .map((_, index) => index)
+    .sort((a, b) => roleRank(roles[a]) - roleRank(roles[b]) || a - b);
+  const built: (NodeCustomerConfig | null)[] = counts.map(() => null);
+
+  buildOrder.forEach((index) => {
+    const count = counts[index];
     if (count === -1) {
-      out.push({ typeId: 1, waitTime: 0, weatherEff: 0, dishes: [], staffAmount: 1 });
+      built[index] = { typeId: 1, waitTime: 0, weatherEff: 0, dishes: [], staffAmount: 1 };
       return;
     }
     // The curve's y at this customer's position is the complexity target, in
     // ingredient slots — exactly what it means in the legacy generator.
+    // NOTE: the position is the customer's ARRIVAL index, not the order they
+    // happen to be built in — the curve describes the shape of the level as
+    // played, and reading it in build order would flatten it.
     const realX =
       opts.curve.range.minX +
       (counts.length === 1 ? 0 : index / (counts.length - 1)) * (opts.curve.range.maxX - opts.curve.range.minX);
@@ -451,9 +480,19 @@ export function generateNodeCustomers(
       }
       else warn(`Could not generate ${ix.compositeName[orderable]}: enabled ingredients cannot satisfy its base and group minimum quantities.`);
     }
-    out.push({ typeId: 0, waitTime: 0, weatherEff: 0, dishes });
+    built[index] = { typeId: 0, waitTime: 0, weatherEff: 0, dishes };
   });
 
+  for (const customer of built) {
+    if (customer) out.push(customer);
+  }
   alignRecipePieces(ix, ids, out, opts.weights, maxDishSlots, warn);
   return out;
+}
+
+/** Generation order: bosses and shippers before anyone else. */
+function roleRank(role: CustomerRole | undefined): number {
+  if (role === "boss") return 0;
+  if (role === "shipper") return 1;
+  return 2;
 }

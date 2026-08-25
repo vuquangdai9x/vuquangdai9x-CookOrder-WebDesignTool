@@ -114,7 +114,14 @@ export function loadConfig(): LevelPathConfig {
       config.baseHue = wrapHue(stored.baseHue);
     }
     if (stored.bounds && typeof stored.bounds === "object") {
-      for (const key of ["minCustomers", "maxCustomers", "minTotalDishes", "maxTotalDishes"] as const) {
+      for (const key of [
+        "minCustomers",
+        "maxCustomers",
+        "minTotalDishes",
+        "maxTotalDishes",
+        "minComplexityMaxY",
+        "maxComplexityMaxY",
+      ] as const) {
         const value = stored.bounds[key];
         if (typeof value === "number" && Number.isFinite(value)) config.bounds[key] = value;
       }
@@ -271,6 +278,8 @@ export function createConfigPanel(deps: ConfigPanelDeps): HTMLElement {
       boundField("max", config.bounds, "maxCustomers", deps),
       boundField("Dishes min", config.bounds, "minTotalDishes", deps),
       boundField("max", config.bounds, "maxTotalDishes", deps),
+      boundField("Complexity min", config.bounds, "minComplexityMaxY", deps),
+      boundField("max", config.bounds, "maxComplexityMaxY", deps),
     ]),
     // The ramps are edited on the columns themselves, where the effect is
     // visible while dragging — but nothing about a header says "right-click

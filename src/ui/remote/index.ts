@@ -29,6 +29,7 @@ import {
   fetchLevelProgressRows,
   letterToColumn,
   REMOTE_LEVEL_FIELDS,
+  REMOTE_NUMERIC_FIELDS,
   REMOTE_SHEET_COLUMNS,
   REMOTE_SHEET_DEFAULT_TAB,
   SheetAuthRequiredError,
@@ -302,13 +303,28 @@ export class RemoteDataView {
 
   private toolField(entry: LevelEntry, key: FieldKey): string | null {
     if (!this.isLive(entry)) return null;
-    return (this.level(entry) as unknown as Record<string, string>)[key] ?? "";
+    const value = (this.level(entry) as unknown as Record<string, unknown>)[key];
+    return value === undefined || value === null ? "" : String(value);
   }
 
+  /**
+   * A sheet cell is always text; a few level fields are not (see
+   * REMOTE_NUMERIC_FIELDS). Coercing here rather than at every call site keeps
+   * "what type does this field hold" one fact, and an unparseable numeric cell
+   * CLEARS the field rather than storing NaN — an absent seed is a state the
+   * generator understands, and NaN is not.
+   */
   private setToolField(entry: LevelEntry, key: FieldKey, value: string): void {
     const level = this.level(entry);
     if (!level) return;
-    (level as unknown as Record<string, string>)[key] = value;
+    const target = level as unknown as Record<string, unknown>;
+    if (REMOTE_NUMERIC_FIELDS.has(key)) {
+      const trimmed = value.trim();
+      if (trimmed === "" || !Number.isFinite(Number(trimmed))) delete target[key];
+      else target[key] = Math.trunc(Number(trimmed));
+      return;
+    }
+    target[key] = value;
   }
 
   private cacheKeyNow(): string {

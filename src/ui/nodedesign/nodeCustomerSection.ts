@@ -62,6 +62,9 @@ import {
   serializeIngredientWeights,
 } from "../design/ingredientWeightEditor.ts";
 import { Section } from "../design/section.ts";
+import { createObstacleEditor } from "../levelpath/obstacleEditor.ts";
+import { parseObstacles, serializeObstacles } from "../levelpath/obstacles.ts";
+import type { ObstacleConfig } from "../levelpath/obstacles.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 
 /** Foldout-open flag plus the per-category legend toggles — see occupancyChart.ts. */
@@ -525,7 +528,32 @@ function levelParamsBar(
     });
   });
 
-  return el("div", { class: "level-params-bar" }, [weightsField, dishSeqField, curveField]);
+  // The obstacle budget is the one generator input that is EDITABLE as raw
+  // text here rather than read-only: it is a short, memorable grammar
+  // ("boss=1;frozen=3"), and a designer tuning one number should not have to
+  // open a dialog to do it. The Edit button still opens the grouped editor for
+  // when they want to see everything at once.
+  const obstacleField = editableField(
+    "Obstacles",
+    deps.level.obstacleData ?? "",
+    (text) => {
+      deps.level.obstacleData = serializeObstacles(parseObstacles(text));
+      refresh();
+    },
+    () => {
+      openObstacleDialog(parseObstacles(deps.level.obstacleData), (config) => {
+        deps.level.obstacleData = serializeObstacles(config);
+        refresh();
+      });
+    },
+  );
+
+  return el("div", { class: "level-params-bar" }, [
+    weightsField,
+    dishSeqField,
+    curveField,
+    obstacleField,
+  ]);
 }
 
 function readOnlyField(label: string, value: string, onEdit: () => void): HTMLElement {
@@ -534,6 +562,48 @@ function readOnlyField(label: string, value: string, onEdit: () => void): HTMLEl
     label,
     el("div", { class: "level-param-row" }, [input, button("Edit", onEdit, { class: "small-btn" })]),
   ]);
+}
+
+/** Same shape as readOnlyField, but the text itself is typeable. */
+function editableField(
+  label: string,
+  value: string,
+  onType: (text: string) => void,
+  onEdit: () => void,
+): HTMLElement {
+  const input = el("input", { type: "text", value, placeholder: "e.g. frozen=3;boss=1" }) as HTMLInputElement;
+  input.addEventListener("change", () => onType(input.value));
+  return el("label", { class: "field level-param-field" }, [
+    label,
+    el("div", { class: "level-param-row" }, [input, button("Edit", onEdit, { class: "small-btn" })]),
+  ]);
+}
+
+/** The grouped obstacle editor in a modal, for the Edit button beside the raw field. */
+function openObstacleDialog(initial: ObstacleConfig, onApply: (config: ObstacleConfig) => void): void {
+  const close = () => overlay.remove();
+  const editor = createObstacleEditor(initial);
+  const panel = el("div", { class: "auto-generate-panel auto-generate-sheet" }, [
+    editor.element,
+    el("div", { class: "auto-generate-actions" }, [
+      button("Cancel", close),
+      button("Apply", () => {
+        onApply(editor.config);
+        close();
+      }, { class: "primary" }),
+    ]),
+  ]);
+  const overlay = el("div", { class: "overlay-panel" }, [
+    el("div", { class: "definitions-head" }, [
+      el("h2", {}, ["Obstacles"]),
+      button("✕ Close", close, { class: "primary" }),
+    ]),
+    panel,
+  ]);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.body.append(overlay);
 }
 
 function openDishCountDialog(initial: number[], onApply: (counts: number[]) => void): void {

@@ -85,6 +85,8 @@ export interface RemoteSheetColumns {
   customerDishesSequence: number;
   complexityCurve: number;
   shuffleCurve: number;
+  randomSeed: number;
+  obstacleData: number;
 }
 
 export const REMOTE_SHEET_COLUMNS: RemoteSheetColumns = remoteSheetColumnsJson.columns;
@@ -96,10 +98,23 @@ export const REMOTE_LEVEL_FIELDS: { label: string; key: keyof RemoteSheetColumns
   { label: "Customer Dishes Sequence", key: "customerDishesSequence" },
   { label: "Complexity Curve", key: "complexityCurve" },
   { label: "Shuffle Curve", key: "shuffleCurve" },
+  { label: "Random Seed", key: "randomSeed" },
+  { label: "Obstacle Data", key: "obstacleData" },
   { label: "Customers", key: "customerString" },
   { label: "Grid", key: "gridString" },
   { label: "Queues", key: "queueString" },
 ];
+
+/**
+ * Remote fields whose LevelData counterpart is a NUMBER, not a string.
+ *
+ * Everything a sheet cell holds arrives as text, and every other level field is
+ * text too — so the Remote Data tab could assign straight through. `randomSeed`
+ * is the first that cannot: writing "1234" into it would leave a level whose
+ * seed is a string, which compares and reproduces differently from the number
+ * every other path puts there.
+ */
+export const REMOTE_NUMERIC_FIELDS: ReadonlySet<keyof RemoteSheetColumns> = new Set(["randomSeed"]);
 
 export interface LevelSheetRow {
   /** 1-indexed sheet row — needed to write this row's cells back in place. */
@@ -197,7 +212,7 @@ const LEVELS_CSV_HEADER = [
   "ServeableSlots", "QueueString", "GridString", "CustomerString",
   "OutOfSlotPolicy", "BoosterCharges",
   "IngredientWeights", "CustomerDishesSequence", "ComplexityCurve", "ShuffleCurve", "DesignNote",
-  "RandomSeed",
+  "RandomSeed", "ObstacleData",
 ];
 
 /** Level data only: metadata, customer, grid and queue strings — no map/ingredient/tool definitions. */
@@ -208,7 +223,7 @@ export function levelsCsv(map: Pick<MapData, "levels">): string {
     l.outOfSlotPolicy ?? "", (l.boosterCharges ?? []).join("|"),
     l.ingredientWeights ?? "", l.customerDishesSequence ?? "", l.complexityCurve ?? "",
     l.shuffleCurve ?? "", l.designNote ?? "",
-    l.randomSeed ?? "",
+    l.randomSeed ?? "", l.obstacleData ?? "",
   ]);
   return toCsv([LEVELS_CSV_HEADER, ...rows]);
 }
@@ -237,7 +252,7 @@ export function importLevelsCsv(text: string): LevelData[] {
       serveableSlots, queueString, gridString, customerString,
       outOfSlotPolicy, boosterCharges,
       ingredientWeights, customerDishesSequence, complexityCurve, shuffleCurve, designNote,
-      randomSeed,
+      randomSeed, obstacleData,
     ] = r;
     if (!id || Number.isNaN(Number(id))) {
       throw new Error(`Row ${i + 1}: invalid Level_ID "${id ?? ""}"`);
@@ -271,6 +286,7 @@ export function importLevelsCsv(text: string): LevelData[] {
     if (randomSeed !== undefined && randomSeed.trim() !== "" && Number.isFinite(Number(randomSeed))) {
       level.randomSeed = Math.trunc(Number(randomSeed));
     }
+    if (obstacleData) level.obstacleData = obstacleData;
     return level;
   });
 }

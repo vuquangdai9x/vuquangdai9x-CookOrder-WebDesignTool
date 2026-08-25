@@ -9,10 +9,13 @@
 //   4. complexity  — a random built-in curve preset when none is recorded
 //   5. lanes       — keep the level's current lane count, or roll 3..5
 //   6. shuffle     — a linear 0..3 curve when none is recorded
-//   7. build       — customers, then the queue that supplies them
-//   8. verify      — estimate; on an unwinnable level lower the shuffle
-//                    ceiling and rebuild, then try another seed
-//   9. report      — warnings and errors, for the Status column
+//   7. obstacles   — a budget scaled to the level's size when none is authored
+//   8. build       — customers (specials first, then timers), grid obstacles,
+//                    then the queue that supplies them and its slot obstacles
+//   9. verify      — estimate, then a deadlock audit on whatever survives it;
+//                    on a failure lower the shuffle ceiling, relax the timers,
+//                    and on exhausting that ladder walk to the next seed
+//  10. report      — warnings and errors, for the Status column
 //
 // The point of routing everything through the seed is REPRODUCIBILITY: the
 // same seed on the same graph must rebuild the same level, which is what makes
@@ -42,11 +45,29 @@ import {
   serializeIngredientWeights,
 } from "../design/ingredientWeightEditor.ts";
 import { estimateNodeDifficulty } from "../design/nodeEstimateDifficulty.ts";
+import { validateLevel } from "./validateLevel.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
 import type { EstimateScenario } from "../design/estimateScenario.ts";
 import { generateNodeCustomers } from "../nodedesign/nodeGenerate.ts";
 import { generateNodeQueueLanes } from "../nodedesign/nodeQueueGenerate.ts";
+import {
+  assignSpecialAvatars,
+  assignWaitTimes,
+  moveBossesLast,
+  planCustomers,
+} from "./customerRoles.ts";
+import {
+  emptyObstacles,
+  hasObstacles,
+  parseObstacles,
+  placeGridObstacles,
+  placeQueueObstacles,
+  rollObstacles,
+  serializeObstacles,
+} from "./obstacles.ts";
+import type { ObstacleConfig } from "./obstacles.ts";
 import { parseQueues, serializeQueues } from "../../core/parser.ts";
+import { resolveOrder } from "../../core/nodeOrder.ts";
 import { serializeNodeCustomers } from "../../core/nodeParser.ts";
 import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
@@ -71,6 +92,16 @@ export interface GenerateBounds {
   maxCustomers: number;
   minTotalDishes: number;
   maxTotalDishes: number;
+  /**
+   * The ceiling a rolled COMPLEXITY curve is scaled to, in ingredient slots per
+   * customer at the curve's peak.
+   *
+   * Rolled per level rather than fixed, so a stretch of generated levels varies
+   * in how demanding its busiest customers are — with one ceiling every level
+   * peaks at the same load, and the curve shape is the only thing that differs.
+   */
+  minComplexityMaxY: number;
+  maxComplexityMaxY: number;
 }
 
 export const DEFAULT_BOUNDS: GenerateBounds = {
@@ -78,6 +109,8 @@ export const DEFAULT_BOUNDS: GenerateBounds = {
   maxCustomers: 10,
   minTotalDishes: 10,
   maxTotalDishes: 40,
+  minComplexityMaxY: 5,
+  maxComplexityMaxY: 15,
 };
 
 /** Dishes one customer may be handed while the total is distributed. */
@@ -96,7 +129,16 @@ export function normalizeBounds(bounds: GenerateBounds = DEFAULT_BOUNDS): Genera
   const maxCustomers = Math.max(minCustomers, Math.round(bounds.maxCustomers));
   const minTotalDishes = Math.max(1, Math.round(bounds.minTotalDishes));
   const maxTotalDishes = Math.max(minTotalDishes, Math.round(bounds.maxTotalDishes));
-  return { minCustomers, maxCustomers, minTotalDishes, maxTotalDishes };
+  const minComplexityMaxY = Math.max(1, Math.round(bounds.minComplexityMaxY));
+  const maxComplexityMaxY = Math.max(minComplexityMaxY, Math.round(bounds.maxComplexityMaxY));
+  return {
+    minCustomers,
+    maxCustomers,
+    minTotalDishes,
+    maxTotalDishes,
+    minComplexityMaxY,
+    maxComplexityMaxY,
+  };
 }
 
 /** Lane count rolled for a level whose queue is still empty. */
@@ -107,20 +149,52 @@ export const MAX_ROLLED_LANES = 5;
 export const DEFAULT_SHUFFLE_MAX_Y = 3;
 
 /**
- * Fresh seeds tried before giving up on an unseeded level. Bounded because
- * every attempt costs a full estimator run, and a level that fails four
- * independent seeds at shuffle 0 is not one a fifth seed rescues — it is a
- * graph or grid problem, and saying so is more useful than spinning.
+ * Seeds walked before giving up on an unseeded level.
+ *
+ * The search WALKS: seed, seed+1, seed+2. Not fresh random seeds — because the
+ * one thing a designer does with a failed generate is look at the seed, and a
+ * contiguous run is something they can reason about and resume. (The LCG
+ * multiplies its state, so neighbouring seeds produce completely unrelated
+ * streams; +1 is a bookkeeping choice, not a similarity one.)
+ *
+ * Bounded by BOTH a count and a clock. Every seed costs a full estimator run
+ * plus, for the ones that get that far, a deadlock audit — so a graph that
+ * cannot produce a playable level at all would otherwise spin forever, and
+ * "it is still going" is the least useful thing a generator can say.
  */
-export const MAX_SEED_ATTEMPTS = 4;
+export const MAX_SEED_ATTEMPTS = 64;
+export const DEFAULT_SEED_BUDGET_MS = 20_000;
+
+/** How much extra patience each rung of the retry ladder grants the timers. */
+export const TIME_RELAXATION_PER_STEP = 0.35;
 
 // ---------- rng ----------
 
-/** The LCG the estimator and the deadlock audit already use, so "seeded" means one thing tool-wide. */
+/**
+ * The LCG the estimator and the deadlock audit already use — with the seed
+ * AVALANCHED first.
+ *
+ * That extra step is not decoration. A bare LCG's first output is very nearly
+ * linear in its seed: for seeds 1..60 the first value lands inside a band a few
+ * thousandths wide, so every one of those seeds picks the same curve preset,
+ * the same first ingredient, the same everything-decided-by-one-draw. Two
+ * things here depend on that being false — the seed walk (seed, seed+1, seed+2)
+ * needs neighbours to be unrelated, and several config fields are decided by a
+ * single draw from a freshly seeded stream.
+ *
+ * The mixer is the standard 32-bit murmur3 finalizer. Same seed still gives the
+ * same stream, so reproducibility is untouched.
+ */
 export function seededRng(seed: number): () => number {
-  let s = seed >>> 0 || 1;
+  let s = seed >>> 0;
+  s ^= s >>> 16;
+  s = Math.imul(s, 0x7feb352d) >>> 0;
+  s ^= s >>> 15;
+  s = Math.imul(s, 0x846ca68b) >>> 0;
+  s ^= s >>> 16;
+  s = s >>> 0 || 1;
   return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
     return s / 4294967296;
   };
 }
@@ -173,11 +247,20 @@ export function randomDishCountSequence(rand: () => number, rawBounds?: Generate
   return counts;
 }
 
-/** One of the built-in curve shapes, scaled to the legal dish-complexity range. */
-export function randomComplexityCurve(rand: () => number): CurveState {
+/**
+ * One of the built-in curve shapes, scaled to a ceiling rolled from the bounds.
+ *
+ * Both the SHAPE and the HEIGHT are drawn, because they are independent
+ * questions: the shape says when a level gets busy, the ceiling says how busy
+ * its busiest moment is. Rolling only the shape gives a set of levels that all
+ * peak identically.
+ */
+export function randomComplexityCurve(rand: () => number, rawBounds?: GenerateBounds): CurveState {
+  const bounds = normalizeBounds(rawBounds);
   const at = Math.floor(rand() * BUILT_IN_CURVE_PRESETS.length) % BUILT_IN_CURVE_PRESETS.length;
+  const maxY = randInt(rand, bounds.minComplexityMaxY, bounds.maxComplexityMaxY);
   return {
-    range: { minX: 0, maxX: 1, minY: 1, maxY: DEFAULT_MAX_DISH_SLOTS },
+    range: { minX: 0, maxX: 1, minY: 1, maxY },
     keyframes: structuredClone(BUILT_IN_CURVE_PRESETS[at].keyframes),
   };
 }
@@ -228,6 +311,19 @@ export interface GenerateLevelOptions {
   maxIterations?: number;
   /** How big a rolled level may be; omitted means DEFAULT_BOUNDS. */
   bounds?: GenerateBounds;
+  /**
+   * Accept a level on the difficulty estimate alone, without auditing it for
+   * deadlocks. Much faster, and wrong for anything a designer will ship.
+   */
+  skipDeadlock?: boolean;
+  /** Random pick orders per deadlock audit. */
+  deadlockRuns?: number;
+  /**
+   * Wall-clock ceiling on the whole seed search. The search walks seeds until
+   * one produces a playable level, so without this a graph that cannot produce
+   * one at all would spin.
+   */
+  seedBudgetMs?: number;
 }
 
 export interface GenerateLevelResult {
@@ -251,6 +347,7 @@ export interface GenerateLevelResult {
 interface Candidate {
   customerString: string;
   queueString: string;
+  gridString: string;
   warnings: string[];
   estimate: EstimateResult | null;
   ok: boolean;
@@ -263,8 +360,29 @@ interface BuildConfig {
   complexity: CurveState;
   laneCount: number;
   shuffleCurve: CurveState;
+  obstacles: ObstacleConfig;
+  /** Multiplies every generated patience timer — the retry ladder's handle. */
+  timeScale: number;
+  /** Skip the deadlock audits — for callers that only want playability. */
+  skipDeadlock?: boolean;
+  /** Random pick orders per deadlock audit; omitted uses the small default. */
+  deadlockRuns?: number;
 }
 
+/**
+ * Builds one candidate level, in the order the obstacles require:
+ *
+ *   customers (specials first, then normals, then timers)
+ *     -> grid obstacles, which need the customer count and the ordered
+ *        ingredients to key their locks to
+ *     -> the queue that supplies those customers
+ *     -> queue obstacles, which need the queue to exist and the grid's colour
+ *        locks to know how many keys to emit
+ *
+ * The dependencies run one way, which is why the order is fixed rather than a
+ * preference: keys cannot be placed before the locks they open are known, and
+ * locks cannot be keyed to ingredients before anyone has ordered one.
+ */
 function buildCandidate(
   level: LevelData,
   ctx: GenerateContext,
@@ -285,10 +403,13 @@ function buildCandidate(
     if (dense !== undefined && weight > 0) denseWeights.set(dense, weight);
   }
 
+  const plan = planCustomers(config.dishCounts, config.obstacles, rand);
+
   let customers: NodeCustomerConfig[];
   try {
     customers = generateNodeCustomers(ctx.ix, ctx.ids, {
-      dishCounts: config.dishCounts,
+      dishCounts: plan.dishCounts,
+      roles: plan.roles,
       weights: denseWeights,
       curve: config.complexity,
       random: rand,
@@ -298,12 +419,53 @@ function buildCandidate(
     return {
       customerString: "",
       queueString: "",
+      gridString: level.gridString,
       warnings,
       estimate: null,
       ok: false,
       failure: `Customer generation failed: ${(err as Error).message}`,
     };
   }
+
+  // The aligner may have appended a repair customer after the boss; put the
+  // boss back where the design says it belongs, and realign the roles to the
+  // list as it now stands.
+  const roles = moveBossesLast(customers, plan.roles);
+
+  // Avatars draw from their OWN stream. Sharing the build stream would make the
+  // level's dishes depend on how many catalog rows happen to exist for this
+  // map — so adding a boss portrait would silently regenerate every level built
+  // from the same seed.
+  const avatarRand = seededRng(seed ^ 0x85ebca6b);
+  assignSpecialAvatars(customers, roles, ctx.ix.doc.map.id, avatarRand, (message: string) => {
+    if (!warnings.includes(message)) warnings.push(message);
+  });
+
+  const slotsOf = (customer: NodeCustomerConfig): number =>
+    customer.dishes.reduce((n, dish) => n + resolveOrder(ctx.ix, dish, ctx.ids).order.slots.length, 0);
+  assignWaitTimes(customers, config.obstacles, slotsOf, rand, config.timeScale);
+
+  // Grid obstacles are placed against the orders that now exist, so an
+  // ingredient lock is keyed to something this level actually uses.
+  const usage = new Map<number, number>();
+  for (const customer of customers) {
+    for (const dish of customer.dishes) {
+      for (const slot of resolveOrder(ctx.ix, dish, ctx.ids).order.slots) {
+        const dataId = ctx.ids.byNode.ingredient.get(ctx.ix.ingName[slot.ing]);
+        if (dataId !== undefined) usage.set(dataId, (usage.get(dataId) ?? 0) + 1);
+      }
+    }
+  }
+  const grid = placeGridObstacles({
+    gridString: level.gridString,
+    width: ctx.ix.doc.map.gridWidth,
+    height: ctx.ix.doc.map.gridHeight,
+    customerCount: customers.filter((c) => c.typeId !== 1).length,
+    ingredientUsage: usage,
+    config: config.obstacles,
+    rand,
+  });
+  warnings.push(...grid.warnings);
 
   const lanes = generateNodeQueueLanes({
     ix: ctx.ix,
@@ -315,15 +477,23 @@ function buildCandidate(
   });
 
   const customerString = serializeNodeCustomers(customers);
-  const queueString = serializeQueues(
+  const plainQueue = serializeQueues(
     lanes.map((lane) => lane.map((id) => ({ kind: "ingredient" as const, id, effects: [] }))),
     [],
   );
+  const decorated = placeQueueObstacles({
+    queueString: plainQueue,
+    config: config.obstacles,
+    lockColors: grid.lockColors,
+    rand,
+  });
+  warnings.push(...decorated.warnings);
+  const queueString = decorated.queueString;
 
   // Verify against exactly the strings that will be saved, not the in-memory
   // objects they came from: a level that only works before serialization is a
   // level that does not work.
-  const probe: LevelData = { ...level, customerString, queueString };
+  const probe: LevelData = { ...level, customerString, queueString, gridString: grid.gridString };
   let estimate: EstimateResult | null = null;
   try {
     estimate = estimateNodeDifficulty(ctx.ix, toNodeLevelConfig(probe), {
@@ -337,24 +507,55 @@ function buildCandidate(
       warnings,
       estimate: null,
       ok: false,
+      gridString: grid.gridString,
       failure: `Estimate failed: ${(err as Error).message}`,
     };
   }
 
-  return {
-    customerString,
-    queueString,
-    warnings,
-    estimate,
-    ok: estimate.solvable,
-    ...(estimate.solvable
-      ? {}
-      : { failure: estimate.reason ?? "the estimator could not win this level." }),
-  };
+  const built = { customerString, queueString, gridString: grid.gridString, warnings, estimate };
+  if (!estimate.solvable) {
+    return {
+      ...built,
+      ok: false,
+      failure: estimate.reason ?? "the estimator could not win this level.",
+    };
+  }
+
+  // Deadlock audits run ONLY on a candidate that already passes the estimate.
+  // They are far more expensive than the solve, and a candidate that cannot be
+  // won is rejected either way — so the cheap test goes first and the expensive
+  // one runs about once per generate rather than once per attempt.
+  //
+  // This is also what makes the seed search meaningful: a level can be solvable
+  // and still jam a tool on a different pick order, and searching seeds without
+  // checking for that would happily settle on one.
+  if (!config.skipDeadlock) {
+    // The gate IS the validator, running the same three audits at the same
+    // budget — deliberately, not for convenience. A gate that is any weaker
+    // than the Validate button emits levels that fail validation the moment a
+    // designer presses it, which is exactly the loop this gate exists to close.
+    // The estimate is handed over so the expensive solve is not repeated.
+    const verdict = validateLevel(probe, ctx.ix, {
+      ...(ctx.scenario ? { scenario: ctx.scenario } : {}),
+      ...(config.deadlockRuns !== undefined ? { deadlockRuns: config.deadlockRuns } : {}),
+      estimate,
+    });
+    if (verdict.errors.length > 0) {
+      return { ...built, ok: false, failure: verdict.errors.join("; ") };
+    }
+    // Warnings ride along: a grid that fills up under one pick order is a real
+    // note for the designer, but it is policy-dependent and not a reason to
+    // throw the seed away.
+    for (const warning of verdict.warnings) {
+      if (!warnings.includes(warning)) warnings.push(warning);
+    }
+  }
+
+  return { ...built, ok: true };
 }
 
 /** Everything steps 2..6 decide, for one seed. */
-export type RolledConfig = Omit<BuildConfig, "shuffleCurve"> & { baseShuffle: CurveState };
+export type RolledConfig = Omit<BuildConfig, "shuffleCurve" | "timeScale"> & { baseShuffle: CurveState };
 
 /**
  * Steps 2..6 for one seed. Rolled per seed so a retry rerolls the blanks too.
@@ -387,7 +588,7 @@ export function resolveConfig(
   const complexity =
     !reroll && level.complexityCurve
       ? parseCurve(level.complexityCurve, defaultCurve(1, DEFAULT_MAX_DISH_SLOTS))
-      : randomComplexityCurve(rand);
+      : randomComplexityCurve(rand, bounds);
 
   const laneCount = resolveLaneCount(level, rand);
 
@@ -396,7 +597,22 @@ export function resolveConfig(
       ? parseCurve(level.shuffleCurve, linearShuffleCurve(DEFAULT_SHUFFLE_MAX_Y))
       : linearShuffleCurve(DEFAULT_SHUFFLE_MAX_Y);
 
-  return { weights, dishCounts, complexity, laneCount, baseShuffle };
+  // An AUTHORED budget is a design decision and is kept exactly as written. A
+  // level with none gets one rolled to its own size — see rollObstacles for the
+  // rule, which scales off this level's own customer and dish counts.
+  const stored = reroll ? emptyObstacles() : parseObstacles(level.obstacleData);
+  const obstacles = hasObstacles(stored)
+    ? stored
+    : rollObstacles(
+        {
+          customers: dishCounts.filter((count) => count !== -1).length,
+          dishes: dishCounts.reduce((n, count) => n + Math.max(0, count), 0),
+          gridCells: ctx.ix.doc.map.gridWidth * ctx.ix.doc.map.gridHeight,
+        },
+        rand,
+      );
+
+  return { weights, dishCounts, complexity, laneCount, baseShuffle, obstacles };
 }
 
 /**
@@ -421,10 +637,25 @@ export function generateLevel(
   let seedsTried = 0;
   let lastEstimate: EstimateResult | null = null;
 
+  const startedAt = performance.now();
   const seedBudget = pinned ? 1 : MAX_SEED_ATTEMPTS;
+  const timeBudget = opts.seedBudgetMs ?? DEFAULT_SEED_BUDGET_MS;
+  let ranOutOfTime = false;
+
   for (let seedRound = 0; seedRound < seedBudget; seedRound++) {
+    // Checked before the round rather than after, so the budget bounds the time
+    // spent STARTING work, not the time already spent.
+    if (seedRound > 0 && performance.now() - startedAt > timeBudget) {
+      ranOutOfTime = true;
+      break;
+    }
+    // Walked here rather than after the round, so a run that gives up reports
+    // the last seed it actually TRIED — reporting the next one would name a
+    // seed nobody built, which is exactly the number a designer would go and
+    // paste into the field to reproduce the failure.
+    if (seedRound > 0) seed = (seed + 1) >>> 0;
     seedsTried++;
-    const { weights, dishCounts, complexity, laneCount, baseShuffle } = resolveConfig(
+    const { weights, dishCounts, complexity, laneCount, baseShuffle, obstacles } = resolveConfig(
       level,
       ctx,
       seed,
@@ -442,11 +673,26 @@ export function generateLevel(
         range: { ...baseShuffle.range, maxY },
         keyframes: structuredClone(baseShuffle.keyframes),
       };
+      // Each rung of the ladder makes the level easier in the two ways the
+      // generator controls: less queue shuffling, and more patience on the
+      // timers it handed out. Relaxing only the shuffle would leave a level
+      // that is unwinnable BECAUSE of its timers stuck failing at every rung.
+      const timeScale = 1 + TIME_RELAXATION_PER_STEP * (startMaxY - maxY);
       const candidate = buildCandidate(
         level,
         ctx,
         seed,
-        { weights, dishCounts, complexity, laneCount, shuffleCurve },
+        {
+          weights,
+          dishCounts,
+          complexity,
+          laneCount,
+          shuffleCurve,
+          obstacles,
+          timeScale,
+          ...(opts.skipDeadlock !== undefined ? { skipDeadlock: opts.skipDeadlock } : {}),
+          ...(opts.deadlockRuns !== undefined ? { deadlockRuns: opts.deadlockRuns } : {}),
+        },
         opts.maxIterations,
       );
       lastEstimate = candidate.estimate ?? lastEstimate;
@@ -455,7 +701,12 @@ export function generateLevel(
       }
 
       if (!candidate.ok) {
-        if (maxY === 0 && candidate.failure) errors.push(`Seed ${seed}: ${candidate.failure}`);
+        // Only the LAST rung is reported: the failures on the way down are the
+        // ladder working, not news. Capped so a 64-seed search does not hand
+        // back 64 lines of the same sentence.
+        if (maxY === 0 && candidate.failure && errors.length < 5) {
+          errors.push(`Seed ${seed}: ${candidate.failure}`);
+        }
         continue;
       }
 
@@ -472,8 +723,18 @@ export function generateLevel(
       level.customerDishesSequence = serializeDishCountSequence(dishCounts);
       level.complexityCurve = serializeCurve(complexity);
       level.shuffleCurve = serializeCurve(shuffleCurve);
+      // A ROLLED budget is written back like every other rolled input, so the
+      // level reproduces and the designer can see — and edit — what the
+      // generator chose for them. An authored one round-trips unchanged.
+      level.obstacleData = serializeObstacles(obstacles);
       level.customerString = candidate.customerString;
       level.queueString = candidate.queueString;
+      level.gridString = candidate.gridString;
+      if (timeScale > 1 && obstacles.customer.timed > 0) {
+        warnings.push(
+          `Patience timers relaxed to ${Math.round(timeScale * 100)}% to make the level winnable.`,
+        );
+      }
       return {
         ok: true,
         seed,
@@ -493,11 +754,14 @@ export function generateLevel(
       );
       break;
     }
-    seed = mintSeed(opts.random);
   }
 
   if (!pinned) {
-    errors.push(`No winnable level after ${seedsTried} seed(s) and ${attempts} build(s).`);
+    errors.push(
+      ranOutOfTime
+        ? `No playable level after ${seedsTried} seed(s) and ${attempts} build(s) — the ${Math.round(timeBudget / 1000)}s search budget ran out.`
+        : `No playable level after ${seedsTried} seed(s) and ${attempts} build(s).`,
+    );
   }
   return {
     ok: false,

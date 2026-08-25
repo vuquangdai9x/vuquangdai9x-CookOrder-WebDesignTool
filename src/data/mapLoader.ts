@@ -49,6 +49,13 @@ export interface LevelData {
    * reseed a level whose seed the designer chose, it reports failure instead.
    */
   randomSeed?: number;
+  /**
+   * The obstacle budget a generated level is built to — how many blocked
+   * cells, frozen queue slots, bosses and so on it should contain. A set of
+   * COUNTS, not placements; see ui/levelpath/obstacles.ts for the grammar and
+   * for the placement rules that turn them into a level.
+   */
+  obstacleData?: string;
 }
 
 export type MapData = Omit<MapDef, "levels"> & { levels: LevelData[] };

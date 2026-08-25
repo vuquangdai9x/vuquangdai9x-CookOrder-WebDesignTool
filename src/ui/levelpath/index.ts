@@ -74,7 +74,13 @@ import {
   saveConfig,
 } from "./config.ts";
 import type { LevelPathConfig } from "./config.ts";
-import { openBatchGenerateDialog, openDishSequenceDialog, openNewMapDialog } from "./dialogs.ts";
+import {
+  openBatchGenerateDialog,
+  openDishSequenceDialog,
+  openNewMapDialog,
+  openObstacleBudgetDialog,
+} from "./dialogs.ts";
+import { obstacleSummary, parseObstacles, serializeObstacles } from "./obstacles.ts";
 import {
   DEFAULT_SHUFFLE_MAX_Y,
   generateLevel,
@@ -600,6 +606,12 @@ export class LevelPathView {
       body.append(this.row(entry, level, index, columns));
     });
 
+    // The add-row deliberately sits INSIDE the scrolling table rather than
+    // under it: on a map of sixty levels, a button below the table is a button
+    // you have to scroll the whole list to reach, and "add a level" is a thing
+    // you do from wherever you happen to be.
+    body.append(this.addLevelRow(entry));
+
     Sortable.create(body, {
       animation: 120,
       draggable: ".lp-row",
@@ -615,6 +627,64 @@ export class LevelPathView {
     });
 
     return el("div", { class: "lp-table" }, [header, body]);
+  }
+
+  /** The trailing "+ Add Level" row. Not `.lp-row`, so Sortable will not drag it. */
+  private addLevelRow(entry: MapEntry): HTMLElement {
+    const add = button("＋ Add Level", () => this.addLevel(entry), {
+      class: "lp-add-level-btn",
+      title: "Append a blank level to this map",
+    });
+    return el("div", { class: "lp-add-row" }, [add]);
+  }
+
+  private addLevel(entry: MapEntry): void {
+    const levels = entry.project.levels;
+    const nextId = levels.reduce((n, l) => Math.max(n, l.id), 0) + 1;
+    const level: LevelData = {
+      ...blankLevel(entry.project.doc, nextId),
+      name: `${entry.project.doc.map.id}_${levels.length + 1}`,
+    };
+    levels.push(level);
+    entry.stats.set(level.id, computeLevelStats(level, entry.ix, entry.ids));
+    entry.status.set(level.id, this.initialStatus(entry, level));
+    this.persist(entry);
+    this.refreshRanges();
+    this.renderMap(entry);
+  }
+
+  /**
+   * Strips every generator input, INCLUDING the seed.
+   *
+   * The seed is the point: clearing the curves but keeping the seed would
+   * rebuild the same level from the same draws, which is the opposite of what
+   * "start this level over" means. The level's own strings are left alone —
+   * this resets how the level would be GENERATED, not what it currently is.
+   */
+  private clearGeneratorData(targets: { entry: MapEntry; level: LevelData }[]): void {
+    if (targets.length > 1) {
+      const names = targets.slice(0, 6).map((t) => t.level.name).join(", ");
+      const more = targets.length > 6 ? `, +${targets.length - 6} more` : "";
+      if (!confirm(`Clear the generator data (weights, sequence, curves, obstacles and seed) of ${targets.length} levels?
+
+${names}${more}`)) {
+        return;
+      }
+    }
+    const touched = new Set<MapEntry>();
+    for (const { entry, level } of targets) {
+      delete level.ingredientWeights;
+      delete level.customerDishesSequence;
+      delete level.complexityCurve;
+      delete level.shuffleCurve;
+      delete level.obstacleData;
+      delete level.randomSeed;
+      touched.add(entry);
+    }
+    for (const entry of touched) {
+      this.persist(entry);
+      this.renderMap(entry);
+    }
   }
 
   private headerCell(column: ColumnDef): HTMLElement {
@@ -871,6 +941,8 @@ export class LevelPathView {
         return [this.withFieldMenu(this.weightsCell(entry, level), entry, level, "weights")];
       case "dishes":
         return [this.withFieldMenu(this.dishSequenceCell(entry, level), entry, level, "dishes")];
+      case "obstacles":
+        return [this.obstacleCell(entry, level)];
       case "complexity":
         return [
           this.withFieldMenu(
@@ -1103,6 +1175,38 @@ export class LevelPathView {
     return wrap;
   }
 
+  /**
+   * The obstacle budget as icon+count tags.
+   *
+   * Not part of the clear/reroll menu the other generator cells share: an
+   * obstacle budget is AUTHORED, never rolled, so "regenerate this from the
+   * seed" would be an offer the pipeline cannot honour.
+   */
+  private obstacleCell(entry: MapEntry, level: LevelData): HTMLElement {
+    const config = parseObstacles(level.obstacleData);
+    const wrap = el("div", { class: "lp-tags", title: "Click to edit this level's obstacle budget" });
+    const summary = obstacleSummary(config);
+
+    if (summary.length === 0) {
+      wrap.append(el("span", { class: "lp-blank" }, ["— none —"]));
+    } else {
+      for (const item of summary) {
+        const tag = el("span", { class: "lp-count-tag obstacle" }, [`${item.icon}${item.count}`]);
+        tag.title = `${item.label}: ${item.count}`;
+        wrap.append(tag);
+      }
+    }
+
+    wrap.addEventListener("click", () => {
+      openObstacleBudgetDialog(level.name, config, (next) => {
+        level.obstacleData = serializeObstacles(next);
+        this.persist(entry);
+        this.refreshRow(entry, level);
+      });
+    });
+    return wrap;
+  }
+
   private curveCell(
     curve: CurveState,
     title: string,
@@ -1302,9 +1406,13 @@ export class LevelPathView {
           onSelect: () => void this.validateLevels(targets),
         },
         {
+          label: `🧹 Clear generator data${single ? "" : ` (${targets.length})`}`,
+          separator: true,
+          onSelect: () => this.clearGeneratorData(targets),
+        },
+        {
           label: `🗑 Delete${single ? "" : ` (${targets.length})`}`,
           danger: true,
-          separator: true,
           onSelect: () => this.deleteLevels(targets),
         },
       ],

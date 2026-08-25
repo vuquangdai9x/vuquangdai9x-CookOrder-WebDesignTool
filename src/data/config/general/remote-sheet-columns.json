@@ -9,6 +9,8 @@
     "customerDishesSequence": 4,
     "complexityCurve": 5,
     "shuffleCurve": 6,
+    "randomSeed": 7,
+    "obstacleData": 8,
     "customerString": 15,
     "gridString": 16,
     "queueString": 17

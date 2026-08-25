@@ -73,6 +73,15 @@ describe("Auto Generate builds the whole level through the shared pipeline", () 
     expect(generateLevelSrc).not.toContain("generateQueueLanes({");
   });
 
+  it("does not pin the dialog's placeholders onto a level that set none", () => {
+    // The dialog must show SOMETHING for an unset field, but writing that
+    // placeholder back would pin every ingredient at 100 and the customer count
+    // at three — silently overriding the ranges the config bar configures.
+    expect(generateDialogSrc).toContain("had.weights || touched.weights");
+    expect(generateDialogSrc).toContain("had.counts || touched.counts");
+    expect(generateDialogSrc).toContain("had.curve || touched.curve");
+  });
+
   it("the pipeline verifies each build with the estimator before accepting it", () => {
     expect(generateLevelSrc).toContain("estimateNodeDifficulty(");
     expect(generateLevelSrc).toContain("estimate.solvable");
