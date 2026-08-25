@@ -6,6 +6,10 @@ Install the package from disk through Unity Package Manager, then open **Window 
 
 The graph JSON remains the source of truth. Without a config, generated runtime assets are written to `Assets/_Production/Map-<map-id>/Graph`.
 
+## Gameplay rules
+
+[GAMEPLAY_RULES.md](GAMEPLAY_RULES.md) is the full specification of the cooking graph and of the play-mode simulation — data model, level-string grammar, the tick loop, picking, cooking, serving, dirty dishes, win/lose conditions, boosters and Save Me. Read it before building the gameplay scene: this package ships the data and the translators, not the simulation.
+
 ## Runtime translators
 
 ```csharp
