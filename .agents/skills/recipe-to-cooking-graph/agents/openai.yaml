@@ -1,0 +1,7 @@
+interface:
+  display_name: "Recipe to Cooking Graph"
+  short_description: "Build validated graphs from real menus"
+  default_prompt: "Use $recipe-to-cooking-graph to turn my food list into a clean CookOrder graph."
+policy:
+  allow_implicit_invocation: true
+

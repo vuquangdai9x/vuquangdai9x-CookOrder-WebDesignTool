@@ -85,6 +85,19 @@ describe("node play view structure key", () => {
     expect(customersStructureKey(s)).toBe(before);
   });
 
+  it("tracks exactly three upcoming composite previews", () => {
+    const customer = "0;0;0;{c0:17}";
+    const s = sim({
+      queueString: "0",
+      customerString: Array.from({ length: 6 }, () => customer).join("|"),
+    });
+    const key = customersStructureKey(s);
+    expect(key).toContain("p2:0");
+    expect(key).toContain("p3:0");
+    expect(key).toContain("p4:0");
+    expect(key).not.toContain("p5:0");
+  });
+
   it("changes when a pick removes a tile from a queue", () => {
     const s = sim({ queueString: "0,1%1,0", customerString: "0;0;0;{c0:17.{g0:18}}" });
     const before = queuesStructureKey(s);

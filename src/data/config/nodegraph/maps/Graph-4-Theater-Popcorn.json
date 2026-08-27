@@ -1,0 +1,1248 @@
+{
+  "schemaVersion": 1,
+  "_foodOrderableMap": {
+    "theater-popcorn": [
+      "theater-popcorn"
+    ],
+    "simple-hotdog": [
+      "simple-hotdog"
+    ],
+    "chicken-and-potato-fried": [
+      "chicken-and-potato-fried"
+    ],
+    "coca": [
+      "coca-with-ice"
+    ],
+    "fruit-tea-with-ice": [
+      "fruit-tea-with-ice"
+    ]
+  },
+  "_derivation": [
+    {
+      "sourceTitle": "Preparing Perfect Popcorn — The Popcorn Board",
+      "url": "https://www.popcorn.org/Recipes/Preparing-Perfect-Popcorn",
+      "supports": [
+        "popcorn-kernels",
+        "popped-popcorn",
+        "popcorn-popper"
+      ],
+      "adaptations": [
+        "Oil and heat are implicit in the popcorn-popper tool."
+      ]
+    },
+    {
+      "sourceTitle": "Rainbow Popcorn and Triple Chocolate Popcorn — The Popcorn Board",
+      "url": "https://www.popcorn.org/Recipes/Details/rainbow-popcorn",
+      "supports": [
+        "rainbow-sprinkles",
+        "chocolate-drizzle",
+        "popcorn-flavor-choice"
+      ],
+      "adaptations": [
+        "Flavor coatings are exposed as one-at-a-time gameplay choices."
+      ]
+    },
+    {
+      "sourceTitle": "Hot Dog Etiquette — National Hot Dog and Sausage Council",
+      "url": "https://hot-dog.org/culture/hot-dog-etiquette",
+      "supports": [
+        "hotdog-bun",
+        "grilled-sausage",
+        "hotdog-condiment-choice"
+      ],
+      "adaptations": [
+        "The sausage is required in a helper composite; condiments remain optional."
+      ]
+    },
+    {
+      "sourceTitle": "Buttermilk fried chicken and French fries — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/buttermilk-fried-chicken",
+      "supports": [
+        "breaded-chicken-tender",
+        "breaded-chicken-wing",
+        "deep-fryer",
+        "fried-potato"
+      ],
+      "adaptations": [
+        "Flour, buttermilk, oil, and potato cutting are implicit station supplies."
+      ]
+    },
+    {
+      "sourceTitle": "How to make iced tea — Good Food",
+      "url": "https://www.bbcgoodfood.com/howto/guide/how-make-iced-tea",
+      "supports": [
+        "brewed-black-tea",
+        "fruit-tea-flavor-choice",
+        "ice-cubes"
+      ],
+      "adaptations": [
+        "Fruit infusions are represented by visually distinct syrups."
+      ]
+    },
+    {
+      "sourceTitle": "Coca-Cola Original ingredients — The Coca-Cola Company",
+      "url": "https://www.coca-cola.com/us/en/brands/coca-cola/products/original",
+      "supports": [
+        "coca-cup",
+        "soda-fountain"
+      ],
+      "adaptations": [
+        "The proprietary cola formula is implicit in the fountain; the player supplies the cup."
+      ]
+    }
+  ],
+  "_imagePolicy": {
+    "provider": "Unicode Emoji fallback",
+    "urlPattern": "none — emoji fields are embedded and deterministic",
+    "license": "Unicode characters rendered by the player platform",
+    "attribution": "No remote images assigned; OpenMoji SVG URLs are the recommended derived-link upgrade path."
+  },
+  "_visualAudit": {
+    "selectionSetsReviewed": [
+      "popcorn-flavor-choice: salt/chocolate/white-vanilla/green-matcha/red-strawberry/rainbow",
+      "hotdog-condiment-choice: red-ketchup/yellow-mustard/green-relish",
+      "fried-chicken-choice and fried-sauce-choice: silhouette plus color separation",
+      "fruit-tea-flavor-choice: peach/lemon/blueberry/mango silhouettes"
+    ],
+    "combinationPreviewsReviewed": [
+      "all six popcorn flavor stacks",
+      "hotdog core with each condiment pair",
+      "both chicken cuts with fries and each sauce",
+      "coca plus visible ice",
+      "all four fruit teas plus visible ice"
+    ],
+    "result": "pass",
+    "notes": [
+      "Selectable pickups use distinct silhouette, color, or texture cues at emoji scale.",
+      "Composites use component stacks only; no final-dish image can cover the selected ingredients."
+    ]
+  },
+  "map": {
+    "id": "theater-popcorn",
+    "name": "Theater Popcorn",
+    "gridWidth": 5,
+    "gridHeight": 2,
+    "dirtyStackHeight": 3,
+    "visibleRows": 3
+  },
+  "idTable": {
+    "ingredient": [
+      "popcorn-kernels",
+      "sea-salt",
+      "chocolate-drizzle",
+      "vanilla-glaze",
+      "matcha-powder",
+      "strawberry-dust",
+      "rainbow-sprinkles",
+      "hotdog-bun",
+      "beef-sausage",
+      "ketchup-packet",
+      "mustard-packet",
+      "pickle-relish",
+      "chicken-tender",
+      "chicken-wing",
+      "potato",
+      "spicy-sauce",
+      "cheese-sauce",
+      "barbecue-sauce",
+      "soda-cup",
+      "ice-cubes",
+      "black-tea-leaves",
+      "peach-syrup",
+      "lemon-syrup",
+      "berry-syrup",
+      "mango-syrup",
+      "popped-popcorn",
+      "grilled-sausage",
+      "breaded-chicken-tender",
+      "breaded-chicken-wing",
+      "fried-chicken-tender",
+      "fried-chicken-wing",
+      "fried-potato",
+      "coca-cup",
+      "brewed-black-tea"
+    ],
+    "composite": [
+      "theater-popcorn",
+      "hotdog-core",
+      "simple-hotdog",
+      "fried-potato-with-sauce",
+      "chicken-and-potato-fried",
+      "coca-with-ice",
+      "fruit-tea-base",
+      "fruit-tea-with-ice"
+    ],
+    "group": [
+      "popcorn-flavor-choice",
+      "hotdog-condiment-choice",
+      "fried-chicken-choice",
+      "fried-sauce-choice",
+      "fruit-tea-flavor-choice"
+    ],
+    "tool": [
+      "popcorn-popper",
+      "hotdog-roller",
+      "breading-station",
+      "deep-fryer",
+      "soda-fountain",
+      "tea-brewer"
+    ],
+    "dirty": [
+      "dirty-popcorn-bucket",
+      "dirty-hotdog-tray",
+      "dirty-fried-basket",
+      "dirty-coca-cup",
+      "dirty-tea-glass"
+    ]
+  },
+  "vertices": {
+    "ingredient": [
+      {
+        "name": "popcorn-kernels",
+        "displayName": "Popcorn Kernels",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🌽"
+      },
+      {
+        "name": "sea-salt",
+        "displayName": "Sea Salt",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧂"
+      },
+      {
+        "name": "chocolate-drizzle",
+        "displayName": "Chocolate Drizzle",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍫"
+      },
+      {
+        "name": "vanilla-glaze",
+        "displayName": "Vanilla Glaze",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚪"
+      },
+      {
+        "name": "matcha-powder",
+        "displayName": "Matcha Powder",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍵"
+      },
+      {
+        "name": "strawberry-dust",
+        "displayName": "Strawberry Dust",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍓"
+      },
+      {
+        "name": "rainbow-sprinkles",
+        "displayName": "Rainbow Sprinkles",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🌈"
+      },
+      {
+        "name": "hotdog-bun",
+        "displayName": "Hotdog Bun",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥖"
+      },
+      {
+        "name": "beef-sausage",
+        "displayName": "Beef Sausage",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🌭"
+      },
+      {
+        "name": "ketchup-packet",
+        "displayName": "Ketchup Packet",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🔴"
+      },
+      {
+        "name": "mustard-packet",
+        "displayName": "Mustard Packet",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟡"
+      },
+      {
+        "name": "pickle-relish",
+        "displayName": "Pickle Relish",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥒"
+      },
+      {
+        "name": "chicken-tender",
+        "displayName": "Chicken Tender",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🐔"
+      },
+      {
+        "name": "chicken-wing",
+        "displayName": "Chicken Wing",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍗"
+      },
+      {
+        "name": "potato",
+        "displayName": "Potato",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥔"
+      },
+      {
+        "name": "spicy-sauce",
+        "displayName": "Spicy Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🌶️"
+      },
+      {
+        "name": "cheese-sauce",
+        "displayName": "Cheese Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧀"
+      },
+      {
+        "name": "barbecue-sauce",
+        "displayName": "Barbecue Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟤"
+      },
+      {
+        "name": "soda-cup",
+        "displayName": "Soda Cup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥤"
+      },
+      {
+        "name": "ice-cubes",
+        "displayName": "Ice Cubes",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧊"
+      },
+      {
+        "name": "black-tea-leaves",
+        "displayName": "Black Tea Leaves",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍂"
+      },
+      {
+        "name": "peach-syrup",
+        "displayName": "Peach Syrup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍑"
+      },
+      {
+        "name": "lemon-syrup",
+        "displayName": "Lemon Syrup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍋"
+      },
+      {
+        "name": "berry-syrup",
+        "displayName": "Berry Syrup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫐"
+      },
+      {
+        "name": "mango-syrup",
+        "displayName": "Mango Syrup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥭"
+      },
+      {
+        "name": "popped-popcorn",
+        "displayName": "Popped Popcorn",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍿"
+      },
+      {
+        "name": "grilled-sausage",
+        "displayName": "Grilled Sausage",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "♨️"
+      },
+      {
+        "name": "breaded-chicken-tender",
+        "displayName": "Breaded Chicken Tender",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟨"
+      },
+      {
+        "name": "breaded-chicken-wing",
+        "displayName": "Breaded Chicken Wing",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟧"
+      },
+      {
+        "name": "fried-chicken-tender",
+        "displayName": "Fried Chicken Tender",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍖"
+      },
+      {
+        "name": "fried-chicken-wing",
+        "displayName": "Fried Chicken Wing",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍗"
+      },
+      {
+        "name": "fried-potato",
+        "displayName": "Fried Potato",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍟"
+      },
+      {
+        "name": "coca-cup",
+        "displayName": "Coca Cup",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥤"
+      },
+      {
+        "name": "brewed-black-tea",
+        "displayName": "Brewed Black Tea",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫖"
+      }
+    ],
+    "tool": [
+      {
+        "name": "popcorn-popper",
+        "displayName": "Popcorn Popper",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 2,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🍿",
+        "runtimeToolId": 0
+      },
+      {
+        "name": "hotdog-roller",
+        "displayName": "Hotdog Roller",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 3,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "♨️",
+        "runtimeToolId": 1
+      },
+      {
+        "name": "breading-station",
+        "displayName": "Breading Station",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 2,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🥣",
+        "runtimeToolId": 2
+      },
+      {
+        "name": "deep-fryer",
+        "displayName": "Deep Fryer",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 4,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🍳",
+        "runtimeToolId": 3
+      },
+      {
+        "name": "soda-fountain",
+        "displayName": "Soda Fountain",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 2,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "⛲",
+        "runtimeToolId": 4
+      },
+      {
+        "name": "tea-brewer",
+        "displayName": "Tea Brewer",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 3,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🫖",
+        "runtimeToolId": 5
+      }
+    ],
+    "group": [
+      {
+        "name": "popcorn-flavor-choice",
+        "displayName": "Popcorn Flavor Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      },
+      {
+        "name": "hotdog-condiment-choice",
+        "displayName": "Hotdog Condiment Choice",
+        "minQuantity": 0,
+        "maxQuantity": 2
+      },
+      {
+        "name": "fried-chicken-choice",
+        "displayName": "Fried Chicken Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      },
+      {
+        "name": "fried-sauce-choice",
+        "displayName": "Fried Sauce Choice",
+        "minQuantity": 0,
+        "maxQuantity": 2
+      },
+      {
+        "name": "fruit-tea-flavor-choice",
+        "displayName": "Fruit Tea Flavor Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      }
+    ],
+    "composite": [
+      {
+        "name": "theater-popcorn",
+        "displayName": "Theater Popcorn",
+        "emoji": "🍿",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "hotdog-core",
+        "displayName": "Hotdog Core",
+        "emoji": "🌭",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "simple-hotdog",
+        "displayName": "Simple Hotdog",
+        "emoji": "🌭",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "fried-potato-with-sauce",
+        "displayName": "Fried Potato with Sauce",
+        "emoji": "🍟",
+        "orderable": false,
+        "toppingRequired": false
+      },
+      {
+        "name": "chicken-and-potato-fried",
+        "displayName": "Chicken and Potato Fried",
+        "emoji": "🍗",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "coca-with-ice",
+        "displayName": "Coca with Ice",
+        "emoji": "🥤",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "fruit-tea-base",
+        "displayName": "Fruit Tea Base",
+        "emoji": "🫖",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "fruit-tea-with-ice",
+        "displayName": "Fruit Tea with Ice",
+        "emoji": "🧋",
+        "orderable": true,
+        "toppingRequired": true
+      }
+    ],
+    "dirty": [
+      {
+        "name": "dirty-popcorn-bucket",
+        "displayName": "Dirty Popcorn Bucket",
+        "maxStack": 3,
+        "emoji": "🪣",
+        "runtimeDirtyId": 0
+      },
+      {
+        "name": "dirty-hotdog-tray",
+        "displayName": "Dirty Hotdog Tray",
+        "maxStack": 3,
+        "emoji": "🧺",
+        "runtimeDirtyId": 1
+      },
+      {
+        "name": "dirty-fried-basket",
+        "displayName": "Dirty Fried Basket",
+        "maxStack": 3,
+        "emoji": "🍱",
+        "runtimeDirtyId": 2
+      },
+      {
+        "name": "dirty-coca-cup",
+        "displayName": "Dirty Coca Cup",
+        "maxStack": 3,
+        "emoji": "🥤",
+        "runtimeDirtyId": 3
+      },
+      {
+        "name": "dirty-tea-glass",
+        "displayName": "Dirty Tea Glass",
+        "maxStack": 3,
+        "emoji": "🥛",
+        "runtimeDirtyId": 4
+      }
+    ]
+  },
+  "edges": {
+    "preservation": [],
+    "process": [
+      {
+        "from": "popcorn-popper",
+        "to": "popped-popcorn",
+        "inputs": [
+          {
+            "ingredient": "popcorn-kernels",
+            "slot": 0
+          }
+        ],
+        "amount": 2,
+        "auto": true
+      },
+      {
+        "from": "hotdog-roller",
+        "to": "grilled-sausage",
+        "inputs": [
+          {
+            "ingredient": "beef-sausage",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "breading-station",
+        "to": "breaded-chicken-tender",
+        "inputs": [
+          {
+            "ingredient": "chicken-tender",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "breading-station",
+        "to": "breaded-chicken-wing",
+        "inputs": [
+          {
+            "ingredient": "chicken-wing",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "deep-fryer",
+        "to": "fried-chicken-tender",
+        "inputs": [
+          {
+            "ingredient": "breaded-chicken-tender",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "deep-fryer",
+        "to": "fried-chicken-wing",
+        "inputs": [
+          {
+            "ingredient": "breaded-chicken-wing",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "deep-fryer",
+        "to": "fried-potato",
+        "inputs": [
+          {
+            "ingredient": "potato",
+            "slot": 0
+          }
+        ],
+        "amount": 2,
+        "auto": true
+      },
+      {
+        "from": "soda-fountain",
+        "to": "coca-cup",
+        "inputs": [
+          {
+            "ingredient": "soda-cup",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "tea-brewer",
+        "to": "brewed-black-tea",
+        "inputs": [
+          {
+            "ingredient": "black-tea-leaves",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      }
+    ],
+    "base": [
+      {
+        "from": "theater-popcorn",
+        "to": "popped-popcorn"
+      },
+      {
+        "from": "hotdog-core",
+        "to": "hotdog-bun"
+      },
+      {
+        "from": "simple-hotdog",
+        "to": "hotdog-core"
+      },
+      {
+        "from": "fried-potato-with-sauce",
+        "to": "fried-potato"
+      },
+      {
+        "from": "chicken-and-potato-fried",
+        "to": "fried-chicken-choice"
+      },
+      {
+        "from": "coca-with-ice",
+        "to": "coca-cup"
+      },
+      {
+        "from": "fruit-tea-base",
+        "to": "brewed-black-tea"
+      },
+      {
+        "from": "fruit-tea-with-ice",
+        "to": "fruit-tea-base"
+      }
+    ],
+    "topping": [
+      {
+        "from": "theater-popcorn",
+        "to": "popcorn-flavor-choice"
+      },
+      {
+        "from": "hotdog-core",
+        "to": "grilled-sausage"
+      },
+      {
+        "from": "simple-hotdog",
+        "to": "hotdog-condiment-choice"
+      },
+      {
+        "from": "fried-potato-with-sauce",
+        "to": "fried-sauce-choice"
+      },
+      {
+        "from": "chicken-and-potato-fried",
+        "to": "fried-potato-with-sauce"
+      },
+      {
+        "from": "coca-with-ice",
+        "to": "ice-cubes"
+      },
+      {
+        "from": "fruit-tea-base",
+        "to": "fruit-tea-flavor-choice"
+      },
+      {
+        "from": "fruit-tea-with-ice",
+        "to": "ice-cubes"
+      }
+    ],
+    "option": [
+      {
+        "from": "popcorn-flavor-choice",
+        "to": "sea-salt",
+        "maxQuantity": 1
+      },
+      {
+        "from": "popcorn-flavor-choice",
+        "to": "chocolate-drizzle",
+        "maxQuantity": 1
+      },
+      {
+        "from": "popcorn-flavor-choice",
+        "to": "vanilla-glaze",
+        "maxQuantity": 1
+      },
+      {
+        "from": "popcorn-flavor-choice",
+        "to": "matcha-powder",
+        "maxQuantity": 1
+      },
+      {
+        "from": "popcorn-flavor-choice",
+        "to": "strawberry-dust",
+        "maxQuantity": 1
+      },
+      {
+        "from": "popcorn-flavor-choice",
+        "to": "rainbow-sprinkles",
+        "maxQuantity": 1
+      },
+      {
+        "from": "hotdog-condiment-choice",
+        "to": "ketchup-packet",
+        "maxQuantity": 1
+      },
+      {
+        "from": "hotdog-condiment-choice",
+        "to": "mustard-packet",
+        "maxQuantity": 1
+      },
+      {
+        "from": "hotdog-condiment-choice",
+        "to": "pickle-relish",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fried-chicken-choice",
+        "to": "fried-chicken-tender",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fried-chicken-choice",
+        "to": "fried-chicken-wing",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fried-sauce-choice",
+        "to": "spicy-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fried-sauce-choice",
+        "to": "cheese-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fried-sauce-choice",
+        "to": "barbecue-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fruit-tea-flavor-choice",
+        "to": "peach-syrup",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fruit-tea-flavor-choice",
+        "to": "lemon-syrup",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fruit-tea-flavor-choice",
+        "to": "berry-syrup",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fruit-tea-flavor-choice",
+        "to": "mango-syrup",
+        "maxQuantity": 1
+      }
+    ],
+    "leavesDirty": [
+      {
+        "from": "theater-popcorn",
+        "to": "dirty-popcorn-bucket"
+      },
+      {
+        "from": "simple-hotdog",
+        "to": "dirty-hotdog-tray"
+      },
+      {
+        "from": "chicken-and-potato-fried",
+        "to": "dirty-fried-basket"
+      },
+      {
+        "from": "coca-with-ice",
+        "to": "dirty-coca-cup"
+      },
+      {
+        "from": "fruit-tea-with-ice",
+        "to": "dirty-tea-glass"
+      }
+    ]
+  },
+  "notes": [
+    {
+      "id": "theater-flow",
+      "x": 60,
+      "y": -120,
+      "text": "Queue pickups flow left to prep tools, then menu-family assemblies, then aligned orderables."
+    }
+  ],
+  "layout": {
+    "ingredient:popcorn-kernels": {
+      "x": 60,
+      "y": 40
+    },
+    "ingredient:chocolate-drizzle": {
+      "x": 60,
+      "y": 491.5
+    },
+    "ingredient:matcha-powder": {
+      "x": 60,
+      "y": 599.5
+    },
+    "ingredient:rainbow-sprinkles": {
+      "x": 60,
+      "y": 707.5
+    },
+    "ingredient:sea-salt": {
+      "x": 60,
+      "y": 815.5
+    },
+    "ingredient:strawberry-dust": {
+      "x": 60,
+      "y": 923.5
+    },
+    "ingredient:vanilla-glaze": {
+      "x": 60,
+      "y": 1031.5
+    },
+    "ingredient:hotdog-bun": {
+      "x": 60,
+      "y": 1359.5
+    },
+    "ingredient:beef-sausage": {
+      "x": 60,
+      "y": 1467.5
+    },
+    "ingredient:ketchup-packet": {
+      "x": 60,
+      "y": 1919.8
+    },
+    "ingredient:mustard-packet": {
+      "x": 60,
+      "y": 2027.8
+    },
+    "ingredient:pickle-relish": {
+      "x": 60,
+      "y": 2135.8
+    },
+    "ingredient:chicken-tender": {
+      "x": 60,
+      "y": 2463.8
+    },
+    "ingredient:chicken-wing": {
+      "x": 60,
+      "y": 2571.8
+    },
+    "ingredient:potato": {
+      "x": 60,
+      "y": 2679.8
+    },
+    "ingredient:barbecue-sauce": {
+      "x": 60,
+      "y": 3171.8
+    },
+    "ingredient:cheese-sauce": {
+      "x": 60,
+      "y": 3279.8
+    },
+    "ingredient:spicy-sauce": {
+      "x": 60,
+      "y": 3387.8
+    },
+    "ingredient:soda-cup": {
+      "x": 60,
+      "y": 3715.8
+    },
+    "ingredient:ice-cubes": {
+      "x": 60,
+      "y": 4043.8
+    },
+    "ingredient:black-tea-leaves": {
+      "x": 60,
+      "y": 4151.8
+    },
+    "ingredient:berry-syrup": {
+      "x": 60,
+      "y": 4699.7
+    },
+    "ingredient:lemon-syrup": {
+      "x": 60,
+      "y": 4807.7
+    },
+    "ingredient:mango-syrup": {
+      "x": 60,
+      "y": 4915.7
+    },
+    "ingredient:peach-syrup": {
+      "x": 60,
+      "y": 5023.7
+    },
+    "ingredient:popped-popcorn": {
+      "x": 720,
+      "y": 40
+    },
+    "ingredient:grilled-sausage": {
+      "x": 720,
+      "y": 368
+    },
+    "ingredient:breaded-chicken-tender": {
+      "x": 720,
+      "y": 1502.37
+    },
+    "ingredient:breaded-chicken-wing": {
+      "x": 720,
+      "y": 1610.37
+    },
+    "ingredient:coca-cup": {
+      "x": 720,
+      "y": 1938.37
+    },
+    "ingredient:brewed-black-tea": {
+      "x": 720,
+      "y": 2266.37
+    },
+    "ingredient:fried-chicken-tender": {
+      "x": 1380,
+      "y": 847.28
+    },
+    "ingredient:fried-chicken-wing": {
+      "x": 1380,
+      "y": 955.28
+    },
+    "ingredient:fried-potato": {
+      "x": 1380,
+      "y": 1063.28
+    },
+    "tool:popcorn-popper": {
+      "x": 390,
+      "y": 40
+    },
+    "group:popcorn-flavor-choice": {
+      "x": 390,
+      "y": 761.5
+    },
+    "tool:hotdog-roller": {
+      "x": 390,
+      "y": 1089.5
+    },
+    "group:hotdog-condiment-choice": {
+      "x": 390,
+      "y": 2027.8
+    },
+    "tool:breading-station": {
+      "x": 390,
+      "y": 2355.8
+    },
+    "group:fried-sauce-choice": {
+      "x": 390,
+      "y": 3279.8
+    },
+    "tool:soda-fountain": {
+      "x": 390,
+      "y": 3607.8
+    },
+    "tool:tea-brewer": {
+      "x": 390,
+      "y": 3935.8
+    },
+    "group:fruit-tea-flavor-choice": {
+      "x": 390,
+      "y": 4861.7
+    },
+    "composite:hotdog-core": {
+      "x": 1050,
+      "y": 294.8
+    },
+    "tool:deep-fryer": {
+      "x": 1050,
+      "y": 1763.54
+    },
+    "composite:fruit-tea-base": {
+      "x": 1050,
+      "y": 2195.64
+    },
+    "group:fried-chicken-choice": {
+      "x": 1710,
+      "y": 901.28
+    },
+    "composite:fried-potato-with-sauce": {
+      "x": 1710,
+      "y": 1389.96
+    },
+    "composite:theater-popcorn": {
+      "x": 2040,
+      "y": 40
+    },
+    "composite:simple-hotdog": {
+      "x": 2040,
+      "y": 432
+    },
+    "composite:chicken-and-potato-fried": {
+      "x": 2040,
+      "y": 824
+    },
+    "composite:coca-with-ice": {
+      "x": 2040,
+      "y": 1216
+    },
+    "composite:fruit-tea-with-ice": {
+      "x": 2040,
+      "y": 1608
+    },
+    "dirty:dirty-popcorn-bucket": {
+      "x": 2370,
+      "y": 40
+    },
+    "dirty:dirty-hotdog-tray": {
+      "x": 2370,
+      "y": 432
+    },
+    "dirty:dirty-fried-basket": {
+      "x": 2370,
+      "y": 824
+    },
+    "dirty:dirty-coca-cup": {
+      "x": 2370,
+      "y": 1216
+    },
+    "dirty:dirty-tea-glass": {
+      "x": 2370,
+      "y": 1608
+    }
+  }
+}

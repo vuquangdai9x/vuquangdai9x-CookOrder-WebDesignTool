@@ -1,0 +1,1402 @@
+{
+  "schemaVersion": 1,
+  "_foodOrderableMap": {
+    "tanghulu": [
+      "single-fruit-tanghulu",
+      "mixed-fruit-tanghulu"
+    ],
+    "marshmallow": [
+      "marshmallow-skewer"
+    ],
+    "tea-with-topping": [
+      "milk-tea-with-topping",
+      "fruit-tea-with-topping"
+    ]
+  },
+  "_derivation": [
+    {
+      "sourceTitle": "Tanghulu — Food Network Kitchen",
+      "url": "https://www.foodnetwork.com/recipes/food-network-kitchen/tanghulu-10027051",
+      "supports": [
+        "fruit-skewer-station",
+        "clear-sugar-glaze",
+        "strawberry",
+        "green-grapes",
+        "mandarin-segment"
+      ],
+      "adaptations": [
+        "Additional firm fruits and colored glaze variants follow the requested menu premise."
+      ]
+    },
+    {
+      "sourceTitle": "Tanghulu — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/tanghulu",
+      "supports": [
+        "mixed-fruit-choice",
+        "candy-glaze-pot"
+      ],
+      "adaptations": [
+        "Cold-water hardening and skewer hardware are implicit in their stations."
+      ]
+    },
+    {
+      "sourceTitle": "How to melt marshmallows — Good Food",
+      "url": "https://www.bbcgoodfood.com/howto/guide/how-melt-marshmallows",
+      "supports": [
+        "marshmallow-grill",
+        "toasted-marshmallow-choice"
+      ],
+      "adaptations": [
+        "Three marshmallow colors are separate selectable ingredients."
+      ]
+    },
+    {
+      "sourceTitle": "Bubble Tea Recipe — The Woks of Life",
+      "url": "https://thewoksoflife.com/bubble-tea/",
+      "supports": [
+        "black-tea-leaves",
+        "milk-creamer",
+        "tapioca-pearls",
+        "milk-tea-with-topping"
+      ],
+      "adaptations": [
+        "Green tea, fruit syrups, and extra visible toppings create a second genuine menu variant."
+      ]
+    }
+  ],
+  "_imagePolicy": {
+    "provider": "Unicode Emoji fallback",
+    "urlPattern": "none — emoji fields are embedded and deterministic",
+    "license": "Unicode characters rendered by the player platform",
+    "attribution": "No remote images assigned; OpenMoji SVG URLs are the recommended derived-link upgrade path."
+  },
+  "_visualAudit": {
+    "selectionSetsReviewed": [
+      "seven fruit pickups: distinct fruit silhouettes and colors",
+      "three glazes: clear droplet/golden circle/pink surface",
+      "three marshmallows: white/pink/brown",
+      "tea bases and five toppings: leaf and geometric texture separation"
+    ],
+    "combinationPreviewsReviewed": [
+      "each single fruit with every glaze",
+      "representative two- and three-fruit skewers with each glaze",
+      "every toasted marshmallow color with both drizzles",
+      "black/green milk tea and fruit tea with representative two-topping pairs"
+    ],
+    "result": "pass",
+    "notes": [
+      "Fruit remains visible beneath the translucent color-coded glaze layer.",
+      "Tea toppings use pearls, cubes, beans, and pudding shapes that remain identifiable in the cup stack."
+    ]
+  },
+  "map": {
+    "id": "tanghulu",
+    "name": "Tanghulu",
+    "gridWidth": 5,
+    "gridHeight": 2,
+    "dirtyStackHeight": 3,
+    "visibleRows": 3
+  },
+  "idTable": {
+    "ingredient": [
+      "strawberry",
+      "green-grapes",
+      "mandarin-segment",
+      "apple-wedge",
+      "kiwi-slice",
+      "blueberry",
+      "pineapple-chunk",
+      "white-sugar",
+      "honey-syrup",
+      "strawberry-candy-mix",
+      "vanilla-marshmallow",
+      "strawberry-marshmallow",
+      "chocolate-marshmallow",
+      "chocolate-drizzle",
+      "caramel-drizzle",
+      "black-tea-leaves",
+      "green-tea-leaves",
+      "milk-creamer",
+      "mango-syrup",
+      "peach-syrup",
+      "tapioca-pearls",
+      "grass-jelly",
+      "lychee-jelly",
+      "sweet-red-bean",
+      "egg-pudding",
+      "skewered-strawberry",
+      "skewered-green-grapes",
+      "skewered-mandarin",
+      "skewered-apple",
+      "skewered-kiwi",
+      "skewered-blueberry",
+      "skewered-pineapple",
+      "clear-sugar-glaze",
+      "golden-honey-glaze",
+      "pink-strawberry-glaze",
+      "toasted-vanilla-marshmallow",
+      "toasted-strawberry-marshmallow",
+      "toasted-chocolate-marshmallow",
+      "brewed-black-tea",
+      "brewed-green-tea"
+    ],
+    "composite": [
+      "single-fruit-tanghulu",
+      "mixed-fruit-tanghulu",
+      "marshmallow-skewer",
+      "milk-tea-base",
+      "milk-tea-with-topping",
+      "fruit-tea-base",
+      "fruit-tea-with-topping"
+    ],
+    "group": [
+      "single-fruit-choice",
+      "mixed-fruit-choice",
+      "candy-glaze-choice",
+      "toasted-marshmallow-choice",
+      "marshmallow-drizzle-choice",
+      "brewed-tea-choice",
+      "fruit-syrup-choice",
+      "tea-topping-choice"
+    ],
+    "tool": [
+      "fruit-skewer-station",
+      "candy-glaze-pot",
+      "marshmallow-grill",
+      "tea-brewer"
+    ],
+    "dirty": [
+      "dirty-single-tanghulu-tray",
+      "dirty-mixed-tanghulu-tray",
+      "dirty-marshmallow-tray",
+      "dirty-milk-tea-cup",
+      "dirty-fruit-tea-cup"
+    ]
+  },
+  "vertices": {
+    "ingredient": [
+      {
+        "name": "strawberry",
+        "displayName": "Strawberry",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍓"
+      },
+      {
+        "name": "green-grapes",
+        "displayName": "Green Grapes",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟢"
+      },
+      {
+        "name": "mandarin-segment",
+        "displayName": "Mandarin Segment",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍊"
+      },
+      {
+        "name": "apple-wedge",
+        "displayName": "Apple Wedge",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍎"
+      },
+      {
+        "name": "kiwi-slice",
+        "displayName": "Kiwi Slice",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥝"
+      },
+      {
+        "name": "blueberry",
+        "displayName": "Blueberry",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫐"
+      },
+      {
+        "name": "pineapple-chunk",
+        "displayName": "Pineapple Chunk",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍍"
+      },
+      {
+        "name": "white-sugar",
+        "displayName": "White Sugar",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⬜"
+      },
+      {
+        "name": "honey-syrup",
+        "displayName": "Honey Syrup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍯"
+      },
+      {
+        "name": "strawberry-candy-mix",
+        "displayName": "Strawberry Candy Mix",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🔻"
+      },
+      {
+        "name": "vanilla-marshmallow",
+        "displayName": "Vanilla Marshmallow",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚪"
+      },
+      {
+        "name": "strawberry-marshmallow",
+        "displayName": "Strawberry Marshmallow",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🩷"
+      },
+      {
+        "name": "chocolate-marshmallow",
+        "displayName": "Chocolate Marshmallow",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟤"
+      },
+      {
+        "name": "chocolate-drizzle",
+        "displayName": "Chocolate Drizzle",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍫"
+      },
+      {
+        "name": "caramel-drizzle",
+        "displayName": "Caramel Drizzle",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟫"
+      },
+      {
+        "name": "black-tea-leaves",
+        "displayName": "Black Tea Leaves",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍂"
+      },
+      {
+        "name": "green-tea-leaves",
+        "displayName": "Green Tea Leaves",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🌿"
+      },
+      {
+        "name": "milk-creamer",
+        "displayName": "Milk Creamer",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥛"
+      },
+      {
+        "name": "mango-syrup",
+        "displayName": "Mango Syrup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥭"
+      },
+      {
+        "name": "peach-syrup",
+        "displayName": "Peach Syrup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍑"
+      },
+      {
+        "name": "tapioca-pearls",
+        "displayName": "Tapioca Pearls",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚫"
+      },
+      {
+        "name": "grass-jelly",
+        "displayName": "Grass Jelly",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟩"
+      },
+      {
+        "name": "lychee-jelly",
+        "displayName": "Lychee Jelly",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "💎"
+      },
+      {
+        "name": "sweet-red-bean",
+        "displayName": "Sweet Red Bean",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫘"
+      },
+      {
+        "name": "egg-pudding",
+        "displayName": "Egg Pudding",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟨"
+      },
+      {
+        "name": "skewered-strawberry",
+        "displayName": "Skewered Strawberry",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍓"
+      },
+      {
+        "name": "skewered-green-grapes",
+        "displayName": "Skewered Green Grapes",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟢"
+      },
+      {
+        "name": "skewered-mandarin",
+        "displayName": "Skewered Mandarin",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍊"
+      },
+      {
+        "name": "skewered-apple",
+        "displayName": "Skewered Apple",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍎"
+      },
+      {
+        "name": "skewered-kiwi",
+        "displayName": "Skewered Kiwi",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥝"
+      },
+      {
+        "name": "skewered-blueberry",
+        "displayName": "Skewered Blueberry",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫐"
+      },
+      {
+        "name": "skewered-pineapple",
+        "displayName": "Skewered Pineapple",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍍"
+      },
+      {
+        "name": "clear-sugar-glaze",
+        "displayName": "Clear Sugar Glaze",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "💧"
+      },
+      {
+        "name": "golden-honey-glaze",
+        "displayName": "Golden Honey Glaze",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟡"
+      },
+      {
+        "name": "pink-strawberry-glaze",
+        "displayName": "Pink Strawberry Glaze",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🩷"
+      },
+      {
+        "name": "toasted-vanilla-marshmallow",
+        "displayName": "Toasted Vanilla Marshmallow",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🤍"
+      },
+      {
+        "name": "toasted-strawberry-marshmallow",
+        "displayName": "Toasted Strawberry Marshmallow",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "❤️"
+      },
+      {
+        "name": "toasted-chocolate-marshmallow",
+        "displayName": "Toasted Chocolate Marshmallow",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🤎"
+      },
+      {
+        "name": "brewed-black-tea",
+        "displayName": "Brewed Black Tea",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫖"
+      },
+      {
+        "name": "brewed-green-tea",
+        "displayName": "Brewed Green Tea",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍵"
+      }
+    ],
+    "tool": [
+      {
+        "name": "fruit-skewer-station",
+        "displayName": "Fruit Skewer Station",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 2,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🍡",
+        "runtimeToolId": 0
+      },
+      {
+        "name": "candy-glaze-pot",
+        "displayName": "Candy Glaze Pot",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 4,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🍯",
+        "runtimeToolId": 1
+      },
+      {
+        "name": "marshmallow-grill",
+        "displayName": "Marshmallow Grill",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 2,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🔥",
+        "runtimeToolId": 2
+      },
+      {
+        "name": "tea-brewer",
+        "displayName": "Tea Brewer",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 3,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🫖",
+        "runtimeToolId": 3
+      }
+    ],
+    "group": [
+      {
+        "name": "single-fruit-choice",
+        "displayName": "Single Fruit Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      },
+      {
+        "name": "mixed-fruit-choice",
+        "displayName": "Mixed Fruit Choice",
+        "minQuantity": 2,
+        "maxQuantity": 3
+      },
+      {
+        "name": "candy-glaze-choice",
+        "displayName": "Candy Glaze Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      },
+      {
+        "name": "toasted-marshmallow-choice",
+        "displayName": "Toasted Marshmallow Choice",
+        "minQuantity": 2,
+        "maxQuantity": 3
+      },
+      {
+        "name": "marshmallow-drizzle-choice",
+        "displayName": "Marshmallow Drizzle Choice",
+        "minQuantity": 0,
+        "maxQuantity": 1
+      },
+      {
+        "name": "brewed-tea-choice",
+        "displayName": "Brewed Tea Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      },
+      {
+        "name": "fruit-syrup-choice",
+        "displayName": "Fruit Syrup Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      },
+      {
+        "name": "tea-topping-choice",
+        "displayName": "Tea Topping Choice",
+        "minQuantity": 1,
+        "maxQuantity": 2
+      }
+    ],
+    "composite": [
+      {
+        "name": "single-fruit-tanghulu",
+        "displayName": "Single Fruit Tanghulu",
+        "emoji": "🍓",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "mixed-fruit-tanghulu",
+        "displayName": "Mixed Fruit Tanghulu",
+        "emoji": "🍡",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "marshmallow-skewer",
+        "displayName": "Marshmallow Skewer",
+        "emoji": "🍡",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "milk-tea-base",
+        "displayName": "Milk Tea Base",
+        "emoji": "🥛",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "milk-tea-with-topping",
+        "displayName": "Milk Tea with Topping",
+        "emoji": "🧋",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "fruit-tea-base",
+        "displayName": "Fruit Tea Base",
+        "emoji": "🫖",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "fruit-tea-with-topping",
+        "displayName": "Fruit Tea with Topping",
+        "emoji": "🧋",
+        "orderable": true,
+        "toppingRequired": true
+      }
+    ],
+    "dirty": [
+      {
+        "name": "dirty-single-tanghulu-tray",
+        "displayName": "Dirty Single Tanghulu Tray",
+        "maxStack": 3,
+        "emoji": "🍽️",
+        "runtimeDirtyId": 0
+      },
+      {
+        "name": "dirty-mixed-tanghulu-tray",
+        "displayName": "Dirty Mixed Tanghulu Tray",
+        "maxStack": 3,
+        "emoji": "🍱",
+        "runtimeDirtyId": 1
+      },
+      {
+        "name": "dirty-marshmallow-tray",
+        "displayName": "Dirty Marshmallow Tray",
+        "maxStack": 3,
+        "emoji": "🧺",
+        "runtimeDirtyId": 2
+      },
+      {
+        "name": "dirty-milk-tea-cup",
+        "displayName": "Dirty Milk Tea Cup",
+        "maxStack": 3,
+        "emoji": "🥤",
+        "runtimeDirtyId": 3
+      },
+      {
+        "name": "dirty-fruit-tea-cup",
+        "displayName": "Dirty Fruit Tea Cup",
+        "maxStack": 3,
+        "emoji": "🥛",
+        "runtimeDirtyId": 4
+      }
+    ]
+  },
+  "edges": {
+    "preservation": [],
+    "process": [
+      {
+        "from": "fruit-skewer-station",
+        "to": "skewered-strawberry",
+        "inputs": [
+          {
+            "ingredient": "strawberry",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "fruit-skewer-station",
+        "to": "skewered-green-grapes",
+        "inputs": [
+          {
+            "ingredient": "green-grapes",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "fruit-skewer-station",
+        "to": "skewered-mandarin",
+        "inputs": [
+          {
+            "ingredient": "mandarin-segment",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "fruit-skewer-station",
+        "to": "skewered-apple",
+        "inputs": [
+          {
+            "ingredient": "apple-wedge",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "fruit-skewer-station",
+        "to": "skewered-kiwi",
+        "inputs": [
+          {
+            "ingredient": "kiwi-slice",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "fruit-skewer-station",
+        "to": "skewered-blueberry",
+        "inputs": [
+          {
+            "ingredient": "blueberry",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "fruit-skewer-station",
+        "to": "skewered-pineapple",
+        "inputs": [
+          {
+            "ingredient": "pineapple-chunk",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "candy-glaze-pot",
+        "to": "clear-sugar-glaze",
+        "inputs": [
+          {
+            "ingredient": "white-sugar",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "candy-glaze-pot",
+        "to": "golden-honey-glaze",
+        "inputs": [
+          {
+            "ingredient": "honey-syrup",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "candy-glaze-pot",
+        "to": "pink-strawberry-glaze",
+        "inputs": [
+          {
+            "ingredient": "strawberry-candy-mix",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "marshmallow-grill",
+        "to": "toasted-vanilla-marshmallow",
+        "inputs": [
+          {
+            "ingredient": "vanilla-marshmallow",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "marshmallow-grill",
+        "to": "toasted-strawberry-marshmallow",
+        "inputs": [
+          {
+            "ingredient": "strawberry-marshmallow",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "marshmallow-grill",
+        "to": "toasted-chocolate-marshmallow",
+        "inputs": [
+          {
+            "ingredient": "chocolate-marshmallow",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "tea-brewer",
+        "to": "brewed-black-tea",
+        "inputs": [
+          {
+            "ingredient": "black-tea-leaves",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "tea-brewer",
+        "to": "brewed-green-tea",
+        "inputs": [
+          {
+            "ingredient": "green-tea-leaves",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      }
+    ],
+    "base": [
+      {
+        "from": "single-fruit-tanghulu",
+        "to": "single-fruit-choice"
+      },
+      {
+        "from": "mixed-fruit-tanghulu",
+        "to": "mixed-fruit-choice"
+      },
+      {
+        "from": "marshmallow-skewer",
+        "to": "toasted-marshmallow-choice"
+      },
+      {
+        "from": "milk-tea-base",
+        "to": "brewed-tea-choice"
+      },
+      {
+        "from": "milk-tea-with-topping",
+        "to": "milk-tea-base"
+      },
+      {
+        "from": "fruit-tea-base",
+        "to": "brewed-tea-choice"
+      },
+      {
+        "from": "fruit-tea-with-topping",
+        "to": "fruit-tea-base"
+      }
+    ],
+    "topping": [
+      {
+        "from": "single-fruit-tanghulu",
+        "to": "candy-glaze-choice"
+      },
+      {
+        "from": "mixed-fruit-tanghulu",
+        "to": "candy-glaze-choice"
+      },
+      {
+        "from": "marshmallow-skewer",
+        "to": "marshmallow-drizzle-choice"
+      },
+      {
+        "from": "milk-tea-base",
+        "to": "milk-creamer"
+      },
+      {
+        "from": "milk-tea-with-topping",
+        "to": "tea-topping-choice"
+      },
+      {
+        "from": "fruit-tea-base",
+        "to": "fruit-syrup-choice"
+      },
+      {
+        "from": "fruit-tea-with-topping",
+        "to": "tea-topping-choice"
+      }
+    ],
+    "option": [
+      {
+        "from": "single-fruit-choice",
+        "to": "skewered-strawberry",
+        "maxQuantity": 1
+      },
+      {
+        "from": "single-fruit-choice",
+        "to": "skewered-green-grapes",
+        "maxQuantity": 1
+      },
+      {
+        "from": "single-fruit-choice",
+        "to": "skewered-mandarin",
+        "maxQuantity": 1
+      },
+      {
+        "from": "single-fruit-choice",
+        "to": "skewered-apple",
+        "maxQuantity": 1
+      },
+      {
+        "from": "single-fruit-choice",
+        "to": "skewered-kiwi",
+        "maxQuantity": 1
+      },
+      {
+        "from": "single-fruit-choice",
+        "to": "skewered-blueberry",
+        "maxQuantity": 1
+      },
+      {
+        "from": "single-fruit-choice",
+        "to": "skewered-pineapple",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mixed-fruit-choice",
+        "to": "skewered-strawberry",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mixed-fruit-choice",
+        "to": "skewered-green-grapes",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mixed-fruit-choice",
+        "to": "skewered-mandarin",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mixed-fruit-choice",
+        "to": "skewered-apple",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mixed-fruit-choice",
+        "to": "skewered-kiwi",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mixed-fruit-choice",
+        "to": "skewered-blueberry",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mixed-fruit-choice",
+        "to": "skewered-pineapple",
+        "maxQuantity": 1
+      },
+      {
+        "from": "candy-glaze-choice",
+        "to": "clear-sugar-glaze",
+        "maxQuantity": 1
+      },
+      {
+        "from": "candy-glaze-choice",
+        "to": "golden-honey-glaze",
+        "maxQuantity": 1
+      },
+      {
+        "from": "candy-glaze-choice",
+        "to": "pink-strawberry-glaze",
+        "maxQuantity": 1
+      },
+      {
+        "from": "toasted-marshmallow-choice",
+        "to": "toasted-vanilla-marshmallow",
+        "maxQuantity": 1
+      },
+      {
+        "from": "toasted-marshmallow-choice",
+        "to": "toasted-strawberry-marshmallow",
+        "maxQuantity": 1
+      },
+      {
+        "from": "toasted-marshmallow-choice",
+        "to": "toasted-chocolate-marshmallow",
+        "maxQuantity": 1
+      },
+      {
+        "from": "marshmallow-drizzle-choice",
+        "to": "chocolate-drizzle",
+        "maxQuantity": 1
+      },
+      {
+        "from": "marshmallow-drizzle-choice",
+        "to": "caramel-drizzle",
+        "maxQuantity": 1
+      },
+      {
+        "from": "brewed-tea-choice",
+        "to": "brewed-black-tea",
+        "maxQuantity": 1
+      },
+      {
+        "from": "brewed-tea-choice",
+        "to": "brewed-green-tea",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fruit-syrup-choice",
+        "to": "mango-syrup",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fruit-syrup-choice",
+        "to": "peach-syrup",
+        "maxQuantity": 1
+      },
+      {
+        "from": "tea-topping-choice",
+        "to": "tapioca-pearls",
+        "maxQuantity": 1
+      },
+      {
+        "from": "tea-topping-choice",
+        "to": "grass-jelly",
+        "maxQuantity": 1
+      },
+      {
+        "from": "tea-topping-choice",
+        "to": "lychee-jelly",
+        "maxQuantity": 1
+      },
+      {
+        "from": "tea-topping-choice",
+        "to": "sweet-red-bean",
+        "maxQuantity": 1
+      },
+      {
+        "from": "tea-topping-choice",
+        "to": "egg-pudding",
+        "maxQuantity": 1
+      }
+    ],
+    "leavesDirty": [
+      {
+        "from": "single-fruit-tanghulu",
+        "to": "dirty-single-tanghulu-tray"
+      },
+      {
+        "from": "mixed-fruit-tanghulu",
+        "to": "dirty-mixed-tanghulu-tray"
+      },
+      {
+        "from": "marshmallow-skewer",
+        "to": "dirty-marshmallow-tray"
+      },
+      {
+        "from": "milk-tea-with-topping",
+        "to": "dirty-milk-tea-cup"
+      },
+      {
+        "from": "fruit-tea-with-topping",
+        "to": "dirty-fruit-tea-cup"
+      }
+    ]
+  },
+  "notes": [
+    {
+      "id": "tanghulu-flow",
+      "x": 60,
+      "y": -120,
+      "text": "Fruit preparation and glaze cooking merge only at the aligned tanghulu orderables."
+    }
+  ],
+  "layout": {
+    "ingredient:apple-wedge": {
+      "x": 60,
+      "y": 408.24
+    },
+    "ingredient:blueberry": {
+      "x": 60,
+      "y": 516.24
+    },
+    "ingredient:green-grapes": {
+      "x": 60,
+      "y": 624.24
+    },
+    "ingredient:kiwi-slice": {
+      "x": 60,
+      "y": 732.24
+    },
+    "ingredient:mandarin-segment": {
+      "x": 60,
+      "y": 840.24
+    },
+    "ingredient:pineapple-chunk": {
+      "x": 60,
+      "y": 948.24
+    },
+    "ingredient:strawberry": {
+      "x": 60,
+      "y": 1056.24
+    },
+    "ingredient:honey-syrup": {
+      "x": 60,
+      "y": 1361.93
+    },
+    "ingredient:strawberry-candy-mix": {
+      "x": 60,
+      "y": 1469.93
+    },
+    "ingredient:white-sugar": {
+      "x": 60,
+      "y": 1577.93
+    },
+    "ingredient:chocolate-marshmallow": {
+      "x": 60,
+      "y": 2097.93
+    },
+    "ingredient:strawberry-marshmallow": {
+      "x": 60,
+      "y": 2205.93
+    },
+    "ingredient:vanilla-marshmallow": {
+      "x": 60,
+      "y": 2313.93
+    },
+    "ingredient:caramel-drizzle": {
+      "x": 60,
+      "y": 2551.9
+    },
+    "ingredient:chocolate-drizzle": {
+      "x": 60,
+      "y": 2659.9
+    },
+    "ingredient:milk-creamer": {
+      "x": 60,
+      "y": 2987.9
+    },
+    "ingredient:egg-pudding": {
+      "x": 60,
+      "y": 3455.6
+    },
+    "ingredient:grass-jelly": {
+      "x": 60,
+      "y": 3563.6
+    },
+    "ingredient:lychee-jelly": {
+      "x": 60,
+      "y": 3671.6
+    },
+    "ingredient:sweet-red-bean": {
+      "x": 60,
+      "y": 3779.6
+    },
+    "ingredient:tapioca-pearls": {
+      "x": 60,
+      "y": 3887.6
+    },
+    "ingredient:black-tea-leaves": {
+      "x": 60,
+      "y": 3995.6
+    },
+    "ingredient:green-tea-leaves": {
+      "x": 60,
+      "y": 4103.6
+    },
+    "ingredient:mango-syrup": {
+      "x": 60,
+      "y": 4491.9
+    },
+    "ingredient:peach-syrup": {
+      "x": 60,
+      "y": 4599.9
+    },
+    "ingredient:skewered-apple": {
+      "x": 720,
+      "y": 525.06
+    },
+    "ingredient:skewered-blueberry": {
+      "x": 720,
+      "y": 633.06
+    },
+    "ingredient:skewered-green-grapes": {
+      "x": 720,
+      "y": 741.06
+    },
+    "ingredient:skewered-kiwi": {
+      "x": 720,
+      "y": 849.06
+    },
+    "ingredient:skewered-mandarin": {
+      "x": 720,
+      "y": 957.06
+    },
+    "ingredient:skewered-pineapple": {
+      "x": 720,
+      "y": 1065.06
+    },
+    "ingredient:skewered-strawberry": {
+      "x": 720,
+      "y": 1173.06
+    },
+    "ingredient:clear-sugar-glaze": {
+      "x": 720,
+      "y": 1390.85
+    },
+    "ingredient:golden-honey-glaze": {
+      "x": 720,
+      "y": 1498.85
+    },
+    "ingredient:pink-strawberry-glaze": {
+      "x": 720,
+      "y": 1606.85
+    },
+    "ingredient:toasted-chocolate-marshmallow": {
+      "x": 720,
+      "y": 2126.85
+    },
+    "ingredient:toasted-strawberry-marshmallow": {
+      "x": 720,
+      "y": 2234.85
+    },
+    "ingredient:toasted-vanilla-marshmallow": {
+      "x": 720,
+      "y": 2342.85
+    },
+    "ingredient:brewed-black-tea": {
+      "x": 720,
+      "y": 3175.1
+    },
+    "ingredient:brewed-green-tea": {
+      "x": 720,
+      "y": 3283.1
+    },
+    "tool:fruit-skewer-station": {
+      "x": 390,
+      "y": 790.65
+    },
+    "tool:candy-glaze-pot": {
+      "x": 390,
+      "y": 1484.39
+    },
+    "tool:marshmallow-grill": {
+      "x": 390,
+      "y": 2220.39
+    },
+    "group:marshmallow-drizzle-choice": {
+      "x": 390,
+      "y": 2605.9
+    },
+    "group:tea-topping-choice": {
+      "x": 390,
+      "y": 3671.6
+    },
+    "tool:tea-brewer": {
+      "x": 390,
+      "y": 3779.6
+    },
+    "group:fruit-syrup-choice": {
+      "x": 390,
+      "y": 4545.9
+    },
+    "group:single-fruit-choice": {
+      "x": 1050,
+      "y": 849.06
+    },
+    "group:mixed-fruit-choice": {
+      "x": 1050,
+      "y": 957.06
+    },
+    "group:candy-glaze-choice": {
+      "x": 1050,
+      "y": 1498.85
+    },
+    "group:toasted-marshmallow-choice": {
+      "x": 1050,
+      "y": 2234.85
+    },
+    "group:brewed-tea-choice": {
+      "x": 1050,
+      "y": 3229.1
+    },
+    "composite:single-fruit-tanghulu": {
+      "x": 1710,
+      "y": 40
+    },
+    "composite:mixed-fruit-tanghulu": {
+      "x": 1710,
+      "y": 212
+    },
+    "composite:marshmallow-skewer": {
+      "x": 1710,
+      "y": 604
+    },
+    "composite:milk-tea-with-topping": {
+      "x": 1710,
+      "y": 996
+    },
+    "composite:fruit-tea-with-topping": {
+      "x": 1710,
+      "y": 1168
+    },
+    "composite:milk-tea-base": {
+      "x": 1380,
+      "y": 661.4
+    },
+    "composite:fruit-tea-base": {
+      "x": 1380,
+      "y": 833.4
+    },
+    "dirty:dirty-single-tanghulu-tray": {
+      "x": 2040,
+      "y": 40
+    },
+    "dirty:dirty-mixed-tanghulu-tray": {
+      "x": 2040,
+      "y": 212
+    },
+    "dirty:dirty-marshmallow-tray": {
+      "x": 2040,
+      "y": 604
+    },
+    "dirty:dirty-milk-tea-cup": {
+      "x": 2040,
+      "y": 996
+    },
+    "dirty:dirty-fruit-tea-cup": {
+      "x": 2040,
+      "y": 1168
+    }
+  }
+}

@@ -25,8 +25,12 @@ export function customersStructureKey(sim: NodeSimulation): string {
           .map((d) => `${d.filled.map((f) => (f ? 1 : 0)).join(".")}/${d.remaining.join(".")}`)
           .join(",")}`,
     ),
-    // Only the next customer is shown, and only as a masked "?" card.
-    ...sim.pending.slice(0, 1).map((c) => `p${c.index}`),
+    // The next three customers reveal orderable composite identities only.
+    // Include those identities so a pending-order edit/replay state rebuilds
+    // the compact preview cards without exposing ingredient combinations.
+    ...sim.pending.slice(0, 3).map(
+      (c) => `p${c.index}:${c.dishes.map((dish) => dish.order.orderable).join(".")}`,
+    ),
   ].join("|");
   return `${sim.status}|${customers}`;
 }

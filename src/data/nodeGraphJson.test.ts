@@ -92,7 +92,8 @@ describe("repairs rather than throws", () => {
 
   it("defaults the map block when it is missing", () => {
     const { doc, issues } = parse({ vertices: { ingredient: [{ name: "bun" }] } });
-    expect(doc!.map.gridWidth).toBe(4);
+    expect(doc!.map.gridWidth).toBe(5);
+    expect(doc!.map.gridHeight).toBe(2);
     expect(doc!.map.id).toBe("imported");
     expect(issues.join()).toMatch(/No `map` block/);
   });

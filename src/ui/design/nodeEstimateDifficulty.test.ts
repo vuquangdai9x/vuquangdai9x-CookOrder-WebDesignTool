@@ -86,6 +86,43 @@ describe("estimateNodeDifficulty", () => {
     expect(estimate.solvable).toBe(true);
   });
 
+  it("scores composite-only demand from the next three customer previews", () => {
+    const level = coffeeLevel();
+    level.serveableSlots = 1;
+    level.queues = [
+      [{ kind: "ingredient", id: 9, effects: [] }], // coffee bean: useful to previewed hot coffee
+      [{ kind: "ingredient", id: 11, effects: [] }], // ice: not part of hot coffee
+    ];
+    level.queueGroups = [];
+    level.customers = [
+      {
+        typeId: 0,
+        waitTime: 0,
+        weatherEff: 0,
+        // Active donut demand intentionally has no matching queue item.
+        dishes: [{
+          root: { kind: "composite", id: 0, members: [{ kind: "ingredient", id: 0 }] },
+          effects: [],
+        }],
+      },
+      {
+        typeId: 0,
+        waitTime: 0,
+        weatherEff: 0,
+        // The UI reveals only "hot coffee" (c3), not this exact combination.
+        dishes: [{
+          root: { kind: "composite", id: 3, members: [{ kind: "ingredient", id: 24 }] },
+          effects: [],
+        }],
+      },
+    ];
+
+    const estimate = estimateNodeDifficulty(ix, level, { rng: () => 0 });
+    const [bean, ice] = estimate.replaySteps[0].laneScores as number[];
+    expect(bean).toBeGreaterThan(0);
+    expect(bean).toBeGreaterThan(ice);
+  });
+
   it("treats a hidden row as revealed once the Hidden slot toggle is off", () => {
     // Lane 0 hides the coffee bean behind a milk that cannot be placed until
     // the hot-coffee base exists, so only lookahead can see the bean's worth.

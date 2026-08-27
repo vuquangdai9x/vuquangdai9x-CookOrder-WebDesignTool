@@ -587,10 +587,9 @@ footer {
 }
 
 /*
- * Play mode only ever shows a handful of cards (serve slots + one masked
- * lookahead), so it uses a fixed-column grid instead of the Design list's
- * flex+scroll — every card is guaranteed to fit, with no scrolling required
- * to notice the 2nd/3rd one exists.
+ * Play mode shows full-width active customers followed by three narrow
+ * composite-only previews. The view writes the mixed 1fr/4.25rem grid tracks
+ * inline so all previews stay visible on the same row.
  */
 .customer-cards.play {
   display: grid;
@@ -603,6 +602,142 @@ footer {
 .customer-cards.play .customer-card {
   min-width: 0;
   width: 100%;
+}
+
+.customer-card.customer-preview {
+  padding: 0.3rem;
+  min-width: 0;
+  background: color-mix(in srgb, var(--panel-2) 78%, var(--accent) 22%);
+  border-style: dashed;
+}
+
+.customer-preview .customer-head {
+  justify-content: center;
+  min-height: 1.25rem;
+}
+
+.customer-preview .cust-index {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.customer-preview-types {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding-top: 0.15rem;
+}
+
+.customer-preview-types .icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1.6rem;
+}
+
+/* ---------- visual serving row ---------- */
+
+.serving-tier {
+  padding-top: 0.35rem;
+  padding-bottom: 0.4rem;
+}
+
+.serving-tier h2 {
+  margin-bottom: 0.25rem;
+}
+
+.serving-slots {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.4rem;
+  align-items: stretch;
+}
+
+.serving-slot {
+  position: relative;
+  min-width: 0;
+  min-height: 4.15rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.serving-slot.empty {
+  opacity: 0.38;
+  border-style: dashed;
+}
+
+.serving-slot.complete {
+  border-color: var(--good);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--good) 38%, transparent);
+}
+
+.serving-label {
+  position: absolute;
+  top: 0.12rem;
+  left: 0.25rem;
+  z-index: 2;
+  color: var(--muted);
+  font-size: 0.58rem;
+  line-height: 1;
+}
+
+.serving-container {
+  position: relative;
+  width: 3.25rem;
+  height: 3.25rem;
+  margin-top: 0.4rem;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.2);
+  background: radial-gradient(circle, rgba(255,255,255,0.12), rgba(255,255,255,0.025) 68%);
+  display: grid;
+  place-items: center;
+}
+
+.serving-container > .icon-composite {
+  opacity: 0.28;
+  font-size: 2rem;
+}
+
+.serving-contents {
+  position: absolute;
+  inset: 0.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: center;
+  gap: 0.05rem;
+  z-index: 1;
+}
+
+.serving-contents .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  font-size: 1rem;
+}
+
+.serving-empty-mark {
+  color: var(--muted);
+  font-size: 1.25rem;
+}
+
+.serving-overflow {
+  position: absolute;
+  right: 0.2rem;
+  bottom: 0.12rem;
+  z-index: 2;
+  color: var(--warn);
+  font-size: 0.72rem;
+}
+
+.serving-container-flight .icon {
+  width: 100%;
+  height: 100%;
+  font-size: 4rem;
 }
 
 .customer-card {
@@ -1865,7 +2000,8 @@ td input {
  * Vertical space policy: the middle tier (grid + tools) is content-sized — it
  * takes exactly what the fixed-size board and tools strip need and no more —
  * while the customers and queues tiers split ALL remaining height between
- * them (queues slightly favoured, since it stacks 3 tiles per lane). Grid
+ * them (queues slightly favoured, since it stacks 3 tiles per lane). The
+ * serving row is a compact, content-sized visual staging strip. Grid
  * cells are a fixed size matching the tool slots (see .grid / .tool-slot), so
  * "minimal fit" for the middle tier is well-defined. Queue tile size then
  * derives from the queues tier's actual height via a container query, so the
@@ -1880,6 +2016,10 @@ td input {
 
 .play-page > .customers-tier {
   flex: 1 1 0;
+}
+
+.play-page > .serving-tier {
+  flex: 0 0 auto;
 }
 
 .play-page > .middle-tier {
@@ -2412,6 +2552,7 @@ td input {
  */
 @media (max-width: 480px) {
   .play-page > .customers-tier,
+  .play-page > .serving-tier,
   .play-page > .middle-tier,
   .play-page > .queues-tier {
     flex: 0 0 auto;
@@ -4146,6 +4287,51 @@ td input {
 
 .nodegraph-idtable-dialog > p { margin-top: 0; }
 
+.nodegraph-idtable-map-config {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.8rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.nodegraph-idtable-map-config h3 {
+  margin: 0;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.nodegraph-idtable-map-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
+.nodegraph-idtable-map-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.nodegraph-idtable-map-field input {
+  width: 5rem;
+}
+
+.nodegraph-idtable-map-times {
+  padding-bottom: 0.45rem;
+  color: var(--muted);
+}
+
+.nodegraph-idtable-map-config > small {
+  margin-left: auto;
+  text-align: right;
+}
+
 .nodegraph-idtable-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
@@ -4194,6 +4380,18 @@ td input {
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 0.9rem;
+}
+
+@media (max-width: 760px) {
+  .nodegraph-idtable-map-config {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nodegraph-idtable-map-config > small {
+    margin-left: 0;
+    text-align: left;
+  }
 }
 
 /* ---------- Slot points (Map Process inspector + node Play) ---------- */

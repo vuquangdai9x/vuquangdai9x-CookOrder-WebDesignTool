@@ -2,7 +2,8 @@
 //
 // The DOM is a 1-1 copy of ui/play/index.ts's three tiers: `.play-page`, the
 // same `.play-toolbar`, `.customers-tier` with its fixed-column card grid,
-// avatars, mystery lookahead card and `.chip.icon-chip.dish-chip` at 64px; the
+// avatars, three compact composite-only lookahead cards, a visual serving row,
+// and `.chip.icon-chip.dish-chip` at 64px; the
 // same `.middle-tier` with its `.middle-split` grid/tools panels, `.cell` /
 // `.cell-main` / `.cell-badge` markup and `TOOL_COLORS` strip; and the same
 // `.queues-tier` with `.queue-lane` / `.lane-head` / `.lane-tiles` and the
@@ -120,6 +121,9 @@ function fillsDishChip(kind: NodeFlight["kind"]): boolean {
   );
 }
 
+const MAX_SERVING_SLOTS = 5;
+const CUSTOMER_PREVIEW_COUNT = 3;
+
 export class NodePlayView {
   private root: HTMLElement;
   private project: NodeProjectState;
@@ -139,6 +143,8 @@ export class NodePlayView {
   private paused = false;
   private toolbarFolded = false;
   private customerAvatarByIndex = new Map<number, CustomerCatalogEntry>();
+  /** Completed dish containers still travelling from the serving row to a customer. */
+  private plateDeliveries = new Set<string>();
 
   // ---------- flight animation ----------
   //
@@ -177,6 +183,7 @@ export class NodePlayView {
   // ui/play/index.ts's syncPage()/structureKey.ts, scoped down for a view that
   // has no flight animation to hold a tier back for.
   private customersEl!: HTMLElement;
+  private servingEl!: HTMLElement;
   private middleEl!: HTMLElement;
   private queuesEl!: HTMLElement;
   private customersKey = "";
@@ -327,12 +334,13 @@ export class NodePlayView {
     this.barEls.clear();
     this.overlayEl = null;
     this.customersEl = this.customersTier();
+    this.servingEl = this.servingTier();
     this.middleEl = this.middleTier();
     this.queuesEl = this.queuesTier();
     this.customersKey = customersStructureKey(this.sim);
     this.middleKey = middleStructureKey(this.sim);
     this.queuesKey = this.queueRenderKey();
-    this.page.replaceChildren(this.customersEl, this.middleEl, this.queuesEl);
+    this.page.replaceChildren(this.customersEl, this.servingEl, this.middleEl, this.queuesEl);
     this.refreshQueueGroupOverlay();
     this.syncOverlay();
     this.patchLiveValues();
@@ -428,12 +436,19 @@ export class NodePlayView {
     }
 
     const nextCustomers = customersStructureKey(this.sim);
-    if (nextCustomers !== this.customersKey) {
+    // Keep both endpoints mounted while a completed container is flying. The
+    // simulator has already removed a fully served customer at this point,
+    // but replacing the tiers early would make the plate and any dirty-dish
+    // follow-up lose their visual origin/target.
+    if (nextCustomers !== this.customersKey && this.plateDeliveries.size === 0) {
       this.timerEls.clear(); // only customerCard() populates these
       this.timerBarEls.clear();
-      const next = this.customersTier();
-      this.customersEl.replaceWith(next);
-      this.customersEl = next;
+      const nextCustomersEl = this.customersTier();
+      const nextServingEl = this.servingTier();
+      this.customersEl.replaceWith(nextCustomersEl);
+      this.servingEl.replaceWith(nextServingEl);
+      this.customersEl = nextCustomersEl;
+      this.servingEl = nextServingEl;
       this.customersKey = nextCustomers;
     }
 
@@ -456,11 +471,11 @@ export class NodePlayView {
 
       // A customer can be promoted from pending and served in the same tick,
       // before syncPage() has rebuilt the tier — until then their card is
-      // still the masked "?" one. Hold the flight rather than land an
-      // ingredient on a mystery card; this retries every tick.
+      // still the narrow composite-only preview. Hold the flight rather than
+      // land an ingredient there; this retries every tick.
       if (fillsDishChip(flight.kind)) {
         const card = this.page.querySelector(`[data-customer="${flight.toCustomer!.index}"]`);
-        if (card?.classList.contains("mystery")) continue;
+        if (card?.classList.contains("customer-preview")) continue;
       }
 
       this.animating.add(flight.id);
@@ -485,15 +500,28 @@ export class NodePlayView {
         this.flightIcon(flight),
       ]);
 
-      // The exact chip this flight fills, captured now so the arrival flash
-      // can be applied to THAT element once it lands.
-      const dataId = flight.ing >= 0 ? this.projected.dataIdOf.get(flight.ing) : undefined;
-      const targetChip =
-        fillsDishChip(flight.kind) && dataId !== undefined
-          ? this.page.querySelector<HTMLElement>(
-              `[data-customer="${flight.toCustomer!.index}"] [data-dish-ingredient="${dataId}"]:not(.filled)`,
-            )
-          : null;
+      // Serving is visually staged: ingredient flights land on the dish's
+      // container in the serving row. The simulator still fills the exact
+      // resolved slot when the animation lands, so this adds no gameplay
+      // capacity or delay to headless/instant runs.
+      const targetPlate = fillsDishChip(flight.kind)
+        ? (this.page.querySelector<HTMLElement>(
+            `[data-serving-customer="${flight.toCustomer!.index}"][data-serving-dish="${flight.toCustomer!.dish}"]`,
+          ) ?? this.page.querySelector<HTMLElement>(
+            `[data-serving-customer="${flight.toCustomer!.index}"]`,
+          ))
+        : null;
+      const customerCard = flight.toCustomer
+        ? this.page.querySelector<HTMLElement>(`[data-customer="${flight.toCustomer.index}"]`)
+        : null;
+      const customerPoint = customerCard ? centerOf(customerCard) : null;
+      const dishState = flight.toCustomer
+        ? this.sim.active.find((customer) => customer.index === flight.toCustomer!.index)
+            ?.dishes[flight.toCustomer.dish]
+        : undefined;
+      const dishKey = flight.toCustomer
+        ? `${flight.toCustomer.index}:${flight.toCustomer.dish}`
+        : "";
 
       // The sim only clears the source cell when the flight lands, but
       // visually the item should leave the grid as it takes off — otherwise it
@@ -504,9 +532,35 @@ export class NodePlayView {
 
       const durationMs = 420 / Math.max(1, this.speedFactor);
       void this.settled(this.fx.fly(payload, from, to, { durationMs }), durationMs + 400)
-        .then(() => this.onFlightLanded(flight, to, targetChip))
-        .then(() => {
+        .then(() => this.onFlightLanded(flight, to, targetPlate))
+        .then(async () => {
           this.sim.completeFlight(flight.id);
+
+          // The final ingredient has now merged into the dish container. Fly
+          // that ONE container to the customer before allowing the customer
+          // tier to refresh/remove the card. Parallel topping flights can land
+          // in either order; only the one that observes `dish.complete` starts
+          // this delivery.
+          if (
+            fillsDishChip(flight.kind) &&
+            dishState?.complete &&
+            dishKey &&
+            !this.plateDeliveries.has(dishKey) &&
+            customerPoint
+          ) {
+            this.plateDeliveries.add(dishKey);
+            const container = el("div", { class: "fx-item serving-container-flight" }, [
+              this.compositeIconForOrderable(dishState.order.orderable, 96),
+            ]);
+            const plateDurationMs = 360 / Math.max(1, this.speedFactor);
+            await this.settled(
+              this.fx.fly(container, to, customerPoint, { durationMs: plateDurationMs }),
+              plateDurationMs + 400,
+            );
+            this.fx.burst(customerPoint, 10);
+            this.plateDeliveries.delete(dishKey);
+          }
+
           this.animating.delete(flight.id);
           this.syncPage();
         });
@@ -578,17 +632,32 @@ export class NodePlayView {
     );
   }
 
+  /** Compact artwork for an orderable composite (dish type), never its hidden option details. */
+  private compositeIconForOrderable(orderable: number, size: number): HTMLElement {
+    const composite = this.project.doc.vertices.composite[orderable];
+    return iconEl(
+      composite
+        ? {
+            name: composite.displayName || composite.name,
+            emoji: composite.emoji ?? "🍽️",
+          }
+        : undefined,
+      { size, className: "icon-composite" },
+    );
+  }
+
   /**
    * Per-kind landing feedback, played BEFORE the flight is committed — so it
    * marks this arrival (the chip is still unfilled, the stack still on the
    * grid) rather than reading as a generic after-the-fact effect.
    */
-  private onFlightLanded(flight: NodeFlight, at: Point, targetChip: HTMLElement | null): Promise<void> {
+  private onFlightLanded(flight: NodeFlight, at: Point, targetPlate: HTMLElement | null): Promise<void> {
     if (this.skipMode) return Promise.resolve();
-    if (fillsDishChip(flight.kind) && targetChip) {
+    if (fillsDishChip(flight.kind) && targetPlate) {
       this.fx.burst(at, 8);
-      targetChip.classList.add("arrival-flash");
-      // Flash while still unfilled, then let completeFlight dim it.
+      targetPlate.classList.add("arrival-flash");
+      // Flash while the ingredient merges, then let completeFlight add it to
+      // the dish state rendered inside this container.
       return new Promise((resolve) => setTimeout(resolve, 160));
     }
     if (flight.kind === "dirty-to-staff") this.fx.burst(at, 8);
@@ -625,15 +694,14 @@ export class NodePlayView {
       return cell ? centerOf(cell) : null;
     }
     if (flight.toCustomer) {
+      if (fillsDishChip(flight.kind)) {
+        const servingSlot = this.page.querySelector(
+          `[data-serving-customer="${flight.toCustomer.index}"][data-serving-dish="${flight.toCustomer.dish}"]`,
+        ) ?? this.page.querySelector(`[data-serving-customer="${flight.toCustomer.index}"]`);
+        if (servingSlot) return centerOf(servingSlot);
+      }
       const card = this.page.querySelector(`[data-customer="${flight.toCustomer.index}"]`);
       if (!card) return null;
-      const dataId = flight.ing >= 0 ? this.projected.dataIdOf.get(flight.ing) : undefined;
-      if (fillsDishChip(flight.kind) && dataId !== undefined) {
-        // Aim at the specific unfilled chip this item satisfies, so the flash
-        // and burst land exactly on the matching ingredient position.
-        const chip = card.querySelector(`[data-dish-ingredient="${dataId}"]:not(.filled)`);
-        if (chip) return centerOf(chip);
-      }
       return centerOf(card);
     }
     return null;
@@ -995,10 +1063,14 @@ export class NodePlayView {
     const sim = this.sim;
     const row = el("div", { class: "customer-cards play" });
     for (const c of sim.active) row.append(this.customerCard(c, true));
-    const next = sim.pending[0];
-    if (next) row.append(this.mysteryCard(next));
-    const count = sim.active.length + (next ? 1 : 0);
-    row.style.gridTemplateColumns = `repeat(${Math.max(1, count)}, 1fr)`;
+    const previews = sim.pending.slice(0, CUSTOMER_PREVIEW_COUNT);
+    for (const c of previews) row.append(this.customerPreviewCard(c));
+    const activeColumns = Array.from(
+      { length: Math.max(1, sim.active.length) },
+      () => "minmax(0, 1fr)",
+    );
+    const previewColumns = previews.map(() => "4.25rem");
+    row.style.gridTemplateColumns = [...activeColumns, ...previewColumns].join(" ");
     return el("section", { class: "play-section customers-tier" }, [
       el("h2", {}, [`Customers — ${sim.level.serveableSlots} serve slot(s)`]),
       row,
@@ -1065,19 +1137,30 @@ export class NodePlayView {
     return card;
   }
 
-  private mysteryCard(c: NodeCustomerState): HTMLElement {
+  /**
+   * One of the next three customers. Only the orderable composite identities
+   * are visible: no selected ingredients, quantities, groups or toppings.
+   */
+  private customerPreviewCard(c: NodeCustomerState): HTMLElement {
     const card = el("div", {
-      class: "customer-card mystery",
+      class: "customer-card customer-preview",
       "data-customer": String(c.index),
-      title: "Next in line — their order is revealed when a serve slot frees up",
+      title: "Upcoming customer — dish types are visible, ingredient combinations stay hidden",
     });
-    this.appendAvatar(card, c);
+    const types = el("div", { class: "customer-preview-types" });
+    if (c.dishes.length === 0) {
+      types.append(customerTypeIconEl(c.config.typeId, 36));
+    } else {
+      for (const dish of c.dishes) {
+        types.append(this.compositeIconForOrderable(dish.order.orderable, 38));
+      }
+    }
     card.append(
       el("div", { class: "customer-content" }, [
         el("div", { class: "customer-head" }, [
           el("span", { class: "cust-index" }, [`#${c.index + 1}`]),
         ]),
-        el("div", { class: "mystery-mark" }, ["?"]),
+        types,
       ]),
     );
     return card;
@@ -1100,6 +1183,63 @@ export class NodePlayView {
     }
     if (!entry) return;
     card.append(iconEl(customerAvatarIconSpec(entry), { className: "customer-avatar" }));
+  }
+
+  /**
+   * Visual-only serving row. Each active dish assembles in one container; the
+   * simulator still owns all inventory, gate and completion rules. Up to five
+   * containers are shown, matching the game's maximum serving capacity.
+   */
+  private servingTier(): HTMLElement {
+    const dishes = this.sim.active
+      .filter((customer) => !customer.isStaff)
+      .flatMap((customer) => customer.dishes.map((dish, dishIndex) => ({ customer, dish, dishIndex })));
+    const visible = dishes.slice(0, MAX_SERVING_SLOTS);
+    const count = Math.min(
+      MAX_SERVING_SLOTS,
+      Math.max(1, this.sim.level.serveableSlots, visible.length),
+    );
+    const row = el("div", { class: "serving-slots" });
+
+    for (let i = 0; i < count; i++) {
+      const entry = visible[i];
+      if (!entry) {
+        row.append(el("div", { class: "serving-slot empty", title: "Empty serving slot" }, [
+          el("span", { class: "serving-empty-mark" }, ["＋"]),
+        ]));
+        continue;
+      }
+
+      const { customer, dish, dishIndex } = entry;
+      const contents = el("div", { class: "serving-contents" });
+      dish.order.slots.forEach((slot, slotIndex) => {
+        if (!dish.filled[slotIndex]) return;
+        contents.append(this.ingredientIconForDense(slot.ing, 24));
+      });
+      const slotEl = el("div", {
+        class: `serving-slot${dish.complete ? " complete" : ""}`,
+        "data-serving-customer": String(customer.index),
+        "data-serving-dish": String(dishIndex),
+        title: `${this.ix.doc.vertices.composite[dish.order.orderable]?.displayName ?? "Dish"} for customer #${customer.index + 1}`,
+      }, [
+        el("span", { class: "serving-label" }, [`#${customer.index + 1} · D${dishIndex + 1}`]),
+        el("div", { class: "serving-container" }, [
+          this.compositeIconForOrderable(dish.order.orderable, 48),
+          contents,
+        ]),
+      ]);
+      if (i === MAX_SERVING_SLOTS - 1 && dishes.length > MAX_SERVING_SLOTS) {
+        slotEl.append(el("span", {
+          class: "serving-overflow",
+          title: `${dishes.length - MAX_SERVING_SLOTS} more active dish(es)`,
+        }, [`+${dishes.length - MAX_SERVING_SLOTS}`]));
+      }
+      row.append(slotEl);
+    }
+    return el("section", { class: "play-section serving-tier" }, [
+      el("h2", {}, ["Serving row"]),
+      row,
+    ]);
   }
 
   private middleTier(): HTMLElement {

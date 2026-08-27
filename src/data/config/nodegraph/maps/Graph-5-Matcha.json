@@ -1,0 +1,1080 @@
+{
+  "schemaVersion": 1,
+  "_foodOrderableMap": {
+    "matcha": [
+      "hot-matcha-latte",
+      "iced-matcha-latte"
+    ],
+    "mochi": [
+      "filled-mochi"
+    ],
+    "cheese-cake": [
+      "matcha-cheesecake"
+    ]
+  },
+  "_derivation": [
+    {
+      "sourceTitle": "Strawberry Matcha Latte — Just One Cookbook",
+      "url": "https://www.justonecookbook.com/strawberry-matcha-latte/",
+      "supports": [
+        "matcha-powder",
+        "strawberry-sauce",
+        "milk-sauce",
+        "iced-whisked-matcha"
+      ],
+      "adaptations": [
+        "Milk, strawberry, and user-requested chocolate are mutually exclusive sauce layers."
+      ]
+    },
+    {
+      "sourceTitle": "Green Tea Mochi — Just One Cookbook",
+      "url": "https://www.justonecookbook.com/green-tea-mochi/",
+      "supports": [
+        "glutinous-rice-flour",
+        "mochi-wrapper",
+        "white-bean-paste",
+        "sweet-red-bean"
+      ],
+      "adaptations": [
+        "The steaming station implicitly supplies water, sugar, and dusting starch."
+      ]
+    },
+    {
+      "sourceTitle": "Matcha Basque Cheesecake — Just One Cookbook",
+      "url": "https://www.justonecookbook.com/matcha-basque-cheesecake/",
+      "supports": [
+        "cream-cheese",
+        "cheesecake-batter",
+        "baked-cheesecake",
+        "matcha-powder"
+      ],
+      "adaptations": [
+        "Egg, sugar, cream, and flour are implicit mixer supplies to keep processes single-input."
+      ]
+    },
+    {
+      "sourceTitle": "Ujikintoki Green Tea Shaved Ice — Just One Cookbook",
+      "url": "https://www.justonecookbook.com/ujikintoki-green-tea-shaved-ice/",
+      "supports": [
+        "sweet-red-bean",
+        "mochi-cubes",
+        "matcha-topping-choice"
+      ],
+      "adaptations": [
+        "Cafe toppings are generalized across hot and iced matcha orders."
+      ]
+    }
+  ],
+  "_imagePolicy": {
+    "provider": "Unicode Emoji fallback",
+    "urlPattern": "none — emoji fields are embedded and deterministic",
+    "license": "Unicode characters rendered by the player platform",
+    "attribution": "No remote images assigned; OpenMoji SVG URLs are the recommended derived-link upgrade path."
+  },
+  "_visualAudit": {
+    "selectionSetsReviewed": [
+      "matcha-sauce-choice: white milk/red strawberry/brown chocolate",
+      "matcha-topping-choice: ten silhouette, color, and texture-separated toppings",
+      "mochi-filling-choice: red bean/white bean/red wedge/brown square",
+      "cheesecake-decoration-choice: fruit/curls/stars/cookies/crunch"
+    ],
+    "combinationPreviewsReviewed": [
+      "hot and iced matcha with every sauce and representative two-topping combinations",
+      "mochi wrapper with every visible filling",
+      "green matcha cheesecake core with each two-decoration combination"
+    ],
+    "result": "pass",
+    "notes": [
+      "Sauces are separated primarily by strong color; toppings add non-overlapping silhouettes and textures.",
+      "The matcha base remains visible behind toppings, and no composite has replacement artwork."
+    ]
+  },
+  "map": {
+    "id": "matcha",
+    "name": "Matcha",
+    "gridWidth": 5,
+    "gridHeight": 2,
+    "dirtyStackHeight": 3,
+    "visibleRows": 3
+  },
+  "idTable": {
+    "ingredient": [
+      "matcha-powder",
+      "milk-sauce",
+      "strawberry-sauce",
+      "chocolate-sauce",
+      "whipped-cream",
+      "sweet-red-bean",
+      "matcha-jelly",
+      "tapioca-pearls",
+      "mochi-cubes",
+      "honey-drizzle",
+      "caramel-drizzle",
+      "almond-flakes",
+      "coconut-flakes",
+      "wafer-stick",
+      "glutinous-rice-flour",
+      "white-bean-paste",
+      "strawberry-filling",
+      "chocolate-filling",
+      "cream-cheese",
+      "strawberry-slice",
+      "chocolate-curl",
+      "white-chocolate-star",
+      "matcha-cookie",
+      "cherry",
+      "cereal-crunch",
+      "hot-whisked-matcha",
+      "iced-whisked-matcha",
+      "mochi-wrapper",
+      "cheesecake-batter",
+      "baked-cheesecake"
+    ],
+    "composite": [
+      "hot-matcha-base",
+      "hot-matcha-latte",
+      "iced-matcha-base",
+      "iced-matcha-latte",
+      "filled-mochi",
+      "matcha-cheesecake-core",
+      "matcha-cheesecake"
+    ],
+    "group": [
+      "matcha-sauce-choice",
+      "matcha-topping-choice",
+      "mochi-filling-choice",
+      "cheesecake-decoration-choice"
+    ],
+    "tool": [
+      "matcha-whisk",
+      "ice-blender",
+      "mochi-steamer",
+      "cheesecake-mixer",
+      "baking-oven"
+    ],
+    "dirty": [
+      "dirty-hot-matcha-cup",
+      "dirty-iced-matcha-glass",
+      "dirty-mochi-plate",
+      "dirty-cheesecake-plate"
+    ]
+  },
+  "vertices": {
+    "ingredient": [
+      {
+        "name": "matcha-powder",
+        "displayName": "Matcha Powder",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍵"
+      },
+      {
+        "name": "milk-sauce",
+        "displayName": "Milk Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚪"
+      },
+      {
+        "name": "strawberry-sauce",
+        "displayName": "Strawberry Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍓"
+      },
+      {
+        "name": "chocolate-sauce",
+        "displayName": "Chocolate Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍫"
+      },
+      {
+        "name": "whipped-cream",
+        "displayName": "Whipped Cream",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍦"
+      },
+      {
+        "name": "sweet-red-bean",
+        "displayName": "Sweet Red Bean",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫘"
+      },
+      {
+        "name": "matcha-jelly",
+        "displayName": "Matcha Jelly",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟩"
+      },
+      {
+        "name": "tapioca-pearls",
+        "displayName": "Tapioca Pearls",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚫"
+      },
+      {
+        "name": "mochi-cubes",
+        "displayName": "Mochi Cubes",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⬜"
+      },
+      {
+        "name": "honey-drizzle",
+        "displayName": "Honey Drizzle",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍯"
+      },
+      {
+        "name": "caramel-drizzle",
+        "displayName": "Caramel Drizzle",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟤"
+      },
+      {
+        "name": "almond-flakes",
+        "displayName": "Almond Flakes",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🌰"
+      },
+      {
+        "name": "coconut-flakes",
+        "displayName": "Coconut Flakes",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥥"
+      },
+      {
+        "name": "wafer-stick",
+        "displayName": "Wafer Stick",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥢"
+      },
+      {
+        "name": "glutinous-rice-flour",
+        "displayName": "Glutinous Rice Flour",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍚"
+      },
+      {
+        "name": "white-bean-paste",
+        "displayName": "White Bean Paste",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🤍"
+      },
+      {
+        "name": "strawberry-filling",
+        "displayName": "Strawberry Filling",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🔺"
+      },
+      {
+        "name": "chocolate-filling",
+        "displayName": "Chocolate Filling",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟫"
+      },
+      {
+        "name": "cream-cheese",
+        "displayName": "Cream Cheese",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧀"
+      },
+      {
+        "name": "strawberry-slice",
+        "displayName": "Strawberry Slice",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "❤️"
+      },
+      {
+        "name": "chocolate-curl",
+        "displayName": "Chocolate Curl",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "➰"
+      },
+      {
+        "name": "white-chocolate-star",
+        "displayName": "White Chocolate Star",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⭐"
+      },
+      {
+        "name": "matcha-cookie",
+        "displayName": "Matcha Cookie",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍪"
+      },
+      {
+        "name": "cherry",
+        "displayName": "Cherry",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍒"
+      },
+      {
+        "name": "cereal-crunch",
+        "displayName": "Cereal Crunch",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥣"
+      },
+      {
+        "name": "hot-whisked-matcha",
+        "displayName": "Hot Whisked Matcha",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "♨️"
+      },
+      {
+        "name": "iced-whisked-matcha",
+        "displayName": "Iced Whisked Matcha",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧊"
+      },
+      {
+        "name": "mochi-wrapper",
+        "displayName": "Mochi Wrapper",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚪"
+      },
+      {
+        "name": "cheesecake-batter",
+        "displayName": "Cheesecake Batter",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥛"
+      },
+      {
+        "name": "baked-cheesecake",
+        "displayName": "Baked Cheesecake",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍰"
+      }
+    ],
+    "tool": [
+      {
+        "name": "matcha-whisk",
+        "displayName": "Matcha Whisk",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 2,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🧹",
+        "runtimeToolId": 0
+      },
+      {
+        "name": "ice-blender",
+        "displayName": "Ice Blender",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 3,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🧊",
+        "runtimeToolId": 1
+      },
+      {
+        "name": "mochi-steamer",
+        "displayName": "Mochi Steamer",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 4,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "♨️",
+        "runtimeToolId": 2
+      },
+      {
+        "name": "cheesecake-mixer",
+        "displayName": "Cheesecake Mixer",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 3,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🥣",
+        "runtimeToolId": 3
+      },
+      {
+        "name": "baking-oven",
+        "displayName": "Baking Oven",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 5,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🔥",
+        "runtimeToolId": 4
+      }
+    ],
+    "group": [
+      {
+        "name": "matcha-sauce-choice",
+        "displayName": "Matcha Sauce Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      },
+      {
+        "name": "matcha-topping-choice",
+        "displayName": "Matcha Topping Choice",
+        "minQuantity": 0,
+        "maxQuantity": 2
+      },
+      {
+        "name": "mochi-filling-choice",
+        "displayName": "Mochi Filling Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      },
+      {
+        "name": "cheesecake-decoration-choice",
+        "displayName": "Cheesecake Decoration Choice",
+        "minQuantity": 0,
+        "maxQuantity": 2
+      }
+    ],
+    "composite": [
+      {
+        "name": "hot-matcha-base",
+        "displayName": "Hot Matcha Base",
+        "emoji": "🍵",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "hot-matcha-latte",
+        "displayName": "Hot Matcha Latte",
+        "emoji": "🍵",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "iced-matcha-base",
+        "displayName": "Iced Matcha Base",
+        "emoji": "🧊",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "iced-matcha-latte",
+        "displayName": "Iced Matcha Latte",
+        "emoji": "🧋",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "filled-mochi",
+        "displayName": "Filled Mochi",
+        "emoji": "🍡",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "matcha-cheesecake-core",
+        "displayName": "Matcha Cheesecake Core",
+        "emoji": "🍰",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "matcha-cheesecake",
+        "displayName": "Matcha Cheesecake",
+        "emoji": "🍰",
+        "orderable": true,
+        "toppingRequired": false
+      }
+    ],
+    "dirty": [
+      {
+        "name": "dirty-hot-matcha-cup",
+        "displayName": "Dirty Hot Matcha Cup",
+        "maxStack": 3,
+        "emoji": "🍵",
+        "runtimeDirtyId": 0
+      },
+      {
+        "name": "dirty-iced-matcha-glass",
+        "displayName": "Dirty Iced Matcha Glass",
+        "maxStack": 3,
+        "emoji": "🥛",
+        "runtimeDirtyId": 1
+      },
+      {
+        "name": "dirty-mochi-plate",
+        "displayName": "Dirty Mochi Plate",
+        "maxStack": 3,
+        "emoji": "🍽️",
+        "runtimeDirtyId": 2
+      },
+      {
+        "name": "dirty-cheesecake-plate",
+        "displayName": "Dirty Cheesecake Plate",
+        "maxStack": 3,
+        "emoji": "🍰",
+        "runtimeDirtyId": 3
+      }
+    ]
+  },
+  "edges": {
+    "preservation": [],
+    "process": [
+      {
+        "from": "matcha-whisk",
+        "to": "hot-whisked-matcha",
+        "inputs": [
+          {
+            "ingredient": "matcha-powder",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "ice-blender",
+        "to": "iced-whisked-matcha",
+        "inputs": [
+          {
+            "ingredient": "matcha-powder",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "mochi-steamer",
+        "to": "mochi-wrapper",
+        "inputs": [
+          {
+            "ingredient": "glutinous-rice-flour",
+            "slot": 0
+          }
+        ],
+        "amount": 2,
+        "auto": true
+      },
+      {
+        "from": "cheesecake-mixer",
+        "to": "cheesecake-batter",
+        "inputs": [
+          {
+            "ingredient": "cream-cheese",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "baking-oven",
+        "to": "baked-cheesecake",
+        "inputs": [
+          {
+            "ingredient": "cheesecake-batter",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      }
+    ],
+    "base": [
+      {
+        "from": "hot-matcha-base",
+        "to": "hot-whisked-matcha"
+      },
+      {
+        "from": "hot-matcha-latte",
+        "to": "hot-matcha-base"
+      },
+      {
+        "from": "iced-matcha-base",
+        "to": "iced-whisked-matcha"
+      },
+      {
+        "from": "iced-matcha-latte",
+        "to": "iced-matcha-base"
+      },
+      {
+        "from": "filled-mochi",
+        "to": "mochi-wrapper"
+      },
+      {
+        "from": "matcha-cheesecake-core",
+        "to": "baked-cheesecake"
+      },
+      {
+        "from": "matcha-cheesecake",
+        "to": "matcha-cheesecake-core"
+      }
+    ],
+    "topping": [
+      {
+        "from": "hot-matcha-base",
+        "to": "matcha-sauce-choice"
+      },
+      {
+        "from": "hot-matcha-latte",
+        "to": "matcha-topping-choice"
+      },
+      {
+        "from": "iced-matcha-base",
+        "to": "matcha-sauce-choice"
+      },
+      {
+        "from": "iced-matcha-latte",
+        "to": "matcha-topping-choice"
+      },
+      {
+        "from": "filled-mochi",
+        "to": "mochi-filling-choice"
+      },
+      {
+        "from": "matcha-cheesecake-core",
+        "to": "matcha-powder"
+      },
+      {
+        "from": "matcha-cheesecake",
+        "to": "cheesecake-decoration-choice"
+      }
+    ],
+    "option": [
+      {
+        "from": "matcha-sauce-choice",
+        "to": "milk-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-sauce-choice",
+        "to": "strawberry-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-sauce-choice",
+        "to": "chocolate-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "whipped-cream",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "sweet-red-bean",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "matcha-jelly",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "tapioca-pearls",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "mochi-cubes",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "honey-drizzle",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "caramel-drizzle",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "almond-flakes",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "coconut-flakes",
+        "maxQuantity": 1
+      },
+      {
+        "from": "matcha-topping-choice",
+        "to": "wafer-stick",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mochi-filling-choice",
+        "to": "sweet-red-bean",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mochi-filling-choice",
+        "to": "white-bean-paste",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mochi-filling-choice",
+        "to": "strawberry-filling",
+        "maxQuantity": 1
+      },
+      {
+        "from": "mochi-filling-choice",
+        "to": "chocolate-filling",
+        "maxQuantity": 1
+      },
+      {
+        "from": "cheesecake-decoration-choice",
+        "to": "whipped-cream",
+        "maxQuantity": 1
+      },
+      {
+        "from": "cheesecake-decoration-choice",
+        "to": "strawberry-slice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "cheesecake-decoration-choice",
+        "to": "chocolate-curl",
+        "maxQuantity": 1
+      },
+      {
+        "from": "cheesecake-decoration-choice",
+        "to": "white-chocolate-star",
+        "maxQuantity": 1
+      },
+      {
+        "from": "cheesecake-decoration-choice",
+        "to": "matcha-cookie",
+        "maxQuantity": 1
+      },
+      {
+        "from": "cheesecake-decoration-choice",
+        "to": "cherry",
+        "maxQuantity": 1
+      },
+      {
+        "from": "cheesecake-decoration-choice",
+        "to": "cereal-crunch",
+        "maxQuantity": 1
+      }
+    ],
+    "leavesDirty": [
+      {
+        "from": "hot-matcha-latte",
+        "to": "dirty-hot-matcha-cup"
+      },
+      {
+        "from": "iced-matcha-latte",
+        "to": "dirty-iced-matcha-glass"
+      },
+      {
+        "from": "filled-mochi",
+        "to": "dirty-mochi-plate"
+      },
+      {
+        "from": "matcha-cheesecake",
+        "to": "dirty-cheesecake-plate"
+      }
+    ]
+  },
+  "notes": [
+    {
+      "id": "matcha-flow",
+      "x": 60,
+      "y": -120,
+      "text": "Hot and iced drink variants share sauce and topping groups but keep distinct preparation tools."
+    }
+  ],
+  "layout": {
+    "ingredient:almond-flakes": {
+      "x": 60,
+      "y": 838.2
+    },
+    "ingredient:caramel-drizzle": {
+      "x": 60,
+      "y": 946.2
+    },
+    "ingredient:coconut-flakes": {
+      "x": 60,
+      "y": 1054.2
+    },
+    "ingredient:honey-drizzle": {
+      "x": 60,
+      "y": 1162.2
+    },
+    "ingredient:matcha-jelly": {
+      "x": 60,
+      "y": 1270.2
+    },
+    "ingredient:mochi-cubes": {
+      "x": 60,
+      "y": 1378.2
+    },
+    "ingredient:tapioca-pearls": {
+      "x": 60,
+      "y": 1486.2
+    },
+    "ingredient:wafer-stick": {
+      "x": 60,
+      "y": 1594.2
+    },
+    "ingredient:chocolate-sauce": {
+      "x": 60,
+      "y": 1702.2
+    },
+    "ingredient:milk-sauce": {
+      "x": 60,
+      "y": 1810.2
+    },
+    "ingredient:strawberry-sauce": {
+      "x": 60,
+      "y": 1918.2
+    },
+    "ingredient:sweet-red-bean": {
+      "x": 60,
+      "y": 2026.2
+    },
+    "ingredient:matcha-powder": {
+      "x": 60,
+      "y": 2354.2
+    },
+    "ingredient:whipped-cream": {
+      "x": 60,
+      "y": 2462.2
+    },
+    "ingredient:chocolate-filling": {
+      "x": 60,
+      "y": 2570.2
+    },
+    "ingredient:strawberry-filling": {
+      "x": 60,
+      "y": 2678.2
+    },
+    "ingredient:white-bean-paste": {
+      "x": 60,
+      "y": 2786.2
+    },
+    "ingredient:glutinous-rice-flour": {
+      "x": 60,
+      "y": 2894.2
+    },
+    "ingredient:cereal-crunch": {
+      "x": 60,
+      "y": 3504.5
+    },
+    "ingredient:cherry": {
+      "x": 60,
+      "y": 3612.5
+    },
+    "ingredient:chocolate-curl": {
+      "x": 60,
+      "y": 3720.5
+    },
+    "ingredient:matcha-cookie": {
+      "x": 60,
+      "y": 3828.5
+    },
+    "ingredient:strawberry-slice": {
+      "x": 60,
+      "y": 3936.5
+    },
+    "ingredient:white-chocolate-star": {
+      "x": 60,
+      "y": 4044.5
+    },
+    "ingredient:cream-cheese": {
+      "x": 60,
+      "y": 4152.5
+    },
+    "ingredient:hot-whisked-matcha": {
+      "x": 720,
+      "y": 40
+    },
+    "ingredient:iced-whisked-matcha": {
+      "x": 720,
+      "y": 212
+    },
+    "ingredient:mochi-wrapper": {
+      "x": 720,
+      "y": 604
+    },
+    "ingredient:cheesecake-batter": {
+      "x": 720,
+      "y": 1361.17
+    },
+    "ingredient:baked-cheesecake": {
+      "x": 1380,
+      "y": 443.91
+    },
+    "group:matcha-topping-choice": {
+      "x": 390,
+      "y": 1650.2
+    },
+    "group:matcha-sauce-choice": {
+      "x": 390,
+      "y": 1810.2
+    },
+    "tool:matcha-whisk": {
+      "x": 390,
+      "y": 1918.2
+    },
+    "tool:ice-blender": {
+      "x": 390,
+      "y": 2026.2
+    },
+    "group:mochi-filling-choice": {
+      "x": 390,
+      "y": 2406.2
+    },
+    "tool:mochi-steamer": {
+      "x": 390,
+      "y": 2514.2
+    },
+    "group:cheesecake-decoration-choice": {
+      "x": 390,
+      "y": 3253.35
+    },
+    "tool:cheesecake-mixer": {
+      "x": 390,
+      "y": 3361.35
+    },
+    "composite:hot-matcha-base": {
+      "x": 1050,
+      "y": 40
+    },
+    "composite:iced-matcha-base": {
+      "x": 1050,
+      "y": 212
+    },
+    "tool:baking-oven": {
+      "x": 1050,
+      "y": 902.54
+    },
+    "composite:hot-matcha-latte": {
+      "x": 2040,
+      "y": 40
+    },
+    "composite:iced-matcha-latte": {
+      "x": 2040,
+      "y": 212
+    },
+    "composite:filled-mochi": {
+      "x": 2040,
+      "y": 604
+    },
+    "composite:matcha-cheesecake": {
+      "x": 2040,
+      "y": 996
+    },
+    "composite:matcha-cheesecake-core": {
+      "x": 1710,
+      "y": 661.4
+    },
+    "dirty:dirty-hot-matcha-cup": {
+      "x": 2370,
+      "y": 40
+    },
+    "dirty:dirty-iced-matcha-glass": {
+      "x": 2370,
+      "y": 212
+    },
+    "dirty:dirty-mochi-plate": {
+      "x": 2370,
+      "y": 604
+    },
+    "dirty:dirty-cheesecake-plate": {
+      "x": 2370,
+      "y": 996
+    }
+  }
+}

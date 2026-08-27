@@ -73,6 +73,7 @@ import {
 } from "../../data/nodeIdMigration.ts";
 import { noteImageURL } from "./noteImage.ts";
 import { downloadGraphPng } from "./exportPng.ts";
+import { resizeGridString } from "../design/gridSection.ts";
 
 /** Which id space a vertex kind mints into. */
 const SPACE_OF: Record<VertexKindName, IdSpace> = {
@@ -225,7 +226,7 @@ export class MapProcessView {
     // No persisted layout yet — lay the graph out once so the first open is
     // readable rather than a pile of nodes at the origin.
     if (!this.doc.layout || Object.keys(this.doc.layout).length === 0) {
-      this.doc.layout = autoLayout(this.doc);
+      this.doc.layout = this.generatedLayout();
     }
 
     this.renderToolbar();
@@ -267,7 +268,9 @@ export class MapProcessView {
       undoBtn,
       redoBtn,
       button("⤢ Auto layout", () => this.applyAutoLayout(), { title: "Re-run the layered layout" }),
-      button("# ID table", () => this.openIdTableDialog(), { title: "View and stage reordering of every ID space" }),
+      button("# ID table", () => this.openIdTableDialog(), {
+        title: "Configure the map grid and stage reordering of every ID space",
+      }),
       button("⬇ Graph JSON", () => this.exportJson(), { title: "Download this graph as JSON" }),
       button("⬇ Graph PNG", () => void this.exportPng(), { title: "Download the whole graph as a PNG" }),
       button("⬆ Graph JSON", () => this.importJson(), { title: "Replace this graph from a JSON file" }),
@@ -343,7 +346,7 @@ export class MapProcessView {
     this.scale = 1;
 
     if (!this.doc.layout || Object.keys(this.doc.layout).length === 0) {
-      this.doc.layout = autoLayout(this.doc);
+      this.doc.layout = this.generatedLayout();
     }
     this.onPersist();
     this.renderGraph();
@@ -763,8 +766,13 @@ export class MapProcessView {
 
   private applyAutoLayout(): void {
     this.doc = structuredClone(this.doc);
-    this.doc.layout = autoLayout(this.doc);
+    this.doc.layout = this.generatedLayout();
     this.commit("auto layout");
+  }
+
+  /** Auto-layout uses the exact same deterministic row geometry as cards and ports. */
+  private generatedLayout(): Layout {
+    return autoLayout(this.doc, { nodeHeight: (kind, name) => this.nodeHeight(kind, name) });
   }
 
   private renderGraph(): void {
@@ -2579,53 +2587,166 @@ export class MapProcessView {
   }
 
   /**
-   * Full-table modal with a staged copy. Dragging here changes no graph data;
-   * all spaces are committed together only after the explicit Apply warning.
+   * Full-table modal with staged map-grid dimensions and ID rows. Editing here
+   * changes no graph data; dimensions and all spaces commit as one undo entry
+   * only after the explicit Apply warning.
    */
   private openIdTableDialog(): void {
     let staged: IdTable = structuredClone(this.doc.idTable);
-    const original = JSON.stringify(staged);
+    let stagedGridWidth = this.doc.map.gridWidth;
+    let stagedGridHeight = this.doc.map.gridHeight;
+    const originalIds = JSON.stringify(staged);
+    const originalGridWidth = stagedGridWidth;
+    const originalGridHeight = stagedGridHeight;
     const close = (): void => overlay.remove();
     const grid = el("div", { class: "nodegraph-idtable-grid" });
     const apply = button(
-      "Apply reordered IDs",
+      "Apply changes",
       () => {
         const changed = ID_SPACES.filter(
           (space) => JSON.stringify(staged[space]) !== JSON.stringify(this.doc.idTable[space]),
         );
-        if (changed.length === 0) {
+        const gridChanged =
+          stagedGridWidth !== this.doc.map.gridWidth || stagedGridHeight !== this.doc.map.gridHeight;
+        if (changed.length === 0 && !gridChanged) {
           close();
           return;
         }
-        let migration: LevelIdMigration;
-        try {
-          migration = migrateLevelsForIdTableReorder(this.project.levels, this.doc.idTable, staged);
-        } catch (error) {
-          alert(error instanceof Error ? error.message : String(error));
-          return;
+
+        let migration: LevelIdMigration | undefined;
+        if (changed.length > 0) {
+          try {
+            migration = migrateLevelsForIdTableReorder(this.project.levels, this.doc.idTable, staged);
+          } catch (error) {
+            alert(error instanceof Error ? error.message : String(error));
+            return;
+          }
         }
-        if (
-          !confirm(
+
+        const warnings: string[] = [];
+        if (migration) {
+          warnings.push(
             `Apply ID-table reordering for ${changed.join(", ")}?\n\n` +
               `${migration.changedLevels} level(s) will be updated to keep pointing at the same nodes ` +
               `(${migration.changedQueueReferences} queue and ${migration.changedCustomerReferences} customer references).`,
-          )
-        ) {
+          );
+        }
+        if (gridChanged) {
+          const beforeCells = this.doc.map.gridWidth * this.doc.map.gridHeight;
+          const afterCells = stagedGridWidth * stagedGridHeight;
+          warnings.push(
+            `Resize the map grid from ${this.doc.map.gridWidth}×${this.doc.map.gridHeight} to ` +
+              `${stagedGridWidth}×${stagedGridHeight}?\n\n` +
+              `All ${this.project.levels.length} level grid string(s) will be resized.` +
+              (afterCells < beforeCells ? " Trailing cells outside the new capacity will be removed." : ""),
+          );
+        }
+        if (!confirm(warnings.join("\n\n"))) {
           return;
         }
-        this.project.levels = migration.levels;
-        this.doc = { ...this.doc, idTable: structuredClone(staged) };
-        this.commit(`reorder ID table (${changed.join(", ")})`);
+
+        let nextLevels = migration?.levels ?? this.project.levels;
+        if (gridChanged) {
+          nextLevels = nextLevels.map((level) => ({
+            ...level,
+            gridString: resizeGridString(level.gridString, stagedGridWidth, stagedGridHeight),
+          }));
+        }
+        this.project.levels = nextLevels;
+        this.doc = {
+          ...this.doc,
+          map: {
+            ...this.doc.map,
+            gridWidth: stagedGridWidth,
+            gridHeight: stagedGridHeight,
+          },
+          idTable: structuredClone(staged),
+        };
+        const actions = [
+          ...(gridChanged ? [`resize map grid to ${stagedGridWidth}×${stagedGridHeight}`] : []),
+          ...(changed.length > 0 ? [`reorder ID table (${changed.join(", ")})`] : []),
+        ];
+        this.commit(actions.join(" and "));
         close();
       },
       { class: "primary" },
     );
 
     const updateApply = (): void => {
-      const dirty = JSON.stringify(staged) !== original;
+      const dirty =
+        JSON.stringify(staged) !== originalIds ||
+        stagedGridWidth !== originalGridWidth ||
+        stagedGridHeight !== originalGridHeight;
       apply.disabled = !dirty;
-      apply.textContent = dirty ? "Apply reordered IDs" : "No ID changes";
+      apply.textContent = dirty ? "Apply changes" : "No changes";
     };
+
+    const widthInput = el("input", {
+      type: "number",
+      min: "1",
+      step: "1",
+      value: String(stagedGridWidth),
+      "aria-label": "Map grid columns",
+    }) as HTMLInputElement;
+    const heightInput = el("input", {
+      type: "number",
+      min: "1",
+      step: "1",
+      value: String(stagedGridHeight),
+      "aria-label": "Map grid rows",
+    }) as HTMLInputElement;
+    const gridSummary = el("small", { class: "muted" });
+    const updateGridSummary = (): void => {
+      gridSummary.textContent =
+        `${stagedGridWidth * stagedGridHeight} cells per level. ` +
+        "Changing this resizes every level grid when Apply is confirmed.";
+    };
+    const stageDimension = (
+      input: HTMLInputElement,
+      setValue: (value: number) => void,
+      normalize: boolean,
+    ): void => {
+      const numeric = Math.floor(Number(input.value));
+      if (!Number.isFinite(numeric) || numeric < 1) {
+        if (!normalize) return;
+        input.value = "1";
+        setValue(1);
+      } else {
+        input.value = normalize ? String(numeric) : input.value;
+        setValue(numeric);
+      }
+      updateGridSummary();
+      updateApply();
+    };
+    widthInput.addEventListener("input", () =>
+      stageDimension(widthInput, (value) => { stagedGridWidth = value; }, false),
+    );
+    heightInput.addEventListener("input", () =>
+      stageDimension(heightInput, (value) => { stagedGridHeight = value; }, false),
+    );
+    widthInput.addEventListener("blur", () =>
+      stageDimension(widthInput, (value) => { stagedGridWidth = value; }, true),
+    );
+    heightInput.addEventListener("blur", () =>
+      stageDimension(heightInput, (value) => { stagedGridHeight = value; }, true),
+    );
+    updateGridSummary();
+
+    const mapGridConfig = el("section", { class: "nodegraph-idtable-map-config" }, [
+      el("h3", {}, ["Map grid size"]),
+      el("div", { class: "nodegraph-idtable-map-fields" }, [
+        el("label", { class: "nodegraph-idtable-map-field" }, [
+          el("span", {}, ["Columns"]),
+          widthInput,
+        ]),
+        el("span", { class: "nodegraph-idtable-map-times", "aria-hidden": "true" }, ["×"]),
+        el("label", { class: "nodegraph-idtable-map-field" }, [
+          el("span", {}, ["Rows"]),
+          heightInput,
+        ]),
+      ]),
+      gridSummary,
+    ]);
 
     const render = (): void => {
       grid.replaceChildren();
@@ -2664,14 +2785,15 @@ export class MapProcessView {
 
     const panel = el("div", { class: "nodegraph-idtable-dialog" }, [
       el("p", { class: "muted" }, [
-        "Drag rows to stage positional ID changes. Nothing is applied until you confirm below.",
+        "Configure the shared map grid or drag rows to stage positional ID changes. Nothing is applied until you confirm below.",
       ]),
+      mapGridConfig,
       grid,
       el("div", { class: "nodegraph-idtable-actions" }, [button("Cancel", close), apply]),
     ]);
     const overlay = el("div", { class: "overlay-panel nodegraph-idtable-overlay" }, [
       el("div", { class: "definitions-head" }, [
-        el("h2", {}, ["Full ID table"]),
+        el("h2", {}, ["ID table & map grid"]),
         button("✕ Close", close),
       ]),
       panel,
@@ -2796,7 +2918,7 @@ Continue?`,
           return;
         }
         this.doc = doc;
-        if (Object.keys(this.doc.layout ?? {}).length === 0) this.doc.layout = autoLayout(this.doc);
+        if (Object.keys(this.doc.layout ?? {}).length === 0) this.doc.layout = this.generatedLayout();
         this.selection = null;
         this.selected.clear();
         this.commit(`import ${file.name}`);

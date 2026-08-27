@@ -57,7 +57,7 @@ but each keeps its **own** Save button, unsaved badge, and undo/redo history sta
 Level reloads and resets all three at once; saving one section does not touch the others' pending
 edits.
 
-**Play mode mirrors the same three-tier layout** (Customer / Grid / Queue, top-to-bottom), so a
+**Play mode mirrors the same flow with one visual staging tier** (Customer / Serving / Grid / Queue, top-to-bottom), so a
 designer playtesting a level doesn't have to relearn where things are. The one structural
 difference: the middle tier is **one panel split left/right**, not the grid alone —
 **Grid on the left, Preparing/Cooking pipeline on the right**. It's a single section because the
@@ -227,10 +227,14 @@ tool.
   **3:4** ratio, rather than stretching full width like the toolbar does. Tiles/cells/icons are
   correspondingly smaller than in Design mode so the three tiers stay legible at that narrower
   width; a true-portrait viewport (≤480px) drops the ratio and just uses the full width instead.
-- **Top — Customer status**: the serveable customers first (highlighted), then exactly **one**
-  masked lookahead card marked **"?"** for whoever's next in line — their order isn't revealed
-  until a serve slot actually frees up for them. All cards share a fixed-column grid (never a
-  scrolling row), so the 2nd/3rd card is never accidentally clipped off-screen.
+- **Top — Customer status**: full-width serveable customers first, then the next **three** customers
+  as narrow cards in the same row. Each preview is only one vertical column of ordered-composite
+  emojis; ingredient choices, quantities and toppings remain hidden. The estimator uses this same
+  composite-only lookahead rather than treating pending orders as wholly unknown.
+- **Serving row**: a compact strip between Customer status and the grid with at most five visual
+  dish containers. Served ingredients fly here and merge in base-before-topping order. Once a dish
+  is complete, one container (plate/cup/etc., represented by its composite icon) flies to the
+  customer. This strip is presentation only and does not add inventory capacity.
 - **Middle — Grid + Cooking tools (one panel, top/bottom in portrait)**: the grid takes most of
   the panel's height (same cell rendering as Design mode, now showing live contents — cooked
   items, parked raws, dirty stacks, lock progress — instead of edit state); cooking tools render
@@ -250,15 +254,15 @@ tool.
   frees).
 - **Movement**: every hand-off animates as a floating item flying between the two places —
   queue→tool slot, queue→grid, tool→grid, tool→tool (a chained recipe's mid-hop, e.g. Potato:
-  Cutting Board → Fryer), grid→tool (reclaiming a parked raw), grid→customer, queue→customer and
-  tool→customer (a direct serve that skips the grid entirely because a customer is already
-  waiting — see [GDD.md](GDD.md) §2.2.1), and backpack→customer (Save Me, below). The animation is
+  Cutting Board → Fryer), grid→tool (reclaiming a parked raw), grid→serving row, queue→serving row and
+  tool→serving row (a direct serve that skips the grid entirely because a customer is already
+  waiting — see [GDD.md](GDD.md) §2.2.1), and backpack→serving row (Save Me, below). The animation is
   the gate: cooking starts when the ingredient *arrives* in the slot, matching runs when an item
-  *arrives* on the grid, and a dish fills when the piece *arrives* at the customer.
-- **Completion feedback**: when a customer's whole order is filled, a burst of particles fires
-  from their card and the card itself brightens then **shrinks away to nothing** — only once that
-  finishes does the next customer (or the new "?" card) take its place, so the two never overlap.
-  Customers currently in a serve slot are highlighted; the "?" card is dimmed/dashed.
+  *arrives* on the grid, and a dish fills when the piece *arrives* in its serving container.
+- **Completion feedback**: when a dish is filled, its assembled container flies from the Serving
+  row to the customer and fires a burst from their card. Only then may the customer row refresh,
+  so a departing customer and a promoted preview never visually overlap. Customers currently in
+  a serve slot are highlighted; the three previews are narrow, dimmed/dashed cards.
 - **Bottom — Ingredient queues**: same grid-of-lanes layout as the Design-mode queue window
   (including combined/linked-group tints and rope/rail overlay), sized to the map's configured
   **visible-row window** (`visibleRows`). Normally only each lane's front tile is a clickable

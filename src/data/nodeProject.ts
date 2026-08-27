@@ -228,8 +228,8 @@ export function blankNodeGraph(id: string, name: string): NodeGraphMap {
     map: {
       id,
       name,
-      gridWidth: 4,
-      gridHeight: 4,
+      gridWidth: 5,
+      gridHeight: 2,
       dirtyStackHeight: 3,
       visibleRows: 3,
     },
@@ -251,7 +251,7 @@ export function blankNodeGraph(id: string, name: string): NodeGraphMap {
  * the honest floor: there is nothing to design against with zero.
  */
 export function blankLevel(doc: NodeGraphMap, id = 1): LevelData {
-  const cells = Math.max(1, (doc.map.gridWidth ?? 4) * (doc.map.gridHeight ?? 4));
+  const cells = Math.max(1, (doc.map.gridWidth ?? 5) * (doc.map.gridHeight ?? 2));
   return {
     id,
     name: `Level ${id}`,

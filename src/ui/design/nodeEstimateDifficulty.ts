@@ -54,6 +54,14 @@ interface PickupValue {
   ready: boolean;
 }
 
+const CUSTOMER_PREVIEW_COUNT = 3;
+/**
+ * Upcoming customers expose only their orderable composite, not the chosen
+ * options. Treat each possible option as expected (fractional) demand rather
+ * than pretending the hidden combination is known exactly.
+ */
+const PREVIEW_CONFIDENCE = 0.3;
+
 function seededRng(seed = 0x5eed): () => number {
   let s = seed >>> 0;
   return () => {
@@ -321,6 +329,37 @@ export function estimateNodeDifficulty(
     }
     for (const list of claims.values()) list.sort((a, b) => b.priority - a.priority);
 
+    // Composite-only lookahead for the next three customers. A fixed/base slot
+    // remains informative; a choice group spreads its value evenly across all
+    // legal options. This is intentionally separate from exact active claims:
+    // preview demand never consumes committed supply or marks a pick "ready".
+    const previewClaims = new Map<number, { score: number; customerIndex: number }>();
+    sim.pending.slice(0, CUSTOMER_PREVIEW_COUNT).forEach((customer, previewPosition) => {
+      if (!isOrdering(customer)) return;
+      for (const dish of customer.dishes) {
+        const slots = ix.slotsOfComposite[dish.order.orderable] ?? [];
+        const composite = ix.doc.vertices.composite[dish.order.orderable];
+        for (const slot of slots) {
+          if (slot.options.length === 0) continue;
+          const required = slot.isBase || slot.minQuantity > 0 || Boolean(composite?.toppingRequired);
+          const confidence = required ? PREVIEW_CONFIDENCE : PREVIEW_CONFIDENCE * 0.45;
+          const basePriority = slot.isBase ? cfg.scoreBase : cfg.scoreBlocked;
+          const position = sim.active.length + previewPosition;
+          const priority = (basePriority * confidence) /
+            (1 + position * cfg.customerPositionDecay) /
+            slot.options.length;
+          for (const option of slot.options) {
+            for (const [leaf, units] of rawRequirements(option)) {
+              const score = priority * units;
+              const current = previewClaims.get(leaf);
+              if (current) current.score += score;
+              else previewClaims.set(leaf, { score, customerIndex: customer.index });
+            }
+          }
+        }
+      }
+    });
+
     const committed = pipelineLeaves();
     for (const [leaf, available] of committed) {
       let left = available;
@@ -364,6 +403,13 @@ export function estimateNodeDifficulty(
           leafScore *= 1 + Math.min(cfg.scarcityCap, (needed / available) * cfg.scarcityFactor);
         }
         score += leafScore;
+
+        const preview = previewClaims.get(leaf);
+        if (preview) {
+          const previewScore = preview.score * amount;
+          score += previewScore;
+          if (strongest === 0 && previewScore > 0) customerIndex = preview.customerIndex;
+        }
       }
 
       // If the rest of a recipe is already loaded, prefer the missing input:

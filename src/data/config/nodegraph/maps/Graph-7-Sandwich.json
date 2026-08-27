@@ -1,0 +1,1224 @@
+{
+  "schemaVersion": 1,
+  "_foodOrderableMap": {
+    "sandwich": [
+      "layered-sandwich"
+    ],
+    "salad": [
+      "garden-salad"
+    ],
+    "potato-fried": [
+      "seasoned-fried-potato"
+    ],
+    "coca": [
+      "coca-with-ice"
+    ],
+    "juice": [
+      "fresh-juice"
+    ]
+  },
+  "_derivation": [
+    {
+      "sourceTitle": "Club sandwich — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/club-sandwich",
+      "supports": [
+        "sandwich-bread",
+        "crispy-bacon",
+        "grilled-chicken",
+        "hard-boiled-egg",
+        "tomato-slice",
+        "lettuce-leaf"
+      ],
+      "adaptations": [
+        "The gameplay order requires at least three visible layers and permits up to six."
+      ]
+    },
+    {
+      "sourceTitle": "How to make the perfect sandwich — Good Food",
+      "url": "https://www.bbcgoodfood.com/howto/guide/how-to-make-the-perfect-sandwich",
+      "supports": [
+        "sandwich-layer-choice",
+        "cheddar-slice",
+        "mayonnaise",
+        "cucumber-slice"
+      ],
+      "adaptations": [
+        "A single topping group preserves the visible bottom-to-top component stack."
+      ]
+    },
+    {
+      "sourceTitle": "Garden salad — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/garden-salad",
+      "supports": [
+        "lettuce-leaf",
+        "salad-green-choice",
+        "vinaigrette"
+      ],
+      "adaptations": [
+        "Tomato, cucumber, carrot, onion, corn, and croutons broaden the selectable salad bar."
+      ]
+    },
+    {
+      "sourceTitle": "French fries — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/french-fries",
+      "supports": [
+        "potato",
+        "deep-fryer",
+        "fried-potato",
+        "sea-salt"
+      ],
+      "adaptations": [
+        "Cutting, soaking, and oil are implicit in the fryer station."
+      ]
+    },
+    {
+      "sourceTitle": "Coca-Cola Original ingredients — The Coca-Cola Company",
+      "url": "https://www.coca-cola.com/us/en/brands/coca-cola/products/original",
+      "supports": [
+        "soda-fountain",
+        "coca-cup"
+      ],
+      "adaptations": [
+        "The proprietary cola mix is implicit; the cup and ice stay player-visible."
+      ]
+    },
+    {
+      "sourceTitle": "Watermelon smoothie — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/watermelon-smoothie",
+      "supports": [
+        "watermelon",
+        "juice-extractor",
+        "watermelon-juice"
+      ],
+      "adaptations": [
+        "Orange, apple, pineapple, and mango use the same single-fruit extraction pattern."
+      ]
+    }
+  ],
+  "_imagePolicy": {
+    "provider": "Unicode Emoji fallback",
+    "urlPattern": "none — emoji fields are embedded and deterministic",
+    "license": "Unicode characters rendered by the player platform",
+    "attribution": "No remote images assigned; OpenMoji SVG URLs are the recommended derived-link upgrade path."
+  },
+  "_visualAudit": {
+    "selectionSetsReviewed": [
+      "sandwich layers: meat/egg/red tomato/green leaves/yellow cheese/white mayo/cucumber",
+      "salad greens and finishes: ribbon/ring/kernel/cube/jar texture cues",
+      "fries finishes: white salt/red ketchup/yellow cheese",
+      "fresh juices: orange/green/pink/yellow-gold color and fruit-source silhouettes"
+    ],
+    "combinationPreviewsReviewed": [
+      "representative three- through six-layer sandwiches with all components exposed",
+      "two- through four-green salads with both finishes",
+      "plain and two-finish fries",
+      "coca with visible ice",
+      "all five juice colors with optional visible ice"
+    ],
+    "result": "pass",
+    "notes": [
+      "Layered sandwich components are individually visible; the composite has no replacement dish artwork.",
+      "Shared ingredients such as tomato and lettuce retain the same visual identity across sandwich and salad."
+    ]
+  },
+  "map": {
+    "id": "sandwich",
+    "name": "Sandwich",
+    "gridWidth": 5,
+    "gridHeight": 2,
+    "dirtyStackHeight": 3,
+    "visibleRows": 3
+  },
+  "idTable": {
+    "ingredient": [
+      "sandwich-bread",
+      "chicken-breast",
+      "bacon-strip",
+      "hard-boiled-egg",
+      "tomato-slice",
+      "lettuce-leaf",
+      "cheddar-slice",
+      "mayonnaise",
+      "cucumber-slice",
+      "carrot-ribbon",
+      "red-onion-ring",
+      "sweet-corn",
+      "croutons",
+      "vinaigrette",
+      "potato",
+      "sea-salt",
+      "ketchup",
+      "cheese-sauce",
+      "soda-cup",
+      "ice-cubes",
+      "orange",
+      "apple",
+      "watermelon",
+      "pineapple",
+      "mango",
+      "toasted-sandwich-bread",
+      "grilled-chicken",
+      "crispy-bacon",
+      "fried-potato",
+      "coca-cup",
+      "orange-juice",
+      "apple-juice",
+      "watermelon-juice",
+      "pineapple-juice",
+      "mango-juice"
+    ],
+    "composite": [
+      "layered-sandwich",
+      "garden-salad",
+      "seasoned-fried-potato",
+      "coca-with-ice",
+      "fresh-juice"
+    ],
+    "group": [
+      "sandwich-layer-choice",
+      "salad-green-choice",
+      "salad-finish-choice",
+      "fries-finish-choice",
+      "fresh-juice-choice"
+    ],
+    "tool": [
+      "bread-toaster",
+      "sandwich-griddle",
+      "deep-fryer",
+      "soda-fountain",
+      "juice-extractor"
+    ],
+    "dirty": [
+      "dirty-sandwich-plate",
+      "dirty-salad-bowl",
+      "dirty-fries-carton",
+      "dirty-coca-cup",
+      "dirty-juice-glass"
+    ]
+  },
+  "vertices": {
+    "ingredient": [
+      {
+        "name": "sandwich-bread",
+        "displayName": "Sandwich Bread",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍞"
+      },
+      {
+        "name": "chicken-breast",
+        "displayName": "Chicken Breast",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🐔"
+      },
+      {
+        "name": "bacon-strip",
+        "displayName": "Bacon Strip",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥓"
+      },
+      {
+        "name": "hard-boiled-egg",
+        "displayName": "Hard-Boiled Egg",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥚"
+      },
+      {
+        "name": "tomato-slice",
+        "displayName": "Tomato Slice",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍅"
+      },
+      {
+        "name": "lettuce-leaf",
+        "displayName": "Lettuce Leaf",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥬"
+      },
+      {
+        "name": "cheddar-slice",
+        "displayName": "Cheddar Slice",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧀"
+      },
+      {
+        "name": "mayonnaise",
+        "displayName": "Mayonnaise",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚪"
+      },
+      {
+        "name": "cucumber-slice",
+        "displayName": "Cucumber Slice",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥒"
+      },
+      {
+        "name": "carrot-ribbon",
+        "displayName": "Carrot Ribbon",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥕"
+      },
+      {
+        "name": "red-onion-ring",
+        "displayName": "Red Onion Ring",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟣"
+      },
+      {
+        "name": "sweet-corn",
+        "displayName": "Sweet Corn",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🌽"
+      },
+      {
+        "name": "croutons",
+        "displayName": "Croutons",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟫"
+      },
+      {
+        "name": "vinaigrette",
+        "displayName": "Vinaigrette",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫙"
+      },
+      {
+        "name": "potato",
+        "displayName": "Potato",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥔"
+      },
+      {
+        "name": "sea-salt",
+        "displayName": "Sea Salt",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧂"
+      },
+      {
+        "name": "ketchup",
+        "displayName": "Ketchup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🔴"
+      },
+      {
+        "name": "cheese-sauce",
+        "displayName": "Cheese Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟡"
+      },
+      {
+        "name": "soda-cup",
+        "displayName": "Soda Cup",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥤"
+      },
+      {
+        "name": "ice-cubes",
+        "displayName": "Ice Cubes",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧊"
+      },
+      {
+        "name": "orange",
+        "displayName": "Orange",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍊"
+      },
+      {
+        "name": "apple",
+        "displayName": "Apple",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍎"
+      },
+      {
+        "name": "watermelon",
+        "displayName": "Watermelon",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍉"
+      },
+      {
+        "name": "pineapple",
+        "displayName": "Pineapple",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍍"
+      },
+      {
+        "name": "mango",
+        "displayName": "Mango",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥭"
+      },
+      {
+        "name": "toasted-sandwich-bread",
+        "displayName": "Toasted Sandwich Bread",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥪"
+      },
+      {
+        "name": "grilled-chicken",
+        "displayName": "Grilled Chicken",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍗"
+      },
+      {
+        "name": "crispy-bacon",
+        "displayName": "Crispy Bacon",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥓"
+      },
+      {
+        "name": "fried-potato",
+        "displayName": "Fried Potato",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍟"
+      },
+      {
+        "name": "coca-cup",
+        "displayName": "Coca Cup",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🥤"
+      },
+      {
+        "name": "orange-juice",
+        "displayName": "Orange Juice",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟠"
+      },
+      {
+        "name": "apple-juice",
+        "displayName": "Apple Juice",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟢"
+      },
+      {
+        "name": "watermelon-juice",
+        "displayName": "Watermelon Juice",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🩷"
+      },
+      {
+        "name": "pineapple-juice",
+        "displayName": "Pineapple Juice",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟡"
+      },
+      {
+        "name": "mango-juice",
+        "displayName": "Mango Juice",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟨"
+      }
+    ],
+    "tool": [
+      {
+        "name": "bread-toaster",
+        "displayName": "Bread Toaster",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 2,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "♨️",
+        "runtimeToolId": 0
+      },
+      {
+        "name": "sandwich-griddle",
+        "displayName": "Sandwich Griddle",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 3,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🍳",
+        "runtimeToolId": 1
+      },
+      {
+        "name": "deep-fryer",
+        "displayName": "Deep Fryer",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 4,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🍟",
+        "runtimeToolId": 2
+      },
+      {
+        "name": "soda-fountain",
+        "displayName": "Soda Fountain",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 2,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "⛲",
+        "runtimeToolId": 3
+      },
+      {
+        "name": "juice-extractor",
+        "displayName": "Juice Extractor",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 3,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🧃",
+        "runtimeToolId": 4
+      }
+    ],
+    "group": [
+      {
+        "name": "sandwich-layer-choice",
+        "displayName": "Sandwich Layer Choice",
+        "minQuantity": 3,
+        "maxQuantity": 6
+      },
+      {
+        "name": "salad-green-choice",
+        "displayName": "Salad Green Choice",
+        "minQuantity": 2,
+        "maxQuantity": 4
+      },
+      {
+        "name": "salad-finish-choice",
+        "displayName": "Salad Finish Choice",
+        "minQuantity": 1,
+        "maxQuantity": 2
+      },
+      {
+        "name": "fries-finish-choice",
+        "displayName": "Fries Finish Choice",
+        "minQuantity": 0,
+        "maxQuantity": 2
+      },
+      {
+        "name": "fresh-juice-choice",
+        "displayName": "Fresh Juice Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      }
+    ],
+    "composite": [
+      {
+        "name": "layered-sandwich",
+        "displayName": "Layered Sandwich",
+        "emoji": "🥪",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "garden-salad",
+        "displayName": "Garden Salad",
+        "emoji": "🥗",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "seasoned-fried-potato",
+        "displayName": "Seasoned Fried Potato",
+        "emoji": "🍟",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "coca-with-ice",
+        "displayName": "Coca with Ice",
+        "emoji": "🥤",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "fresh-juice",
+        "displayName": "Fresh Juice",
+        "emoji": "🧃",
+        "orderable": true,
+        "toppingRequired": false
+      }
+    ],
+    "dirty": [
+      {
+        "name": "dirty-sandwich-plate",
+        "displayName": "Dirty Sandwich Plate",
+        "maxStack": 3,
+        "emoji": "🍽️",
+        "runtimeDirtyId": 0
+      },
+      {
+        "name": "dirty-salad-bowl",
+        "displayName": "Dirty Salad Bowl",
+        "maxStack": 3,
+        "emoji": "🥣",
+        "runtimeDirtyId": 1
+      },
+      {
+        "name": "dirty-fries-carton",
+        "displayName": "Dirty Fries Carton",
+        "maxStack": 3,
+        "emoji": "🍟",
+        "runtimeDirtyId": 2
+      },
+      {
+        "name": "dirty-coca-cup",
+        "displayName": "Dirty Coca Cup",
+        "maxStack": 3,
+        "emoji": "🥤",
+        "runtimeDirtyId": 3
+      },
+      {
+        "name": "dirty-juice-glass",
+        "displayName": "Dirty Juice Glass",
+        "maxStack": 3,
+        "emoji": "🥛",
+        "runtimeDirtyId": 4
+      }
+    ]
+  },
+  "edges": {
+    "preservation": [],
+    "process": [
+      {
+        "from": "bread-toaster",
+        "to": "toasted-sandwich-bread",
+        "inputs": [
+          {
+            "ingredient": "sandwich-bread",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "sandwich-griddle",
+        "to": "grilled-chicken",
+        "inputs": [
+          {
+            "ingredient": "chicken-breast",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "sandwich-griddle",
+        "to": "crispy-bacon",
+        "inputs": [
+          {
+            "ingredient": "bacon-strip",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "deep-fryer",
+        "to": "fried-potato",
+        "inputs": [
+          {
+            "ingredient": "potato",
+            "slot": 0
+          }
+        ],
+        "amount": 2,
+        "auto": true
+      },
+      {
+        "from": "soda-fountain",
+        "to": "coca-cup",
+        "inputs": [
+          {
+            "ingredient": "soda-cup",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "juice-extractor",
+        "to": "orange-juice",
+        "inputs": [
+          {
+            "ingredient": "orange",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "juice-extractor",
+        "to": "apple-juice",
+        "inputs": [
+          {
+            "ingredient": "apple",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "juice-extractor",
+        "to": "watermelon-juice",
+        "inputs": [
+          {
+            "ingredient": "watermelon",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "juice-extractor",
+        "to": "pineapple-juice",
+        "inputs": [
+          {
+            "ingredient": "pineapple",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "juice-extractor",
+        "to": "mango-juice",
+        "inputs": [
+          {
+            "ingredient": "mango",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      }
+    ],
+    "base": [
+      {
+        "from": "layered-sandwich",
+        "to": "toasted-sandwich-bread"
+      },
+      {
+        "from": "garden-salad",
+        "to": "salad-green-choice"
+      },
+      {
+        "from": "seasoned-fried-potato",
+        "to": "fried-potato"
+      },
+      {
+        "from": "coca-with-ice",
+        "to": "coca-cup"
+      },
+      {
+        "from": "fresh-juice",
+        "to": "fresh-juice-choice"
+      }
+    ],
+    "topping": [
+      {
+        "from": "layered-sandwich",
+        "to": "sandwich-layer-choice"
+      },
+      {
+        "from": "garden-salad",
+        "to": "salad-finish-choice"
+      },
+      {
+        "from": "seasoned-fried-potato",
+        "to": "fries-finish-choice"
+      },
+      {
+        "from": "coca-with-ice",
+        "to": "ice-cubes"
+      },
+      {
+        "from": "fresh-juice",
+        "to": "ice-cubes"
+      }
+    ],
+    "option": [
+      {
+        "from": "sandwich-layer-choice",
+        "to": "grilled-chicken",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sandwich-layer-choice",
+        "to": "crispy-bacon",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sandwich-layer-choice",
+        "to": "hard-boiled-egg",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sandwich-layer-choice",
+        "to": "tomato-slice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sandwich-layer-choice",
+        "to": "lettuce-leaf",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sandwich-layer-choice",
+        "to": "cheddar-slice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sandwich-layer-choice",
+        "to": "mayonnaise",
+        "maxQuantity": 1
+      },
+      {
+        "from": "sandwich-layer-choice",
+        "to": "cucumber-slice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "salad-green-choice",
+        "to": "lettuce-leaf",
+        "maxQuantity": 1
+      },
+      {
+        "from": "salad-green-choice",
+        "to": "tomato-slice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "salad-green-choice",
+        "to": "cucumber-slice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "salad-green-choice",
+        "to": "carrot-ribbon",
+        "maxQuantity": 1
+      },
+      {
+        "from": "salad-green-choice",
+        "to": "red-onion-ring",
+        "maxQuantity": 1
+      },
+      {
+        "from": "salad-green-choice",
+        "to": "sweet-corn",
+        "maxQuantity": 1
+      },
+      {
+        "from": "salad-finish-choice",
+        "to": "croutons",
+        "maxQuantity": 1
+      },
+      {
+        "from": "salad-finish-choice",
+        "to": "vinaigrette",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fries-finish-choice",
+        "to": "sea-salt",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fries-finish-choice",
+        "to": "ketchup",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fries-finish-choice",
+        "to": "cheese-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fresh-juice-choice",
+        "to": "orange-juice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fresh-juice-choice",
+        "to": "apple-juice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fresh-juice-choice",
+        "to": "watermelon-juice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fresh-juice-choice",
+        "to": "pineapple-juice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "fresh-juice-choice",
+        "to": "mango-juice",
+        "maxQuantity": 1
+      }
+    ],
+    "leavesDirty": [
+      {
+        "from": "layered-sandwich",
+        "to": "dirty-sandwich-plate"
+      },
+      {
+        "from": "garden-salad",
+        "to": "dirty-salad-bowl"
+      },
+      {
+        "from": "seasoned-fried-potato",
+        "to": "dirty-fries-carton"
+      },
+      {
+        "from": "coca-with-ice",
+        "to": "dirty-coca-cup"
+      },
+      {
+        "from": "fresh-juice",
+        "to": "dirty-juice-glass"
+      }
+    ]
+  },
+  "notes": [
+    {
+      "id": "sandwich-flow",
+      "x": 60,
+      "y": -120,
+      "text": "Shared produce fans into sandwich and salad lanes; all five orderables terminate at one X coordinate."
+    }
+  ],
+  "layout": {
+    "ingredient:cheddar-slice": {
+      "x": 60,
+      "y": 558.7
+    },
+    "ingredient:bacon-strip": {
+      "x": 60,
+      "y": 666.7
+    },
+    "ingredient:chicken-breast": {
+      "x": 60,
+      "y": 774.7
+    },
+    "ingredient:hard-boiled-egg": {
+      "x": 60,
+      "y": 882.7
+    },
+    "ingredient:mayonnaise": {
+      "x": 60,
+      "y": 990.7
+    },
+    "ingredient:sandwich-bread": {
+      "x": 60,
+      "y": 1098.7
+    },
+    "ingredient:cucumber-slice": {
+      "x": 60,
+      "y": 1426.7
+    },
+    "ingredient:lettuce-leaf": {
+      "x": 60,
+      "y": 1534.7
+    },
+    "ingredient:tomato-slice": {
+      "x": 60,
+      "y": 1642.7
+    },
+    "ingredient:carrot-ribbon": {
+      "x": 60,
+      "y": 1752.1
+    },
+    "ingredient:red-onion-ring": {
+      "x": 60,
+      "y": 1860.1
+    },
+    "ingredient:sweet-corn": {
+      "x": 60,
+      "y": 1968.1
+    },
+    "ingredient:croutons": {
+      "x": 60,
+      "y": 2379.9
+    },
+    "ingredient:vinaigrette": {
+      "x": 60,
+      "y": 2487.9
+    },
+    "ingredient:potato": {
+      "x": 60,
+      "y": 2815.9
+    },
+    "ingredient:cheese-sauce": {
+      "x": 60,
+      "y": 3171.8
+    },
+    "ingredient:ketchup": {
+      "x": 60,
+      "y": 3279.8
+    },
+    "ingredient:sea-salt": {
+      "x": 60,
+      "y": 3387.8
+    },
+    "ingredient:soda-cup": {
+      "x": 60,
+      "y": 3715.8
+    },
+    "ingredient:ice-cubes": {
+      "x": 60,
+      "y": 4043.8
+    },
+    "ingredient:apple": {
+      "x": 60,
+      "y": 4151.8
+    },
+    "ingredient:mango": {
+      "x": 60,
+      "y": 4259.8
+    },
+    "ingredient:orange": {
+      "x": 60,
+      "y": 4367.8
+    },
+    "ingredient:pineapple": {
+      "x": 60,
+      "y": 4475.8
+    },
+    "ingredient:watermelon": {
+      "x": 60,
+      "y": 4583.8
+    },
+    "ingredient:crispy-bacon": {
+      "x": 720,
+      "y": 558.7
+    },
+    "ingredient:grilled-chicken": {
+      "x": 720,
+      "y": 666.7
+    },
+    "ingredient:toasted-sandwich-bread": {
+      "x": 720,
+      "y": 774.7
+    },
+    "ingredient:fried-potato": {
+      "x": 720,
+      "y": 1102.7
+    },
+    "ingredient:coca-cup": {
+      "x": 720,
+      "y": 1430.7
+    },
+    "ingredient:apple-juice": {
+      "x": 720,
+      "y": 2683.98
+    },
+    "ingredient:mango-juice": {
+      "x": 720,
+      "y": 2791.98
+    },
+    "ingredient:orange-juice": {
+      "x": 720,
+      "y": 2899.98
+    },
+    "ingredient:pineapple-juice": {
+      "x": 720,
+      "y": 3007.98
+    },
+    "ingredient:watermelon-juice": {
+      "x": 720,
+      "y": 3115.98
+    },
+    "tool:sandwich-griddle": {
+      "x": 390,
+      "y": 666.7
+    },
+    "tool:bread-toaster": {
+      "x": 390,
+      "y": 936.7
+    },
+    "group:salad-green-choice": {
+      "x": 390,
+      "y": 1697.4
+    },
+    "group:salad-finish-choice": {
+      "x": 390,
+      "y": 2433.9
+    },
+    "tool:deep-fryer": {
+      "x": 390,
+      "y": 2761.9
+    },
+    "group:fries-finish-choice": {
+      "x": 390,
+      "y": 3279.8
+    },
+    "tool:soda-fountain": {
+      "x": 390,
+      "y": 3607.8
+    },
+    "tool:juice-extractor": {
+      "x": 390,
+      "y": 3935.8
+    },
+    "group:sandwich-layer-choice": {
+      "x": 1050,
+      "y": 1100.7
+    },
+    "group:fresh-juice-choice": {
+      "x": 1050,
+      "y": 2899.98
+    },
+    "composite:layered-sandwich": {
+      "x": 1380,
+      "y": 40
+    },
+    "composite:garden-salad": {
+      "x": 1380,
+      "y": 432
+    },
+    "composite:seasoned-fried-potato": {
+      "x": 1380,
+      "y": 824
+    },
+    "composite:coca-with-ice": {
+      "x": 1380,
+      "y": 1216
+    },
+    "composite:fresh-juice": {
+      "x": 1380,
+      "y": 1608
+    },
+    "dirty:dirty-sandwich-plate": {
+      "x": 1710,
+      "y": 40
+    },
+    "dirty:dirty-salad-bowl": {
+      "x": 1710,
+      "y": 432
+    },
+    "dirty:dirty-fries-carton": {
+      "x": 1710,
+      "y": 824
+    },
+    "dirty:dirty-coca-cup": {
+      "x": 1710,
+      "y": 1216
+    },
+    "dirty:dirty-juice-glass": {
+      "x": 1710,
+      "y": 1608
+    }
+  }
+}

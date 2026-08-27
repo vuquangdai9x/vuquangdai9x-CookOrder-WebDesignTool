@@ -1,0 +1,1219 @@
+{
+  "schemaVersion": 1,
+  "_foodOrderableMap": {
+    "pizza": [
+      "pizza-with-toppings"
+    ],
+    "pasta": [
+      "spaghetti-pasta",
+      "penne-pasta",
+      "fettuccine-pasta"
+    ],
+    "soup": [
+      "soup-bowl"
+    ]
+  },
+  "_derivation": [
+    {
+      "sourceTitle": "Pizza Margherita in 4 easy steps — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/pizza-margherita-4-easy-steps",
+      "supports": [
+        "pizza-dough",
+        "tomato-sauce",
+        "mozzarella",
+        "pizza-oven",
+        "pizza-topping-choice"
+      ],
+      "adaptations": [
+        "Tomato and mozzarella are enforced together by a two-of-two core group."
+      ]
+    },
+    {
+      "sourceTitle": "Tortilla pizza — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/tortilla-pizza/",
+      "supports": [
+        "pepperoni",
+        "jalapeno-slice",
+        "mozzarella"
+      ],
+      "adaptations": [
+        "The graph uses a rolled dough crust rather than a tortilla base."
+      ]
+    },
+    {
+      "sourceTitle": "How to match pasta shapes to sauces — Good Food",
+      "url": "https://www.bbcgoodfood.com/howto/guide/perfect-pairings-how-match-pasta-shapes-sauces",
+      "supports": [
+        "dry-spaghetti",
+        "dry-penne",
+        "dry-fettuccine",
+        "pasta-sauce-choice"
+      ],
+      "adaptations": [
+        "Players may explore any sauce pairing while the three shapes stay separate orderables."
+      ]
+    },
+    {
+      "sourceTitle": "Pumpkin soup — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/pumpkin-soup/",
+      "supports": [
+        "pumpkin",
+        "pumpkin-soup",
+        "croutons",
+        "soup-kettle"
+      ],
+      "adaptations": [
+        "Tomato, mushroom, and chicken soup reuse the same kettle gameplay pattern."
+      ]
+    },
+    {
+      "sourceTitle": "Thai-inspired coconut chicken soup — Good Food",
+      "url": "https://www.bbcgoodfood.com/recipes/thai-inspired-coconut-chicken-soup",
+      "supports": [
+        "chicken-breast",
+        "soup-mushroom",
+        "chicken-soup"
+      ],
+      "adaptations": [
+        "Stock, aromatics, coconut milk, and seasoning are implicit kettle supplies."
+      ]
+    }
+  ],
+  "_imagePolicy": {
+    "provider": "Unicode Emoji fallback",
+    "urlPattern": "none — emoji fields are embedded and deterministic",
+    "license": "Unicode characters rendered by the player platform",
+    "attribution": "No remote images assigned; OpenMoji SVG URLs are the recommended derived-link upgrade path."
+  },
+  "_visualAudit": {
+    "selectionSetsReviewed": [
+      "pizza toppings: red disk/brown cap/black circle/green pepper/yellow fruit/leaf/chilli",
+      "pasta shapes: thin strands/tubes/wide ribbons",
+      "pasta sauces: red/green/white/brown",
+      "pasta garnishes: cheese/meatball/shrimp silhouettes",
+      "soup types: orange/red/brown/yellow bowls"
+    ],
+    "combinationPreviewsReviewed": [
+      "required tomato-mozzarella pizza core with one through four toppings",
+      "each pasta shape with every sauce and representative two-garnish pairs",
+      "all four soup colors with and without visible croutons"
+    ],
+    "result": "pass",
+    "notes": [
+      "Pizza core ingredients and every selected topping remain separate visible layers.",
+      "Pasta shape remains visible under sauce and garnishes; no orderable uses final-dish replacement art."
+    ]
+  },
+  "map": {
+    "id": "pizza-pasta",
+    "name": "Pizza & Pasta",
+    "gridWidth": 5,
+    "gridHeight": 2,
+    "dirtyStackHeight": 3,
+    "visibleRows": 3
+  },
+  "idTable": {
+    "ingredient": [
+      "pizza-dough",
+      "tomato-sauce",
+      "mozzarella",
+      "pepperoni",
+      "mushroom-slice",
+      "black-olive",
+      "bell-pepper",
+      "pineapple-chunk",
+      "basil-leaf",
+      "jalapeno-slice",
+      "dry-spaghetti",
+      "dry-penne",
+      "dry-fettuccine",
+      "marinara-sauce",
+      "pesto-sauce",
+      "alfredo-sauce",
+      "bolognese-sauce",
+      "parmesan",
+      "meatballs",
+      "shrimp",
+      "pumpkin",
+      "soup-tomato",
+      "soup-mushroom",
+      "chicken-breast",
+      "croutons",
+      "rolled-pizza-dough",
+      "baked-pizza-crust",
+      "cooked-spaghetti",
+      "cooked-penne",
+      "cooked-fettuccine",
+      "pumpkin-soup",
+      "tomato-soup",
+      "mushroom-soup",
+      "chicken-soup"
+    ],
+    "composite": [
+      "pizza-core",
+      "pizza-with-toppings",
+      "spaghetti-with-sauce",
+      "spaghetti-pasta",
+      "penne-with-sauce",
+      "penne-pasta",
+      "fettuccine-with-sauce",
+      "fettuccine-pasta",
+      "soup-bowl"
+    ],
+    "group": [
+      "pizza-core-choice",
+      "pizza-topping-choice",
+      "pasta-sauce-choice",
+      "pasta-garnish-choice",
+      "soup-type-choice"
+    ],
+    "tool": [
+      "pizza-dough-roller",
+      "pizza-oven",
+      "pasta-boiler",
+      "soup-kettle"
+    ],
+    "dirty": [
+      "dirty-pizza-plate",
+      "dirty-spaghetti-bowl",
+      "dirty-penne-bowl",
+      "dirty-fettuccine-bowl",
+      "dirty-soup-bowl"
+    ]
+  },
+  "vertices": {
+    "ingredient": [
+      {
+        "name": "pizza-dough",
+        "displayName": "Pizza Dough",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫓"
+      },
+      {
+        "name": "tomato-sauce",
+        "displayName": "Tomato Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🔴"
+      },
+      {
+        "name": "mozzarella",
+        "displayName": "Mozzarella",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚪"
+      },
+      {
+        "name": "pepperoni",
+        "displayName": "Pepperoni",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🔺"
+      },
+      {
+        "name": "mushroom-slice",
+        "displayName": "Mushroom Slice",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍄"
+      },
+      {
+        "name": "black-olive",
+        "displayName": "Black Olive",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚫"
+      },
+      {
+        "name": "bell-pepper",
+        "displayName": "Bell Pepper",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🫑"
+      },
+      {
+        "name": "pineapple-chunk",
+        "displayName": "Pineapple Chunk",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍍"
+      },
+      {
+        "name": "basil-leaf",
+        "displayName": "Basil Leaf",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🌿"
+      },
+      {
+        "name": "jalapeno-slice",
+        "displayName": "Jalapeño Slice",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🌶️"
+      },
+      {
+        "name": "dry-spaghetti",
+        "displayName": "Dry Spaghetti",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍝"
+      },
+      {
+        "name": "dry-penne",
+        "displayName": "Dry Penne",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟨"
+      },
+      {
+        "name": "dry-fettuccine",
+        "displayName": "Dry Fettuccine",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🎗️"
+      },
+      {
+        "name": "marinara-sauce",
+        "displayName": "Marinara Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍅"
+      },
+      {
+        "name": "pesto-sauce",
+        "displayName": "Pesto Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟢"
+      },
+      {
+        "name": "alfredo-sauce",
+        "displayName": "Alfredo Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🤍"
+      },
+      {
+        "name": "bolognese-sauce",
+        "displayName": "Bolognese Sauce",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟤"
+      },
+      {
+        "name": "parmesan",
+        "displayName": "Parmesan",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧀"
+      },
+      {
+        "name": "meatballs",
+        "displayName": "Meatballs",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🧆"
+      },
+      {
+        "name": "shrimp",
+        "displayName": "Shrimp",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍤"
+      },
+      {
+        "name": "pumpkin",
+        "displayName": "Pumpkin",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🎃"
+      },
+      {
+        "name": "soup-tomato",
+        "displayName": "Soup Tomato",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍅"
+      },
+      {
+        "name": "soup-mushroom",
+        "displayName": "Soup Mushroom",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍄"
+      },
+      {
+        "name": "chicken-breast",
+        "displayName": "Chicken Breast",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🐔"
+      },
+      {
+        "name": "croutons",
+        "displayName": "Croutons",
+        "pickupable": true,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟫"
+      },
+      {
+        "name": "rolled-pizza-dough",
+        "displayName": "Rolled Pizza Dough",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "⚪"
+      },
+      {
+        "name": "baked-pizza-crust",
+        "displayName": "Baked Pizza Crust",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟠"
+      },
+      {
+        "name": "cooked-spaghetti",
+        "displayName": "Cooked Spaghetti",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🍝"
+      },
+      {
+        "name": "cooked-penne",
+        "displayName": "Cooked Penne",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟧"
+      },
+      {
+        "name": "cooked-fettuccine",
+        "displayName": "Cooked Fettuccine",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "〰️"
+      },
+      {
+        "name": "pumpkin-soup",
+        "displayName": "Pumpkin Soup",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟠"
+      },
+      {
+        "name": "tomato-soup",
+        "displayName": "Tomato Soup",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🔴"
+      },
+      {
+        "name": "mushroom-soup",
+        "displayName": "Mushroom Soup",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟤"
+      },
+      {
+        "name": "chicken-soup",
+        "displayName": "Chicken Soup",
+        "pickupable": false,
+        "usageNum": 1,
+        "price": 0,
+        "emoji": "🟡"
+      }
+    ],
+    "tool": [
+      {
+        "name": "pizza-dough-roller",
+        "displayName": "Pizza Dough Roller",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 2,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🧻",
+        "runtimeToolId": 0
+      },
+      {
+        "name": "pizza-oven",
+        "displayName": "Pizza Oven",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 4,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🔥",
+        "runtimeToolId": 1
+      },
+      {
+        "name": "pasta-boiler",
+        "displayName": "Pasta Boiler",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 4,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "♨️",
+        "runtimeToolId": 2
+      },
+      {
+        "name": "soup-kettle",
+        "displayName": "Soup Kettle",
+        "slotConfigs": [
+          {
+            "name": "Input",
+            "slot": 1
+          }
+        ],
+        "cookingTime": 5,
+        "upgradeCosts": [
+          0,
+          1,
+          2
+        ],
+        "emoji": "🥣",
+        "runtimeToolId": 3
+      }
+    ],
+    "group": [
+      {
+        "name": "pizza-core-choice",
+        "displayName": "Pizza Core Choice",
+        "minQuantity": 2,
+        "maxQuantity": 2
+      },
+      {
+        "name": "pizza-topping-choice",
+        "displayName": "Pizza Topping Choice",
+        "minQuantity": 1,
+        "maxQuantity": 4
+      },
+      {
+        "name": "pasta-sauce-choice",
+        "displayName": "Pasta Sauce Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      },
+      {
+        "name": "pasta-garnish-choice",
+        "displayName": "Pasta Garnish Choice",
+        "minQuantity": 0,
+        "maxQuantity": 2
+      },
+      {
+        "name": "soup-type-choice",
+        "displayName": "Soup Type Choice",
+        "minQuantity": 1,
+        "maxQuantity": 1
+      }
+    ],
+    "composite": [
+      {
+        "name": "pizza-core",
+        "displayName": "Pizza Core",
+        "emoji": "🍕",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "pizza-with-toppings",
+        "displayName": "Pizza with Toppings",
+        "emoji": "🍕",
+        "orderable": true,
+        "toppingRequired": true
+      },
+      {
+        "name": "spaghetti-with-sauce",
+        "displayName": "Spaghetti with Sauce",
+        "emoji": "🍝",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "spaghetti-pasta",
+        "displayName": "Spaghetti Pasta",
+        "emoji": "🍝",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "penne-with-sauce",
+        "displayName": "Penne with Sauce",
+        "emoji": "🥘",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "penne-pasta",
+        "displayName": "Penne Pasta",
+        "emoji": "🥘",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "fettuccine-with-sauce",
+        "displayName": "Fettuccine with Sauce",
+        "emoji": "🍜",
+        "orderable": false,
+        "toppingRequired": true
+      },
+      {
+        "name": "fettuccine-pasta",
+        "displayName": "Fettuccine Pasta",
+        "emoji": "🍜",
+        "orderable": true,
+        "toppingRequired": false
+      },
+      {
+        "name": "soup-bowl",
+        "displayName": "Soup Bowl",
+        "emoji": "🥣",
+        "orderable": true,
+        "toppingRequired": false
+      }
+    ],
+    "dirty": [
+      {
+        "name": "dirty-pizza-plate",
+        "displayName": "Dirty Pizza Plate",
+        "maxStack": 3,
+        "emoji": "🍽️",
+        "runtimeDirtyId": 0
+      },
+      {
+        "name": "dirty-spaghetti-bowl",
+        "displayName": "Dirty Spaghetti Bowl",
+        "maxStack": 3,
+        "emoji": "🍝",
+        "runtimeDirtyId": 1
+      },
+      {
+        "name": "dirty-penne-bowl",
+        "displayName": "Dirty Penne Bowl",
+        "maxStack": 3,
+        "emoji": "🥘",
+        "runtimeDirtyId": 2
+      },
+      {
+        "name": "dirty-fettuccine-bowl",
+        "displayName": "Dirty Fettuccine Bowl",
+        "maxStack": 3,
+        "emoji": "🍜",
+        "runtimeDirtyId": 3
+      },
+      {
+        "name": "dirty-soup-bowl",
+        "displayName": "Dirty Soup Bowl",
+        "maxStack": 3,
+        "emoji": "🥣",
+        "runtimeDirtyId": 4
+      }
+    ]
+  },
+  "edges": {
+    "preservation": [],
+    "process": [
+      {
+        "from": "pizza-dough-roller",
+        "to": "rolled-pizza-dough",
+        "inputs": [
+          {
+            "ingredient": "pizza-dough",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "pizza-oven",
+        "to": "baked-pizza-crust",
+        "inputs": [
+          {
+            "ingredient": "rolled-pizza-dough",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "pasta-boiler",
+        "to": "cooked-spaghetti",
+        "inputs": [
+          {
+            "ingredient": "dry-spaghetti",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "pasta-boiler",
+        "to": "cooked-penne",
+        "inputs": [
+          {
+            "ingredient": "dry-penne",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "pasta-boiler",
+        "to": "cooked-fettuccine",
+        "inputs": [
+          {
+            "ingredient": "dry-fettuccine",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "soup-kettle",
+        "to": "pumpkin-soup",
+        "inputs": [
+          {
+            "ingredient": "pumpkin",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "soup-kettle",
+        "to": "tomato-soup",
+        "inputs": [
+          {
+            "ingredient": "soup-tomato",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "soup-kettle",
+        "to": "mushroom-soup",
+        "inputs": [
+          {
+            "ingredient": "soup-mushroom",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      },
+      {
+        "from": "soup-kettle",
+        "to": "chicken-soup",
+        "inputs": [
+          {
+            "ingredient": "chicken-breast",
+            "slot": 0
+          }
+        ],
+        "amount": 1,
+        "auto": true
+      }
+    ],
+    "base": [
+      {
+        "from": "pizza-core",
+        "to": "baked-pizza-crust"
+      },
+      {
+        "from": "pizza-with-toppings",
+        "to": "pizza-core"
+      },
+      {
+        "from": "spaghetti-with-sauce",
+        "to": "cooked-spaghetti"
+      },
+      {
+        "from": "spaghetti-pasta",
+        "to": "spaghetti-with-sauce"
+      },
+      {
+        "from": "penne-with-sauce",
+        "to": "cooked-penne"
+      },
+      {
+        "from": "penne-pasta",
+        "to": "penne-with-sauce"
+      },
+      {
+        "from": "fettuccine-with-sauce",
+        "to": "cooked-fettuccine"
+      },
+      {
+        "from": "fettuccine-pasta",
+        "to": "fettuccine-with-sauce"
+      },
+      {
+        "from": "soup-bowl",
+        "to": "soup-type-choice"
+      }
+    ],
+    "topping": [
+      {
+        "from": "pizza-core",
+        "to": "pizza-core-choice"
+      },
+      {
+        "from": "pizza-with-toppings",
+        "to": "pizza-topping-choice"
+      },
+      {
+        "from": "spaghetti-with-sauce",
+        "to": "pasta-sauce-choice"
+      },
+      {
+        "from": "spaghetti-pasta",
+        "to": "pasta-garnish-choice"
+      },
+      {
+        "from": "penne-with-sauce",
+        "to": "pasta-sauce-choice"
+      },
+      {
+        "from": "penne-pasta",
+        "to": "pasta-garnish-choice"
+      },
+      {
+        "from": "fettuccine-with-sauce",
+        "to": "pasta-sauce-choice"
+      },
+      {
+        "from": "fettuccine-pasta",
+        "to": "pasta-garnish-choice"
+      },
+      {
+        "from": "soup-bowl",
+        "to": "croutons"
+      }
+    ],
+    "option": [
+      {
+        "from": "pizza-core-choice",
+        "to": "tomato-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pizza-core-choice",
+        "to": "mozzarella",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pizza-topping-choice",
+        "to": "pepperoni",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pizza-topping-choice",
+        "to": "mushroom-slice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pizza-topping-choice",
+        "to": "black-olive",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pizza-topping-choice",
+        "to": "bell-pepper",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pizza-topping-choice",
+        "to": "pineapple-chunk",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pizza-topping-choice",
+        "to": "basil-leaf",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pizza-topping-choice",
+        "to": "jalapeno-slice",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pasta-sauce-choice",
+        "to": "marinara-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pasta-sauce-choice",
+        "to": "pesto-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pasta-sauce-choice",
+        "to": "alfredo-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pasta-sauce-choice",
+        "to": "bolognese-sauce",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pasta-garnish-choice",
+        "to": "parmesan",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pasta-garnish-choice",
+        "to": "meatballs",
+        "maxQuantity": 1
+      },
+      {
+        "from": "pasta-garnish-choice",
+        "to": "shrimp",
+        "maxQuantity": 1
+      },
+      {
+        "from": "soup-type-choice",
+        "to": "pumpkin-soup",
+        "maxQuantity": 1
+      },
+      {
+        "from": "soup-type-choice",
+        "to": "tomato-soup",
+        "maxQuantity": 1
+      },
+      {
+        "from": "soup-type-choice",
+        "to": "mushroom-soup",
+        "maxQuantity": 1
+      },
+      {
+        "from": "soup-type-choice",
+        "to": "chicken-soup",
+        "maxQuantity": 1
+      }
+    ],
+    "leavesDirty": [
+      {
+        "from": "pizza-with-toppings",
+        "to": "dirty-pizza-plate"
+      },
+      {
+        "from": "spaghetti-pasta",
+        "to": "dirty-spaghetti-bowl"
+      },
+      {
+        "from": "penne-pasta",
+        "to": "dirty-penne-bowl"
+      },
+      {
+        "from": "fettuccine-pasta",
+        "to": "dirty-fettuccine-bowl"
+      },
+      {
+        "from": "soup-bowl",
+        "to": "dirty-soup-bowl"
+      }
+    ]
+  },
+  "notes": [
+    {
+      "id": "pizza-pasta-flow",
+      "x": 60,
+      "y": -120,
+      "text": "Pizza, three pasta variants, and soup occupy ordered lanes and converge at one orderable X coordinate."
+    }
+  ],
+  "layout": {
+    "ingredient:basil-leaf": {
+      "x": 60,
+      "y": 375.4
+    },
+    "ingredient:bell-pepper": {
+      "x": 60,
+      "y": 483.4
+    },
+    "ingredient:black-olive": {
+      "x": 60,
+      "y": 591.4
+    },
+    "ingredient:jalapeno-slice": {
+      "x": 60,
+      "y": 699.4
+    },
+    "ingredient:mushroom-slice": {
+      "x": 60,
+      "y": 807.4
+    },
+    "ingredient:pepperoni": {
+      "x": 60,
+      "y": 915.4
+    },
+    "ingredient:pineapple-chunk": {
+      "x": 60,
+      "y": 1023.4
+    },
+    "ingredient:mozzarella": {
+      "x": 60,
+      "y": 1299.9
+    },
+    "ingredient:tomato-sauce": {
+      "x": 60,
+      "y": 1407.9
+    },
+    "ingredient:pizza-dough": {
+      "x": 60,
+      "y": 1515.9
+    },
+    "ingredient:dry-fettuccine": {
+      "x": 60,
+      "y": 1843.9
+    },
+    "ingredient:dry-penne": {
+      "x": 60,
+      "y": 1951.9
+    },
+    "ingredient:dry-spaghetti": {
+      "x": 60,
+      "y": 2059.9
+    },
+    "ingredient:alfredo-sauce": {
+      "x": 60,
+      "y": 2663.7
+    },
+    "ingredient:bolognese-sauce": {
+      "x": 60,
+      "y": 2771.7
+    },
+    "ingredient:marinara-sauce": {
+      "x": 60,
+      "y": 2879.7
+    },
+    "ingredient:pesto-sauce": {
+      "x": 60,
+      "y": 2987.7
+    },
+    "ingredient:meatballs": {
+      "x": 60,
+      "y": 3295.8
+    },
+    "ingredient:parmesan": {
+      "x": 60,
+      "y": 3403.8
+    },
+    "ingredient:shrimp": {
+      "x": 60,
+      "y": 3511.8
+    },
+    "ingredient:croutons": {
+      "x": 60,
+      "y": 3839.8
+    },
+    "ingredient:chicken-breast": {
+      "x": 60,
+      "y": 3947.8
+    },
+    "ingredient:pumpkin": {
+      "x": 60,
+      "y": 4055.8
+    },
+    "ingredient:soup-mushroom": {
+      "x": 60,
+      "y": 4163.8
+    },
+    "ingredient:soup-tomato": {
+      "x": 60,
+      "y": 4271.8
+    },
+    "ingredient:rolled-pizza-dough": {
+      "x": 720,
+      "y": 335.33
+    },
+    "ingredient:cooked-spaghetti": {
+      "x": 720,
+      "y": 685.73
+    },
+    "ingredient:cooked-penne": {
+      "x": 720,
+      "y": 816.13
+    },
+    "ingredient:cooked-fettuccine": {
+      "x": 720,
+      "y": 946.53
+    },
+    "ingredient:chicken-soup": {
+      "x": 720,
+      "y": 2336.31
+    },
+    "ingredient:mushroom-soup": {
+      "x": 720,
+      "y": 2444.31
+    },
+    "ingredient:pumpkin-soup": {
+      "x": 720,
+      "y": 2552.31
+    },
+    "ingredient:tomato-soup": {
+      "x": 720,
+      "y": 2660.31
+    },
+    "ingredient:baked-pizza-crust": {
+      "x": 1380,
+      "y": 40
+    },
+    "group:pizza-topping-choice": {
+      "x": 390,
+      "y": 699.4
+    },
+    "group:pizza-core-choice": {
+      "x": 390,
+      "y": 1353.9
+    },
+    "tool:pizza-dough-roller": {
+      "x": 390,
+      "y": 1461.9
+    },
+    "tool:pasta-boiler": {
+      "x": 390,
+      "y": 1789.9
+    },
+    "group:pasta-sauce-choice": {
+      "x": 390,
+      "y": 2825.7
+    },
+    "group:pasta-garnish-choice": {
+      "x": 390,
+      "y": 3403.8
+    },
+    "tool:soup-kettle": {
+      "x": 390,
+      "y": 3731.8
+    },
+    "tool:pizza-oven": {
+      "x": 1050,
+      "y": 187.66
+    },
+    "composite:spaghetti-with-sauce": {
+      "x": 1050,
+      "y": 822.35
+    },
+    "composite:penne-with-sauce": {
+      "x": 1050,
+      "y": 930.35
+    },
+    "composite:fettuccine-with-sauce": {
+      "x": 1050,
+      "y": 1038.35
+    },
+    "group:soup-type-choice": {
+      "x": 1050,
+      "y": 2498.31
+    },
+    "composite:pizza-core": {
+      "x": 1710,
+      "y": 40
+    },
+    "composite:pizza-with-toppings": {
+      "x": 2040,
+      "y": 40
+    },
+    "composite:spaghetti-pasta": {
+      "x": 2040,
+      "y": 432
+    },
+    "composite:penne-pasta": {
+      "x": 2040,
+      "y": 604
+    },
+    "composite:fettuccine-pasta": {
+      "x": 2040,
+      "y": 776
+    },
+    "composite:soup-bowl": {
+      "x": 2040,
+      "y": 1168
+    },
+    "dirty:dirty-pizza-plate": {
+      "x": 2370,
+      "y": 40
+    },
+    "dirty:dirty-spaghetti-bowl": {
+      "x": 2370,
+      "y": 432
+    },
+    "dirty:dirty-penne-bowl": {
+      "x": 2370,
+      "y": 604
+    },
+    "dirty:dirty-fettuccine-bowl": {
+      "x": 2370,
+      "y": 776
+    },
+    "dirty:dirty-soup-bowl": {
+      "x": 2370,
+      "y": 1168
+    }
+  }
+}
