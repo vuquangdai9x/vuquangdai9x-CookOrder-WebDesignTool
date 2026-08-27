@@ -84,6 +84,7 @@ export function openEstimateScenarioDialog(deps: EstimateScenarioDeps): void {
       type: "number",
       step: String(10 ** -spec.decimals),
       min: String(spec.min),
+      ...(spec.max === undefined ? {} : { max: String(spec.max) }),
     }) as HTMLInputElement;
     input.value = formatScrub(field.value, spec.decimals);
     makeScrubber(input, spec, (value) => (field.value = value));

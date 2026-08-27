@@ -636,7 +636,7 @@
       },
       {
         "from": "donut-with-glaze",
-        "to": "donut-fried"
+        "to": "single-donut-fried"
       }
     ],
     "topping": [
@@ -732,6 +732,11 @@
       {
         "from": "glazes",
         "to": "glaze-blue",
+        "maxQuantity": -1
+      },
+      {
+        "from": "single-donut-fried",
+        "to": "donut-fried",
         "maxQuantity": -1
       }
     ],

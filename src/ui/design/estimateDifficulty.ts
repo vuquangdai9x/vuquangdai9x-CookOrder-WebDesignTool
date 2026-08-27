@@ -95,6 +95,10 @@ export interface EstimateResult {
   gridCapacity: number;
   /** Solver actions used by the node Play renderer to replay this estimate. */
   replaySteps: EstimateReplayStep[];
+  /** Number of scoring attempts used before this result was selected. */
+  attemptCount?: number;
+  /** Scoring strategy that produced this result. */
+  strategyName?: string;
 }
 
 export interface EstimateReplayStep {
@@ -111,6 +115,8 @@ export interface EstimateOptions {
   rng?: () => number;
   /** Safety valve against a pathological level; overrides the scenario field. */
   maxIterations?: number;
+  /** Overrides the modal retry count; clamped to 0..10. */
+  maxRetries?: number;
   /** Scoring scenario from the pre-run modal; omitted means every default. */
   scenario?: EstimateScenario;
 }

@@ -309,19 +309,19 @@ export class NodePlayView {
    * The legacy mount order, and it matters: the weather layer is appended
    * first (position:fixed, so it takes no layout space) and the TOOLBAR IS A
    * SIBLING of `.play-page`, not a child. `.play-page` has a fixed height with
-   * three sized tiers, so a fourth child inside it would shrink the tiers
+   * sized gameplay tiers, so another child inside it would shrink the tiers
    * instead of sitting above them.
    */
   private mount(): void {
     this.page = el("div", { class: "play-page" });
     // Replay renders EVERY lane (drained ones included) with a score chip
-    // beside its head, so the 3:4 portrait width can't hold them. The count
+    // beside its head, so even the expanded play width may not hold them. The count
     // goes to CSS, which widens the replay page to fit instead of scrolling.
     if (this.replay) this.page.style.setProperty("--replay-lanes", String(this.sim.columnCount));
     this.boostersEl = this.boostersBar();
     if (this.replay) this.boostersEl.style.display = "none";
     // The boosters bar is a SIBLING of `.play-page`, not a child: the page has
-    // a fixed height with three sized tiers, so a fourth child would shrink
+    // a fixed height with sized gameplay tiers, so another child would shrink
     // them instead of sitting below.
     this.root.replaceChildren(this.weatherLayer(), this.toolbar(), this.page, this.boostersEl);
     this.fullRender();
@@ -549,6 +549,10 @@ export class NodePlayView {
             customerPoint
           ) {
             this.plateDeliveries.add(dishKey);
+            // The serving slot represents a dish waiting on the counter. Once
+            // its container takes off it must no longer remain behind as a
+            // duplicate; the flight starts from the saved `to` point below.
+            targetPlate?.remove();
             const container = el("div", { class: "fx-item serving-container-flight" }, [
               this.compositeIconForOrderable(dishState.order.orderable, 96),
             ]);
@@ -1062,19 +1066,19 @@ export class NodePlayView {
   private customersTier(): HTMLElement {
     const sim = this.sim;
     const row = el("div", { class: "customer-cards play" });
-    for (const c of sim.active) row.append(this.customerCard(c, true));
-    const previews = sim.pending.slice(0, CUSTOMER_PREVIEW_COUNT);
+    // Gameplay reads right-to-left: customer #1 owns the far-right counter
+    // position. Upcoming previews stay to the left in the same sequence.
+    const previews = [...sim.pending.slice(0, CUSTOMER_PREVIEW_COUNT)].reverse();
     for (const c of previews) row.append(this.customerPreviewCard(c));
+    const active = [...sim.active].reverse();
+    for (const c of active) row.append(this.customerCard(c, true));
+    const previewColumns = previews.map(() => "var(--customer-info-width)");
     const activeColumns = Array.from(
-      { length: Math.max(1, sim.active.length) },
+      { length: Math.max(1, active.length) },
       () => "minmax(0, 1fr)",
     );
-    const previewColumns = previews.map(() => "4.25rem");
-    row.style.gridTemplateColumns = [...activeColumns, ...previewColumns].join(" ");
-    return el("section", { class: "play-section customers-tier" }, [
-      el("h2", {}, [`Customers — ${sim.level.serveableSlots} serve slot(s)`]),
-      row,
-    ]);
+    row.style.gridTemplateColumns = [...previewColumns, ...activeColumns].join(" ");
+    return el("section", { class: "play-section customers-tier" }, [row]);
   }
 
   private customerCard(c: NodeCustomerState, servable: boolean): HTMLElement {
@@ -1082,7 +1086,6 @@ export class NodePlayView {
       class: `customer-card${servable ? " servable" : " waiting"}${c.isStaff ? " staff" : ""}`,
       "data-customer": String(c.index),
     });
-    this.appendAvatar(card, c);
     if (servable && !c.isStaff && c.timeLeft !== Infinity) {
       const fill = el("div", { class: "wait-progress-fill" });
       const total = c.config.waitTime || 1;
@@ -1094,19 +1097,27 @@ export class NodePlayView {
     const badge = el("span", { class: "wait-badge" }, [this.timerText(c)]);
     if (servable) this.timerEls.set(c.index, badge);
 
-    const content = el("div", { class: "customer-content" });
-    content.append(
+    const info = el("div", { class: "customer-info" });
+    const avatarSlot = el("div", { class: "customer-avatar-slot" });
+    this.appendAvatar(avatarSlot, c);
+    info.append(
       el("div", { class: "customer-head" }, [
-        c.isStaff
-          ? el("span", { class: "cust-index" }, [customerTypeIconEl(c.config.typeId, 48)])
-          : el("span", { class: "cust-index" }, [`#${c.index + 1}`]),
-        badge,
+        el("span", { class: "cust-index" }, [`#${c.index + 1}`]),
       ]),
+      badge,
+      el("span", {
+        class: `customer-weather${c.config.weatherEff ? " on" : ""}`,
+        title: c.config.weatherEff
+          ? "Weather affects this customer's patience"
+          : "Weather does not affect this customer's patience",
+      }, [c.config.weatherEff ? "🌧" : "☁"]),
+      avatarSlot,
     );
+    const orders = el("div", { class: "customer-orders" });
 
     if (c.isStaff) {
-      content.append(el("div", { class: "staff-note" }, ["Clears dirty stacks"]));
-      card.append(content);
+      orders.append(el("div", { class: "staff-note" }, ["Clears dirty stacks"]));
+      card.append(info, orders);
       return card;
     }
 
@@ -1131,9 +1142,9 @@ export class NodePlayView {
       dish.order.slots.forEach((_, i) => {
         if (!dish.filled[i]) row.append(chip(i, false));
       });
-      content.append(row);
+      orders.append(row);
     }
-    card.append(content);
+    card.append(info, orders);
     return card;
   }
 
@@ -1155,18 +1166,15 @@ export class NodePlayView {
         types.append(this.compositeIconForOrderable(dish.order.orderable, 38));
       }
     }
-    card.append(
-      el("div", { class: "customer-content" }, [
-        el("div", { class: "customer-head" }, [
-          el("span", { class: "cust-index" }, [`#${c.index + 1}`]),
-        ]),
-        types,
-      ]),
-    );
+    card.append(types);
     return card;
   }
 
-  private appendAvatar(card: HTMLElement, c: NodeCustomerState): void {
+  private appendAvatar(info: HTMLElement, c: NodeCustomerState): void {
+    if (c.isStaff) {
+      info.append(customerTypeIconEl(c.config.typeId, 40));
+      return;
+    }
     const catalog = getCustomerCatalog();
     let entry = c.config.customerIndex !== undefined
       ? catalog.find((e) => e.index === c.config.customerIndex)
@@ -1182,7 +1190,7 @@ export class NodePlayView {
       }
     }
     if (!entry) return;
-    card.append(iconEl(customerAvatarIconSpec(entry), { className: "customer-avatar" }));
+    info.append(iconEl(customerAvatarIconSpec(entry), { className: "customer-avatar" }));
   }
 
   /**
@@ -1236,22 +1244,16 @@ export class NodePlayView {
       }
       row.append(slotEl);
     }
-    return el("section", { class: "play-section serving-tier" }, [
-      el("h2", {}, ["Serving row"]),
-      row,
-    ]);
+    return el("section", { class: "play-section serving-tier" }, [row]);
   }
 
   private middleTier(): HTMLElement {
-    const map = this.project.doc.map;
     return el("section", { class: "play-section middle-tier" }, [
       el("div", { class: "middle-split" }, [
         el("div", { class: "middle-left" }, [
-          el("h2", {}, [`Grid ${map.gridWidth}×${map.gridHeight}`]),
           this.gridEl(),
         ]),
         el("div", { class: "middle-right" }, [
-          el("h2", {}, [`Cooking tools (${this.sim.cookingCount} busy)`]),
           this.toolsEl(),
         ]),
       ]),
@@ -1452,7 +1454,6 @@ export class NodePlayView {
                   : `Estimator score: ${replayScore}`,
               }, [replayScore === null || replayScore === undefined ? "—" : `S ${replayScore.toFixed(1)}`])]
             : []),
-          el("small", {}, [`${sim.remainingIn(x)}`]),
         ]),
       ]);
       const tiles = el("div", { class: "lane-tiles" });
@@ -1496,14 +1497,7 @@ export class NodePlayView {
       lanes.append(lane);
     }
 
-    return el("section", { class: "play-section queues-tier" }, [
-      el("h2", {}, [this.replay
-        ? replayStepIndex === null
-          ? "Ingredient queues — final state"
-          : `Ingredient queues — scores for step ${replayStepIndex + 1}`
-        : "Ingredient queues — click the top tile to pick"]),
-      lanes,
-    ]);
+    return el("section", { class: "play-section queues-tier" }, [lanes]);
   }
 
   /** Queue contents plus the replay score context that changes its highlight. */
@@ -1712,7 +1706,7 @@ export class NodePlayView {
       );
       row.append(btn);
     });
-    return el("section", { class: "play-section boosters-bar" }, [el("h2", {}, ["Boosters"]), row]);
+    return el("section", { class: "play-section boosters-bar" }, [row]);
   }
 
   /** Rebuild-and-replace: the bar changes on its own clicks or a pick, never per tick. */

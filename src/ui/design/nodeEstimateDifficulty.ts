@@ -8,7 +8,7 @@ import type { NodeCustomerState, NodeLevelConfig } from "../../core/nodeSim.ts";
 import type { QueueItem } from "../../core/types.ts";
 import { cidOf } from "./changeTracking.ts";
 import { resolveScenario } from "./estimateScenario.ts";
-import type { ResolvedScenario } from "./estimateScenario.ts";
+import type { ResolvedScenario, ScenarioFieldKey } from "./estimateScenario.ts";
 import type {
   CustomerCost,
   EstimateOptions,
@@ -55,12 +55,6 @@ interface PickupValue {
 }
 
 const CUSTOMER_PREVIEW_COUNT = 3;
-/**
- * Upcoming customers expose only their orderable composite, not the chosen
- * options. Treat each possible option as expected (fractional) demand rather
- * than pretending the hidden combination is known exactly.
- */
-const PREVIEW_CONFIDENCE = 0.3;
 
 function seededRng(seed = 0x5eed): () => number {
   let s = seed >>> 0;
@@ -112,15 +106,14 @@ function pickableLanes(sim: NodeSimulation): number[] {
   return lanes;
 }
 
-/** Estimate a node level with the exact simulation used by Play and replay. */
-export function estimateNodeDifficulty(
+/** Run one scoring strategy against the exact simulation used by Play and replay. */
+function estimateNodeDifficultyAttempt(
   ix: GraphIndex,
   level: NodeLevelConfig,
-  opts: EstimateOptions = {},
+  cfg: ResolvedScenario,
+  rng: () => number,
+  maxIterations: number,
 ): EstimateResult {
-  const cfg = resolveScenario(opts.scenario);
-  const rng = opts.rng ?? (cfg.enabled.rngSeed ? seededRng(cfg.rngSeed) : Math.random);
-  const maxIterations = opts.maxIterations ?? cfg.maxIterations;
   const sim = new NodeSimulation(ix, level, {
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
     instantFlights: true,
@@ -342,7 +335,7 @@ export function estimateNodeDifficulty(
         for (const slot of slots) {
           if (slot.options.length === 0) continue;
           const required = slot.isBase || slot.minQuantity > 0 || Boolean(composite?.toppingRequired);
-          const confidence = required ? PREVIEW_CONFIDENCE : PREVIEW_CONFIDENCE * 0.45;
+          const confidence = required ? cfg.previewConfidence : cfg.previewConfidence * 0.45;
           const basePriority = slot.isBase ? cfg.scoreBase : cfg.scoreBlocked;
           const position = sim.active.length + previewPosition;
           const priority = (basePriority * confidence) /
@@ -673,4 +666,166 @@ export function estimateNodeDifficulty(
     gridCapacity: sim.grid.length,
     replaySteps,
   };
+}
+
+interface ScoringStrategy {
+  name: string;
+  cfg: ResolvedScenario;
+}
+
+const scaled = (value: number, factor: number): number => value * factor;
+const bounded = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
+function retune(
+  base: ResolvedScenario,
+  name: string,
+  patch: Partial<Record<ScenarioFieldKey, number>>,
+): ScoringStrategy {
+  return {
+    name,
+    cfg: { ...base, ...patch, enabled: { ...base.enabled } },
+  };
+}
+
+/**
+ * Deliberately different play styles, ordered from conservative to more
+ * specialised. These are retries, not blended weights: a failed run starts
+ * again from the untouched level under the next strategy.
+ */
+function strategicPresets(base: ResolvedScenario): ScoringStrategy[] {
+  return [
+    retune(base, "grid-safe", {
+      previewConfidence: scaled(base.previewConfidence, 0.25),
+      scoreBlocked: scaled(base.scoreBlocked, 0.3),
+      scoreBlockedTight: 0,
+      rowDecay: scaled(base.rowDecay, 0.55),
+      detourPenalty: scaled(base.detourPenalty, 1.6),
+      detourPenaltyTight: scaled(base.detourPenaltyTight, 1.6),
+      gridTightThreshold: Math.max(base.gridTightThreshold, 0.68),
+    }),
+    retune(base, "front-loaded", {
+      previewConfidence: scaled(base.previewConfidence, 0.15),
+      scoreBase: scaled(base.scoreBase, 1.15),
+      scoreReady: scaled(base.scoreReady, 1.2),
+      scoreBlocked: scaled(base.scoreBlocked, 0.25),
+      rowDecay: scaled(base.rowDecay, 0.3),
+      detourPenalty: scaled(base.detourPenalty, 1.35),
+    }),
+    retune(base, "finish-first", {
+      previewConfidence: scaled(base.previewConfidence, 0.2),
+      scoreReady: scaled(base.scoreReady, 1.45),
+      scoreBlocked: scaled(base.scoreBlocked, 0.3),
+      scoreBlockedTight: 0,
+      nearCompletionBonus: scaled(base.nearCompletionBonus, 3),
+      rowDecay: scaled(base.rowDecay, 0.6),
+    }),
+    retune(base, "chain-first", {
+      previewConfidence: scaled(base.previewConfidence, 0.35),
+      scoreBlocked: scaled(base.scoreBlocked, 0.55),
+      depthBonusPerLevel: scaled(base.depthBonusPerLevel, 1.75),
+      multiInputBaseBonus: scaled(base.multiInputBaseBonus, 1.6),
+      multiInputBonus: scaled(base.multiInputBonus, 1.4),
+      rowDecay: scaled(base.rowDecay, 0.7),
+    }),
+    retune(base, "scarcity-first", {
+      previewConfidence: scaled(base.previewConfidence, 0.25),
+      scarcityFactor: Math.max(base.scarcityFactor, 0.75),
+      scarcityCap: Math.max(base.scarcityCap, 1.4),
+      rowDecay: scaled(base.rowDecay, 0.65),
+    }),
+    retune(base, "single-customer", {
+      previewConfidence: 0,
+      maxPairDishes: 0,
+      scoreBlocked: scaled(base.scoreBlocked, 0.25),
+      rowDecay: scaled(base.rowDecay, 0.45),
+    }),
+    retune(base, "wide-counter", {
+      previewConfidence: scaled(base.previewConfidence, 0.2),
+      maxPairDishes: Math.max(base.maxPairDishes, 100),
+      scoreReady: scaled(base.scoreReady, 1.25),
+      scoreBlocked: scaled(base.scoreBlocked, 0.4),
+    }),
+    retune(base, "no-preview", {
+      previewConfidence: 0,
+      scoreBlocked: scaled(base.scoreBlocked, 0.45),
+      scoreBlockedTight: scaled(base.scoreBlockedTight, 0.25),
+      rowDecay: scaled(base.rowDecay, 0.5),
+    }),
+  ];
+}
+
+function randomizedStrategy(base: ResolvedScenario, retryIndex: number, random: () => number): ScoringStrategy {
+  const factor = (low: number, high: number): number => low + random() * (high - low);
+  return retune(base, `random-${retryIndex + 1}`, {
+    scoreBase: scaled(base.scoreBase, factor(0.7, 1.5)),
+    scoreReady: scaled(base.scoreReady, factor(0.7, 1.6)),
+    scoreBlocked: scaled(base.scoreBlocked, factor(0.05, 0.8)),
+    scoreBlockedTight: scaled(base.scoreBlockedTight, factor(0, 0.6)),
+    previewConfidence: bounded(scaled(base.previewConfidence, factor(0, 0.6)), 0, 1),
+    depthBonusPerLevel: scaled(base.depthBonusPerLevel, factor(0.6, 1.9)),
+    nearCompletionBonus: scaled(base.nearCompletionBonus, factor(0.4, 3.2)),
+    scarcityFactor: scaled(base.scarcityFactor, factor(0.5, 4)),
+    scarcityCap: scaled(base.scarcityCap, factor(0.5, 3)),
+    rowDecay: bounded(factor(0.08, 0.55), 0, 1),
+    detourPenalty: scaled(base.detourPenalty, factor(0.8, 2.4)),
+    detourPenaltyTight: scaled(base.detourPenaltyTight, factor(0.8, 2.4)),
+    gridTightThreshold: factor(0.45, 0.8),
+    maxPairDishes: random() < 0.35 ? 0 : random() < 0.5 ? 100 : base.maxPairDishes,
+  });
+}
+
+const betterFailure = (candidate: EstimateResult, current: EstimateResult | null): boolean => {
+  if (!current) return true;
+  if (candidate.servedCount !== current.servedCount) return candidate.servedCount > current.servedCount;
+  return candidate.totalPicks > current.totalPicks;
+};
+
+/**
+ * Estimate a node level, retrying failed runs with distinct scoring sets.
+ * Presets are exhausted before randomized sets are considered. A successful
+ * attempt returns immediately; otherwise the closest failed run is retained.
+ */
+export function estimateNodeDifficulty(
+  ix: GraphIndex,
+  level: NodeLevelConfig,
+  opts: EstimateOptions = {},
+): EstimateResult {
+  const base = resolveScenario(opts.scenario);
+  const retryCount = Math.min(10, Math.max(0, Math.floor(opts.maxRetries ?? base.retryCount)));
+  const maxIterations = opts.maxIterations ?? base.maxIterations;
+  const presets = strategicPresets(base);
+  const strategyRandom = base.enabled.rngSeed
+    ? seededRng((base.rngSeed ^ 0x9e3779b9) >>> 0)
+    : Math.random;
+  let best: EstimateResult | null = null;
+  let bestStrategy = "authored";
+
+  for (let attempt = 0; attempt <= retryCount; attempt++) {
+    const strategy = attempt === 0
+      ? { name: "authored", cfg: base }
+      : presets[attempt - 1] ?? randomizedStrategy(base, attempt - presets.length - 1, strategyRandom);
+    const attemptRng = opts.rng ?? (strategy.cfg.enabled.rngSeed
+      ? seededRng((strategy.cfg.rngSeed + attempt * 0x6d2b79f5) >>> 0)
+      : Math.random);
+    const result = estimateNodeDifficultyAttempt(
+      ix,
+      structuredClone(level),
+      strategy.cfg,
+      attemptRng,
+      maxIterations,
+    );
+    result.attemptCount = attempt + 1;
+    result.strategyName = strategy.name;
+    if (result.solvable) return result;
+    if (betterFailure(result, best)) {
+      best = result;
+      bestStrategy = strategy.name;
+    }
+  }
+
+  const result = best!;
+  result.attemptCount = retryCount + 1;
+  result.strategyName = bestStrategy;
+  result.reason = `${result.reason ?? "The solver could not finish."} Tried ${retryCount + 1} scoring strategies; best run used ${bestStrategy}.`;
+  return result;
 }

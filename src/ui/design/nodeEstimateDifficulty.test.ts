@@ -3,6 +3,8 @@ import { buildIndex } from "../../core/nodeIndex.ts";
 import { NodeSimulation } from "../../core/nodeSim.ts";
 import coffeeGraph from "../../data/config/nodegraph/maps/Graph-2-Coffee.json";
 import coffeeLevelsCsv from "../../data/config/nodegraph/maps/LevelData-2-Coffee.csv?raw";
+import burgerGraph from "../../data/config/nodegraph/maps/Graph-1-Burger.json";
+import burgerLevelsCsv from "../../data/config/nodegraph/maps/LevelData-1-Burger.csv?raw";
 import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import { importLevelsCsv } from "../../data/sheetSource.ts";
@@ -26,6 +28,25 @@ describe("estimateNodeDifficulty", () => {
     const data = importLevelsCsv(coffeeLevelsCsv).find((level) => level.id === id)!;
     return toNodeLevelConfig(data);
   };
+
+  it("retries alternate strategies across the higher Map 1 levels", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const levels = importLevelsCsv(burgerLevelsCsv)
+      .filter((level) => level.id >= 6 && level.id <= 15)
+      .map(toNodeLevelConfig);
+    const results = levels.map((level) => estimateNodeDifficulty(burgerIx, level));
+    const solved = results.filter((result) => result.solvable).length;
+    const audit = results.map((result, index) =>
+      `L${levels[index].id}:${result.solvable ? "win" : result.loseReason ?? "stuck"}@${result.strategyName}`,
+    ).join(", ");
+    expect(solved, audit).toBeGreaterThanOrEqual(Math.ceil(levels.length * 0.7));
+    expect(results.every((result) => (result.attemptCount ?? 0) <= 11)).toBe(true);
+    expect(results.some((result) => result.solvable && (result.attemptCount ?? 1) > 1)).toBe(true);
+    const noRetry = estimateNodeDifficulty(burgerIx, levels.find((level) => level.id === 12)!, {
+      maxRetries: 0,
+    });
+    expect(noRetry.attemptCount).toBe(1);
+  });
 
   it("records the same grid occupancy that replay reconstructs for Map 2 Level 5", () => {
     const level = coffeeLevel();

@@ -220,21 +220,29 @@ level.
 Purpose: let a designer run a level exactly as configured, at variable speed, without leaving the
 tool.
 
-- Follows the same **Customer / Grid / Queue** top-to-bottom arrangement as Design mode (see
-  Page Layout), so switching between editing and playtesting a level doesn't relocate anything.
-- **Portrait play zone**: on desktop, the zone is height-driven — it takes whatever vertical space
+- Extends Design mode's **Customer / Grid / Queue** order with one visual-only **Serving** row
+  between Customer and Grid, so switching between editing and playtesting keeps the authored
+  sections in the same relative positions.
+- **Compact play zone**: on desktop, the zone is height-driven — it takes whatever vertical space
   is left under the header/toolbar and above the footer, then derives its width from a fixed
-  **3:4** ratio, rather than stretching full width like the toolbar does. Tiles/cells/icons are
+  **9:10** ratio (80% of the former 9:8 width). Tiles/cells/icons are
   correspondingly smaller than in Design mode so the three tiers stay legible at that narrower
   width; a true-portrait viewport (≤480px) drops the ratio and just uses the full width instead.
-- **Top — Customer status**: full-width serveable customers first, then the next **three** customers
-  as narrow cards in the same row. Each preview is only one vertical column of ordered-composite
+- **Top — Customer status**: customer arrival order is drawn right-to-left, so the first customer
+  owns the far-right position. The next **three** previews sit on the left in the same draw order.
+  Each preview is a half-width card with one vertical column of ordered-composite
   emojis; ingredient choices, quantities and toppings remain hidden. The estimator uses this same
   composite-only lookahead rather than treating pending orders as wholly unknown.
 - **Serving row**: a compact strip between Customer status and the grid with at most five visual
   dish containers. Served ingredients fly here and merge in base-before-topping order. Once a dish
   is complete, one container (plate/cup/etc., represented by its composite icon) flies to the
-  customer. This strip is presentation only and does not add inventory capacity.
+  customer. A slot disappears as soon as its completed container starts that flight. Each serving
+  slot is exactly one grid-cell size; the serving/grid panels have no inner padding or headings.
+  This strip is presentation only and does not add inventory capacity.
+- **Customer cards in Design, Play and replay** use two horizontal sections. **Info** is a narrow
+  column with `#index`, wait time, weather state and a fully opaque avatar stacked vertically.
+  Design-mode wait time supports horizontal mouse dragging for quick adjustment. **Orders** owns
+  the dish rows; avatar art never sits behind the order ingredients.
 - **Middle — Grid + Cooking tools (one panel, top/bottom in portrait)**: the grid takes most of
   the panel's height (same cell rendering as Design mode, now showing live contents — cooked
   items, parked raws, dirty stacks, lock progress — instead of edit state); cooking tools render
@@ -268,9 +276,15 @@ tool.
   **visible-row window** (`visibleRows`). Normally only each lane's front tile is a clickable
   "pick" button (disabled + reason tooltip when blocked, e.g. still-frozen); a frozen tile also
   shows a live bottom-right badge counting down the adjacent picks still needed to break it, and
-  plays a small ice-colored particle burst the instant it thaws. Items the currently-active
+  plays a small ice-colored particle burst the instant it thaws. Remaining ingredient totals are
+  deliberately not displayed because they are hidden information. Items the currently-active
   customers need are highlighted. While the **Ingredient Pick** booster is armed (below), the
   window temporarily expands and *every* visible tile becomes clickable, not just the front row.
+- **Difficulty estimation retries**: preview demand is a light, configurable composite-only hint,
+  not active-order weight. A failed authored-scoring run retries with grid-safe, front-loaded,
+  finish-first, chain-first, scarcity and serve-window presets; only after those are exhausted are
+  randomized scoring sets used. The Scoring Scenario modal exposes **Retry count** from 0–10, and
+  the first successful run wins; if all attempts fail, the closest run is reported as unsolved.
 - **Boosters bar**: four booster buttons (icon, name, remaining-charge badge) rendered as a
   scrollable strip **below** the three main tiers, not inside them — so it never shrinks the
   page's fixed-height layout, it's just reachable by scrolling. Shift-up Row, Clean Table, and

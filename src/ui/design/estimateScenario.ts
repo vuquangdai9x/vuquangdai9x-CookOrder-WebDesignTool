@@ -12,6 +12,7 @@ export type ScenarioFieldKey =
   | "scoreBlockedTight"
   | "scoreSweeper"
   | "scoreSweeperUrgent"
+  | "previewConfidence"
   | "depthBonusPerLevel"
   | "depthBonusCap"
   | "multiInputBaseBonus"
@@ -28,7 +29,8 @@ export type ScenarioFieldKey =
   | "gridTightThreshold"
   | "maxIterations"
   | "rngSeed"
-  | "maxPairDishes";
+  | "maxPairDishes"
+  | "retryCount";
 
 /** One row of the modal: its toggle, and the number its drag-input holds. */
 export interface ScenarioField {
@@ -58,6 +60,8 @@ export interface ScenarioFieldSpec {
   /** Value substituted when the toggle is OFF - i.e. what "disabled" means. */
   off: number;
   min: number;
+  /** Optional upper bound, used by bounded controls such as retry count. */
+  max?: number;
   /** Digits kept while drag-scrubbing; also what the input displays. */
   decimals: number;
   hint: string;
@@ -125,6 +129,17 @@ export const SCENARIO_FIELDS: ScenarioFieldSpec[] = [
     min: 0,
     decimals: 0,
     hint: "Sweeper worth once the grid is tight and dirty stacks are what is filling it.",
+  },
+  {
+    key: "previewConfidence",
+    group: "Demand priority",
+    label: "Upcoming composite hint",
+    def: 0.08,
+    off: 0,
+    min: 0,
+    max: 1,
+    decimals: 3,
+    hint: "Fractional demand assigned to the next three composite-only previews. Keep this low: their exact ingredients are still hidden.",
   },
 
   {
@@ -297,6 +312,17 @@ export const SCENARIO_FIELDS: ScenarioFieldSpec[] = [
     min: 0,
     decimals: 0,
     hint: "Two customers are served at once only while their dishes total at most this. 0 = never pair.",
+  },
+  {
+    key: "retryCount",
+    group: "Run controls",
+    label: "Retry count",
+    def: 10,
+    off: 0,
+    min: 0,
+    max: 10,
+    decimals: 0,
+    hint: "After the authored scoring run fails, try this many alternate scoring strategies (maximum 10).",
   },
 ];
 

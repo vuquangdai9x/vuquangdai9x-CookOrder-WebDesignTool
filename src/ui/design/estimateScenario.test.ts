@@ -10,10 +10,12 @@ describe("estimateScenario", () => {
     expect(cfg.scoreBlockedTight).toBe(60);
     expect(cfg.scoreSweeper).toBe(500);
     expect(cfg.scoreSweeperUrgent).toBe(1400);
+    expect(cfg.previewConfidence).toBe(0.08);
     expect(cfg.rowDecay).toBe(0.5);
     expect(cfg.maxIterations).toBe(5000);
     expect(cfg.maxPairDishes).toBe(5);
     expect(cfg.rngSeed).toBe(0x5eed);
+    expect(cfg.retryCount).toBe(10);
     expect(cfg.hiddenStatus).toBe(false);
   });
 

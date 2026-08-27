@@ -587,8 +587,8 @@ footer {
 }
 
 /*
- * Play mode shows full-width active customers followed by three narrow
- * composite-only previews. The view writes the mixed 1fr/4.25rem grid tracks
+ * Play mode shows three narrow composite-only previews followed by full-width
+ * active customers. The view writes the mixed fixed/1fr grid tracks
  * inline so all previews stay visible on the same row.
  */
 .customer-cards.play {
@@ -605,28 +605,20 @@ footer {
 }
 
 .customer-card.customer-preview {
-  padding: 0.3rem;
+  display: block;
+  padding: 0.05rem;
   min-width: 0;
+  overflow: visible;
   background: color-mix(in srgb, var(--panel-2) 78%, var(--accent) 22%);
   border-style: dashed;
-}
-
-.customer-preview .customer-head {
-  justify-content: center;
-  min-height: 1.25rem;
-}
-
-.customer-preview .cust-index {
-  font-size: 0.68rem;
-  color: var(--muted);
 }
 
 .customer-preview-types {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
-  padding-top: 0.15rem;
+  gap: 0.1rem;
+  padding: 0;
 }
 
 .customer-preview-types .icon {
@@ -638,27 +630,26 @@ footer {
 /* ---------- visual serving row ---------- */
 
 .serving-tier {
-  padding-top: 0.35rem;
-  padding-bottom: 0.4rem;
-}
-
-.serving-tier h2 {
-  margin-bottom: 0.25rem;
+  padding: 0;
+  margin: 0;
 }
 
 .serving-slots {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.4rem;
+  grid-template-columns: repeat(5, var(--slot-size));
+  justify-content: center;
+  gap: 0.15rem;
   align-items: stretch;
 }
 
 .serving-slot {
   position: relative;
   min-width: 0;
-  min-height: 4.15rem;
+  width: var(--slot-size);
+  height: var(--slot-size);
+  min-height: 0;
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
+  border-radius: 0.4rem;
   background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015));
   display: flex;
   align-items: center;
@@ -682,15 +673,15 @@ footer {
   left: 0.25rem;
   z-index: 2;
   color: var(--muted);
-  font-size: 0.58rem;
+  font-size: 0.48rem;
   line-height: 1;
 }
 
 .serving-container {
   position: relative;
-  width: 3.25rem;
-  height: 3.25rem;
-  margin-top: 0.4rem;
+  width: calc(var(--slot-size) - 0.3rem);
+  height: calc(var(--slot-size) - 0.3rem);
+  margin: 0;
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.2);
   background: radial-gradient(circle, rgba(255,255,255,0.12), rgba(255,255,255,0.025) 68%);
@@ -749,57 +740,79 @@ footer {
   border-radius: 8px;
   padding: 0.4rem;
   flex: none;
+  display: grid;
+  grid-template-columns: var(--customer-info-width, 2.125rem) minmax(0, 1fr);
+  gap: 0.35rem;
 }
 
-/* Per-customer avatar (see NodePlayView.appendAvatar) — pinned via
-   customerIndex, or a random Normal-type stand-in — sitting behind the actual
-   content, faint and right-aligned.
-   iconEl() returns a <span> wrapper (image or emoji text) — the fit/position
-   rules that used to sit directly on an <img> now target the nested one; the
-   emoji fallback still fills the same box so a missing image degrades to a
-   faded giant emoji instead of vanishing outright. */
-.customer-avatar {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0.2;
-  pointer-events: none;
-  z-index: 0;
+.customer-info {
+  width: var(--customer-info-width, 2.125rem);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-right: 1px solid var(--line);
+  padding-right: 0.2rem;
+  align-items: center;
+}
+
+.customer-orders {
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.customer-avatar-slot {
+  position: relative;
+  min-height: 3.8rem;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  font-size: 4rem;
+  justify-content: center;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* Avatar art now belongs only to the Info section and is fully opaque. */
+.customer-avatar {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 3.8rem;
+  opacity: 1;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
   overflow: hidden;
 }
 .customer-avatar img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  object-position: right;
+  object-position: center;
 }
 
-/* Design-mode customer card background — same idea as .customer-avatar, tuned
-   for the smaller editor card instead of the full-size play card. */
+/* Design mode uses the same opaque Info-section avatar treatment. */
 .customer-avatar-bg {
-  position: absolute;
-  inset: 0;
+  position: relative;
   width: 100%;
   height: 100%;
-  opacity: 0.25;
+  min-height: 3.8rem;
+  opacity: 1;
   pointer-events: none;
-  z-index: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  font-size: 3rem;
+  justify-content: center;
+  font-size: 2.5rem;
   overflow: hidden;
 }
 .customer-avatar-bg img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  object-position: right;
+  object-position: center;
 }
 
 .customer-content {
@@ -878,10 +891,12 @@ footer {
 .customer-head {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.78rem;
+  justify-content: center;
+  gap: 0.08rem;
+  font-size: 0.62rem;
   cursor: grab;
-  margin-bottom: 0.3rem;
+  margin: 0;
+  white-space: nowrap;
 }
 
 .cust-index {
@@ -893,19 +908,49 @@ footer {
   align-items: center;
   gap: 0.15rem;
   color: var(--muted);
+  justify-content: center;
+  width: 100%;
 }
 
 .wait-badge input {
-  width: 3.2rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.05rem;
+  font-size: 0.62rem;
+  text-align: center;
+}
+
+.wait-drag-input {
+  cursor: ew-resize;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.wait-drag-input::-webkit-inner-spin-button,
+.wait-drag-input::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
 }
 
 .weather-toggle {
-  margin-left: auto;
-  padding: 0.1rem 0.35rem;
+  position: static;
+  padding: 0.05rem 0.18rem;
+  font-size: 0.62rem;
 }
 
 .weather-toggle.on {
   border-color: #6aa7e0;
+}
+
+.customer-weather {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.customer-weather.on {
+  color: #6aa7e0;
 }
 
 .staff-note {
@@ -1275,9 +1320,8 @@ footer {
   background: #2f2f38;
 }
 
-/* The "?" that replaces the ingredient art in Play mode. Sized to fill
-   .tile-main like a real icon would — .mystery-mark is a card-sized 2rem and
-   would overflow a queue tile. */
+/* The "?" that replaces the ingredient art in Play mode, sized to fill
+   .tile-main like a real icon would. */
 .hidden-mark {
   display: flex;
   align-items: center;
@@ -1660,6 +1704,20 @@ footer {
   max-width: 13rem;
 }
 
+.ctx-order-type {
+  padding: 0.35rem;
+}
+
+.ctx-order-type-label {
+  margin-bottom: 0.3rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.ctx-orderable-picker {
+  max-width: 15rem;
+}
+
 .ctx-swap {
   display: flex;
   flex-direction: column;
@@ -1895,13 +1953,13 @@ td input {
 /*
  * Portrait play zone: on desktop the driving constraint is height, not width —
  * fix the height to the space actually available under the header/toolbar and
- * above the footer, then derive width from the fixed 3:4 (w:h) ratio. Smaller
+ * above the footer, then derive a compact 9:10 (w:h) play zone. Smaller
  * tiles (--tile override) keep the three tiers legible at that narrower width.
  * Internal scrolling is the fallback if a level's content still overflows.
  */
 .play-page {
   position: relative;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 9 / 10;
   height: min(calc(100vh - 10rem), 920px);
   width: auto;
   max-width: 100%;
@@ -1911,6 +1969,9 @@ td input {
   gap: 0.5rem;
   overflow-y: auto;
   --tile: 2.5rem;
+  /* Half the former 4.25rem preview width; the 2.25rem icon deliberately
+     overhangs by one pixel per side so its artwork does not shrink. */
+  --customer-info-width: 2.125rem;
   /* Grid cells are sized to match the cooking-tool slots exactly (see .grid
      below and .tool-slot above) — one shared value, set once. */
   --slot-size: 3rem;
@@ -1921,7 +1982,7 @@ td input {
      so let the zone use the full width instead of fighting the aspect-ratio. */
   .play-page {
     aspect-ratio: auto;
-    width: 100%;
+    width: 80%;
     height: auto;
     max-height: none;
   }
@@ -2020,10 +2081,14 @@ td input {
 
 .play-page > .serving-tier {
   flex: 0 0 auto;
+  padding: 0;
+  margin: 0;
 }
 
 .play-page > .middle-tier {
   flex: 0 0 auto;
+  padding: 0;
+  margin: 0;
 }
 
 .play-page > .queues-tier {
@@ -2047,7 +2112,7 @@ td input {
  * scroll rather than eating into the fixed-height layout above it.
  */
 .boosters-bar {
-  max-width: min(calc(100vh - 10rem), 920px);
+  max-width: min(calc(112.5vh - 11.25rem), 1035px);
   margin: 0 auto;
 }
 
@@ -2258,7 +2323,7 @@ td input {
   /*
    * Tile size is derived from the queues tier's actual height (100cqh — the
    * tier is a size container): whatever remains after the tier's fixed
-   * overhead (panel padding + h2 + lane head + inter-tile gaps ≈ 5rem) is
+   * overhead (panel padding + lane head + inter-tile gaps ≈ 3rem) is
    * split across the visible rows, so all of them always fit — when the tier
    * is short, the tiles shrink instead of rows being cut off. Capped at 5rem
    * (the 2x reading size) and floored at 2.2rem (below that the icons stop
@@ -2268,7 +2333,7 @@ td input {
    * JS value directly, so this reads the custom property instead of a
    * hardcoded divisor.
    */
-  --tile: clamp(2.2rem, calc((100cqh - 5rem) / var(--window-rows, 3)), 5rem);
+  --tile: clamp(2.2rem, calc((100cqh - 3rem) / var(--window-rows, 3)), 5rem);
 }
 
 .queue-lanes.play .queue-lane {
@@ -2348,29 +2413,6 @@ td input {
 .customer-card.servable {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent) inset, 0 0 14px -4px var(--accent);
-}
-
-.customer-card.waiting {
-  opacity: 0.5;
-}
-
-/* The next customer in line — present, but their order stays hidden. */
-.customer-card.mystery {
-  opacity: 0.75;
-  border-style: dashed;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 5rem;
-}
-
-.mystery-mark {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--muted);
-  line-height: 1;
-  padding: 0.4rem 0 0.2rem;
 }
 
 /* ---------- flight + particle layer ---------- */
@@ -2728,7 +2770,7 @@ td input {
 }
 
 /*
- * Replay drops the 3:4 portrait width: it renders every queue lane, drained
+ * Replay keeps the expanded gameplay floor: it renders every queue lane, drained
  * ones included, each carrying a score chip (min-width 7rem on .queue-lane
  * below). The page is therefore at least wide enough for all of them —
  * --replay-lanes is set inline by nodeplay's mount() — so the lane row is
@@ -2743,7 +2785,7 @@ td input {
   width: min(
     100%,
     max(
-      calc(min(100vh - 14rem, 820px) * 0.75),
+      calc(min(100vh - 14rem, 820px) * 0.9),
       calc(var(--replay-lanes, 3) * 9rem + 2.6rem)
     )
   );

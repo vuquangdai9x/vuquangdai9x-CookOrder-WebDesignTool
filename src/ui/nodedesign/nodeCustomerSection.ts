@@ -33,13 +33,14 @@ import {
   addPickerGrid,
   closeContextMenu,
   importField,
+  pickerGrid,
   showContextContent,
   showContextMenu,
 } from "../contextMenu.ts";
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
-import { cookedIconEl, iconEl } from "../icon.ts";
-import { customerAvatarIconSpec } from "../customerAvatar.ts";
+import { cookedIconEl, customerTypeIconEl, iconEl } from "../icon.ts";
+import { customerAvatarIconSpec, randomNormalCustomer } from "../customerAvatar.ts";
 import { getCustomerCatalog } from "../../data/customerCatalog.ts";
 import { openCustomerAvatarDialog } from "./customerAvatarDialog.ts";
 import {
@@ -472,6 +473,11 @@ function estimateBar(
     }),
     el("strong", {}, [estimate.solvable ? "✓ " : "⚠ ", summary]),
   ];
+  if ((estimate.attemptCount ?? 1) > 1) {
+    parts.push(el("span", { class: "estimate-metric" }, [
+      `${estimate.strategyName ?? "alternate"} strategy · ${estimate.attemptCount} attempts`,
+    ]));
+  }
   if (estimate.reason) parts.push(el("span", { class: "estimate-reason" }, [estimate.reason]));
   parts.push(
     el("span", { class: "estimate-metric" }, [`peak waste ${peakWaste}`]),
@@ -656,6 +662,43 @@ function openDishCountDialog(initial: number[], onApply: (counts: number[]) => v
   document.body.append(overlay);
 }
 
+/** Adds spreadsheet-style horizontal scrubbing while preserving keyboard entry. */
+function installHorizontalNumberDrag(
+  input: HTMLInputElement,
+  onCommit: (value: number) => void,
+): void {
+  let pointerId: number | null = null;
+  let startX = 0;
+  let startValue = 0;
+  let draggedValue = 0;
+
+  input.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    startValue = Math.max(0, Number(input.value) || 0);
+    draggedValue = startValue;
+    input.setPointerCapture(event.pointerId);
+  });
+  input.addEventListener("pointermove", (event) => {
+    if (pointerId !== event.pointerId) return;
+    const next = Math.max(0, Math.round(startValue + (event.clientX - startX) / 5));
+    if (next === draggedValue) return;
+    draggedValue = next;
+    input.value = String(next);
+    event.preventDefault();
+  });
+  const finish = (event: PointerEvent) => {
+    if (pointerId !== event.pointerId) return;
+    if (input.hasPointerCapture(event.pointerId)) input.releasePointerCapture(event.pointerId);
+    pointerId = null;
+    if (draggedValue !== startValue) onCommit(draggedValue);
+  };
+  input.addEventListener("pointerup", finish);
+  input.addEventListener("pointercancel", finish);
+}
+
 function customerCard(
   section: Section<NodeCustomerConfig[]>,
   deps: NodeCustomerSectionDeps,
@@ -669,13 +712,10 @@ function customerCard(
   const staff = isStaff(customer);
   const timed = customer.weatherEff !== 0 || customer.waitTime > 0;
   const card = el("div", { class: `customer-card${staff ? " staff" : ""}${timed ? " timed" : ""}` });
-
-  if (customer.customerIndex !== undefined) {
-    const entry = getCustomerCatalog().find((e) => e.index === customer.customerIndex);
-    if (entry) {
-      card.append(iconEl(customerAvatarIconSpec(entry), { className: "customer-avatar-bg" }));
-    }
-  }
+  const catalog = getCustomerCatalog();
+  const avatarEntry = customer.customerIndex === undefined
+    ? randomNormalCustomer(catalog, ix.doc.map.id, () => ((index + 1) * 2654435761 >>> 0) / 4294967296)
+    : catalog.find((entry) => entry.index === customer.customerIndex);
 
   const cost = estimate?.perCustomer.find((c) => c.index === index);
   if (cost) card.style.setProperty("--customer-color", customerColor(index));
@@ -700,13 +740,18 @@ function customerCard(
 
   const waitInput = el("input", {
     type: "number",
+    min: "0",
     value: String(customer.waitTime),
-    title: "Patience timer in seconds (0 = no limit)",
+    class: "wait-drag-input",
+    title: "Patience timer in seconds (0 = no limit). Drag left/right to adjust quickly.",
   }) as HTMLInputElement;
-  waitInput.addEventListener("change", () => {
-    customer.waitTime = Number(waitInput.value) || 0;
+  const commitWaitTime = (value: number) => {
+    customer.waitTime = Math.max(0, Math.round(value) || 0);
+    waitInput.value = String(customer.waitTime);
     section.commit("Set wait time");
-  });
+  };
+  waitInput.addEventListener("change", () => commitWaitTime(Number(waitInput.value)));
+  installHorizontalNumberDrag(waitInput, commitWaitTime);
 
   const weatherToggle = button(
     customer.weatherEff ? "🌧" : "☁",
@@ -724,23 +769,32 @@ function customerCard(
   const typeMark = def && def.id !== 0 ? ` ${def.icon || def.name}` : "";
   const head = el("div", { class: "customer-head" }, [
     el("span", { class: "cust-index" }, [`#${index + 1}${typeMark}`]),
-    el("span", { class: "wait-badge" }, [customer.waitTime === 0 ? "∞" : "", waitInput]),
-    weatherToggle,
   ]);
-  if (cost) {
-    head.append(
-      el("span", { class: "cust-cost" }, [
-        el("span", { class: "cost-occupied" }, [`▦${cost.gridOccupied}`]),
-        el("span", { class: `cost-waste${cost.gridWaste > 0 ? " bad" : ""}` }, [`✖${cost.gridWaste}`]),
-      ]),
-    );
-  }
   head.addEventListener("contextmenu", (e) =>
     showContextMenu(e, cardMenu(section, deps, ids, draft, customer, index), {
       title: `Customer #${index + 1}`,
     }),
   );
-  card.append(head);
+  const avatarSlot = el("div", { class: "customer-avatar-slot" });
+  if (avatarEntry) {
+    avatarSlot.append(iconEl(customerAvatarIconSpec(avatarEntry), { className: "customer-avatar-bg" }));
+  } else if (staff) {
+    avatarSlot.append(customerTypeIconEl(customer.typeId, 40));
+  }
+  const info = el("div", { class: "customer-info" }, [
+    head,
+    el("span", { class: "wait-badge" }, [waitInput]),
+    weatherToggle,
+    avatarSlot,
+  ]);
+  const orders = el("div", { class: "customer-orders" });
+  if (cost) {
+    orders.append(el("span", { class: "cust-cost" }, [
+      el("span", { class: "cost-occupied" }, [`▦${cost.gridOccupied}`]),
+      el("span", { class: `cost-waste${cost.gridWaste > 0 ? " bad" : ""}` }, [`✖${cost.gridWaste}`]),
+    ]));
+  }
+  card.append(info, orders);
 
   if (staff) {
     const amountInput = el("input", {
@@ -753,7 +807,7 @@ function customerCard(
       customer.staffAmount = Math.max(1, Number(amountInput.value) || 1);
       section.commit("Set staff stack amount");
     });
-    card.append(el("div", { class: "staff-note" }, ["Staff — clears ", amountInput, " dirty stack(s)"]));
+    orders.append(el("div", { class: "staff-note" }, ["Staff — clears ", amountInput, " dirty stack(s)"]));
     return card;
   }
 
@@ -878,9 +932,9 @@ function customerCard(
       section.commit(from === to ? "Reorder dishes" : "Move dish between customers");
     },
   });
-  card.append(dishList);
+  orders.append(dishList);
 
-  card.append(
+  orders.append(
     button(
       "+ Dish",
       () => {
@@ -969,9 +1023,10 @@ function slotPicker(
 /**
  * The dish menu — the one place the bracket tree is edited directly.
  *
- * "Order type" repoints the whole dish at another composite (re-seeding its
- * required slots); each slot below expands into its own option grid, so a
- * nested group is edited as a group rather than as a run of loose chips.
+ * The always-visible "Order type" icon row repoints the whole dish at another
+ * composite (re-seeding its required slots); each slot below expands into its
+ * own option grid, so a nested group is edited as a group rather than as a run
+ * of loose chips.
  */
 function dishMenu(
   section: Section<NodeCustomerConfig[]>,
@@ -983,29 +1038,34 @@ function dishMenu(
   orderable: number,
 ): MenuItem[] {
   const { ix } = deps;
-  const items: MenuItem[] = [
-    {
-      label: "Order type…",
-      expand: () =>
-        el(
-          "div",
-          { class: "ctx-swap" },
-          ix.orderables.map((composite) =>
-            button(
-              `${composite === orderable ? "● " : "○ "}${
-                ix.doc.vertices.composite[composite]?.displayName ?? ix.compositeName[composite]
-              }`,
-              () => {
-                retargetDish(ix, ids, dish, composite);
-                section.commit("Change dish order type");
-                closeContextMenu();
-              },
-              { class: "ctx-orderable" },
-            ),
-          ),
+  const orderTypePicker = pickerGrid(
+    ix.orderables.map((composite) => {
+      const vertex = ix.doc.vertices.composite[composite];
+      const name = vertex?.displayName ?? ix.compositeName[composite];
+      return {
+        id: composite,
+        label: name,
+        icon: iconEl(
+          { name, emoji: vertex?.emoji ?? "🍽️" },
+          { size: 32, className: "icon-composite" },
         ),
+      };
+    }),
+    (composite) => {
+      retargetDish(ix, ids, dish, composite);
+      section.commit("Change dish order type");
+      closeContextMenu();
     },
-  ];
+    orderable,
+  );
+  orderTypePicker.classList.add("ctx-orderable-picker");
+  const items: MenuItem[] = [{
+    label: "Order type",
+    content: el("div", { class: "ctx-order-type" }, [
+      el("div", { class: "ctx-order-type-label" }, ["Order type"]),
+      orderTypePicker,
+    ]),
+  }];
 
   if (orderable !== -1) {
     const slots = ix.slotsOfComposite[orderable] ?? [];
