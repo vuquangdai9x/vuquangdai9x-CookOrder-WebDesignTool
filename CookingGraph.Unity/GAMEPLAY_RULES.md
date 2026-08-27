@@ -841,8 +841,30 @@ From the reference play view (`ui/nodeplay/index.ts`) — match these or levels 
 * **Grid** shows cooked items (with a remaining-uses badge when `usesLeft > 1`), parked raws, dirty
   stacks with their count, locked cells with their progress label, and the backpack.
 * **Customers**: `serveableSlots` active cards, each dish drawn as its slots with per-slot filled
-  state; customers beyond the serveable slots may show their order for planning but cannot be served.
-  Patience shown only when finite.
+  state (filled chips first, then still-wanted chips — slot structure is a design concern, the
+  player only reads "what's left"). Patience shown only when finite.
+* **Customer draw order**: gameplay reads right-to-left — customer #1 (the active customer nearest
+  serving) sits at the far-right end of the row, with the rest of `active` filling leftward in
+  index order. The next `CUSTOMER_PREVIEW_COUNT` (3) pending customers render further left, in the
+  same order they will arrive, so the row reads as one continuous right-to-left timeline.
+* **Customer preview cards**: the next 3 pending customers (not the whole queue) are shown, each
+  narrower than an active card. A preview reveals only the **orderable composite identity** of each
+  dish the customer will order (one icon per dish, or the customer-type icon if they have no
+  dishes yet) — never the resolved ingredient slots, quantities, groups, or toppings underneath.
+  Nothing about a preview is simulated early: it is drawn straight from `pending[i].dishes[].
+  order.orderable`, the same order data the customer will use once seated.
+* **Serving row**: a visual-only staging area between the customer row and the grid, one container
+  per active (non-staff) dish, capped at `MAX_SERVING_SLOTS` (5). A container shows the dish's
+  composite icon plus the ingredient icons filled so far, exactly mirroring `dish.filled`; slots
+  beyond the cap collapse into a `+N more active dish(es)` badge on the last visible container.
+  Ingredient flights bound for a customer land on that dish's serving container instead of the
+  customer card directly. Once the dish's last slot fills (`dish.complete`), a single "plate"
+  (the dish's composite icon) flies from the serving row to the customer card, then the customer
+  is released to `completeFlight`'s normal rules. **This changes nothing about simulation
+  capacity, timing, or completion** — `dish.filled`, `dish.complete`, and serve/win/lose logic are
+  computed exactly as before; the serving row and plate flight are purely cosmetic staging on top
+  of the same flight target. A relevant Unity port need only stage the same visual hand-off; it
+  must not add a real queue, buffer, or delay to serving.
 * **Boosters bar** with per-booster charges; ids 4–5 render disabled.
 * On a loss, offer **Save Me** first while uses remain; declining shows the failure overlay.
 * A win offers **Next Level** when one exists.
