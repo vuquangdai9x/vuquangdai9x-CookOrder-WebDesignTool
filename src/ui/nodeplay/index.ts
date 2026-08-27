@@ -64,6 +64,7 @@ import { listNodeMaps, type NodeProjectState } from "../../data/nodeProject.ts";
 import { customersStructureKey, middleStructureKey, queuesStructureKey } from "./structureKey.ts";
 import { renderGroupOverlay } from "./groupOverlay.ts";
 import { replayScoreStepIndex } from "./replayScoreStep.ts";
+import { recipeGuideRows } from "./recipeGuide.ts";
 import { centerOf, EffectsLayer } from "../effectsLayer.ts";
 import type { Point } from "../effectsLayer.ts";
 import type { NodeFlight } from "../../core/nodeSim.ts";
@@ -146,6 +147,9 @@ export class NodePlayView {
   private speedId = "x1";
   private paused = false;
   private toolbarFolded = false;
+  private showRecipe = false;
+  private recipePanelEl: HTMLElement | null = null;
+  private hoveredRecipeIngredient: number | null = null;
   private customerAvatarByIndex = new Map<number, CustomerCatalogEntry>();
   /** Completed dish containers still travelling from the serving row to a customer. */
   private plateDeliveries = new Set<string>();
@@ -330,7 +334,14 @@ export class NodePlayView {
     // The boosters bar is a SIBLING of `.play-page`, not a child: the page has
     // a fixed height with sized gameplay tiers, so another child would shrink
     // them instead of sitting below.
-    this.root.replaceChildren(this.weatherLayer(), this.toolbar(), this.page, this.boostersEl);
+    const children = [this.weatherLayer(), this.toolbar(), this.page, this.boostersEl];
+    if (!this.replay) {
+      this.recipePanelEl = this.recipeGuidePanel();
+      children.push(this.recipePanelEl);
+    } else {
+      this.recipePanelEl = null;
+    }
+    this.root.replaceChildren(...children);
     this.fullRender();
   }
 
@@ -846,6 +857,16 @@ export class NodePlayView {
       }, { id: "btn-pause" }),
       button("⟲ Restart", () => this.restart()),
       el("label", { class: "field small" }, ["When tool is full", policy]),
+      button("Show Recipe", () => {
+        this.showRecipe = !this.showRecipe;
+        if (!this.showRecipe) this.hoveredRecipeIngredient = null;
+        this.syncRecipeGuide();
+        this.refreshToolbar();
+      }, {
+        class: this.showRecipe ? "active" : "",
+        "aria-pressed": String(this.showRecipe),
+        title: "Show or hide the ingredient processing guide",
+      }),
     ]);
 
     this.foldBtn = button(this.toolbarFolded ? "▸ Config" : "▾ Config", () => {
@@ -1087,6 +1108,69 @@ export class NodePlayView {
     );
     row.style.gridTemplateColumns = [...previewColumns, ...activeColumns].join(" ");
     return el("section", { class: "play-section customers-tier" }, [row]);
+  }
+
+  /** Standalone Play-only recipe overlay. Replay/simulation never constructs it. */
+  private recipeGuidePanel(): HTMLElement {
+    const levelIngredients = new Set(
+      this.sim.queueGrid.flatMap((column) =>
+        column
+          .filter((cell): cell is NodeQueueCell => cell !== null && cell.item.kind === "ingredient")
+          .map((cell) => cell.ing),
+      ),
+    );
+    const rows = recipeGuideRows(this.ix)
+      .filter(({ input }) => levelIngredients.has(input))
+      .map(({ input, output }) => {
+      const inputVertex = this.project.doc.vertices.ingredient[input];
+      const outputVertex = this.project.doc.vertices.ingredient[output];
+      const inputName = inputVertex?.displayName || this.ix.ingName[input];
+      const outputName = outputVertex?.displayName || this.ix.ingName[output];
+        return el("div", {
+          class: "recipe-guide-row",
+          "data-recipe-input": String(input),
+          title: `${inputName} → ${outputName}`,
+        }, [
+          el("div", { class: "recipe-guide-item" }, [
+            this.ingredientIconForDense(input, 40),
+            el("span", {}, [inputName]),
+          ]),
+          el("span", { class: "recipe-guide-arrow", "aria-hidden": "true" }, ["→"]),
+          el("div", { class: "recipe-guide-item" }, [
+            this.ingredientIconForDense(output, 40),
+            el("span", {}, [outputName]),
+          ]),
+        ]);
+      });
+    const panel = el("aside", {
+      class: "recipe-guide-panel",
+      "aria-label": "Recipe guide",
+    }, [
+      el("div", { class: "recipe-guide-heading" }, ["Recipe Guide"]),
+      el("div", { class: "recipe-guide-list" }, rows.length
+        ? rows
+        : [el("span", { class: "muted" }, ["No processing recipes"])]),
+    ]);
+    this.syncRecipeGuide(panel);
+    return panel;
+  }
+
+  private syncRecipeGuide(panel = this.recipePanelEl): void {
+    if (!panel) return;
+    panel.hidden = !this.showRecipe;
+    panel.querySelectorAll<HTMLElement>(".recipe-guide-row").forEach((row) => {
+      row.classList.toggle(
+        "highlighted",
+        this.hoveredRecipeIngredient !== null &&
+          Number(row.dataset.recipeInput) === this.hoveredRecipeIngredient,
+      );
+    });
+  }
+
+  private setRecipeHover(ingredient: number | null): void {
+    if (!this.showRecipe || this.hoveredRecipeIngredient === ingredient) return;
+    this.hoveredRecipeIngredient = ingredient;
+    this.syncRecipeGuide();
   }
 
   private customerCard(c: NodeCustomerState, servable: boolean): HTMLElement {
@@ -1498,6 +1582,10 @@ export class NodePlayView {
           tile.title = check.reason ?? "Pick this ingredient";
           if (check.ok) tile.addEventListener("click", () => this.performPick(x, y, false));
         }
+        if (!hidden && cell.ing >= 0 && cell.item.kind === "ingredient") {
+          tile.addEventListener("pointerenter", () => this.setRecipeHover(cell.ing));
+          tile.addEventListener("pointerleave", () => this.setRecipeHover(null));
+        }
         tiles.append(tile);
       }
       lane.append(tiles);
@@ -1529,6 +1617,7 @@ export class NodePlayView {
    */
   private performPick(x: number, y: number, viaBooster: boolean): void {
     if (this.replay) return;
+    this.setRecipeHover(null);
     const cells = viaBooster ? this.sim.pickTargetsAt(x, y) : this.sim.pickTargets(x);
     this.pendingPickOrigins = cells
       .map((c) => this.page.querySelector(`.queue-tile[data-qx="${c.x}"][data-qy="${c.y}"]`))
