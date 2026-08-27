@@ -8,7 +8,6 @@ import {
   SPECIAL_DISH_MAX,
   SPECIAL_DISH_MIN,
   WAIT_BASE_SECONDS,
-  WAIT_PER_SLOT_SECONDS,
 } from "./customerRoles.ts";
 import { emptyObstacles, setObstacleValue } from "./obstacles.ts";
 import type { ObstacleConfig } from "./obstacles.ts";
@@ -117,44 +116,38 @@ describe("moveBossesLast", () => {
 });
 
 describe("assignWaitTimes", () => {
-  const slotsOf = (c: NodeCustomerConfig) => c.dishes.length * 2;
-
   it("times exactly the requested number of customers", () => {
     const customers = [customer(1), customer(2), customer(1), customer(3)];
-    const timed = assignWaitTimes(customers, config({ timed: 2 }), slotsOf, seededRng(4));
+    const timed = assignWaitTimes(customers, config({ timed: 2 }));
     expect(timed).toBe(2);
     expect(customers.filter((c) => c.waitTime > 0)).toHaveLength(2);
   });
 
-  it("scales the timer with how much the customer actually ordered", () => {
+  it("always assigns exactly 60 seconds regardless of order size", () => {
     const small = customer(1);
     const big = customer(4);
-    assignWaitTimes([small, big], config({ timed: 2 }), slotsOf, seededRng(4));
-    expect(big.waitTime).toBeGreaterThan(small.waitTime);
-    expect(small.waitTime).toBe(WAIT_BASE_SECONDS + WAIT_PER_SLOT_SECONDS * 2);
+    assignWaitTimes([small, big], config({ timed: 2 }));
+    expect(small.waitTime).toBe(WAIT_BASE_SECONDS);
+    expect(big.waitTime).toBe(WAIT_BASE_SECONDS);
   });
 
   it("never times a Staff customer, who orders nothing to run out of time on", () => {
     const staff = customer(0, 1);
     const normal = customer(1);
-    assignWaitTimes([staff, normal], config({ timed: 5 }), slotsOf, seededRng(1));
+    assignWaitTimes([staff, normal], config({ timed: 5 }));
     expect(staff.waitTime).toBe(0);
     expect(normal.waitTime).toBeGreaterThan(0);
   });
 
-  it("relaxes every timer when the pipeline escalates", () => {
-    // This is the recovery path for "the level is unwinnable because the timers
-    // were too tight" — without it the retry ladder could only fix the queue.
-    const tight = customer(2);
-    const loose = customer(2);
-    assignWaitTimes([tight], config({ timed: 1 }), slotsOf, seededRng(1), 1);
-    assignWaitTimes([loose], config({ timed: 1 }), slotsOf, seededRng(1), 2);
-    expect(loose.waitTime).toBeGreaterThan(tight.waitTime);
+  it("chooses timed customers in arrival order without consuming randomness", () => {
+    const customers = [customer(1), customer(1), customer(1)];
+    assignWaitTimes(customers, config({ timed: 2 }));
+    expect(customers.map((entry) => entry.waitTime)).toEqual([60, 60, 0]);
   });
 
   it("does nothing at all when no timer was asked for", () => {
     const customers = [customer(1), customer(2)];
-    expect(assignWaitTimes(customers, emptyObstacles(), slotsOf, seededRng(1))).toBe(0);
+    expect(assignWaitTimes(customers, emptyObstacles())).toBe(0);
     expect(customers.every((c) => c.waitTime === 0)).toBe(true);
   });
 });

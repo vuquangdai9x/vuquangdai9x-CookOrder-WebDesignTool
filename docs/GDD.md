@@ -8,7 +8,7 @@ CookOrder is a queue-management cooking puzzle. The player pulls raw ingredients
 
 - **Win**: serve all N customers of the level.
 - **Lose**, one of four reasons: a cooked ingredient has no free grid cell to land in (`grid-overflow`); a dirty dish has no free grid cell to land in (`dirty-overflow`); the queues run dry with orders still outstanding and nothing left in flight — the OutOfIngredient event's default handler (`out-of-ingredient`); or a customer's patience timer expires (`customer-timeout`).
-- **Save Me**: on any loss, the player may be offered one more chance instead of the plain failure screen (see §2.6) — accepting collapses the grid into a backpack and resumes play, so a "loss" isn't always final.
+- **Save Me**: supported losses may offer a reason-specific rescue instead of the plain failure screen (see §2.7): pack grid items, refresh an expired timer, or break a queue/tool deadlock.
 
 ## 2. Core Loop
 
@@ -100,17 +100,17 @@ Six game-wide booster actions, defined once for the whole game (`src/data/config
 | 4 | **Refill Customer Time** | Defined (name/icon/economy fields) but **not yet wired into the sim** — `boosterCharges` never grants it any charges, so its button always renders disabled. Placeholder from the sheet's Booster_config tab. |
 | 5 | **More Grid Slot** | Same as above — defined, always 0 charges, no sim behavior yet. |
 
-Each booster row also carries **economy fields** from the sheet (`code`, `lvUnlock`, `free`, `price`, `maxAds`) — reference data only; this level-design tool has no IAP/currency system, so nothing reads them. `boosters.json` also has a `saveMeVariants` array (the sheet's two Save Me trigger conditions — out-of-slot, out-of-time — each with the same economy fields) that isn't wired into the sim's single unified `saveMe()` either; see §2.7.
+Each booster row also carries **economy fields** from the sheet (`code`, `lvUnlock`, `free`, `price`, `maxAds`) — reference data only; this level-design tool has no IAP/currency system, so nothing reads them. `boosters.json` also has a `saveMeVariants` array with reference economy fields; runtime behavior is selected by the actual loss reason as described in §2.7.
 
 ### 2.7 Save Me
 
-On any loss, instead of the plain failure screen, the player may be offered a **Save Me** rescue — as long as at least one use remains (`saveMeCount`, global param; `-1` means unlimited). Accepting:
+On a supported loss, instead of the plain failure screen, the player may be offered one of three **Save Me** rescues — as long as at least one use remains (`saveMeCount`, global param; `-1` means unlimited):
 
-1. Sweeps every cooked or raw ingredient off the grid into a **backpack**. A raw is converted through its own tool recipe first (so the backpack only ever holds finished cooked ids); a raw with no recipe goes in as-is. Dirty stacks are left untouched.
-2. Resets every active customer's patience timer, so a `customer-timeout` loss can't immediately re-fire on the very next tick.
-3. Returns the run to `playing`.
+1. **Grid overflow** — move up to five cooked/raw ingredient units into one backpack. Dirty objects are excluded and timers are not changed.
+2. **Customer timeout** — fully refresh the expired customer's timer. Grid and queues are not changed.
+3. **Deadlock** — break ice on front-row slots and break horizontal combined blocks. Scan the queue front-to-back for loose, unfrozen ingredients that satisfy active orders and can enter their current destination; promote the first useful item in each lane, then shuffle the next three loose slots. If no useful candidate exists, promote a random item and free it from ice/grouping.
 
-Declining shows the normal failure overlay instead. Once collapsed, the backpack is a first-class ingredient source: whenever a customer needs a cooked ingredient the backpack holds, it's served from there **before** the grid is even checked (same priority Auto Complete Dish uses) — with its own fly-to-customer animation. The backpack cell is cleared only once every item in it has been drained.
+Each successful rescue returns the run to `playing`; declining shows the normal failure overlay. A backpack is a first-class ingredient source: whenever a customer needs an ingredient it holds, it is checked **before** the grid and flies through the serving row. The backpack cell is cleared once drained.
 
 ## 3. Game Structure
 
@@ -167,6 +167,7 @@ The sim raises named events that levels/maps can bind handlers to (extensible):
 - **GridOverflow** — a finished cooked ingredient had no free cell. Handler: lose.
 - **DirtyOverflow** — a dirty dish had no free cell. Handler: lose.
 - **CustomerTimeout** — a time-limited customer expired.
+- **Deadlock** — queue items remain but no lane can be picked and no cooking/flight can make progress (for example ice or an incomplete multi-input tool lock).
 - **Saved** — a Save Me rescue was accepted, reversing a loss back to `playing` (see §2.7). The only place `status` ever moves backwards.
 - **CustomerServed**, **LevelWin**, **LevelLose** — for UI/telemetry hooks.
 

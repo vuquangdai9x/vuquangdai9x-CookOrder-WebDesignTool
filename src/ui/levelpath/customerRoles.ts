@@ -144,49 +144,25 @@ export function assignSpecialAvatars(
   });
 }
 
-/**
- * Seconds of patience per ingredient slot the customer's own order needs, plus
- * a flat allowance for walking up and being noticed.
- *
- * Deliberately generous. A timer that is merely *plausible* is a timer that
- * turns a fair level into an unfair one on the runs where the queue does not
- * cooperate, and the generator has no way to know which runs those are — the
- * cost of being too generous is a level that is slightly easy, which a designer
- * can see and tighten. The cost of being too tight is a level that cannot be
- * won, which looks exactly like a level that can.
- */
+/** Fixed patience assigned by auto-generation. */
 export const WAIT_BASE_SECONDS = 60;
-export const WAIT_PER_SLOT_SECONDS = 25;
 
 /**
- * Gives `config.customer.timed` of the ordering customers a patience timer.
- *
- * `scale` is the pipeline's escalation handle: when a build comes back
- * unwinnable, the retry runs with a bigger scale, so "the timers were too
- * tight" is a failure the generator can recover from rather than only report.
+ * Gives the first `config.customer.timed` ordering customers a fixed timer.
+ * Arrival-order selection and duration are deliberately deterministic.
  */
 export function assignWaitTimes(
   customers: NodeCustomerConfig[],
   config: ObstacleConfig,
-  slotCountOf: (customer: NodeCustomerConfig) => number,
-  rand: () => number,
-  scale = 1,
 ): number {
   const wanted = Math.max(0, Math.round(config.customer.timed));
   if (wanted === 0) return 0;
 
   // Staff order nothing, so a patience timer on one has nothing to run out of.
   const eligible = customers.map((_, at) => at).filter((at) => customers[at].typeId !== 1);
-  for (let i = eligible.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [eligible[i], eligible[j]] = [eligible[j], eligible[i]];
-  }
-
   const chosen = eligible.slice(0, wanted);
   for (const at of chosen) {
-    const customer = customers[at];
-    const slots = Math.max(1, slotCountOf(customer));
-    customer.waitTime = Math.round((WAIT_BASE_SECONDS + WAIT_PER_SLOT_SECONDS * slots) * scale);
+    customers[at].waitTime = WAIT_BASE_SECONDS;
   }
   return chosen.length;
 }

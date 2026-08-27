@@ -277,7 +277,8 @@ tool.
   "pick" button (disabled + reason tooltip when blocked, e.g. still-frozen); a frozen tile also
   shows a live bottom-right badge counting down the adjacent picks still needed to break it, and
   plays a small ice-colored particle burst the instant it thaws. Remaining ingredient totals are
-  deliberately not displayed because they are hidden information. Items the currently-active
+  deliberately not displayed because they are hidden information. A drained lane stays visible
+  as an empty queue instead of collapsing, preserving lane positions. Items the currently-active
   customers need are highlighted. While the **Ingredient Pick** booster is armed (below), the
   window temporarily expands and *every* visible tile becomes clickable, not just the front row.
 - **Difficulty estimation retries**: preview demand is a light, configurable composite-only hint,
@@ -301,15 +302,15 @@ tool.
   bot; only Random and Greedy strategies.
 - **Speed** is a single option group — ×1 / ×2 / ×3 / **Skip** — where picking one deselects the
   others. Skip runs with **no animation at all**: flights land the instant they are created and
-  cooking is fast-forwarded. Pause and Restart sit alongside.
+  cooking is fast-forwarded. Speed changes never multiply customer patience countdowns; those use
+  real elapsed play time. Pause and Restart sit alongside.
 - **On a loss**, if a Save Me use remains (see below), the overlay offers **Save Me** or **Give
   Up** instead of going straight to the failure screen.
-- **Save Me**: accepting sweeps the grid's cooked/raw ingredients into a **backpack** (grid cell
-  showing a backpack icon + item-count badge), converting any raw through its own recipe first,
-  with a one-off fly-in animation for each swept item (not a tracked sim "flight" — the state
-  change already committed synchronously, this is purely cosmetic) — then resumes play with every
-  active customer's patience reset. A populated backpack renders on the grid like any other
-  occupied cell and is drained automatically as a serving source, checked **before** the grid.
+- **Save Me** is loss-specific: grid overflow packs at most five non-dirty ingredient units into a
+  backpack; timeout refreshes the expired customer's timer; deadlock breaks front-row ice and
+  horizontal combines, promotes useful loose ingredients in queue order, and shuffles the next
+  three loose slots (falling back to a random item). The overlay explains and labels the exact
+  rescue being offered. See [GDD.md](GDD.md) §2.7.
 - A win/lose overlay appears over the whole layout when the level resolves, with the reason and a
   Restart button — plus, on a win with another level after this one in the map's level list, a
   **Next Level** button that jumps straight there (same level-selection path the Level picker

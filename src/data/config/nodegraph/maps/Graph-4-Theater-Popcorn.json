@@ -980,28 +980,7 @@
         "maxQuantity": 1
       }
     ],
-    "leavesDirty": [
-      {
-        "from": "theater-popcorn",
-        "to": "dirty-popcorn-bucket"
-      },
-      {
-        "from": "simple-hotdog",
-        "to": "dirty-hotdog-tray"
-      },
-      {
-        "from": "chicken-and-potato-fried",
-        "to": "dirty-fried-basket"
-      },
-      {
-        "from": "coca-with-ice",
-        "to": "dirty-coca-cup"
-      },
-      {
-        "from": "fruit-tea-with-ice",
-        "to": "dirty-tea-glass"
-      }
-    ]
+    "leavesDirty": []
   },
   "notes": [
     {
@@ -1237,12 +1216,16 @@
       "y": 824
     },
     "dirty:dirty-coca-cup": {
-      "x": 2370,
+      "x": 2371.4641,
       "y": 1216
     },
     "dirty:dirty-tea-glass": {
       "x": 2370,
       "y": 1608
+    },
+    "table:pickupable": {
+      "x": -608.8654394068008,
+      "y": 709.1855547058002
     }
   }
 }

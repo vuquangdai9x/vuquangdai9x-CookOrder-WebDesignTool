@@ -675,35 +675,30 @@
       {
         "name": "dirty-single-tanghulu-tray",
         "displayName": "Dirty Single Tanghulu Tray",
-        "maxStack": 3,
         "emoji": "🍽️",
         "runtimeDirtyId": 0
       },
       {
         "name": "dirty-mixed-tanghulu-tray",
         "displayName": "Dirty Mixed Tanghulu Tray",
-        "maxStack": 3,
         "emoji": "🍱",
         "runtimeDirtyId": 1
       },
       {
         "name": "dirty-marshmallow-tray",
         "displayName": "Dirty Marshmallow Tray",
-        "maxStack": 3,
         "emoji": "🧺",
         "runtimeDirtyId": 2
       },
       {
         "name": "dirty-milk-tea-cup",
         "displayName": "Dirty Milk Tea Cup",
-        "maxStack": 3,
         "emoji": "🥤",
         "runtimeDirtyId": 3
       },
       {
         "name": "dirty-fruit-tea-cup",
         "displayName": "Dirty Fruit Tea Cup",
-        "maxStack": 3,
         "emoji": "🥛",
         "runtimeDirtyId": 4
       }
@@ -1120,10 +1115,6 @@
         "to": "dirty-mixed-tanghulu-tray"
       },
       {
-        "from": "marshmallow-skewer",
-        "to": "dirty-marshmallow-tray"
-      },
-      {
         "from": "milk-tea-with-topping",
         "to": "dirty-milk-tea-cup"
       },
@@ -1397,6 +1388,10 @@
     "dirty:dirty-fruit-tea-cup": {
       "x": 2040,
       "y": 1168
+    },
+    "table:pickupable": {
+      "x": -548.7665734077609,
+      "y": 1038.5908471385005
     }
   }
 }

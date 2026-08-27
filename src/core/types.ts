@@ -100,7 +100,7 @@ export interface DirtyObjectDef {
   id: Id;
   name: string;
   icon: string;
-  /** Per-type stack capacity; absent uses MapDef.dirtyStackHeight. */
+  /** Per-type stack capacity; absent defaults to 5. */
   maxStack?: number;
   fileId?: string;
   /** Bundled asset path relative to src/assets/ — tried before fileId/emoji. */

@@ -175,9 +175,6 @@ export const DEFAULT_SHUFFLE_MAX_Y = 3;
 export const MAX_SEED_ATTEMPTS = 64;
 export const DEFAULT_SEED_BUDGET_MS = 20_000;
 
-/** How much extra patience each rung of the retry ladder grants the timers. */
-export const TIME_RELAXATION_PER_STEP = 0.35;
-
 // ---------- rng ----------
 
 /**
@@ -392,8 +389,6 @@ interface BuildConfig {
   obstacles: ObstacleConfig;
   /** Size guardrails, for the post-build dish-total check. */
   bounds?: GenerateBounds;
-  /** Multiplies every generated patience timer — the retry ladder's handle. */
-  timeScale: number;
   /** Skip the deadlock audits — for callers that only want playability. */
   skipDeadlock?: boolean;
   /** Random pick orders per deadlock audit; omitted uses the small default. */
@@ -482,9 +477,7 @@ function buildCandidate(
     if (!warnings.includes(message)) warnings.push(message);
   });
 
-  const slotsOf = (customer: NodeCustomerConfig): number =>
-    customer.dishes.reduce((n, dish) => n + resolveOrder(ctx.ix, dish, ctx.ids).order.slots.length, 0);
-  assignWaitTimes(customers, config.obstacles, slotsOf, rand, config.timeScale);
+  assignWaitTimes(customers, config.obstacles);
 
   // Grid obstacles are placed against the orders that now exist, so an
   // ingredient lock is keyed to something this level actually uses.
@@ -609,7 +602,7 @@ function buildCandidate(
 }
 
 /** Everything steps 2..6 decide, for one seed. */
-export type RolledConfig = Omit<BuildConfig, "shuffleCurve" | "timeScale"> & { baseShuffle: CurveState };
+export type RolledConfig = Omit<BuildConfig, "shuffleCurve"> & { baseShuffle: CurveState };
 
 /**
  * Steps 2..6 for one seed. Rolled per seed so a retry rerolls the blanks too.
@@ -740,11 +733,6 @@ export function generateLevel(
         range: { ...baseShuffle.range, maxY },
         keyframes: structuredClone(baseShuffle.keyframes),
       };
-      // Each rung of the ladder makes the level easier in the two ways the
-      // generator controls: less queue shuffling, and more patience on the
-      // timers it handed out. Relaxing only the shuffle would leave a level
-      // that is unwinnable BECAUSE of its timers stuck failing at every rung.
-      const timeScale = 1 + TIME_RELAXATION_PER_STEP * (startMaxY - maxY);
       const candidate = buildCandidate(
         level,
         ctx,
@@ -756,7 +744,6 @@ export function generateLevel(
           laneCount,
           shuffleCurve,
           obstacles,
-          timeScale,
           ...(opts.bounds ? { bounds: opts.bounds } : {}),
           ...(opts.skipDeadlock !== undefined ? { skipDeadlock: opts.skipDeadlock } : {}),
           ...(opts.deadlockRuns !== undefined ? { deadlockRuns: opts.deadlockRuns } : {}),
@@ -798,11 +785,6 @@ export function generateLevel(
       level.customerString = candidate.customerString;
       level.queueString = candidate.queueString;
       level.gridString = candidate.gridString;
-      if (timeScale > 1 && obstacles.customer.timed > 0) {
-        warnings.push(
-          `Patience timers relaxed to ${Math.round(timeScale * 100)}% to make the level winnable.`,
-        );
-      }
       return {
         ok: true,
         seed,

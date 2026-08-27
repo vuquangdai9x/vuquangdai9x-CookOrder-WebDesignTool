@@ -69,6 +69,9 @@ import type { IdIndex } from "../data/nodeIdTable.ts";
 export { DIRTY_DISH_ID };
 export type { FlightKind, LoseReason, SimEvent, SimStatus };
 
+export const SAVE_ME_BAG_CAPACITY = 5;
+export const SAVE_ME_SHUFFLE_DEPTH = 3;
+
 /** A level whose strings speak the node graph's id space. */
 export interface NodeLevelConfig {
   id: Id;
@@ -260,6 +263,8 @@ export interface NodeSimOptions {
    * non-hot-loop query for the same question.
    */
   pickPolicy?: "any" | "wanted-only";
+  /** Play-mode loss classification; audits inspect the resting state themselves. */
+  detectDeadlockLoss?: boolean;
 }
 
 const isStaffCustomer = (c: NodeCustomerConfig) => c.typeId === CUSTOMER_STAFF;
@@ -472,15 +477,20 @@ export class NodeSimulation {
     return true;
   }
 
-  /** Advance the simulation by `dt` seconds. */
-  tick(dt: number): void {
+  /**
+   * Advance gameplay by `dt` seconds and customer patience by `customerDt`.
+   * Headless callers keep the original one-clock behavior; Play mode passes
+   * real elapsed time as the second argument so speed-up affects cooking but
+   * never makes customers less patient.
+   */
+  tick(dt: number, customerDt = dt): void {
     if (this.status !== "playing") return;
     if (this.instantFlights) this.completeAllFlights();
     this.time += dt;
     this.advanceTools(dt);
     this.settle();
     if (this.instantFlights) this.completeAllFlights();
-    this.advanceCustomers(dt);
+    this.advanceCustomers(customerDt);
     this.checkEnd();
   }
 
@@ -872,48 +882,168 @@ export class NodeSimulation {
     return true;
   }
 
-  /**
-   * Save Me: rescues a lost run, up to `maxUses` times (negative = unlimited).
-   * Sweeps every ingredient off the grid into a backpack cell without changing
-   * its processing state. Processable items can therefore fly back to a tool;
-   * the process `auto` gate applies to them exactly as it does to grid items.
-   */
-  saveMe(maxUses: number): boolean {
+  /** True when this loss has a reason-specific rescue that can change state. */
+  canSaveMe(maxUses: number): boolean {
     if (this.status !== "lost") return false;
     if (maxUses >= 0 && this.saveMeUsed >= maxUses) return false;
+    if (this.loseReason === "grid-overflow") {
+      return this.grid.some((cell) =>
+        cell.kind === "raw" || (cell.kind === "cooked" && (cell.usesLeft ?? 1) <= SAVE_ME_BAG_CAPACITY)
+      );
+    }
+    return this.loseReason === "customer-timeout" || this.loseReason === "deadlock";
+  }
 
+  /** Dispatches to one of the three deliberately distinct Save Me rescues. */
+  saveMe(
+    maxUses: number,
+    bagCapacity = SAVE_ME_BAG_CAPACITY,
+    shuffleDepth = SAVE_ME_SHUFFLE_DEPTH,
+    rng: () => number = Math.random,
+  ): boolean {
+    if (!this.canSaveMe(maxUses)) return false;
+    if (this.loseReason === "grid-overflow") return this.saveGridOverflow(bagCapacity);
+    if (this.loseReason === "customer-timeout") return this.saveCustomerTimeout();
+    return this.saveDeadlock(shuffleDepth, rng);
+  }
+
+  /** Grid overflow: place at most `capacity` non-dirty ingredient units in one bag. */
+  private saveGridOverflow(capacity: number): boolean {
     const items: number[] = [];
     let firstClearedCell = -1;
-    for (let i = 0; i < this.grid.length; i++) {
+    for (let i = 0; i < this.grid.length && items.length < Math.max(0, capacity); i++) {
       const cell = this.grid[i];
-      if (cell.kind !== "cooked" && cell.kind !== "raw") continue;
-      if (cell.kind === "cooked") {
-        // A multi-use item's remaining uses become that many backpack entries.
-        for (let n = 0; n < (cell.usesLeft ?? 1); n++) items.push(cell.ing);
-      } else {
+      if (cell.kind === "raw") {
         items.push(cell.ing);
+        this.grid[i] = { kind: "empty" };
+        if (firstClearedCell === -1) firstClearedCell = i;
+        continue;
       }
+      if (cell.kind !== "cooked") continue; // dirty objects and existing bags stay put
+      const uses = cell.usesLeft ?? 1;
+      // Keep a multi-use object whole: the backpack represents each remaining
+      // use as one entry, and partially sweeping it would leave no guaranteed
+      // free cell for the bag on a completely full board.
+      if (uses > capacity - items.length) continue;
+      for (let n = 0; n < uses; n++) items.push(cell.ing);
       this.grid[i] = { kind: "empty" };
       if (firstClearedCell === -1) firstClearedCell = i;
     }
+    if (items.length === 0) return false;
 
-    if (items.length > 0) {
-      const existingBackpack = this.grid.findIndex((c) => c.kind === "backpack");
-      if (existingBackpack !== -1) {
-        const content = this.grid[existingBackpack];
-        if (content.kind === "backpack") content.items.push(...items);
-      } else {
-        const freeCell = this.findFreeCell();
-        this.grid[freeCell !== -1 ? freeCell : firstClearedCell] = { kind: "backpack", items };
+    const existingBackpack = this.grid.findIndex((cell) => cell.kind === "backpack");
+    if (existingBackpack !== -1) {
+      const content = this.grid[existingBackpack];
+      if (content.kind === "backpack") content.items.push(...items);
+    } else {
+      const freeCell = this.findFreeCell();
+      this.grid[freeCell !== -1 ? freeCell : firstClearedCell] = { kind: "backpack", items };
+    }
+    return this.finishSaveMe(`Save Me: ${items.length} grid item(s) moved into the backpack`);
+  }
+
+  /** Customer timeout: refresh only customers whose patience reached zero. */
+  private saveCustomerTimeout(): boolean {
+    const expired = this.active.filter((customer) => customer.timeLeft <= 0);
+    const targets = expired.length > 0 ? expired : this.active.slice(0, 1);
+    if (targets.length === 0) return false;
+    for (const customer of targets) customer.timeLeft = this.customerTime(customer.config);
+    return this.finishSaveMe("Save Me: customer patience refreshed");
+  }
+
+  /**
+   * Deadlock: break top-row ice and horizontal combined blocks, promote the
+   * first useful pick found in each lane, then randomize the next few ungrouped
+   * slots. If no useful item exists, promote one random item and free it from
+   * grouping/ice so the run always receives a concrete new option.
+   */
+  private saveDeadlock(shuffleDepth: number, rng: () => number): boolean {
+    const horizontalGroups = new Set<number>();
+    for (let group = 0; group < this.groupKinds.length; group++) {
+      if (this.groupKinds[group] !== "combined") continue;
+      const cells = this.groupCells(group);
+      if (cells.some((a) => cells.some((b) => a.y === b.y && a.x !== b.x))) {
+        horizontalGroups.add(group);
+      }
+    }
+    for (const column of this.queueGrid) {
+      for (const cell of column) {
+        if (cell && horizontalGroups.has(cell.group)) cell.group = -1;
+      }
+      const front = column[0];
+      if (front && this.freezeCount(front.item) > 0) this.freezeRemaining.set(front.item, 0);
+    }
+
+    const chosenLanes = new Set<number>();
+    for (let y = 0; y < this.queueHeight; y++) {
+      for (let x = 0; x < this.queueGrid.length; x++) {
+        if (chosenLanes.has(x)) continue;
+        const cell = this.queueGrid[x][y];
+        if (!cell || !this.isDeadlockRescueCandidate(cell)) continue;
+        this.promoteQueueCell(x, y);
+        chosenLanes.add(x);
       }
     }
 
-    for (const customer of this.active) customer.timeLeft = this.customerTime(customer.config);
+    if (chosenLanes.size === 0) {
+      const occupied: { x: number; y: number }[] = [];
+      for (let y = 0; y < this.queueHeight; y++) {
+        for (let x = 0; x < this.queueGrid.length; x++) {
+          if (this.queueGrid[x][y]) occupied.push({ x, y });
+        }
+      }
+      if (occupied.length === 0) return false;
+      const pick = occupied[Math.min(occupied.length - 1, Math.floor(rng() * occupied.length))];
+      const cell = this.queueGrid[pick.x][pick.y]!;
+      if (cell.group !== -1) {
+        for (const member of this.groupCells(cell.group)) this.queueGrid[member.x][member.y]!.group = -1;
+      }
+      this.freezeRemaining.set(cell.item, 0);
+      this.promoteQueueCell(pick.x, pick.y);
+      chosenLanes.add(pick.x);
+    }
 
+    for (const x of chosenLanes) this.shuffleBelowTop(x, shuffleDepth, rng);
+    return this.finishSaveMe(
+      `Save Me: broke queue locks and prioritized ${chosenLanes.size} pickable lane(s)`,
+    );
+  }
+
+  private isDeadlockRescueCandidate(cell: NodeQueueCell): boolean {
+    if (cell.item.kind !== "ingredient" || cell.ing < 0 || cell.group !== -1) return false;
+    if (this.freezeCount(cell.item) > 0) return false;
+    if (!this.neededIngredients().has(this.ix.terminalOutput[cell.ing])) return false;
+    return this.planDispatch([cell], false).ok;
+  }
+
+  private promoteQueueCell(x: number, y: number): void {
+    if (y <= 0) return;
+    const column = this.queueGrid[x];
+    const cell = column[y];
+    for (let at = y; at > 0; at--) column[at] = column[at - 1];
+    column[0] = cell;
+  }
+
+  /** Shuffle only loose cells; grouped geometry keeps its authored shape. */
+  private shuffleBelowTop(x: number, depth: number, rng: () => number): void {
+    const column = this.queueGrid[x];
+    const positions: number[] = [];
+    for (let y = 1; y <= Math.min(Math.max(0, depth), column.length - 1); y++) {
+      if (column[y] && column[y]!.group === -1) positions.push(y);
+    }
+    for (let i = positions.length - 1; i > 0; i--) {
+      const j = Math.min(i, Math.floor(rng() * (i + 1)));
+      const a = positions[i];
+      const b = positions[j];
+      [column[a], column[b]] = [column[b], column[a]];
+    }
+  }
+
+  private finishSaveMe(message: string): true {
     this.status = "playing";
     this.loseReason = null;
     this.saveMeUsed++;
-    this.log("saved", "Save Me: grid ingredients moved into the backpack");
+    this.log("saved", message);
     return true;
   }
 
@@ -1932,7 +2062,7 @@ export class NodeSimulation {
    */
   private addDirtyDish(fromCustomer: number, dirtyId: number): void {
     const configured = dirtyId >= 0 ? this.ix.doc.vertices.dirty[dirtyId]?.maxStack : undefined;
-    const height = Math.max(1, configured ?? this.ix.doc.map.dirtyStackHeight ?? 1);
+    const height = Math.max(1, configured ?? 5);
     const openStack = this.dirtyOrder.find((i) => {
       const cell = this.grid[i];
       const pendingEntry = this.pendingDirty.get(i);
@@ -2059,6 +2189,23 @@ export class NodeSimulation {
     if (queuesEmpty && nothingMoving && backpackEmpty && this.active.length > 0) {
       if (this.options.onOutOfIngredient) this.options.onOutOfIngredient(this);
       else this.lose("out-of-ingredient", "Queues empty with orders outstanding");
+      return;
+    }
+
+    // No passage of time can change a board with no cooking/flight/raw work in
+    // progress. If every non-empty lane is blocked, classify a full usable grid
+    // as space overflow; otherwise this is a queue/tool deadlock eligible for
+    // the ice/group/prioritization Save Me.
+    const noTimedProgress = this.flights.length === 0 && this.nextCompletionIn() === null;
+    if (this.options.detectDeadlockLoss && !queuesEmpty && noTimedProgress && this.active.length > 0) {
+      const checks = this.queueGrid.map((_, lane) => this.canPick(lane));
+      if (!checks.some((check) => check.ok)) {
+        if (this.findFreeCell() === -1 && this.grid.some((cell) => cell.kind === "cooked" || cell.kind === "raw")) {
+          this.lose("grid-overflow", "No free grid slot and no queue lane can be picked");
+        } else {
+          this.lose("deadlock", "No queue lane can be picked: ice or tool inputs are locked");
+        }
+      }
     }
   }
 

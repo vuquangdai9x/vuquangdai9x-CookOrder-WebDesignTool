@@ -375,6 +375,8 @@ footer {
 }
 
 .design-split-left .customer-card {
+  /* Design mode gets 120% of the shared 2.125rem info-column width. */
+  --customer-info-width: 2.55rem;
   width: 100%;
   min-width: 0;
 }
@@ -729,6 +731,12 @@ footer {
   width: 100%;
   height: 100%;
   font-size: 4rem;
+}
+
+.save-me-reason-icon {
+  display: block;
+  font-size: 4rem;
+  line-height: 1;
 }
 
 .customer-card {

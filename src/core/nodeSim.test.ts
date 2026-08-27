@@ -153,6 +153,80 @@ describe("core loop", () => {
     expect(normal.active[0].timeLeft).toBe(10);
     expect(rainy.active[0].timeLeft).toBe(5);
   });
+
+  it("can advance cooking faster without accelerating customer patience", () => {
+    const s = sim({ queueString: "1", customerString: "0;10;0;{c0:17.{g0:18}}" });
+    expect(s.pick(0)).toBe(true);
+    s.tick(4, 1);
+    expect(s.time).toBe(4);
+    expect(s.active[0].timeLeft).toBe(9);
+  });
+});
+
+describe("reason-specific Save Me rescues", () => {
+  it("moves at most five non-dirty grid items into a bag without refreshing timers", () => {
+    const s = sim({ queueString: "0", customerString: "0;10;0;{c0:17}" });
+    const raw = ing("cheese");
+    for (let i = 0; i < 6; i++) s.grid[i] = { kind: "raw", ing: raw };
+    s.grid[6] = { kind: "dirty", dirtyId: -1, count: 2 };
+    s.active[0].timeLeft = 3;
+    s.status = "lost";
+    s.loseReason = "grid-overflow";
+
+    expect(s.saveMe(-1)).toBe(true);
+    const bag = s.grid.find((cell) => cell.kind === "backpack");
+    expect(bag).toMatchObject({ kind: "backpack", items: [raw, raw, raw, raw, raw] });
+    expect(s.grid.filter((cell) => cell.kind === "raw")).toHaveLength(1);
+    expect(s.grid.filter((cell) => cell.kind === "dirty")).toHaveLength(1);
+    expect(s.active[0].timeLeft).toBe(3);
+  });
+
+  it("refreshes only an expired customer timer and leaves the grid untouched", () => {
+    const s = sim({ queueString: "0", customerString: "0;2;0;{c0:17}" });
+    s.grid[0] = { kind: "cooked", ing: ing("cheese-sliced") };
+    s.tick(2);
+    expect(s.loseReason).toBe("customer-timeout");
+
+    expect(s.saveMe(-1)).toBe(true);
+    expect(s.active[0].timeLeft).toBe(2);
+    expect(s.grid[0]).toEqual({ kind: "cooked", ing: ing("cheese-sliced") });
+    expect(s.grid.some((cell) => cell.kind === "backpack")).toBe(false);
+  });
+
+  it("detects an ice deadlock and breaks top-row ice", () => {
+    const s = sim(
+      { queueString: "0#1:1", customerString: "0;10;0;{c0:17}" },
+      { detectDeadlockLoss: true },
+    );
+    const frozen = s.queueGrid[0][0]!.item;
+    s.tick(0);
+    expect(s.loseReason).toBe("deadlock");
+
+    expect(s.saveMe(-1, 5, 3, () => 0)).toBe(true);
+    expect(s.freezeCount(frozen)).toBe(0);
+    expect(s.canPick(0).ok).toBe(true);
+  });
+
+  it("breaks horizontal combines and promotes the first useful item in queue order", () => {
+    const grouped = sim(
+      {
+        queueString: "0#1:1%0#1:1$0-0,1-0$",
+        customerString: "0;10;0;{c0:17}",
+      },
+      { detectDeadlockLoss: true },
+    );
+    grouped.tick(0);
+    expect(grouped.loseReason).toBe("deadlock");
+    expect(grouped.saveMe(-1, 5, 3, () => 0)).toBe(true);
+    expect(grouped.queueGrid[0][0]!.group).toBe(-1);
+    expect(grouped.queueGrid[1][0]!.group).toBe(-1);
+
+    const prioritized = sim({ queueString: "5,0", customerString: "0;10;0;{c0:17}" });
+    prioritized.status = "lost";
+    prioritized.loseReason = "deadlock";
+    expect(prioritized.saveMe(-1, 5, 3, () => 0)).toBe(true);
+    expect(prioritized.queueGrid[0][0]!.ing).toBe(ing("bun"));
+  });
 });
 
 describe("the two spellings of a two-tool route", () => {
@@ -373,6 +447,28 @@ describe("dirty objects", () => {
     const dirty = s.grid.filter((c) => c.kind === "dirty");
     expect(dirty).toHaveLength(1);
     expect(dirty[0]).toMatchObject({ count: 2 });
+  });
+
+  it("defaults a blank per-node maxStack to five", () => {
+    const doc = structuredClone(burgerJson as unknown as NodeGraphMap);
+    doc.map.dirtyStackHeight = 3;
+    delete doc.vertices.dirty[0].maxStack;
+    const s = new NodeSimulation(
+      buildIndex(doc),
+      nodeLevel({
+        queueString: "0,0,0,0,0",
+        customerString: "0;0;0;{c0:17},{c0:17},{c0:17},{c0:17},{c0:17}",
+      }),
+    );
+
+    for (let served = 0; served < 5; served += 1) {
+      expect(s.autoCompleteDish()).toBe(true);
+    }
+    s.completeAllFlights();
+
+    const dirty = s.grid.filter((cell) => cell.kind === "dirty");
+    expect(dirty).toHaveLength(1);
+    expect(dirty[0]).toMatchObject({ dirtyId: 0, count: 5 });
   });
 
   it("lets a staff customer clear stacks", () => {

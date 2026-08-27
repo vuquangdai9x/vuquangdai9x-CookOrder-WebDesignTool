@@ -683,7 +683,8 @@ function installHorizontalNumberDrag(
   });
   input.addEventListener("pointermove", (event) => {
     if (pointerId !== event.pointerId) return;
-    const next = Math.max(0, Math.round(startValue + (event.clientX - startX) / 5));
+    const steps = Math.round((event.clientX - startX) / 5);
+    const next = Math.max(0, startValue + steps * 5);
     if (next === draggedValue) return;
     draggedValue = next;
     input.value = String(next);
@@ -741,9 +742,10 @@ function customerCard(
   const waitInput = el("input", {
     type: "number",
     min: "0",
+    step: "5",
     value: String(customer.waitTime),
     class: "wait-drag-input",
-    title: "Patience timer in seconds (0 = no limit). Drag left/right to adjust quickly.",
+    title: "Patience timer in seconds (0 = no limit). Drag left/right in 5-second steps.",
   }) as HTMLInputElement;
   const commitWaitTime = (value: number) => {
     customer.waitTime = Math.max(0, Math.round(value) || 0);
@@ -1042,13 +1044,18 @@ function dishMenu(
     ix.orderables.map((composite) => {
       const vertex = ix.doc.vertices.composite[composite];
       const name = vertex?.displayName ?? ix.compositeName[composite];
+      const baseIngredient = ix.slotsOfComposite[composite]
+        ?.find((slot) => slot.isBase)?.options[0];
       return {
         id: composite,
         label: name,
-        icon: iconEl(
-          { name, emoji: vertex?.emoji ?? "🍽️" },
-          { size: 32, className: "icon-composite" },
-        ),
+        // Older graph data has no composite emoji. Use the first legal base's
+        // artwork in that case so the icon row remains visually distinguishable.
+        icon: vertex?.emoji
+          ? iconEl({ name, emoji: vertex.emoji }, { size: 32, className: "icon-composite" })
+          : baseIngredient === undefined
+            ? iconEl({ name, emoji: "🍽️" }, { size: 32, className: "icon-composite" })
+            : iconFor(ix, ids, baseIngredient),
       };
     }),
     (composite) => {

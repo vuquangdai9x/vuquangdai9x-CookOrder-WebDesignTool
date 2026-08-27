@@ -32,7 +32,7 @@ describe("schema shape", () => {
 
   it("exposes a positive per-dirty-node maxStack in the generated inspector", () => {
     const field = vertexFields("dirty").find((candidate) => candidate.name === "maxStack");
-    expect(field).toMatchObject({ type: "int", min: 1 });
+    expect(field).toMatchObject({ type: "int", default: 5, min: 1 });
   });
 
   it("carries every invariant the plan relies on, each with a severity", () => {

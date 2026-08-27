@@ -644,35 +644,30 @@
       {
         "name": "dirty-sandwich-plate",
         "displayName": "Dirty Sandwich Plate",
-        "maxStack": 3,
         "emoji": "🍽️",
         "runtimeDirtyId": 0
       },
       {
         "name": "dirty-salad-bowl",
         "displayName": "Dirty Salad Bowl",
-        "maxStack": 3,
         "emoji": "🥣",
         "runtimeDirtyId": 1
       },
       {
         "name": "dirty-fries-carton",
         "displayName": "Dirty Fries Carton",
-        "maxStack": 3,
         "emoji": "🍟",
         "runtimeDirtyId": 2
       },
       {
         "name": "dirty-coca-cup",
         "displayName": "Dirty Coca Cup",
-        "maxStack": 3,
         "emoji": "🥤",
         "runtimeDirtyId": 3
       },
       {
         "name": "dirty-juice-glass",
         "displayName": "Dirty Juice Glass",
-        "maxStack": 3,
         "emoji": "🥛",
         "runtimeDirtyId": 4
       }
@@ -978,10 +973,6 @@
         "to": "dirty-salad-bowl"
       },
       {
-        "from": "seasoned-fried-potato",
-        "to": "dirty-fries-carton"
-      },
-      {
         "from": "coca-with-ice",
         "to": "dirty-coca-cup"
       },
@@ -1205,7 +1196,7 @@
       "y": 40
     },
     "dirty:dirty-salad-bowl": {
-      "x": 1710,
+      "x": 1708.5359,
       "y": 432
     },
     "dirty:dirty-fries-carton": {
@@ -1219,6 +1210,10 @@
     "dirty:dirty-juice-glass": {
       "x": 1710,
       "y": 1608
+    },
+    "table:pickupable": {
+      "x": -763.0856596873009,
+      "y": 1194.2153947445004
     }
   }
 }

@@ -631,35 +631,30 @@
       {
         "name": "dirty-pizza-plate",
         "displayName": "Dirty Pizza Plate",
-        "maxStack": 3,
         "emoji": "🍽️",
         "runtimeDirtyId": 0
       },
       {
         "name": "dirty-spaghetti-bowl",
         "displayName": "Dirty Spaghetti Bowl",
-        "maxStack": 3,
         "emoji": "🍝",
         "runtimeDirtyId": 1
       },
       {
         "name": "dirty-penne-bowl",
         "displayName": "Dirty Penne Bowl",
-        "maxStack": 3,
         "emoji": "🥘",
         "runtimeDirtyId": 2
       },
       {
         "name": "dirty-fettuccine-bowl",
         "displayName": "Dirty Fettuccine Bowl",
-        "maxStack": 3,
         "emoji": "🍜",
         "runtimeDirtyId": 3
       },
       {
         "name": "dirty-soup-bowl",
         "displayName": "Dirty Soup Bowl",
-        "maxStack": 3,
         "emoji": "🥣",
         "runtimeDirtyId": 4
       }
@@ -1208,12 +1203,16 @@
       "y": 604
     },
     "dirty:dirty-fettuccine-bowl": {
-      "x": 2370,
-      "y": 776
+      "x": 2368.79,
+      "y": 777.21
     },
     "dirty:dirty-soup-bowl": {
       "x": 2370,
       "y": 1168
+    },
+    "table:pickupable": {
+      "x": -543.1659428924686,
+      "y": 1091.3735062015355
     }
   }
 }

@@ -47,7 +47,11 @@ import {
   EFFECT_HOLDING_KEY,
 } from "../../core/effects.ts";
 import { BOOSTER_PARAMS, GLOBAL_DEFS, KEY_COLORS } from "../../data/configLoader.ts";
-import { NodeSimulation } from "../../core/nodeSim.ts";
+import {
+  NodeSimulation,
+  SAVE_ME_BAG_CAPACITY,
+  SAVE_ME_SHUFFLE_DEPTH,
+} from "../../core/nodeSim.ts";
 import type { NodeCustomerState, NodeQueueCell } from "../../core/nodeSim.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import type { GraphIndex, ProcessStep } from "../../core/nodeIndex.ts";
@@ -289,7 +293,10 @@ export class NodePlayView {
     // instantFlights OFF: this view animates every transfer and commits it in
     // the landing callback. With it on, the sim would resolve each hand-off
     // the moment it was created and there would be nothing left to animate.
-    this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level), { instantFlights: false });
+    this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level), {
+      instantFlights: false,
+      detectDeadlockLoss: true,
+    });
     this.animating.clear();
     this.pendingPickOrigins = [];
     this.boosterCharges = [...(this.level.boosterCharges ?? [3, 3, 3, 3])];
@@ -397,7 +404,8 @@ export class NodePlayView {
         this.syncPage();
         return;
       }
-      this.sim.tick((TICK_MS / 1000) * this.speedFactor);
+      const realSeconds = TICK_MS / 1000;
+      this.sim.tick(realSeconds * this.speedFactor, realSeconds);
       this.dispatchFlights();
       this.syncPage();
     }, TICK_MS);
@@ -1436,7 +1444,6 @@ export class NodePlayView {
     lanes.style.setProperty("--window-rows", String(this.windowRows));
 
     for (let x = 0; x < sim.columnCount; x++) {
-      if (sim.remainingIn(x) === 0 && !this.replay) continue;
       const check = sim.canPick(x);
       const replayScore = replayStep?.laneScores[x];
       const picked = replayStep?.lane === x;
@@ -1630,15 +1637,31 @@ export class NodePlayView {
   /** One-more-chance offer on loss — see canOfferSaveMe()/handleSaveMe(). */
   private saveMeOverlay(): HTMLElement {
     const sim = this.sim;
+    const reason = sim.loseReason;
+    const rescue = reason === "grid-overflow"
+      ? {
+          icon: backpackIconEl(64),
+          copy: `Save Me: place up to ${SAVE_ME_BAG_CAPACITY} non-dirty grid items into a bag.`,
+          button: "🎒 Pack grid items",
+        }
+      : reason === "customer-timeout"
+        ? {
+            icon: el("span", { class: "save-me-reason-icon" }, ["⏱️"]),
+            copy: "Save Me: fully refresh the timed-out customer's patience.",
+            button: "⏱️ Refresh timer",
+          }
+        : {
+            icon: el("span", { class: "save-me-reason-icon" }, ["🧊"]),
+            copy: `Save Me: break top-row ice and horizontal combines, prioritize useful picks, then shuffle the next ${SAVE_ME_SHUFFLE_DEPTH} slots.`,
+            button: "🧊 Break deadlock",
+          };
     return el("div", { class: "overlay lost save-me" }, [
       el("h2", {}, ["\u{1F4A5} Level failed"]),
       el("p", {}, [sim.events.at(-1)?.message ?? ""]),
-      backpackIconEl(64),
-      el("p", { class: "sub" }, [
-        "Save Me: collapse the grid's ingredients into your backpack and keep playing.",
-      ]),
+      rescue.icon,
+      el("p", { class: "sub" }, [rescue.copy]),
       el("div", { class: "overlay-actions" }, [
-        button("\u{1F392} Save Me", () => this.handleSaveMe(), { class: "primary" }),
+        button(rescue.button, () => this.handleSaveMe(), { class: "primary" }),
         button("Give Up", () => {
           this.saveMeDeclined = true;
           this.overlayEl?.remove();
@@ -1652,7 +1675,7 @@ export class NodePlayView {
   /** Whether the Save Me offer, rather than the plain failure panel, shows on this loss. */
   private canOfferSaveMe(): boolean {
     const cap = BOOSTER_PARAMS.saveMeCount;
-    return this.sim.status === "lost" && !this.saveMeDeclined && (cap < 0 || this.sim.saveMeUsed < cap);
+    return !this.saveMeDeclined && this.sim.canSaveMe(cap);
   }
 
   /**
@@ -1663,19 +1686,25 @@ export class NodePlayView {
    */
   private handleSaveMe(): void {
     const origins: Point[] = [];
-    for (let i = 0; i < this.sim.grid.length; i++) {
+    for (let i = 0; i < this.sim.grid.length && origins.length < SAVE_ME_BAG_CAPACITY; i++) {
       const content = this.sim.grid[i];
       if (content.kind !== "cooked" && content.kind !== "raw") continue;
       const cellMain = this.page.querySelector(`[data-cell="${i}"] .cell-main`);
       if (cellMain) origins.push(centerOf(cellMain));
     }
 
-    if (!this.sim.saveMe(BOOSTER_PARAMS.saveMeCount)) return;
+    const wasGridOverflow = this.sim.loseReason === "grid-overflow";
+    if (!this.sim.saveMe(
+      BOOSTER_PARAMS.saveMeCount,
+      SAVE_ME_BAG_CAPACITY,
+      SAVE_ME_SHUFFLE_DEPTH,
+    )) return;
 
     this.fullRender();
     this.refreshBoosters();
     this.startClock();
 
+    if (!wasGridOverflow) return;
     const at = this.sim.grid.findIndex((c) => c.kind === "backpack");
     const backpack = at !== -1 ? this.page.querySelector(`[data-cell="${at}"]`) : null;
     if (!backpack || origins.length === 0 || this.skipMode) return;

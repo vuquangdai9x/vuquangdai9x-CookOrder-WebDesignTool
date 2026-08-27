@@ -8,7 +8,8 @@ export type LoseReason =
   | "grid-overflow"
   | "dirty-overflow"
   | "out-of-ingredient"
-  | "customer-timeout";
+  | "customer-timeout"
+  | "deadlock";
 
 export type FlightKind =
   | "queue-to-tool"

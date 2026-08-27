@@ -117,7 +117,7 @@
       "type": "int",
       "required": true,
       "min": 1,
-      "description": "Fallback stack capacity for dirty nodes whose maxStack is blank."
+      "description": "Legacy map-wide dirty stack capacity. New dirty nodes use their per-node maxStack setting."
     },
     {
       "name": "visibleRows",
@@ -374,8 +374,9 @@
         {
           "name": "maxStack",
           "type": "int",
+          "default": 5,
           "min": 1,
-          "description": "Maximum number of this dirty object in one grid-cell stack. Leave blank to use the map dirtyStackHeight fallback."
+          "description": "Maximum number of this dirty object in one grid-cell stack. A blank value defaults to 5."
         },
         {
           "name": "emoji",
