@@ -57,6 +57,7 @@ const CORE_STAT_COLUMNS: ColumnDef[] = [
   { id: "stat-dishes", group: "statistic", label: "Dishes", title: "Num Dishes", width: 62, metric: (s) => s.numDishes },
   { id: "stat-ingredients", group: "statistic", label: "Ingr.", title: "Num Ingredients ordered", width: 62, metric: (s) => s.numIngredients },
   { id: "stat-coin", group: "statistic", label: "Coin", title: "Total coin collected across every ordered ingredient", width: 68, metric: (s) => s.totalCoin },
+  { id: "stat-price", group: "statistic", label: "Price", title: "Sum of concrete ingredient prices in every ordered dish combination", width: 72, metric: (s) => s.totalPrice },
   { id: "stat-types", group: "statistic", label: "Types", title: "Distinct item types in the queue", width: 62, metric: (s) => s.itemTypes },
 ];
 

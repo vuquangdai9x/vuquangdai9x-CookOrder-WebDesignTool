@@ -1,0 +1,24 @@
+﻿Customers,,,"dog_boy,cat_chill,bear_cute,rabbit_cute,cat_cute,rat_red,pig_boss,beaver_logger,cow_rebel,squirrel_girl,tanuki_boy,skunk_socialite,bird_green,bison_gentleman,eagle_police,fox_lady,koala_seifuku,goat_blue,lion_boy,wolf_yakuza,shiba_sumo",,,,,,,
+,,,,,,,,,,
+Index,Id,Name,Desc,Type,Base Map,MapIndex,FileID,,Icon,Note
+0,dog_boy,Benny Bark,A loyal little diner who treats every burger like a tail-wagging treasure.,Normal,burger,1,15enalhSxyu97FWpa8azr06UrdnQzaAxB,,,
+1,cat_chill,Coolcat Clyde,Too cool to hurry and always orders with a perfectly timed purr.,Normal,burger,1,1-i_cPPiPoOt071wDSGyqOWdaPQYheTdl,,,
+2,bear_cute,Honey Hug Bear,Sweet as honey and twice as cuddly when the fries arrive.,Normal,burger,1,1F0Do-D0BQjv6jAUH7_iXm2AN6BIQvM3B,,,
+3,rabbit_cute,Bunbun Bella,Bounces in hungry and leaves with crumbs on both cheeks.,Normal,burger,1,1PHXhJJd1O-ymCGsmWdVXwqV2PUv4qZVc,,,
+4,cat_cute,Kitty Cupcake,Tiny paws big appetite and absolutely no shame about extra cheese.,Normal,burger,1,1U99PGtsrZzJ7na8y2wfODZTjks-9mFPO,,,
+5,rat_red,Red Rat Courier,The fastest red-tailed courier in town unless someone drops a fry.,Shipper,burger,1,1rEF7SI9hqE7FpmOMrxpfQV45gjiBEbZA,,,
+6,pig_boss,Boss Hogsworth,Runs the lunch rush like a boardroom and demands premium pickles.,Boss,burger,1,1SdSwdru1hDuFmqYys216EK1Y46kJNKan,,,
+7,beaver_logger,Brewster Beaver,Can spot a strong brew faster than a falling timber.,Normal,coffee,2,1RIcnFQY7-IMfI5QzFf15WN3MST1tkSbX,,,
+8,cow_rebel,Mocha Moo Rebel,Breaks cafe rules drinks bold roasts and never says moo softly.,Normal,coffee,2,1Pto4VM2n7HPApVyzfDR9waOHzAtjHkTg,,,
+9,squirrel_girl,Hazel Squirrel,Carries emergency acorns and judges every latte by its foam.,Normal,coffee,2,1czd-rmVvnCXR7eZ00L4DPR6wILPObISM,,,
+10,tanuki_boy,Tobi Tanuki,A cheerful trickster who somehow pays with leaves and perfect change.,Normal,coffee,2,19D-MX8WATP_MI3QFo8zW6DjRQtVGTlBz,,,
+11,skunk_socialite,Scent-sational Skunk,Arrives fashionably scented and turns every coffee break into a gala.,Normal,coffee,2,1V2gGw9rCR-eKLwnFO_NzD5OjnvGsOnlS,,,skunk
+12,bird_green,Greenwing Bird Courier,Delivers coffee at wing speed while keeping every feather spotless.,Shipper,coffee,2,1MWHrBcQ9paL-IK6zGRENkX96U6-Z8gvT,,,
+13,bison_gentleman,Baron Bison,A polished cafe boss who considers foam art serious business.,Boss,coffee,2,1uCqtpxYPUa5mKxUclIKCguUORDVSdUGy,,,Bison
+14,eagle_police,Chief Eagle,Keeps the cafe orderly with eagle eyes and a badge-shaped cookie.,Boss,coffee,2,1ulKmqK-20dtBXHUXITef7ZZE8lWLTsIA,,,
+15,fox_lady,Kitsune Ojou,A graceful kitsune guest who orders sushi with theatrical elegance.,Normal,sushi,3,1rQ-i8l5E7ne6mv6PRQaePJDtCVTW3dZQ,,,
+16,koala_seifuku,Koala Senpai,Studies the menu diligently but still trades lunch for eucalyptus.,Normal,sushi,3,1hgUG3VhIPENZeBVZAPiEwDiCVdR-Ivsy,,,con này hình như là koala
+17,goat_blue,Aoi Yagi,This blue goat loves matcha and practices cheerful table manners.,Normal,sushi,3,1sqBzV-M_td_WEtmG9-B8jYwVzvkR5I9c,,,
+18,lion_boy,Shishi-kun,A brave little shishi who challenges every sushi roll to a duel.,Normal,sushi,3,1P9d3nLCt0_DXl-ujAfVAZLQZIegpT-Yy,,,lion
+19,wolf_yakuza,Ookami Oyabun,The wolf oyabun speaks softly and controls the sushi counter with one stare.,Boss,sushi,3,1zGLAMmTrzPfFfjsxI-yr2flmm_AWyLuH,,,
+20,shiba_sumo,Shiba Yokozuna,A shiba yokozuna who treats every sushi platter like a championship bout.,Boss,sushi,3,1Bxp3-k2xihMZypCQK5qb3JVHZvr21lQa,,,

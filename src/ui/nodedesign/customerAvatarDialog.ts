@@ -34,6 +34,17 @@ function groupOrder(catalog: CustomerCatalogEntry[]): string[] {
 export function openCustomerAvatarDialog(opts: CustomerAvatarDialogOptions): void {
   const close = () => overlay.remove();
 
+  const selectedEntry = opts.catalog.find((entry) => entry.index === opts.selectedIndex);
+  const detailName = el("strong", { class: "avatar-hover-name" });
+  const detailDesc = el("span", { class: "avatar-hover-desc" });
+  const detail = el("div", { class: "avatar-hover-detail", "aria-live": "polite" }, [detailName, detailDesc]);
+  const showDetail = (entry: CustomerCatalogEntry | undefined) => {
+    detail.classList.toggle("empty", !entry);
+    detailName.textContent = entry?.name || (entry ? entry.id : "Hover an avatar");
+    detailDesc.textContent = entry?.desc || (entry ? "No description yet." : "See their name and description here.");
+  };
+  showDetail(selectedEntry);
+
   const groups = groupOrder(opts.catalog);
   const sections = groups.map((baseMap) => {
     const rows = opts.catalog.filter((e) => e.baseMap === baseMap);
@@ -49,6 +60,12 @@ export function openCustomerAvatarDialog(opts: CustomerAvatarDialogOptions): voi
         close();
       },
       opts.selectedIndex,
+      (catalogIndex) => {
+        const entry = catalogIndex === null
+          ? selectedEntry
+          : opts.catalog.find((candidate) => candidate.index === catalogIndex);
+        showDetail(entry);
+      },
     );
     return el("details", { class: "avatar-map-group", ...(isCurrent ? { open: "" } : {}) }, [
       el("summary", {}, [baseMap || "Unassigned", ` (${rows.length})`]),
@@ -65,6 +82,7 @@ export function openCustomerAvatarDialog(opts: CustomerAvatarDialogOptions): voi
       },
       { class: "full-btn", title: "Unpin — Play mode shows a random Normal-type customer from this level's map" },
     ),
+    detail,
     ...sections,
   ]);
 

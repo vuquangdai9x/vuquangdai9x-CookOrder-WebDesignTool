@@ -158,6 +158,8 @@ export interface ToolVertex {
   preservationSlots?: number;
   /** Default seconds per item; a process edge may override it. */
   cookingTime: number;
+  /** Runtime speed multiplier exported through the GraphLookupData sheet. */
+  speedMul?: number;
   upgradeCosts?: number[];
   emoji?: string;
   localImage?: string;

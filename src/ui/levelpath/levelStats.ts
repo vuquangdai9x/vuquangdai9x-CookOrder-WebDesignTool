@@ -12,7 +12,7 @@
 // are what turn them back into a label and an emoji for the header.
 
 import { parseGrid, parseQueueGroups, parseQueues } from "../../core/parser.ts";
-import { parseNodeCustomers } from "../../core/nodeParser.ts";
+import { dishIngredientIds, parseNodeCustomers } from "../../core/nodeParser.ts";
 import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
 import { resolveOrder } from "../../core/nodeOrder.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
@@ -35,6 +35,8 @@ export interface LevelStats {
   numIngredients: number;
   /** Sum of the ordered ingredients' `price`. */
   totalCoin: number;
+  /** Sum of every concrete ingredient written directly in the ordered dish combinations. */
+  totalPrice: number;
   /** Distinct ingredient ids appearing anywhere in the queue. */
   itemTypes: number;
   /** Queue lanes, and total tiles across them. */
@@ -59,6 +61,7 @@ const emptyStats = (): LevelStats => ({
   numDishes: 0,
   numIngredients: 0,
   totalCoin: 0,
+  totalPrice: 0,
   itemTypes: 0,
   numLanes: 0,
   numQueueItems: 0,
@@ -94,6 +97,11 @@ function addCustomerStats(
     if (customer.waitTime > 0) stats.numTimedCustomers++;
     stats.numDishes += customer.dishes.length;
     for (const dish of customer.dishes) {
+      for (const ingredientId of dishIngredientIds(dish)) {
+        const name = ids.byId.ingredient.get(ingredientId);
+        const ingredientIndex = name === undefined ? undefined : ix.ingByName.get(name);
+        stats.totalPrice += ingredientIndex === undefined ? 0 : (ix.doc.vertices.ingredient[ingredientIndex]?.price ?? 0);
+      }
       const { order } = resolveOrder(ix, dish, ids);
       stats.numIngredients += order.slots.length;
       for (const slot of order.slots) {

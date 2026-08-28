@@ -778,6 +778,13 @@ function customerCard(
     }),
   );
   const avatarSlot = el("div", { class: "customer-avatar-slot" });
+  avatarSlot.title = "Right-click to change this customer's avatar";
+  avatarSlot.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeContextMenu();
+    openAvatarPicker(section, deps, customer);
+  });
   if (avatarEntry) {
     avatarSlot.append(iconEl(customerAvatarIconSpec(avatarEntry), { className: "customer-avatar-bg" }));
   } else if (staff) {
@@ -1208,17 +1215,7 @@ function cardMenu(
     {
       label: "Change avatar…",
       separator: true,
-      onSelect: () => {
-        openCustomerAvatarDialog({
-          catalog: getCustomerCatalog(),
-          currentBaseMap: deps.ix.doc.map.id,
-          selectedIndex: customer.customerIndex,
-          onPick: (catalogIndex) => {
-            customer.customerIndex = catalogIndex;
-            section.commit("Change customer avatar");
-          },
-        });
-      },
+      onSelect: () => openAvatarPicker(section, deps, customer),
     },
     {
       label: "Duplicate",
@@ -1236,4 +1233,20 @@ function cardMenu(
       },
     },
   ];
+}
+
+function openAvatarPicker(
+  section: Section<NodeCustomerConfig[]>,
+  deps: NodeCustomerSectionDeps,
+  customer: NodeCustomerConfig,
+): void {
+  openCustomerAvatarDialog({
+    catalog: getCustomerCatalog(),
+    currentBaseMap: deps.ix.doc.map.id,
+    selectedIndex: customer.customerIndex,
+    onPick: (catalogIndex) => {
+      customer.customerIndex = catalogIndex;
+      section.commit("Change customer avatar");
+    },
+  });
 }

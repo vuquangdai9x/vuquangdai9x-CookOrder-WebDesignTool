@@ -26,7 +26,7 @@ export class FirebasePermissionError extends Error {
   }
 }
 
-interface RemoteConfigParameter {
+export interface RemoteConfigParameter {
   defaultValue?: { value?: string };
   [key: string]: unknown;
 }
@@ -88,14 +88,41 @@ async function putTemplate(projectId: string, token: string, template: RemoteCon
  * Adds or updates exactly one Remote Config parameter's defaultValue,
  * leaving every other parameter in the template untouched.
  */
-export async function pushRemoteConfigParameter(projectId: string, key: string, value: string): Promise<void> {
+async function updateRemoteConfigParameter(
+  projectId: string,
+  key: string,
+  transform: (current: RemoteConfigParameter | undefined) => RemoteConfigParameter | undefined,
+): Promise<RemoteConfigParameter | undefined> {
   const token = await requestFirebaseAccessTokenInteractive();
   for (let attempt = 0; attempt < 2; attempt++) {
     const { template, etag } = await fetchTemplate(projectId, token);
     const parameters = { ...(template.parameters ?? {}) };
-    parameters[key] = { ...(parameters[key] ?? {}), defaultValue: { value } };
+    const previous = parameters[key] ? structuredClone(parameters[key]) : undefined;
+    const next = transform(previous);
+    if (next === undefined) delete parameters[key];
+    else parameters[key] = next;
     const ok = await putTemplate(projectId, token, { ...template, parameters }, etag);
-    if (ok) return;
+    if (ok) return previous;
   }
   throw new Error("Remote Config write conflicted twice — try again");
+}
+
+export async function pushRemoteConfigParameter(
+  projectId: string,
+  key: string,
+  value: string,
+): Promise<RemoteConfigParameter | undefined> {
+  return updateRemoteConfigParameter(projectId, key, (current) => ({
+    ...(current ?? {}),
+    defaultValue: { value },
+  }));
+}
+
+/** Restores an exact parameter snapshot; undefined removes a parameter created by the action being undone. */
+export async function restoreRemoteConfigParameter(
+  projectId: string,
+  key: string,
+  parameter: RemoteConfigParameter | undefined,
+): Promise<void> {
+  await updateRemoteConfigParameter(projectId, key, () => parameter ? structuredClone(parameter) : undefined);
 }

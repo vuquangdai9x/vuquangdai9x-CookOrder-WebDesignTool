@@ -50,7 +50,7 @@ export class SheetPermissionError extends Error {
   }
 }
 
-async function fetchTabValues(tabName: string, token: string, sheetId: string): Promise<string[][]> {
+export async function fetchTabValues(tabName: string, token: string, sheetId: string): Promise<string[][]> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(tabName)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 401) {

@@ -113,4 +113,32 @@ describe("computeLevelStats", () => {
     expect(stats.numDishes).toBe(3);
     expect(stats.numIngredients).toBe(3);
   });
+
+  it("prices every concrete ingredient written in composite combinations", () => {
+    const pricedDoc = structuredClone(doc);
+    const orderable = buildIndex(pricedDoc).orderables[0];
+    const pricedIx = buildIndex(pricedDoc);
+    const pricedIds = buildIdIndex(pricedDoc.idTable);
+    const compositeId = pricedIds.byNode.composite.get(pricedIx.compositeName[orderable])!;
+    const slots = pricedIx.slotsOfComposite[orderable];
+    const base = slots.find((slot) => slot.isBase)!.options[0];
+    const topping = slots.find((slot) => !slot.isBase)!.options[0];
+    const baseName = pricedIx.ingName[base];
+    const toppingName = pricedIx.ingName[topping];
+    pricedDoc.vertices.ingredient.find((candidate) => candidate.name === baseName)!.price = 7;
+    pricedDoc.vertices.ingredient.find((candidate) => candidate.name === toppingName)!.price = 3;
+    const rebuiltIx = buildIndex(pricedDoc);
+    const baseId = pricedIds.byNode.ingredient.get(baseName)!;
+    const toppingId = pricedIds.byNode.ingredient.get(toppingName)!;
+    const groupId = pricedIds.byNode.group.get(
+      rebuiltIx.groupName[slots.find((slot) => !slot.isBase)!.group],
+    )!;
+
+    const stats = computeLevelStats(
+      level({ customerString: `0;0;0;{c${compositeId}:${baseId}.{g${groupId}:${toppingId}.${toppingId}}}` }),
+      rebuiltIx,
+      pricedIds,
+    );
+    expect(stats.totalPrice).toBe(13);
+  });
 });

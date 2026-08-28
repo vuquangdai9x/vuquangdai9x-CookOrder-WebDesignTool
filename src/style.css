@@ -779,6 +779,7 @@ footer {
   justify-content: center;
   overflow: hidden;
   width: 100%;
+  cursor: context-menu;
 }
 
 /* Avatar art now belongs only to the Info section and is fully opaque. */
@@ -2707,6 +2708,21 @@ td input {
   gap: 1rem;
 }
 
+.remote-page:focus {
+  outline: none;
+}
+
+.remote-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.remote-title-row h2 {
+  margin: 0;
+  flex: 1;
+}
+
 .remote-hint {
   color: var(--muted);
   font-size: 0.85rem;
@@ -3082,6 +3098,33 @@ td input {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.avatar-hover-detail {
+  min-height: 3.2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.avatar-hover-detail.empty {
+  border-color: var(--line);
+}
+
+.avatar-hover-name {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.avatar-hover-desc {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .avatar-map-group {
@@ -4425,6 +4468,33 @@ td input {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-2);
+}
+
+.remote-config-foldout {
+  margin-top: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.remote-config-foldout > summary {
+  cursor: pointer;
+  padding: 0.6rem 0.75rem;
+  font-weight: 600;
+}
+
+.remote-config-body {
+  padding: 0 0.75rem 0.75rem;
+}
+
+.remote-config-heading {
+  margin: 0.75rem 0 0.45rem;
+  font-size: 0.9rem;
+}
+
+.remote-firebase-config {
+  display: inline-flex;
+  margin-top: 0.75rem;
 }
 
 .nodegraph-idtable-map-config h3 {

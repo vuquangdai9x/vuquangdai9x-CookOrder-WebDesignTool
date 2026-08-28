@@ -43,6 +43,10 @@ export class NodeRemoteDataView extends RemoteDataView {
         [entry.doc.map.id, entry.doc.map.id],
       ]),
     );
+    const graphLookupMaps = NODE_DOCS.flatMap((entry) => {
+      const source = projects.find((candidate) => candidate.docId === entry.id);
+      return source ? [{ index: entry.index, doc: source.doc }] : [];
+    });
     super(root, map, getSheetId, setSheetId, () => {}, onOpenInDesign, {
       scope: "node",
       mapId: project.doc.map.id,
@@ -51,12 +55,18 @@ export class NodeRemoteDataView extends RemoteDataView {
       startRow: nodeColumnsJson.startRow,
       mapSources,
       sheetMapAliases,
+      graphLookupMaps,
       createLevel: (mapId, levelId) => {
         const source = projects.find((candidate) => candidate.doc.map.id === mapId);
         return source ? blankLevel(source.doc, levelId) : null;
       },
       onMapLevelChanged: (mapId) => {
         const changed = projects.find((source) => source.doc.map.id === mapId);
+        if (changed) saveNodeProject(changed);
+      },
+      onGraphLookupChanged: (mapIndex) => {
+        const docId = NODE_DOCS.find((entry) => entry.index === mapIndex)?.id;
+        const changed = projects.find((source) => source.docId === docId);
         if (changed) saveNodeProject(changed);
       },
       onOpenMapInDesign: (mapId, levelId) => {

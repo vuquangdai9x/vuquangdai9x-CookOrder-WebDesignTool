@@ -258,6 +258,12 @@
           "description": "Default seconds per item; a process edge may override it."
         },
         {
+          "name": "speedMul",
+          "type": "number",
+          "min": 0.000001,
+          "description": "Optional runtime speed multiplier synchronized through GraphLookupData."
+        },
+        {
           "name": "upgradeCosts",
           "type": "int[]",
           "description": "Coin cost per upgrade step, indexed from level 1."

@@ -26,6 +26,7 @@
 import type { LevelSheetRow, RemoteSheetColumns, RemoteSheetMapAliases } from "../../data/sheetSource.ts";
 import {
   columnLetter,
+  fetchTabValues,
   fetchLevelProgressRows,
   letterToColumn,
   REMOTE_LEVEL_FIELDS,
@@ -36,13 +37,29 @@ import {
   SheetPermissionError,
 } from "../../data/sheetSource.ts";
 import { REMOTE_KEYS } from "../../data/configLoader.ts";
+import {
+  applyGraphLookupRows,
+  GRAPH_LOOKUP_DEFAULT_COLUMNS,
+  GRAPH_LOOKUP_START_ROW,
+  GRAPH_LOOKUP_TAB,
+  graphLookupRows,
+  parseGraphLookupRows,
+  type GraphLookupColumns,
+  type GraphLookupMap,
+} from "../../data/graphLookupData.ts";
 import type { LevelData, MapData } from "../../data/mapLoader.ts";
 import { requestAccessTokenInteractive } from "../../data/googleAuth.ts";
 import { batchUpdateCells } from "../../data/sheetWrite.ts";
 import type { CellUpdate } from "../../data/sheetWrite.ts";
-import { FirebaseAuthRequiredError, FirebasePermissionError, pushRemoteConfigParameter } from "../../data/remoteConfigWrite.ts";
+import {
+  FirebaseAuthRequiredError,
+  FirebasePermissionError,
+  pushRemoteConfigParameter,
+  restoreRemoteConfigParameter,
+} from "../../data/remoteConfigWrite.ts";
 import { showSheetPermissionDialog } from "../sheetPermissionDialog.ts";
 import { button, el } from "../dom.ts";
+import { bindUndoRedoKeys } from "../history.ts";
 
 interface LevelEntry {
   key: string;
@@ -72,6 +89,15 @@ export interface RemoteDataViewOptions {
   createLevel?: (mapId: string, levelId: number) => LevelData | null;
   onMapLevelChanged?: (mapId: string) => void;
   onOpenMapInDesign?: (mapId: string, levelId: number) => void;
+  /** Node graphs addressable by the numeric Map key in GraphLookupData. */
+  graphLookupMaps?: GraphLookupMap[];
+  onGraphLookupChanged?: (mapIndex: number) => void;
+}
+
+interface RemoteHistoryAction {
+  label: string;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
 }
 
 interface RemoteViewState {
@@ -81,6 +107,10 @@ interface RemoteViewState {
   tabName: string;
   columnOverrides: RemoteSheetColumns;
   startRow: number;
+  graphTabName: string;
+  graphColumnOverrides: GraphLookupColumns;
+  graphStartRow: number;
+  configOpen: boolean;
   /** Project id for the "Push Remote Config" button — blank until the designer pastes one in. */
   firebaseProjectId: string;
 }
@@ -191,6 +221,11 @@ export class RemoteDataView {
   private setRowStatusByKey = new Map<string, (status: RowStatus, error?: string) => void>();
   private groupStatusByTitle = new Map<string, HTMLElement>();
   private pageStatusEl!: HTMLElement;
+  private undoStack: RemoteHistoryAction[] = [];
+  private redoStack: RemoteHistoryAction[] = [];
+  private undoBtn!: HTMLButtonElement;
+  private redoBtn!: HTMLButtonElement;
+  private historyBusy = false;
 
   constructor(
     root: HTMLElement,
@@ -218,8 +253,16 @@ export class RemoteDataView {
       tabName: this.defaultTabName,
       columnOverrides: { ...(options.columns ?? REMOTE_SHEET_COLUMNS) },
       startRow: options.startRow ?? 4,
+      graphTabName: GRAPH_LOOKUP_TAB,
+      graphColumnOverrides: { ...GRAPH_LOOKUP_DEFAULT_COLUMNS },
+      graphStartRow: GRAPH_LOOKUP_START_ROW,
+      configOpen: false,
       firebaseProjectId: "",
     };
+    this.state.graphTabName ??= GRAPH_LOOKUP_TAB;
+    this.state.graphColumnOverrides ??= { ...GRAPH_LOOKUP_DEFAULT_COLUMNS };
+    this.state.graphStartRow ??= GRAPH_LOOKUP_START_ROW;
+    this.state.configOpen ??= false;
     if (!existing) scopedStates.set(options.scope, this.state);
     this.groups = this.buildGroups();
     this.build();
@@ -382,6 +425,8 @@ export class RemoteDataView {
     this.setRowStatusByKey.clear();
     this.groupStatusByTitle.clear();
     const page = el("div", { class: "remote-page" });
+    page.tabIndex = 0;
+    bindUndoRedoKeys(page, { undo: () => void this.runHistory("undo"), redo: () => void this.runHistory("redo") });
 
     this.pageStatusEl = el("span", { class: "remote-status" }, []);
     const sheetIdInput = el("input", {
@@ -401,6 +446,15 @@ export class RemoteDataView {
       tabNameInput.value = this.state.tabName;
       for (const refresh of this.refreshRowByKey.values()) refresh();
     });
+    const graphTabNameInput = el("input", {
+      type: "text",
+      value: this.state.graphTabName,
+      class: "sheet-id-input",
+    }) as HTMLInputElement;
+    graphTabNameInput.addEventListener("change", () => {
+      this.state.graphTabName = graphTabNameInput.value.trim() || GRAPH_LOOKUP_TAB;
+      graphTabNameInput.value = this.state.graphTabName;
+    });
     const startRowInput = el("input", {
       type: "number",
       min: "1",
@@ -411,6 +465,16 @@ export class RemoteDataView {
       this.state.startRow = Math.max(1, Number(startRowInput.value) || 1);
       startRowInput.value = String(this.state.startRow);
       for (const refresh of this.refreshRowByKey.values()) refresh();
+    });
+    const graphStartRowInput = el("input", {
+      type: "number",
+      min: "1",
+      value: String(this.state.graphStartRow),
+      class: "sheet-id-input column-letter-input",
+    }) as HTMLInputElement;
+    graphStartRowInput.addEventListener("change", () => {
+      this.state.graphStartRow = Math.max(1, Number(graphStartRowInput.value) || 1);
+      graphStartRowInput.value = String(this.state.graphStartRow);
     });
     const firebaseProjectIdInput = el("input", {
       type: "text",
@@ -425,7 +489,12 @@ export class RemoteDataView {
 
     // One column-letter override per field, defaulting to remote-sheet-columns.json's
     // values — lets a designer point at the real sheet's actual layout without a code change.
-    const columnFields = REMOTE_LEVEL_FIELDS.map((f) => {
+    const levelColumnDefs: { label: string; key: keyof RemoteSheetColumns }[] = [
+      { label: "Map", key: "map" },
+      { label: "Level", key: "level" },
+      ...REMOTE_LEVEL_FIELDS,
+    ];
+    const columnFields = levelColumnDefs.map((f) => {
       const input = el("input", {
         type: "text",
         value: columnLetter(this.state.columnOverrides[f.key]),
@@ -440,25 +509,83 @@ export class RemoteDataView {
       return el("label", { class: "field small" }, [f.label, input]);
     });
 
+    const graphColumnDefs: { label: string; key: keyof GraphLookupColumns }[] = [
+      { label: "Map", key: "map" },
+      { label: "Category", key: "category" },
+      { label: "Index Data", key: "indexData" },
+      { label: "Price", key: "price" },
+      { label: "Speed Mul", key: "speedMul" },
+      { label: "Max Stack", key: "maxStack" },
+    ];
+    const graphColumnFields = graphColumnDefs.map((field) => {
+      const input = el("input", {
+        type: "text",
+        value: columnLetter(this.state.graphColumnOverrides[field.key]),
+        class: "sheet-id-input column-letter-input",
+      }) as HTMLInputElement;
+      input.addEventListener("change", () => {
+        const col = letterToColumn(input.value);
+        if (col >= 0) this.state.graphColumnOverrides[field.key] = col;
+        input.value = columnLetter(this.state.graphColumnOverrides[field.key]);
+      });
+      return el("label", { class: "field small" }, [field.label, input]);
+    });
+
+    this.undoBtn = button("↶ Undo", () => void this.runHistory("undo"), { class: "small-btn" });
+    this.redoBtn = button("↷ Redo", () => void this.runHistory("redo"), { class: "small-btn" });
+    this.refreshHistoryButtons();
+    const graphButtons = this.options.graphLookupMaps ? [
+      button("Write all graph lookup data", () => void this.writeAllGraphLookupData(), { class: "full-btn" }),
+      button("Load graph data", () => void this.loadGraphLookupData(), { class: "full-btn" }),
+    ] : [];
+
+    const configDetails = el("details", { class: "remote-config-foldout" }) as HTMLDetailsElement;
+    configDetails.open = this.state.configOpen;
+    configDetails.addEventListener("toggle", () => {
+      this.state.configOpen = configDetails.open;
+    });
+    const configChildren: HTMLElement[] = [
+      el("p", { class: "remote-hint" }, [
+        "Column letters and data start rows are editable when the remote sheet layout differs. Firebase Project ID is used only by each level's Push Remote Config action.",
+      ]),
+      el("h3", { class: "remote-config-heading" }, ["MapLevelProgress"]),
+      el("div", { class: "remote-sheet-config" }, [
+        el("label", { class: "field small" }, ["Start row", startRowInput]),
+        ...columnFields,
+      ]),
+      el("label", { class: "field small remote-firebase-config" }, ["Firebase Project ID", firebaseProjectIdInput]),
+    ];
+    if (this.options.graphLookupMaps) {
+      configChildren.push(
+        el("h3", { class: "remote-config-heading" }, ["GraphLookupData"]),
+        el("div", { class: "remote-sheet-config" }, [
+          el("label", { class: "field small" }, ["Start row", graphStartRowInput]),
+          ...graphColumnFields,
+        ]),
+      );
+    }
+    configDetails.append(el("summary", {}, ["Config"]), el("div", { class: "remote-config-body" }, configChildren));
+
     page.append(
       el("div", { class: "remote-page-actions" }, [
-        el("h2", {}, ["Remote Data"]),
-        el("p", { class: "remote-hint" }, [
-          "One row per level, one column per field — column letters and the start row below default from remote-sheet-columns.json but are editable here if the real sheet's layout differs. Only ",
-          this.map.name,
-          "'s levels have live tool data to compare against. Hover a field to apply just that one; each map and level folds out on click. Each level's ↪ Push Remote Config button writes its tool data (customers~grid~queue) straight to the Firebase project above, under a Google account with Remote Config write access.",
+        el("div", { class: "remote-title-row" }, [
+          el("h2", {}, ["Remote Data"]),
+          this.undoBtn,
+          this.redoBtn,
         ]),
         el("div", { class: "remote-sheet-config" }, [
           el("label", { class: "field small" }, ["Sheet ID", sheetIdInput]),
-          el("label", { class: "field small" }, ["Sheet (tab) name", tabNameInput]),
-          el("label", { class: "field small" }, ["Start row", startRowInput]),
-          ...columnFields,
-          el("label", { class: "field small" }, ["Firebase Project ID", firebaseProjectIdInput]),
+          el("label", { class: "field small" }, ["MapLevelProgress sheet name", tabNameInput]),
+          ...(this.options.graphLookupMaps
+            ? [el("label", { class: "field small" }, ["GraphLookupData sheet name", graphTabNameInput])]
+            : []),
         ]),
+        configDetails,
         el("div", { class: "remote-buttons" }, [
           button("⬇ Load All from sheet", () => void this.runAll("load"), { class: "full-btn" }),
           button("→ Apply All sheet data", () => void this.runAll("sheet-to-tool"), { class: "full-btn" }),
           button("← Apply All tool data", () => void this.runAll("tool-to-sheet"), { class: "full-btn" }),
+          ...graphButtons,
           this.pageStatusEl,
         ]),
       ]),
@@ -466,6 +593,7 @@ export class RemoteDataView {
 
     for (const group of this.groups) page.append(this.groupEl(group));
     this.root.replaceChildren(page);
+    page.focus({ preventScroll: true });
   }
 
   private groupEl(group: Group): HTMLElement {
@@ -662,6 +790,103 @@ export class RemoteDataView {
     return { element, box, applyBtn };
   }
 
+  private refreshHistoryButtons(): void {
+    if (!this.undoBtn || !this.redoBtn) return;
+    this.undoBtn.disabled = this.historyBusy || this.undoStack.length === 0;
+    this.redoBtn.disabled = this.historyBusy || this.redoStack.length === 0;
+    this.undoBtn.title = this.undoStack.length ? `Undo — ${this.undoStack.at(-1)?.label}` : "Nothing to undo";
+    this.redoBtn.title = this.redoStack.length ? `Redo — ${this.redoStack.at(-1)?.label}` : "Nothing to redo";
+  }
+
+  private recordHistory(action: RemoteHistoryAction): void {
+    this.undoStack.push(action);
+    this.redoStack.length = 0;
+    this.refreshHistoryButtons();
+  }
+
+  private async runHistory(direction: "undo" | "redo"): Promise<void> {
+    if (this.historyBusy) return;
+    const from = direction === "undo" ? this.undoStack : this.redoStack;
+    const to = direction === "undo" ? this.redoStack : this.undoStack;
+    const action = from.at(-1);
+    if (!action) return;
+    this.historyBusy = true;
+    this.refreshHistoryButtons();
+    this.pageStatusEl.textContent = `${direction === "undo" ? "Undoing" : "Redoing"} ${action.label}…`;
+    try {
+      await action[direction]();
+      from.pop();
+      to.push(action);
+      this.pageStatusEl.textContent = `${direction === "undo" ? "Undid" : "Redid"} ${action.label}`;
+    } catch (err) {
+      this.showRequestError(`Could not ${direction}`, err);
+      this.pageStatusEl.textContent = `${direction === "undo" ? "Undo" : "Redo"} failed`;
+    } finally {
+      this.historyBusy = false;
+      this.refreshHistoryButtons();
+    }
+  }
+
+  private showRequestError(prefix: string, err: unknown): void {
+    if (err instanceof SheetPermissionError) showSheetPermissionDialog({ sheetId: this.getSheetId() });
+    else if (err instanceof SheetAuthRequiredError) alert("Google sign-in required — try the action again to sign in.");
+    else if (err instanceof FirebasePermissionError || err instanceof FirebaseAuthRequiredError) alert(`${prefix}: ${err.message}`);
+    else alert(`${prefix}: ${(err as Error).message}`);
+  }
+
+  private captureLevels(): Record<string, LevelData[]> {
+    const sources = this.options.mapSources ?? [{ id: this.mapId, title: this.mapId, map: this.map }];
+    return Object.fromEntries(sources.map((source) => [source.id, structuredClone(source.map.levels)]));
+  }
+
+  private restoreLevels(snapshot: Record<string, LevelData[]>): void {
+    const sources = this.options.mapSources ?? [{ id: this.mapId, title: this.mapId, map: this.map }];
+    for (const source of sources) {
+      const levels = snapshot[source.id];
+      if (!levels) continue;
+      source.map.levels.splice(0, source.map.levels.length, ...structuredClone(levels));
+      const representative = { key: "", mapId: source.id, levelIndex: source.map.levels[0]?.id ?? 1 };
+      this.notifyLevelChanged(representative);
+    }
+    this.groups = this.buildGroups();
+    this.build();
+  }
+
+  private recordLevelHistory(label: string, before: Record<string, LevelData[]>): void {
+    const after = this.captureLevels();
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    this.recordHistory({
+      label,
+      undo: async () => this.restoreLevels(before),
+      redo: async () => this.restoreLevels(after),
+    });
+  }
+
+  private updateCachedLevelCells(updates: readonly CellUpdate[], rows: Map<string, LevelSheetRow>): void {
+    for (const update of updates) {
+      const row = [...rows.values()].find((candidate) => candidate.rowNumber === update.row);
+      const field = REMOTE_LEVEL_FIELDS.find((candidate) => this.state.columnOverrides[candidate.key] === update.col);
+      if (row && field) row.fields[field.key] = update.value;
+    }
+    for (const refresh of this.refreshRowByKey.values()) refresh();
+  }
+
+  private recordSheetHistory(
+    label: string,
+    sheetId: string,
+    tabName: string,
+    rows: Map<string, LevelSheetRow>,
+    before: CellUpdate[],
+    after: CellUpdate[],
+  ): void {
+    if (before.every((cell, index) => cell.value === after[index]?.value)) return;
+    const apply = async (updates: CellUpdate[]) => {
+      await batchUpdateCells(sheetId, tabName, updates);
+      this.updateCachedLevelCells(updates, rows);
+    };
+    this.recordHistory({ label, undo: () => apply(before), redo: () => apply(after) });
+  }
+
   private async withToken<T>(action: () => Promise<T>): Promise<T | null> {
     try {
       return await action();
@@ -698,10 +923,12 @@ export class RemoteDataView {
       alert("Load the sheet first.");
       return;
     }
+    const before = this.captureLevels();
     if (!this.ensureLevel(entry)) return;
     for (const f of REMOTE_LEVEL_FIELDS) this.setToolField(entry, f.key, row.fields[f.key] ?? "");
     this.notifyLevelChanged(entry);
     this.refreshRowByKey.get(entry.key)?.();
+    this.recordLevelHistory(`apply sheet to ${entry.key}`, before);
   }
 
   /** Pushes every field from the tool's live level onto the sheet, in one batched request. */
@@ -728,6 +955,11 @@ export class RemoteDataView {
       col: this.state.columnOverrides[f.key],
       value: this.toolField(entry, f.key) ?? "",
     }));
+    const before: CellUpdate[] = REMOTE_LEVEL_FIELDS.map((f) => ({
+      row: row.rowNumber,
+      col: this.state.columnOverrides[f.key],
+      value: row.fields[f.key] ?? "",
+    }));
     const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, updates));
     if (ok === null) {
       this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
@@ -735,6 +967,7 @@ export class RemoteDataView {
     }
     for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.toolField(entry, f.key) ?? "";
     this.setRowStatusByKey.get(entry.key)?.("idle");
+    this.recordSheetHistory(`apply ${entry.key} to sheet`, sheetId, this.state.tabName, rows, before, updates);
   }
 
   /**
@@ -756,7 +989,13 @@ export class RemoteDataView {
     const value = `${customers}~${grid}~${queue}`;
     this.setRowStatusByKey.get(entry.key)?.("loading");
     try {
-      await pushRemoteConfigParameter(projectId, entry.key, value);
+      const previous = await pushRemoteConfigParameter(projectId, entry.key, value);
+      const after = { ...(previous ?? {}), defaultValue: { value } };
+      this.recordHistory({
+        label: `push ${entry.key} to Remote Config`,
+        undo: () => restoreRemoteConfigParameter(projectId, entry.key, previous),
+        redo: () => restoreRemoteConfigParameter(projectId, entry.key, after),
+      });
       this.setRowStatusByKey.get(entry.key)?.("idle");
     } catch (err) {
       if (err instanceof FirebasePermissionError) {
@@ -774,10 +1013,12 @@ export class RemoteDataView {
   private applyFieldSheetToTool(entry: LevelEntry, fieldKey: FieldKey): void {
     const row = this.currentRows()?.get(entry.key);
     if (!row) return;
+    const before = this.captureLevels();
     if (!this.ensureLevel(entry)) return;
     this.setToolField(entry, fieldKey, row.fields[fieldKey] ?? "");
     this.notifyLevelChanged(entry);
     this.refreshRowByKey.get(entry.key)?.();
+    this.recordLevelHistory(`apply ${fieldKey} to ${entry.key}`, before);
   }
 
   /** Pushes one tool field onto the sheet — a single-cell batched write. */
@@ -800,15 +1041,130 @@ export class RemoteDataView {
       this.setRowStatusByKey.get(entry.key)?.("error", "no sheet row for this level yet");
       return;
     }
-    const ok = await this.withToken(() =>
-      batchUpdateCells(sheetId, this.state.tabName, [{ row: row.rowNumber, col: this.state.columnOverrides[fieldKey], value }]),
-    );
+    const update = { row: row.rowNumber, col: this.state.columnOverrides[fieldKey], value };
+    const before = { ...update, value: row.fields[fieldKey] ?? "" };
+    const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, [update]));
     if (ok === null) {
       this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
       return;
     }
     row.fields[fieldKey] = value;
     this.setRowStatusByKey.get(entry.key)?.("idle");
+    this.recordSheetHistory(`apply ${fieldKey} from ${entry.key} to sheet`, sheetId, this.state.tabName, rows, [before], [update]);
+  }
+
+  private graphMatrixUpdates(rows: readonly (readonly string[])[], rowCount: number): CellUpdate[] {
+    const updates: CellUpdate[] = [];
+    const columns: (keyof GraphLookupColumns)[] = ["map", "category", "indexData", "price", "speedMul", "maxStack"];
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+      columns.forEach((key, valueIndex) => {
+        updates.push({
+          row: this.state.graphStartRow + rowIndex,
+          col: this.state.graphColumnOverrides[key],
+          value: String(rows[rowIndex]?.[valueIndex] ?? ""),
+        });
+      });
+    }
+    return updates;
+  }
+
+  private async writeAllGraphLookupData(): Promise<void> {
+    const maps = this.options.graphLookupMaps;
+    if (!maps) return;
+    const sheetId = this.getSheetId().trim();
+    if (!sheetId) {
+      alert("Paste a spreadsheet ID into the Sheet ID field first.");
+      return;
+    }
+    const graphTabName = this.state.graphTabName;
+    if (!confirm(`This OVERWRITES all data rows in the ${graphTabName} sheet with values from every graph.\n\nContinue?`)) return;
+    this.pageStatusEl.textContent = "Writing graph lookup data…";
+
+    const raw = await this.withToken(async () => {
+      const token = await requestAccessTokenInteractive();
+      return fetchTabValues(graphTabName, token, sheetId);
+    });
+    if (raw === null) {
+      this.pageStatusEl.textContent = "Graph lookup write failed";
+      return;
+    }
+    const graphColumns: (keyof GraphLookupColumns)[] = ["map", "category", "indexData", "price", "speedMul", "maxStack"];
+    const beforeRows = raw.slice(this.state.graphStartRow - 1).map((row) =>
+      graphColumns.map((key) => String(row[this.state.graphColumnOverrides[key]] ?? "")),
+    );
+    const afterRows = graphLookupRows(maps);
+    const rowCount = Math.max(beforeRows.length, afterRows.length);
+    const before = this.graphMatrixUpdates(beforeRows, rowCount);
+    const after = this.graphMatrixUpdates(afterRows, rowCount);
+    const ok = await this.withToken(() => batchUpdateCells(sheetId, graphTabName, after));
+    if (ok === null) {
+      this.pageStatusEl.textContent = "Graph lookup write failed";
+      return;
+    }
+    const apply = (updates: CellUpdate[]) => batchUpdateCells(sheetId, graphTabName, updates);
+    this.recordHistory({
+      label: "write all graph lookup data",
+      undo: () => apply(before),
+      redo: () => apply(after),
+    });
+    this.pageStatusEl.textContent = `Wrote ${afterRows.length} graph lookup row(s)`;
+  }
+
+  private captureGraphs(): Record<number, GraphLookupMap["doc"]> {
+    return Object.fromEntries((this.options.graphLookupMaps ?? []).map((source) => [source.index, structuredClone(source.doc)]));
+  }
+
+  private restoreGraphs(snapshot: Record<number, GraphLookupMap["doc"]>, mapIndexes: readonly number[]): void {
+    for (const source of this.options.graphLookupMaps ?? []) {
+      if (!mapIndexes.includes(source.index)) continue;
+      const saved = snapshot[source.index];
+      if (!saved) continue;
+      for (const key of Object.keys(source.doc)) delete (source.doc as unknown as Record<string, unknown>)[key];
+      Object.assign(source.doc, structuredClone(saved));
+      this.options.onGraphLookupChanged?.(source.index);
+    }
+  }
+
+  private async loadGraphLookupData(): Promise<void> {
+    const maps = this.options.graphLookupMaps;
+    if (!maps) return;
+    const sheetId = this.getSheetId().trim();
+    if (!sheetId) {
+      alert("Paste a spreadsheet ID into the Sheet ID field first.");
+      return;
+    }
+    const graphTabName = this.state.graphTabName;
+    if (!confirm(`This OVERWRITES matching graph values using [Map, Category, Index Data] rows from ${graphTabName}.\n\nContinue?`)) return;
+    this.pageStatusEl.textContent = "Loading graph lookup data…";
+    const raw = await this.withToken(async () => {
+      const token = await requestAccessTokenInteractive();
+      return fetchTabValues(graphTabName, token, sheetId);
+    });
+    if (raw === null) {
+      this.pageStatusEl.textContent = "Graph lookup load failed";
+      return;
+    }
+    const before = this.captureGraphs();
+    const result = applyGraphLookupRows(
+      maps,
+      parseGraphLookupRows(raw, this.state.graphStartRow, this.state.graphColumnOverrides),
+    );
+    const after = this.captureGraphs();
+    const changedMapIndexes: number[] = [];
+    for (const source of maps) {
+      if (JSON.stringify(before[source.index]) !== JSON.stringify(after[source.index])) {
+        changedMapIndexes.push(source.index);
+        this.options.onGraphLookupChanged?.(source.index);
+      }
+    }
+    if (result.changed > 0) {
+      this.recordHistory({
+        label: "load graph lookup data",
+        undo: async () => this.restoreGraphs(before, changedMapIndexes),
+        redo: async () => this.restoreGraphs(after, changedMapIndexes),
+      });
+    }
+    this.pageStatusEl.textContent = `Matched ${result.matched} row(s), changed ${result.changed}${result.invalid ? `, skipped ${result.invalid} invalid value(s)` : ""}`;
   }
 
   private async runAll(action: "load" | "sheet-to-tool" | "tool-to-sheet", group?: Group): Promise<void> {
@@ -836,6 +1192,7 @@ export class RemoteDataView {
     }
 
     if (action === "sheet-to-tool") {
+      const before = this.captureLevels();
       let applied = 0;
       const appliedMapIds = new Set<string>();
       for (const e of entries) {
@@ -855,6 +1212,7 @@ export class RemoteDataView {
       for (const e of entries) this.refreshRowByKey.get(e.key)?.();
       const currentStatus = statusEl();
       if (currentStatus) currentStatus.textContent = `Applied ${applied} level(s)`;
+      this.recordLevelHistory(`apply sheet data to ${groupTitle ?? "all maps"}`, before);
       return;
     }
 
@@ -868,6 +1226,7 @@ export class RemoteDataView {
       return;
     }
     const updates: CellUpdate[] = [];
+    const before: CellUpdate[] = [];
     const touched: { entry: LevelEntry; row: LevelSheetRow }[] = [];
     for (const e of entries) {
       if (!this.isLive(e)) continue;
@@ -875,6 +1234,7 @@ export class RemoteDataView {
       if (!row) continue;
       for (const f of REMOTE_LEVEL_FIELDS) {
         updates.push({ row: row.rowNumber, col: this.state.columnOverrides[f.key], value: this.toolField(e, f.key) ?? "" });
+        before.push({ row: row.rowNumber, col: this.state.columnOverrides[f.key], value: row.fields[f.key] ?? "" });
       }
       touched.push({ entry: e, row });
     }
@@ -895,5 +1255,6 @@ export class RemoteDataView {
     for (const e of entries) this.refreshRowByKey.get(e.key)?.();
     const currentStatus = statusEl();
     if (currentStatus) currentStatus.textContent = `Applied ${touched.length} level(s) in 1 request`;
+    this.recordSheetHistory(`apply ${groupTitle ?? "all map"} tool data to sheet`, sheetId, this.state.tabName, rows, before, updates);
   }
 }

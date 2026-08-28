@@ -60,6 +60,9 @@ describe("getCustomerCatalog", () => {
     const catalog = getCustomerCatalog();
     expect(catalog.length).toBeGreaterThan(0);
     expect(catalog.every((e) => e.id !== "")).toBe(true);
+    expect(catalog.every((e) => e.name.trim() !== "")).toBe(true);
+    expect(catalog.every((e) => e.desc.trim() !== "")).toBe(true);
+    expect(catalog.every((e) => e.desc.trim().split(/\s+/).length < 30)).toBe(true);
     expect(catalog.every((e) => e.mapIndex > 0)).toBe(true);
   });
 

@@ -151,6 +151,7 @@ export function pickerGrid(
   entries: { id: number; label: string; icon: HTMLElement }[],
   onPick: (id: number) => void,
   selectedId?: number,
+  onHover?: (id: number | null) => void,
 ): HTMLElement {
   const grid = el("div", { class: "ctx-picker" });
   for (const entry of entries) {
@@ -163,6 +164,10 @@ export function pickerGrid(
       e.stopPropagation();
       onPick(entry.id);
     });
+    cell.addEventListener("pointerenter", () => onHover?.(entry.id));
+    cell.addEventListener("pointerleave", () => onHover?.(null));
+    cell.addEventListener("focus", () => onHover?.(entry.id));
+    cell.addEventListener("blur", () => onHover?.(null));
     grid.append(cell);
   }
   return grid;
