@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0
+
+- Added `CookingEstimatorBot`, an online Unity runtime port of the web estimator's demand scoring.
+- Added snapshot and command interfaces covering visible queue status, authoritative pickupables,
+  grid and in-flight/tool commitments, active customer orders, and preview orders.
+- Picks are revision-checked and reserved per item, allowing another legal queue to be picked while
+  earlier visual flights are still animating without duplicate commands or double-ordering supply.
+- Added runtime tests for base priority, queue lookahead, stale snapshots, and overlapping animations.
+- Added a complete game-system integration guide for adapters, logical/visual state separation,
+  atomic command handling, lifecycle, diagnostics, and integration tests.
+
 ## 0.1.2
 
 - Added `GridLayoutTranslator`, completing the set of three level-string translators. It parses and

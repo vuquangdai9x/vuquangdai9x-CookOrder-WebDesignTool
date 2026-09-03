@@ -70,3 +70,32 @@ Dictionary<ToolNodeAsset, List<IngredientNodeAsset>> lookup = CookingGraphPreser
 Validation treats the slot count and the wiring as one rule: slots with nothing wired can never be
 entered, and an edge with no slots declares a buffer that does not exist. Either half alone is an
 error, because in play both look like a silent stall.
+
+## Estimator autoplay bot
+
+`CookingEstimatorBot` is the runtime, online counterpart of the web difficulty estimator. Supply
+small adapters for `ICookingBotStateReader` and `ICookingBotCommandSink`, then call `Tick()` from
+your gameplay update loop. See the complete [game-system integration guide](Runtime/Autoplay/README.md)
+for field mappings, adapter examples, atomic command handling, animation overlap, and tests.
+
+Minimal setup:
+
+```csharp
+var bot = new CookingEstimatorBot(stateReader, commandSink);
+bot.Init(graphAsset);
+
+// Update: one accepted logical pick at most; this never waits for a visual animation.
+bot.Tick();
+```
+
+The reader snapshot contains visible queue items and statuses, the authoritative pickupable action
+list, grid contents, in-flight/tool commitments, active orders, and composite-only preview orders.
+The command includes both `observedRevision` and `expectedItemId`; the sink should reject it when
+either is stale.
+
+An accepted command must update **logical** gameplay state immediately: increment the revision,
+remove/disable the queue item, and add its ingredient to `committedIngredients` before starting the
+visual flight. The animation then runs independently. On the next frame the bot can pick another
+legal queue, and the already-flying ingredient is included in demand accounting, so the bot neither
+waits for every animation nor orders the same requirement twice. `Departing` queue items may remain
+in the snapshot for rendering but are ignored as queue supply.
