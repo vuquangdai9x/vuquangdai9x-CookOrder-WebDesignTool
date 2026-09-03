@@ -12,6 +12,12 @@
   atomic command handling, lifecycle, diagnostics, and integration tests.
 - Added first-class Save Me bag contents to bot snapshots. Bag units satisfy demand before queue
   scoring and transfer exactly once into committed supply when their exit animation begins.
+- Fixed the bot accepting frozen ingredients from a stale/incorrect `pickupables` list. Frozen,
+  locked, or departing leaders and combined/linked members are now filtered by visible status.
+- Added the `CookingBotPickingStrategy` enum and live `SetPickingStrategy` API with Balanced,
+  GridSafe, FrontLoaded, FinishFirst, ChainFirst, ScarcityFirst, and NoPreview presets.
+- Added live `intelligent` control from 0 (fully random legal picks) to 1 (fully strategic), with
+  runtime switching on the next tick and decision/command telemetry.
 
 ## 0.1.2
 

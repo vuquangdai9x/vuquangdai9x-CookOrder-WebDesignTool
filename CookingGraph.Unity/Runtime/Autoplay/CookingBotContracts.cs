@@ -181,6 +181,8 @@ namespace CookingGraph
         public string expectedItemId;
         public float score;
         public bool randomFallback;
+        public CookingBotPickingStrategy pickingStrategy;
+        public float intelligent = 1f;
     }
 
     /// <summary>
@@ -200,5 +202,7 @@ namespace CookingGraph
         public float score;
         public bool randomFallback;
         public int customerIndex = -1;
+        public CookingBotPickingStrategy pickingStrategy;
+        public float intelligent = 1f;
     }
 }

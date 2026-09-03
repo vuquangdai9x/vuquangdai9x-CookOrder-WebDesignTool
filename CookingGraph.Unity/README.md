@@ -99,3 +99,9 @@ visual flight. The animation then runs independently. On the next frame the bot 
 legal queue, and the already-flying ingredient is included in demand accounting, so the bot neither
 waits for every animation nor orders the same requirement twice. `Departing` queue items may remain
 in the snapshot for rendering but are ignored as queue supply.
+
+The game may switch predefined picking behaviour at any time; for example,
+`bot.SetPickingStrategy(CookingBotPickingStrategy.GridSafe)` takes effect on the next `Tick` without
+reinitializing the graph or clearing in-flight reservations. `bot.SetIntelligent(0.5f)` can also
+change the bot from fully strategic (`1`) toward fully random (`0`) on the next `Tick`; random
+picks still exclude frozen and otherwise illegal items.

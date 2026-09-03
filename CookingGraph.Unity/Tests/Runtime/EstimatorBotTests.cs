@@ -15,10 +15,11 @@ namespace CookingGraph.Tests
         private sealed class Sink : ICookingBotCommandSink
         {
             public readonly List<BotPickCommand> commands = new List<BotPickCommand>();
+            public bool accept = true;
             public bool TryPick(BotPickCommand command)
             {
                 commands.Add(command);
-                return true;
+                return accept;
             }
         }
 
@@ -132,6 +133,98 @@ namespace CookingGraph.Tests
 
             Assert.That(bot.Tick(), Is.True);
             Assert.That(sink.commands[0].expectedItemId, Is.EqualTo("queued-cheese"));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void NeverPicksFrozenItemEvenWhenPickupablesAdapterListsIt()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("frozen-bun", bun), Lane("ready-cheese", cheese));
+            state.visibleQueues[0].items[0].status = BotQueueItemStatus.Frozen;
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true)));
+            var reader = new Reader { state = state };
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(reader, sink);
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.True);
+            Assert.That(sink.commands[0].expectedItemId, Is.EqualTo("ready-cheese"));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void RejectsWholeLinkedPickupWhenAnyMemberIsFrozen()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("linked-bun", bun), Lane("linked-cheese", cheese), Lane("ready-tomato", tomato));
+            state.visibleQueues[1].items[0].status = BotQueueItemStatus.Frozen;
+            state.pickupables[0].consumedItemIds.AddRange(new[] { "linked-bun", "linked-cheese" });
+            state.pickupables[0].ingredients.Add(cheese);
+            state.pickupables.RemoveAt(1);
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true), Slot(cheese, true, true)));
+            var reader = new Reader { state = state };
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(reader, sink);
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.True);
+            Assert.That(sink.commands[0].expectedItemId, Is.EqualTo("ready-tomato"));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void ChangesPickingStrategyOnNextTickWithoutReinitializing()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true)));
+            var reader = new Reader { state = state };
+            var sink = new Sink { accept = false };
+            var bot = new CookingEstimatorBot(reader, sink);
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.False);
+            var balancedScore = bot.LastDecision.score;
+            bot.SetPickingStrategy(CookingBotPickingStrategy.FrontLoaded);
+            Assert.That(bot.Tick(), Is.False);
+
+            Assert.That(bot.IsInitialized, Is.True);
+            Assert.That(bot.Graph, Is.SameAs(graph));
+            Assert.That(bot.PickingStrategy, Is.EqualTo(CookingBotPickingStrategy.FrontLoaded));
+            Assert.That(bot.LastDecision.pickingStrategy, Is.EqualTo(CookingBotPickingStrategy.FrontLoaded));
+            Assert.That(bot.LastDecision.score, Is.GreaterThan(balancedScore));
+            Assert.That(sink.commands[1].pickingStrategy, Is.EqualTo(CookingBotPickingStrategy.FrontLoaded));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void ChangesIntelligentOnNextTickWithoutAllowingFrozenItems()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("frozen-bun", bun), Lane("ready-cheese", cheese));
+            state.visibleQueues[0].items[0].status = BotQueueItemStatus.Frozen;
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true)));
+            var reader = new Reader { state = state };
+            var sink = new Sink { accept = false };
+            var bot = new CookingEstimatorBot(reader, sink);
+            bot.Init(graph);
+
+            bot.SetIntelligent(0f);
+            Assert.That(bot.Tick(), Is.False);
+
+            Assert.That(bot.Intelligent, Is.Zero);
+            Assert.That(bot.LastDecision.randomFallback, Is.True);
+            Assert.That(bot.LastDecision.intelligent, Is.Zero);
+            Assert.That(sink.commands[0].intelligent, Is.Zero);
+            Assert.That(sink.commands[0].expectedItemId, Is.EqualTo("ready-cheese"));
+
+            bot.SetIntelligent(2f);
+            Assert.That(bot.Intelligent, Is.EqualTo(1f), "Runtime values are clamped to the documented range.");
 
             Destroy(graph, bun, cheese, tomato);
         }

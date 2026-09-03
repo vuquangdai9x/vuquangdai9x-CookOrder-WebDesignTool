@@ -59,7 +59,7 @@ namespace CookingGraph
         }
 
         private readonly CookingGraphAsset _graph;
-        private readonly EstimatorBotSettings _settings;
+        private EstimatorBotSettings _settings;
         private readonly Dictionary<IngredientNodeAsset, ProcessStep> _producer = new Dictionary<IngredientNodeAsset, ProcessStep>();
         private readonly Dictionary<IngredientNodeAsset, ProcessStep> _consumer = new Dictionary<IngredientNodeAsset, ProcessStep>();
         private readonly Dictionary<IngredientNodeAsset, Dictionary<IngredientNodeAsset, float>> _requirements = new Dictionary<IngredientNodeAsset, Dictionary<IngredientNodeAsset, float>>();
@@ -76,15 +76,22 @@ namespace CookingGraph
             BuildIndex();
         }
 
+        public void SetSettings(EstimatorBotSettings settings)
+        {
+            _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        }
+
         public BotDecision Decide(
             BotGameState state,
             ISet<string> reservedItemIds,
             IEnumerable<BotCommittedIngredientState> optimisticCommitted,
-            Random random)
+            Random random,
+            float intelligent)
         {
             if (state == null || !state.isPlaying) return null;
             var candidates = (state.pickupables ?? new List<BotPickupOption>())
                 .Where(value => value != null && value.queueIndex >= 0 && !string.IsNullOrEmpty(value.itemId))
+                .Where(value => IsVisiblyEligible(value, state))
                 .Where(value => reservedItemIds == null || !ConsumedIds(value).Any(reservedItemIds.Contains))
                 .OrderBy(value => value.queueIndex)
                 .ToList();
@@ -105,6 +112,20 @@ namespace CookingGraph
             var depth = _settings.visibleLookaheadRows > 0
                 ? _settings.visibleLookaheadRows
                 : Math.Max(1, _graph.map != null ? _graph.map.visibleRows : 1);
+
+            var randomSource = random ?? new Random(_settings.randomSeed);
+            if (UsesRandomChoice(intelligent, randomSource))
+            {
+                var option = candidates[randomSource.Next(candidates.Count)];
+                var value = ScoreCandidate(option, state, values, dirty, gridTight, depth, reservedItemIds);
+                return new BotDecision
+                {
+                    option = option,
+                    score = value.score,
+                    randomFallback = true,
+                    customerIndex = value.customerIndex
+                };
+            }
 
             BotPickupOption bestOption = null;
             var best = new CandidateValue { customerIndex = -1 };
@@ -137,9 +158,16 @@ namespace CookingGraph
             }
             else
             {
-                fallback = candidates[(random ?? new Random(_settings.randomSeed)).Next(candidates.Count)];
+                fallback = candidates[randomSource.Next(candidates.Count)];
             }
             return new BotDecision { option = fallback, randomFallback = true, customerIndex = FirstCustomer(state) };
+        }
+
+        private static bool UsesRandomChoice(float intelligent, Random random)
+        {
+            if (intelligent <= 0) return true;
+            if (intelligent >= 1) return false;
+            return random.NextDouble() >= intelligent;
         }
 
         private Dictionary<IngredientNodeAsset, PickupValue> BuildPickupValues(
@@ -596,6 +624,40 @@ namespace CookingGraph
         {
             if (option.consumedItemIds != null && option.consumedItemIds.Count > 0) return option.consumedItemIds.Where(value => !string.IsNullOrEmpty(value));
             return string.IsNullOrEmpty(option.itemId) ? Enumerable.Empty<string>() : new[] { option.itemId };
+        }
+
+        /// <summary>
+        /// Defense in depth for a stale or overly permissive pickupables adapter. Hidden items may
+        /// still be legal gambles, but frozen, locked, and departing items are never submitted.
+        /// Every member of an atomic combined/linked pickup must be visible and eligible.
+        /// </summary>
+        private static bool IsVisiblyEligible(BotPickupOption option, BotGameState state)
+        {
+            if (option.queueIndex < 0 || option.queueIndex >= (state.visibleQueues?.Count ?? 0)) return false;
+            var leaderLane = state.visibleQueues[option.queueIndex];
+            var leader = leaderLane?.items?.FirstOrDefault(item => item != null && item.itemId == option.itemId);
+            if (leader == null || IsBlockedStatus(leader.status)) return false;
+
+            var ids = new HashSet<string>(ConsumedIds(option), StringComparer.Ordinal);
+            ids.Add(option.itemId);
+            foreach (var id in ids)
+            {
+                BotQueueItemState item = null;
+                foreach (var lane in state.visibleQueues)
+                {
+                    item = lane?.items?.FirstOrDefault(value => value != null && value.itemId == id);
+                    if (item != null) break;
+                }
+                if (item == null || IsBlockedStatus(item.status)) return false;
+            }
+            return true;
+        }
+
+        private static bool IsBlockedStatus(BotQueueItemStatus status)
+        {
+            return status == BotQueueItemStatus.Frozen ||
+                   status == BotQueueItemStatus.Locked ||
+                   status == BotQueueItemStatus.Departing;
         }
 
         private static int FirstCustomer(BotGameState state)

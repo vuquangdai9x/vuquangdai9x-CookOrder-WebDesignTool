@@ -125,7 +125,10 @@ ignores it as queue supply.
 
 `BotGameState.pickupables` is authoritative. Add an option only when the game would accept that
 queue click at the snapshot revision. This list, rather than `BotQueueItemStatus.Ready`, decides
-whether the bot may issue a command.
+whether the bot may issue a command. As defense in depth, the bot also rejects an option when its
+leader or any listed combined/linked member has visible status `Frozen`, `Locked`, or `Departing`,
+even if a buggy or one-frame-stale adapter included that option. `Hidden` remains eligible when the
+game lists it as pickupable, allowing the same deliberate gamble as gameplay.
 
 For a normal item, set:
 
@@ -338,11 +341,62 @@ guard, not a substitute for immediate authoritative state updates.
 
 ## 7. Tuning and diagnostics
 
+### Change strategy while the bot is running
+
+Strategies are predefined by `CookingBotPickingStrategy` and can be changed without calling
+`Init` again:
+
+```csharp
+bot.SetPickingStrategy(CookingBotPickingStrategy.GridSafe);
+
+// The next Tick uses GridSafe. In-flight and pending pick reservations are preserved.
+bot.Tick();
+```
+
+| Strategy | Picking behaviour |
+|---|---|
+| `Balanced` | Default web-estimator weights. |
+| `GridSafe` | Avoids speculative work and expensive detours as free grid space falls. |
+| `FrontLoaded` | Strongly favors immediately useful bases and open slots. |
+| `FinishFirst` | Prioritizes open slots and nearly completed dishes. |
+| `ChainFirst` | Starts long and multi-input cooking chains earlier. |
+| `ScarcityFirst` | Protects requirements with little visible queue supply. |
+| `NoPreview` | Ignores upcoming customer previews and focuses on active orders. |
+
+`PickingStrategy` reports the active value. The chosen strategy is also copied into
+`LastDecision.pickingStrategy` and `BotPickCommand.pickingStrategy` for telemetry. Changing strategy
+takes effect on the next decision and does not reset graph indexes, random tie-break progress, or
+accepted item reservations.
+
+### Change intelligence while the bot is running
+
+`intelligent` controls how consistently the bot follows its active strategy:
+
+```csharp
+bot.SetIntelligent(0.65f);
+
+// The next Tick has a 65% chance to use strategy scoring and a 35% chance to pick randomly.
+bot.Tick();
+```
+
+- `1` always uses the current `CookingBotPickingStrategy`, matching the original bot behaviour.
+- `0` picks uniformly at random from the currently legal pickup options.
+- Values between `0` and `1` use the strategy with that probability on each `Tick`.
+
+The value is initialized from `EstimatorBotSettings.intelligent`, defaults to `1`, and is clamped
+when passed to `SetIntelligent`. Changing it preserves the graph, strategy, random-generator
+progress, and pending reservations. Random mode still applies all legality checks: frozen, locked,
+departing, stale, and already-reserved items cannot be selected. The active value is available as
+`bot.Intelligent` and copied to `LastDecision.intelligent` and `BotPickCommand.intelligent`.
+
+### Custom base weights
+
 Pass an `EstimatorBotSettings` instance to change scoring and lookahead:
 
 ```csharp
 var settings = new EstimatorBotSettings
 {
+    intelligent = 0.8f,
     visibleLookaheadRows = 3,
     respectHiddenStatus = true,
     randomSeed = 12345
@@ -375,6 +429,7 @@ At minimum, test these behaviours against the real gameplay adapter:
 7. Combined/linked item ids are validated and committed atomically.
 8. Frozen, locked, hidden, and full-tool actions are absent from `pickupables` when illegal.
 9. Active order slots and preview composites match the UI-visible customer sequence.
+10. A mistakenly listed frozen leader or frozen combined/linked member is still rejected by the bot.
 
 ## Common integration mistakes
 

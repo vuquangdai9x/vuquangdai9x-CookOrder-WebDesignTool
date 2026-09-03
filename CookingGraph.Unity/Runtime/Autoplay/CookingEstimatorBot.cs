@@ -29,6 +29,8 @@ namespace CookingGraph
         public BotDecision LastDecision { get; private set; }
         public int PendingPickCount => _pending.Count;
         public bool IsInitialized => _scorer != null;
+        public CookingBotPickingStrategy PickingStrategy { get; private set; } = CookingBotPickingStrategy.Balanced;
+        public float Intelligent { get; private set; }
 
         public CookingEstimatorBot(
             ICookingBotStateReader stateReader,
@@ -38,17 +40,39 @@ namespace CookingGraph
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _commandSink = commandSink ?? throw new ArgumentNullException(nameof(commandSink));
             _settings = settings ?? new EstimatorBotSettings();
+            Intelligent = ClampIntelligent(_settings.intelligent);
         }
 
         /// <summary>Initializes or reinitializes the bot for one map graph.</summary>
         public void Init(CookingGraphAsset mapGraph)
         {
             Graph = mapGraph != null ? mapGraph : throw new ArgumentNullException(nameof(mapGraph));
-            _scorer = new EstimatorBotScorer(mapGraph, _settings);
+            _scorer = new EstimatorBotScorer(mapGraph, _settings.ForStrategy(PickingStrategy));
             _random = new Random(_settings.randomSeed);
             _pending.Clear();
             LastDecision = null;
             _nextCommandId = 1;
+        }
+
+        /// <summary>
+        /// Changes the scoring profile for the next Tick. Graph caches, RNG progress, and pending
+        /// accepted-pick reservations are preserved.
+        /// </summary>
+        public void SetPickingStrategy(CookingBotPickingStrategy strategy)
+        {
+            if (!Enum.IsDefined(typeof(CookingBotPickingStrategy), strategy))
+                throw new ArgumentOutOfRangeException(nameof(strategy), strategy, null);
+            PickingStrategy = strategy;
+            _scorer?.SetSettings(_settings.ForStrategy(strategy));
+        }
+
+        /// <summary>
+        /// Changes strategy accuracy for the next Tick. Zero picks randomly among legal options;
+        /// one always uses the configured strategy. Values outside the range are clamped.
+        /// </summary>
+        public void SetIntelligent(float intelligent)
+        {
+            Intelligent = ClampIntelligent(intelligent);
         }
 
         /// <summary>
@@ -68,9 +92,11 @@ namespace CookingGraph
             ReconcilePending(state);
             var reserved = new HashSet<string>(_pending.SelectMany(value => value.itemIds), StringComparer.Ordinal);
             var optimistic = _pending.SelectMany(value => value.ingredients).ToList();
-            var decision = _scorer.Decide(state, reserved, optimistic, _random);
+            var decision = _scorer.Decide(state, reserved, optimistic, _random, Intelligent);
             LastDecision = decision;
             if (decision?.option == null) return false;
+            decision.pickingStrategy = PickingStrategy;
+            decision.intelligent = Intelligent;
 
             var command = new BotPickCommand
             {
@@ -79,7 +105,9 @@ namespace CookingGraph
                 queueIndex = decision.option.queueIndex,
                 expectedItemId = decision.option.itemId,
                 score = decision.score,
-                randomFallback = decision.randomFallback
+                randomFallback = decision.randomFallback,
+                pickingStrategy = PickingStrategy,
+                intelligent = Intelligent
             };
             if (!_commandSink.TryPick(command)) return false;
 
@@ -130,6 +158,12 @@ namespace CookingGraph
             return option.consumedItemIds != null && option.consumedItemIds.Count > 0
                 ? (IEnumerable<string>)option.consumedItemIds
                 : new[] { option.itemId };
+        }
+
+        private static float ClampIntelligent(float value)
+        {
+            if (float.IsNaN(value)) throw new ArgumentOutOfRangeException(nameof(value), value, "Intelligent cannot be NaN.");
+            return Math.Max(0f, Math.Min(1f, value));
         }
     }
 }
