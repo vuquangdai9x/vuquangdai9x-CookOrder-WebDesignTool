@@ -112,6 +112,30 @@ namespace CookingGraph.Tests
             Destroy(graph, bun, cheese, tomato);
         }
 
+        [Test]
+        public void SaveMeBagContentsSatisfyDemandBeforeAnotherQueuePick()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("queued-bun", bun), Lane("queued-cheese", cheese));
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true), Slot(cheese, true, true)));
+            state.saveMeBag = new BotSaveMeBagState { bagId = "save-me-bag" };
+            state.saveMeBag.items.Add(new BotSaveMeBagItemState
+            {
+                itemId = "bag-bun-1",
+                ingredient = bun
+            });
+            state.grid.cells[0] = new BotGridCellState { kind = BotGridItemKind.Backpack };
+            var reader = new Reader { state = state };
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(reader, sink);
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.True);
+            Assert.That(sink.commands[0].expectedItemId, Is.EqualTo("queued-cheese"));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
         private static CookingGraphAsset Graph(out IngredientNodeAsset bun, out IngredientNodeAsset cheese, out IngredientNodeAsset tomato)
         {
             var graph = ScriptableObject.CreateInstance<CookingGraphAsset>();

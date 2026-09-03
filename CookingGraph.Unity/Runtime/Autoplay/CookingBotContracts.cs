@@ -80,6 +80,27 @@ namespace CookingGraph
         public List<BotGridCellState> cells = new List<BotGridCellState>();
     }
 
+    [Serializable]
+    public sealed class BotSaveMeBagItemState
+    {
+        /// <summary>Stable id for this unit while it remains inside or departs from the bag.</summary>
+        public string itemId;
+        public IngredientNodeAsset ingredient;
+    }
+
+    /// <summary>
+    /// Contents of the Save Me backpack. Multi-use cooked items appear once per remaining use,
+    /// matching the web simulation. When this object is supplied it is the authoritative source of
+    /// bag contents; a Backpack grid cell still represents occupied space but its ingredients list
+    /// is ignored to prevent double-counting.
+    /// </summary>
+    [Serializable]
+    public sealed class BotSaveMeBagState
+    {
+        public string bagId;
+        public List<BotSaveMeBagItemState> items = new List<BotSaveMeBagItemState>();
+    }
+
     /// <summary>
     /// Ingredient already owned by the player but not represented by a raw/backpack grid cell.
     /// Include queue-to-tool flights, tool inputs, cooking jobs, and tool-to-grid flights here.
@@ -139,6 +160,7 @@ namespace CookingGraph
         public List<BotQueueLaneState> visibleQueues = new List<BotQueueLaneState>();
         public List<BotPickupOption> pickupables = new List<BotPickupOption>();
         public BotGridState grid = new BotGridState();
+        public BotSaveMeBagState saveMeBag;
         public List<BotCommittedIngredientState> committedIngredients = new List<BotCommittedIngredientState>();
         public List<BotCustomerOrderState> customerOrders = new List<BotCustomerOrderState>();
         public List<BotPreviewOrderState> previewOrders = new List<BotPreviewOrderState>();

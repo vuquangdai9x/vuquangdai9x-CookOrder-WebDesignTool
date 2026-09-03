@@ -10,6 +10,8 @@
 - Added runtime tests for base priority, queue lookahead, stale snapshots, and overlapping animations.
 - Added a complete game-system integration guide for adapters, logical/visual state separation,
   atomic command handling, lifecycle, diagnostics, and integration tests.
+- Added first-class Save Me bag contents to bot snapshots. Bag units satisfy demand before queue
+  scoring and transfer exactly once into committed supply when their exit animation begins.
 
 ## 0.1.2
 

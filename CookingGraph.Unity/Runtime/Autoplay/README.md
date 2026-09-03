@@ -86,6 +86,7 @@ public sealed class GameBotBridge : MonoBehaviour,
         AddVisibleQueues(result);
         AddPickupableActions(result);
         AddGrid(result);
+        AddSaveMeBag(result);
         AddCommittedIngredients(result);
         AddActiveOrders(result);
         AddPreviewOrders(result);
@@ -169,9 +170,41 @@ Add every logical grid position to `grid.cells`, including blocked or locked pos
 | `Raw` | Set `ingredient`. It is expanded through the graph when calculating committed supply. |
 | `Cooked` | Set `ingredient` and `usesLeft`. |
 | `Dirty` | Set `dirtyCount` when available. |
-| `Backpack` | Put every held ingredient in `ingredients`. |
+| `Backpack` | Marks the bag's occupied grid cell. Prefer the first-class `saveMeBag` field for contents. |
 
 Do not also add grid contents to `committedIngredients`; that would count the same supply twice.
+
+### Save Me bag
+
+When a Save Me backpack exists, set `BotGameState.saveMeBag` and expose every unit the bot is
+allowed to know. The bag is already-owned supply, so the scorer satisfies order demand from it
+before valuing another queue pickup:
+
+```csharp
+result.saveMeBag = new BotSaveMeBagState
+{
+    bagId = backpack.InstanceId,
+    items = backpack.Items.Select((item, index) => new BotSaveMeBagItemState
+    {
+        itemId = item.InstanceId,
+        ingredient = item.Ingredient
+    }).ToList()
+};
+```
+
+Follow the web Save Me representation: one list entry is one usable ingredient unit. If a cooked
+grid item entered the bag with `usesLeft = 3`, expose three bag entries for that ingredient. Raw
+items retain their raw ingredient asset, so the graph scorer can trace them through their remaining
+tool chain.
+
+The grid must still contain one `BotGridItemKind.Backpack` cell because the bag occupies space. When
+`saveMeBag` is non-null, the scorer ignores the legacy `BotGridCellState.ingredients` list on that
+cell, preventing the contents from being counted twice. For older adapters, leaving `saveMeBag`
+null and putting the units in the Backpack cell's `ingredients` list remains supported.
+
+When a bag unit starts an automatic bag-to-tool or bag-to-customer flight, remove it from
+`saveMeBag.items`, add the flight to `committedIngredients`, and increment `revision` atomically.
+The ingredient remains counted exactly once throughout the animation.
 
 ### In-flight and tool commitments
 
@@ -179,6 +212,7 @@ Do not also add grid contents to `committedIngredients`; that would count the sa
 a raw/backpack grid cell. Include items in:
 
 - queue-to-tool flights;
+- bag-to-tool and bag-to-customer flights after the item leaves `saveMeBag`;
 - preservation buffers;
 - tool input slots;
 - active cooking jobs;
@@ -336,15 +370,19 @@ At minimum, test these behaviours against the real gameplay adapter:
 2. The same item instance id is never accepted twice.
 3. A second legal queue is accepted while the first pickup animation is still running.
 4. In-flight and tool items are counted exactly once as committed supply.
-5. Combined/linked item ids are validated and committed atomically.
-6. Frozen, locked, hidden, and full-tool actions are absent from `pickupables` when illegal.
-7. Active order slots and preview composites match the UI-visible customer sequence.
+5. Save Me bag contents satisfy demand before the bot chooses another queue copy.
+6. A bag item is never present in both `saveMeBag` and `committedIngredients` during a flight.
+7. Combined/linked item ids are validated and committed atomically.
+8. Frozen, locked, hidden, and full-tool actions are absent from `pickupables` when illegal.
+9. Active order slots and preview composites match the UI-visible customer sequence.
 
 ## Common integration mistakes
 
 - Reading queue/grid state from animated GameObjects instead of the logical model.
 - Incrementing `revision` only after a tween or coroutine finishes.
 - Omitting tool slots or flights from `committedIngredients`.
+- Omitting Save Me bag contents, causing the bot to pick duplicate ingredients from queues.
+- Listing a departing bag item in both `saveMeBag` and `committedIngredients`.
 - Listing the same ingredient in both the grid and committed collections.
 - Using queue row/index as `itemId` and accidentally accepting a shifted replacement item.
 - Exposing all front items as pickupable instead of using the game's real `CanPick` result.

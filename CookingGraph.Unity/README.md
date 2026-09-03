@@ -89,7 +89,7 @@ bot.Tick();
 ```
 
 The reader snapshot contains visible queue items and statuses, the authoritative pickupable action
-list, grid contents, in-flight/tool commitments, active orders, and composite-only preview orders.
+list, grid and Save Me bag contents, in-flight/tool commitments, active orders, and composite-only preview orders.
 The command includes both `observedRevision` and `expectedItemId`; the sink should reject it when
 either is stale.
 

@@ -158,9 +158,14 @@ namespace CookingGraph
                     Add(cooked, cell.ingredient, Math.Max(1, cell.usesLeft));
                 else if (cell.kind == BotGridItemKind.Raw && cell.ingredient != null)
                     AddRequirements(committed, cell.ingredient, 1);
-                else if (cell.kind == BotGridItemKind.Backpack)
+                else if (cell.kind == BotGridItemKind.Backpack && state.saveMeBag == null)
                     foreach (var ingredient in cell.ingredients ?? new List<IngredientNodeAsset>())
                         AddRequirements(committed, ingredient, 1);
+            }
+            if (state.saveMeBag != null)
+            {
+                foreach (var item in state.saveMeBag.items ?? new List<BotSaveMeBagItemState>())
+                    if (item != null) AddRequirements(committed, item.ingredient, 1);
             }
             foreach (var value in (state.committedIngredients ?? new List<BotCommittedIngredientState>())
                 .Concat(optimisticCommitted ?? Enumerable.Empty<BotCommittedIngredientState>()))
