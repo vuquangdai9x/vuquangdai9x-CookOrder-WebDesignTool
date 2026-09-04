@@ -39,6 +39,32 @@ Use the overloads that receive `CookingGraphAsset` for runtime data. They reject
 
 The customer translator accepts the graph grammar (`{c0:...}` / `{g0:...}`) only. `TryParse` overloads return a `CookingGraphFormatException` containing the failing source position and context.
 
+To identify an assembled dish from the cooked ingredients currently placed in it, pass their
+positional ingredient indices as a flat list. The translator preserves duplicates and rebuilds the
+resolved composite/group tree used by `DishOrderData`:
+
+```csharp
+var cooked = new[] { bunIndex, cheeseIndex, cheeseIndex };
+OrderMemberData structure = CompositeStructureTranslator.Translate(
+    graphAsset,
+    cooked,
+    warning => Debug.LogWarning(warning));
+
+if (structure != null)
+{
+    var composite = (CompositeNodeAsset)structure.asset;
+    // structure.members contains the reconstructed ingredient/group/composite nesting.
+}
+```
+
+Only an exact valid match is returned: every supplied item must be consumed, a base must be
+present, required toppings and group quantities must be satisfied, and slot/option maximums are
+honoured. `TryTranslate` is available for a boolean result, while `FindBestComposite` returns only
+the matched `CompositeNodeAsset`. If several structures match, graph `idTable.composite` order is
+the stable tie-breaker; the first is returned and the callback receives a warning (or Unity logs
+the warning when no callback is supplied). Invalid ingredient indices throw; no exact match
+returns `null`/`false`.
+
 The grid string carries no dimensions of its own, so only the graph overload can shape it: it checks the cell count against `gridWidth * gridHeight` — a grid of the wrong length silently shifts every later cell, so it is rejected rather than padded — fills in `width`/`height`, and verifies that any Ingredient-slot cell resolves through the ingredient id table. Read that one back with `GridLayoutTranslator.TryGetIngredientSlot`; it is the only cell effect whose parameters name a node, since OrderLock counts customers and ColorLock names a key colour. `GridLayoutTranslator.Blank(graph)` produces an all-blank grid string for a new level.
 
 ## Generation

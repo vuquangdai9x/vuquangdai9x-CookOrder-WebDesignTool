@@ -21,6 +21,9 @@
 - Added visibility-safe failure learning. Unity callers can pass serializable aggregate knowledge
   to `Init` and accumulate a failed run for the next attempt; no queue or ingredient identity is
   retained.
+- Added `CompositeStructureTranslator` to reconstruct a resolved composite/group tree from a flat
+  multiset of cooked ingredient indices. Exact ambiguities choose the first id-table match and
+  emit a warning.
 
 ## 0.1.2
 
