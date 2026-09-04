@@ -46,6 +46,12 @@ namespace CookingGraph
         [Min(0)] public float detourPenaltyTight = 160;
         [Range(0, 1)] public float gridTightThreshold = 0.5f;
 
+        /// <summary>
+        /// Minimum gameplay seconds between accepted picks. Cooking and unrelated animations may
+        /// continue during the interval; this is pacing, not a global animation lock.
+        /// </summary>
+        [Min(0)] public float pickIntervalSeconds = 1f;
+
         /// <summary>Zero uses CookingGraphAsset.map.visibleRows.</summary>
         [Min(0)] public int visibleLookaheadRows;
         public bool respectHiddenStatus;

@@ -24,6 +24,15 @@
 - Added `CompositeStructureTranslator` to reconstruct a resolved composite/group tree from a flat
   multiset of cooked ingredient indices. Exact ambiguities choose the first id-table match and
   emit a warning.
+- Added animation-aware pick pacing through `pickIntervalSeconds` and the snapshot gameplay clock.
+  The Unity bot can still pick during unrelated animations, but cannot submit every frame; web
+  estimation now advances only the same configured amount of cooking time between picks.
+- Added visibility-safe pacing failure knowledge. Grid/dirty failures under high concurrent work
+  increase the next attempt's pick interval on both web and Unity.
+- Added projected-capacity throttling so safe work still overlaps while a risky pick waits for
+  committed outputs to drain. Pacing learning now grows multiplicatively beyond one second.
+- Runtime cadence changes recalculate the active cooldown. Customer timeouts are warning-only for
+  estimator learning, with exact timeout ids available from the final Unity snapshot.
 
 ## 0.1.2
 

@@ -481,6 +481,13 @@ function estimateBar(
     ]));
   }
   if (estimate.reason) parts.push(el("span", { class: "estimate-reason" }, [estimate.reason]));
+  const timedOutCustomers = estimate.timedOutCustomers ?? [];
+  if (timedOutCustomers.length > 0) {
+    parts.push(el("span", { class: "estimate-reason" }, [
+      `Warning: customer${timedOutCustomers.length === 1 ? "" : "s"} ` +
+      `${timedOutCustomers.join(", ")} timed out during the estimate.`,
+    ]));
+  }
   parts.push(
     el("span", { class: "estimate-metric" }, [`peak waste ${peakWaste}`]),
     el("span", { class: "estimate-metric" }, [`${detours} detour${detours === 1 ? "" : "s"}`]),

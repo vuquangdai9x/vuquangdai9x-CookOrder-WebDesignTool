@@ -71,7 +71,7 @@ namespace CookingGraph.Tests
             var reader = new Reader { state = State(Lane("bun", bun), Lane("cheese", cheese)) };
             reader.state.customerOrders.Add(Customer(1, Slot(bun, true, true)));
             var sink = new Sink();
-            var bot = new CookingEstimatorBot(reader, sink);
+            var bot = new CookingEstimatorBot(reader, sink, new EstimatorBotSettings { pickIntervalSeconds = 0 });
             bot.Init(graph);
 
             Assert.That(bot.Tick(), Is.True);
@@ -106,9 +106,106 @@ namespace CookingGraph.Tests
                 ingredient = firstIngredient,
                 sourceItemId = first.expectedItemId
             });
+            state.gameplayTimeSeconds = 1f;
 
             Assert.That(bot.Tick(), Is.True, "A departing animation must not act as a global bot lock.");
             Assert.That(sink.commands[1].expectedItemId, Is.EqualTo(secondId));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void PacesPicksByGameplayTimeWithoutWaitingForAllAnimations()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun), Lane("cheese", cheese));
+            state.gameplayTimeSeconds = 10f;
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true), Slot(cheese, true, true)));
+            var reader = new Reader { state = state };
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(reader, sink, new EstimatorBotSettings { pickIntervalSeconds = 0.5f });
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.True);
+            var first = sink.commands[0];
+            var firstIngredient = first.expectedItemId == "bun" ? bun : cheese;
+            state.revision++;
+            state.visibleQueues[first.queueIndex].items[0].status = BotQueueItemStatus.Departing;
+            state.pickupables.RemoveAll(value => value.itemId == first.expectedItemId);
+            state.committedIngredients.Add(new BotCommittedIngredientState
+            {
+                ingredient = firstIngredient,
+                sourceItemId = first.expectedItemId
+            });
+
+            state.gameplayTimeSeconds = 10.49f;
+            Assert.That(bot.Tick(), Is.False, "The next logical pick must respect the configured cadence.");
+            Assert.That(bot.LastDecision, Is.Null);
+
+            state.gameplayTimeSeconds = 10.5f;
+            Assert.That(bot.Tick(), Is.True, "The earlier animation may still be running once the cadence expires.");
+            Assert.That(sink.commands, Has.Count.EqualTo(2));
+            Assert.That(sink.commands[1].pickIntervalSeconds, Is.EqualTo(0.5f));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void ChangesPickIntervalDuringARunAndAppliesItToTheCurrentCooldown()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun), Lane("cheese", cheese));
+            state.gameplayTimeSeconds = 10f;
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true), Slot(cheese, true, true)));
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(
+                new Reader { state = state },
+                sink,
+                new EstimatorBotSettings { pickIntervalSeconds = 0.5f });
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.True);
+            var first = sink.commands[0];
+            state.revision++;
+            state.visibleQueues[first.queueIndex].items[0].status = BotQueueItemStatus.Departing;
+            state.pickupables.RemoveAll(value => value.itemId == first.expectedItemId);
+
+            bot.SetPickIntervalSeconds(0.1f);
+            state.gameplayTimeSeconds = 10.09f;
+            Assert.That(bot.Tick(), Is.False);
+            state.gameplayTimeSeconds = 10.1f;
+            Assert.That(bot.Tick(), Is.True);
+            Assert.That(bot.PickIntervalSeconds, Is.EqualTo(0.1f));
+            Assert.That(sink.commands[1].pickIntervalSeconds, Is.EqualTo(0.1f));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void DefersOnlyCapacityRiskyPickUntilCommittedWorkDrains()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.grid.cells.RemoveRange(4, 4);
+            state.grid.cells[0].kind = BotGridItemKind.Cooked;
+            state.grid.cells[1].kind = BotGridItemKind.Raw;
+            state.committedIngredients.Add(new BotCommittedIngredientState { ingredient = cheese, amount = 1 });
+            state.pickupables[0].footprint = 2;
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true)));
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(new Reader { state = state }, sink);
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.False);
+            Assert.That(bot.IsWaitingForGridCapacity, Is.True);
+            Assert.That(bot.LastDecision.projectedGridLoad, Is.EqualTo(5));
+            Assert.That(bot.LastDecision.usableGridCapacity, Is.EqualTo(4));
+            Assert.That(sink.commands, Is.Empty);
+
+            state.committedIngredients.Clear();
+            state.revision++;
+            Assert.That(bot.Tick(), Is.True);
+            Assert.That(bot.IsWaitingForGridCapacity, Is.False);
 
             Destroy(graph, bun, cheese, tomato);
         }
@@ -244,7 +341,7 @@ namespace CookingGraph.Tests
             var originalScore = firstBot.LastDecision.score;
             var knowledge = firstBot.AccumulateFailure(new CookingBotFailureReport
             {
-                reason = CookingBotFailureReason.CustomerTimeout,
+                reason = CookingBotFailureReason.OutOfIngredient,
                 progress01 = 0.25f
             });
 
@@ -254,13 +351,76 @@ namespace CookingGraph.Tests
             Assert.That(retryBot.Tick(), Is.False);
 
             Assert.That(knowledge.failureCount, Is.EqualTo(1));
-            Assert.That(knowledge.urgencyPressure, Is.GreaterThan(0));
+            Assert.That(knowledge.scarcityPressure, Is.GreaterThan(0));
             Assert.That(retryBot.FailureKnowledge, Is.SameAs(knowledge));
             Assert.That(retryBot.LastDecision.score, Is.GreaterThan(originalScore));
 
             var restored = JsonUtility.FromJson<CookingBotFailureKnowledge>(JsonUtility.ToJson(knowledge));
             Assert.That(restored.failureCount, Is.EqualTo(knowledge.failureCount));
             Assert.That(restored.urgencyPressure, Is.EqualTo(knowledge.urgencyPressure));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void CustomerTimeoutIsWarningOnlyAndDoesNotChangeFailureKnowledge()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var bot = new CookingEstimatorBot(new Reader { state = State(Lane("bun", bun)) }, new Sink());
+            bot.Init(graph);
+
+            var knowledge = bot.AccumulateFailure(new CookingBotFailureReport
+            {
+                reason = CookingBotFailureReason.CustomerTimeout,
+                progress01 = 0.25f
+            });
+
+            Assert.That(knowledge.failureCount, Is.Zero);
+            Assert.That(knowledge.urgencyPressure, Is.Zero);
+            Assert.That(knowledge.pacingPressure, Is.Zero);
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void RetainsExactTimedOutCustomerIdsFromTheFinalStoppedSnapshot()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.isPlaying = false;
+            state.timedOutCustomerIndices.AddRange(new[] { 7, 3, 7 });
+            var bot = new CookingEstimatorBot(new Reader { state = state }, new Sink());
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.False);
+            Assert.That(bot.TimedOutCustomerIndices, Is.EqualTo(new[] { 3, 7 }));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void GridFailureLearnsASlowerPickCadenceForTheNextRun()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.committedIngredients.Add(new BotCommittedIngredientState { ingredient = bun, amount = 6 });
+            var bot = new CookingEstimatorBot(
+                new Reader { state = state },
+                new Sink { accept = false },
+                new EstimatorBotSettings { pickIntervalSeconds = 0.1f });
+            bot.Init(graph);
+            bot.Tick();
+
+            var knowledge = bot.AccumulateFailure(new CookingBotFailureReport
+            {
+                reason = CookingBotFailureReason.GridOverflow,
+                progress01 = 0.5f
+            });
+
+            Assert.That(knowledge.pacingPressure, Is.GreaterThan(0));
+            Assert.That(bot.PickIntervalSeconds, Is.GreaterThan(0.1f));
+            var restored = JsonUtility.FromJson<CookingBotFailureKnowledge>(JsonUtility.ToJson(knowledge));
+            Assert.That(restored.pacingPressure, Is.EqualTo(knowledge.pacingPressure));
 
             Destroy(graph, bun, cheese, tomato);
         }

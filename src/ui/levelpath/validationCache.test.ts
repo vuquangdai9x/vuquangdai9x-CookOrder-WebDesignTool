@@ -30,6 +30,7 @@ const estimateOf = (picks: number): EstimateResult =>
     occupancyHistory: [],
     gridCapacity: 16,
     replaySteps: [],
+    timedOutCustomers: [],
   }) as EstimateResult;
 
 const statusOf = (note: string): LevelStatus => ({ ok: true, errors: [], warnings: [note] });

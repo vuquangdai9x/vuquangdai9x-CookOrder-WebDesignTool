@@ -28,6 +28,10 @@ namespace CookingGraph
         private float _peakDirtyRatio;
         private int _acceptedPickCount;
         private int _randomPickCount;
+        private float _peakConcurrentWorkRatio;
+        private float _nextPickAtSeconds = float.NegativeInfinity;
+        private float _lastAcceptedPickAtSeconds = float.NegativeInfinity;
+        private readonly HashSet<int> _timedOutCustomerIndices = new HashSet<int>();
 
         public CookingGraphAsset Graph { get; private set; }
         public BotDecision LastDecision { get; private set; }
@@ -35,6 +39,10 @@ namespace CookingGraph
         public bool IsInitialized => _scorer != null;
         public CookingBotPickingStrategy PickingStrategy { get; private set; } = CookingBotPickingStrategy.Balanced;
         public float Intelligent { get; private set; }
+        public float PickIntervalSeconds => EffectiveSettings().pickIntervalSeconds;
+        public float NextPickAtSeconds => _nextPickAtSeconds;
+        public bool IsWaitingForGridCapacity => LastDecision != null && LastDecision.deferredByGridPressure;
+        public IReadOnlyList<int> TimedOutCustomerIndices => _timedOutCustomerIndices.OrderBy(value => value).ToList();
         public CookingBotFailureKnowledge FailureKnowledge { get; private set; }
 
         public CookingEstimatorBot(
@@ -71,6 +79,10 @@ namespace CookingGraph
             _peakDirtyRatio = 0;
             _acceptedPickCount = 0;
             _randomPickCount = 0;
+            _peakConcurrentWorkRatio = 0;
+            _nextPickAtSeconds = float.NegativeInfinity;
+            _lastAcceptedPickAtSeconds = float.NegativeInfinity;
+            _timedOutCustomerIndices.Clear();
         }
 
         /// <summary>
@@ -95,6 +107,19 @@ namespace CookingGraph
         }
 
         /// <summary>
+        /// Changes the base pick cadence for the next Tick. Prior failure knowledge may increase
+        /// this value. An already-running cooldown is recalculated from the last accepted pick.
+        /// </summary>
+        public void SetPickIntervalSeconds(float seconds)
+        {
+            if (float.IsNaN(seconds) || float.IsInfinity(seconds))
+                throw new ArgumentOutOfRangeException(nameof(seconds), seconds, "Pick interval must be finite.");
+            _settings.pickIntervalSeconds = Math.Max(0, seconds);
+            if (!float.IsNegativeInfinity(_lastAcceptedPickAtSeconds))
+                _nextPickAtSeconds = _lastAcceptedPickAtSeconds + PickIntervalSeconds;
+        }
+
+        /// <summary>
         /// Reads, replans and attempts one pick. True means the game accepted the logical command.
         /// A false result is normal while nothing is pickupable or when a snapshot became stale.
         /// </summary>
@@ -102,15 +127,28 @@ namespace CookingGraph
         {
             if (_scorer == null) throw new InvalidOperationException("Call Init(mapGraph) before Tick().");
             var state = _stateReader.ReadState();
-            if (state == null || !state.isPlaying)
+            if (state == null)
             {
                 LastDecision = null;
                 return false;
             }
 
             ObserveRunState(state);
+            if (!state.isPlaying)
+            {
+                LastDecision = null;
+                return false;
+            }
+
+            if (float.IsNaN(state.gameplayTimeSeconds) || float.IsInfinity(state.gameplayTimeSeconds))
+                throw new InvalidOperationException("BotGameState.gameplayTimeSeconds must be finite.");
 
             ReconcilePending(state);
+            if (state.gameplayTimeSeconds + 0.0001f < _nextPickAtSeconds)
+            {
+                LastDecision = null;
+                return false;
+            }
             var reserved = new HashSet<string>(_pending.SelectMany(value => value.itemIds), StringComparer.Ordinal);
             var optimistic = _pending.SelectMany(value => value.ingredients).ToList();
             var decision = _scorer.Decide(state, reserved, optimistic, _random, Intelligent);
@@ -118,6 +156,9 @@ namespace CookingGraph
             if (decision?.option == null) return false;
             decision.pickingStrategy = PickingStrategy;
             decision.intelligent = Intelligent;
+            var pickIntervalSeconds = PickIntervalSeconds;
+            decision.pickIntervalSeconds = pickIntervalSeconds;
+            if (ShouldDeferForGridCapacity(state, decision, optimistic)) return false;
 
             var command = new BotPickCommand
             {
@@ -128,12 +169,15 @@ namespace CookingGraph
                 score = decision.score,
                 randomFallback = decision.randomFallback,
                 pickingStrategy = PickingStrategy,
-                intelligent = Intelligent
+                intelligent = Intelligent,
+                pickIntervalSeconds = pickIntervalSeconds
             };
             if (!_commandSink.TryPick(command)) return false;
 
             _acceptedPickCount++;
             if (decision.randomFallback) _randomPickCount++;
+            _lastAcceptedPickAtSeconds = state.gameplayTimeSeconds;
+            _nextPickAtSeconds = state.gameplayTimeSeconds + pickIntervalSeconds;
 
             var pending = new PendingPick { acceptedRevision = state.revision };
             if (decision.option.consumedItemIds != null && decision.option.consumedItemIds.Count > 0)
@@ -164,7 +208,12 @@ namespace CookingGraph
             if (_scorer == null) throw new InvalidOperationException("Call Init(mapGraph) before accumulating a failure.");
             if (failure == null) throw new ArgumentNullException(nameof(failure));
             var randomRatio = _acceptedPickCount > 0 ? (float)_randomPickCount / _acceptedPickCount : 0;
-            FailureKnowledge.Accumulate(failure, _peakGridRatio, _peakDirtyRatio, randomRatio);
+            FailureKnowledge.Accumulate(
+                failure,
+                _peakGridRatio,
+                _peakDirtyRatio,
+                randomRatio,
+                _peakConcurrentWorkRatio);
             _scorer.SetSettings(EffectiveSettings());
             return FailureKnowledge;
         }
@@ -205,14 +254,60 @@ namespace CookingGraph
             return settings;
         }
 
+        /// <summary>
+        /// Keep accepting overlapping picks while every committed output still fits. If the next
+        /// candidate would exceed safe grid capacity, wait for live state to report that some
+        /// cooking/transfer work drained, then replan on a later Tick.
+        /// </summary>
+        private bool ShouldDeferForGridCapacity(
+            BotGameState state,
+            BotDecision decision,
+            IReadOnlyCollection<BotCommittedIngredientState> optimisticPending)
+        {
+            var cells = state.grid?.cells ?? new List<BotGridCellState>();
+            var usableCapacity = cells.Count(cell =>
+                cell != null && (cell.canHoldItem || cell.kind != BotGridItemKind.Empty));
+            var occupied = cells.Count(cell => cell != null && cell.kind != BotGridItemKind.Empty);
+            var committedByState = (state.committedIngredients ?? new List<BotCommittedIngredientState>())
+                .Where(value => value != null)
+                .Sum(value => Math.Max(0, value.amount));
+            var committedByPending = (optimisticPending ?? Array.Empty<BotCommittedIngredientState>())
+                .Where(value => value != null)
+                .Sum(value => Math.Max(0, value.amount));
+            var committed = (int)Math.Ceiling(Math.Max(committedByState, committedByPending));
+            var footprint = Math.Max(0, _scorer.EstimateFootprint(decision.option, state));
+            var settings = EffectiveSettings();
+            var learnedReserve = (int)Math.Ceiling(Math.Max(0, settings.gridTightThreshold - 0.5f) * 10);
+            learnedReserve = Math.Min(Math.Max(0, usableCapacity - 1), learnedReserve);
+            var safeCapacity = Math.Max(1, usableCapacity - learnedReserve);
+
+            decision.projectedGridLoad = occupied + committed + footprint;
+            decision.usableGridCapacity = usableCapacity;
+            decision.deferredByGridPressure =
+                !decision.option.picksSweeper &&
+                usableCapacity > 0 &&
+                committed > 0 &&
+                decision.projectedGridLoad > safeCapacity;
+            return decision.deferredByGridPressure;
+        }
+
         private void ObserveRunState(BotGameState state)
         {
+            foreach (var customerIndex in state.timedOutCustomerIndices ?? new List<int>())
+                _timedOutCustomerIndices.Add(customerIndex);
             var cells = state.grid?.cells;
             if (cells == null || cells.Count == 0) return;
             var occupied = cells.Count(cell => cell != null && cell.kind != BotGridItemKind.Empty);
             var dirty = cells.Count(cell => cell != null && cell.kind == BotGridItemKind.Dirty);
             _peakGridRatio = Math.Max(_peakGridRatio, (float)occupied / cells.Count);
             _peakDirtyRatio = Math.Max(_peakDirtyRatio, (float)dirty / cells.Count);
+            var committed = (state.committedIngredients ?? new List<BotCommittedIngredientState>())
+                .Where(value => value != null)
+                .Sum(value => Math.Max(0, value.amount));
+            var optimistic = _pending.Sum(value => value.ingredients.Sum(ingredient => Math.Max(0, ingredient.amount)));
+            _peakConcurrentWorkRatio = Math.Max(
+                _peakConcurrentWorkRatio,
+                Math.Max(committed, optimistic) / cells.Count);
         }
 
         private static float ClampIntelligent(float value)

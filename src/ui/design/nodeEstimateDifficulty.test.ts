@@ -16,15 +16,22 @@ import {
   estimateNodeDifficulty,
 } from "./nodeEstimateDifficulty.ts";
 
-function settle(sim: NodeSimulation): boolean {
-  for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
-    sim.completeAllFlights();
-    const completion = sim.nextCompletionIn();
-    if (completion === null) return true;
-    sim.tick(Math.max(0.01, completion));
-  }
+function replayPacedStep(sim: NodeSimulation, step: {
+  lane: number;
+  serveableSlots: number;
+  waitBeforePickSeconds?: number;
+  pickIntervalSeconds?: number;
+}): boolean {
+  if ((step.waitBeforePickSeconds ?? 0) > 0) sim.fastForward(step.waitBeforePickSeconds);
+  sim.level.serveableSlots = step.serveableSlots;
+  sim.tick(0);
   sim.completeAllFlights();
-  return sim.nextCompletionIn() === null;
+  if (!sim.pick(step.lane)) return false;
+  sim.completeAllFlights();
+  const interval = step.pickIntervalSeconds ?? 0;
+  if (interval > 0 && sim.status === "playing") sim.tick(interval);
+  sim.completeAllFlights();
+  return true;
 }
 
 describe("estimateNodeDifficulty", () => {
@@ -62,6 +69,28 @@ describe("estimateNodeDifficulty", () => {
     expect(noRetry.learnedFromFailures).toBe(0);
   });
 
+  it("solves Map 1 Level 20 with adaptive pacing and reports timeout warnings", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const level = toNodeLevelConfig(importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 20)!);
+    const result = estimateNodeDifficulty(burgerIx, level);
+
+    expect(result.solvable, result.reason).toBe(true);
+    expect(result.servedCount).toBe(result.totalCustomers);
+    expect(result.loseReason).not.toBe("customer-timeout");
+  });
+
+  it("keeps customer timeouts as exact warnings instead of failed attempts", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const level = toNodeLevelConfig(importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 20)!);
+    for (const customer of level.customers) customer.waitTime = 0.01;
+    const result = estimateNodeDifficulty(burgerIx, level);
+
+    expect(result.solvable, result.reason).toBe(true);
+    expect(result.loseReason).not.toBe("customer-timeout");
+    expect(result.timedOutCustomers.length).toBeGreaterThan(0);
+    expect(result.timedOutCustomers).toEqual([...new Set(result.timedOutCustomers)].sort((a, b) => a - b));
+  });
+
   it("turns an earlier failure into bounded tuning for the next attempt", () => {
     const scenario = defaultScenario();
     const base = resolveScenario(scenario);
@@ -92,6 +121,9 @@ describe("estimateNodeDifficulty", () => {
       }],
       gridCapacity: 8,
       replaySteps: [],
+      pickIntervalSeconds: 0.1,
+      peakConcurrentWork: 6,
+      timedOutCustomers: [],
     };
 
     const knowledge = accumulateFailureKnowledge(emptyFailureKnowledge(), failure);
@@ -99,9 +131,29 @@ describe("estimateNodeDifficulty", () => {
 
     expect(knowledge.failureCount).toBe(1);
     expect(knowledge.gridPressure).toBeGreaterThan(0);
+    expect(knowledge.pacingPressure).toBeGreaterThan(0);
     expect(learned.detourPenaltyTight).toBeGreaterThan(base.detourPenaltyTight);
     expect(learned.scoreBlockedTight).toBeLessThan(base.scoreBlockedTight);
     expect(learned.previewConfidence).toBeLessThan(base.previewConfidence);
+    expect(learned.pickIntervalSeconds).toBeGreaterThan(base.pickIntervalSeconds);
+  });
+
+  it("does not learn failure pressure from a customer-timeout result", () => {
+    const timedOut = {
+      solvable: false,
+      loseReason: "customer-timeout" as const,
+      totalPicks: 1,
+      servedCount: 0,
+      totalCustomers: 1,
+      byCid: new Map(),
+      perCustomer: [],
+      occupancyHistory: [],
+      gridCapacity: 8,
+      replaySteps: [],
+      timedOutCustomers: [1],
+    };
+
+    expect(accumulateFailureKnowledge(emptyFailureKnowledge(), timedOut)).toEqual(emptyFailureKnowledge());
   });
 
   it("records the same grid occupancy that replay reconstructs for Map 2 Level 5", () => {
@@ -119,10 +171,7 @@ describe("estimateNodeDifficulty", () => {
     // while the replay assertions below remain the authoritative per-step check.
     expect(estimate.occupancyHistory[31].occupied).toBeLessThan(estimate.gridCapacity);
     estimate.replaySteps.forEach((step, index) => {
-      replay.level.serveableSlots = step.serveableSlots;
-      replay.tick(0);
-      expect(replay.pick(step.lane), `pick ${index + 1}`).toBe(true);
-      settle(replay);
+      expect(replayPacedStep(replay, step), `pick ${index + 1}`).toBe(true);
       const occupied = replay.grid.filter((cell) => cell.kind !== "empty").length;
       expect(occupied, `grid occupancy after step ${index + 1}`).toBe(
         estimate.occupancyHistory[index].occupied,
@@ -161,6 +210,9 @@ describe("estimateNodeDifficulty", () => {
     expect(teacup).toBeGreaterThan(blockedMilk);
     expect(estimate.replaySteps.slice(0, 2).map((step) => step.lane)).toEqual([0, 1]);
     expect(estimate.solvable).toBe(true);
+    expect(estimate.pickIntervalSeconds).toBe(1);
+    expect(estimate.replaySteps.every((step) => step.pickIntervalSeconds === 1)).toBe(true);
+    expect(estimate.peakConcurrentWork).toBeGreaterThan(0);
   });
 
   it("scores composite-only demand from the next three customer previews", () => {
@@ -266,12 +318,8 @@ describe("estimateNodeDifficulty", () => {
     expect(estimate.replaySteps.length).toBeGreaterThanOrEqual(8);
     for (let index = 0; index < 8; index++) {
       const step = estimate.replaySteps[index];
-      replay.level.serveableSlots = step.serveableSlots;
-      replay.tick(0);
-      replay.completeAllFlights();
-      expect(replay.pick(step.lane), `pick ${index + 1}`).toBe(true);
-      expect(settle(replay), `step ${index + 1} did not settle`).toBe(true);
+      expect(replayPacedStep(replay, step), `pick ${index + 1}`).toBe(true);
     }
-    expect(replay.nextCompletionIn()).toBeNull();
+    expect(replay.status).not.toBe("lost");
   });
 });

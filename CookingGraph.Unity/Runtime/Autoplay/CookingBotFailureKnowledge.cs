@@ -38,26 +38,35 @@ namespace CookingGraph
         [Range(0, 3)] public float scarcityPressure;
         [Range(0, 3)] public float chainPressure;
         [Range(0, 3)] public float randomPressure;
+        [Range(0, 3)] public float pacingPressure;
 
         internal void Accumulate(
             CookingBotFailureReport report,
             float peakGridRatio,
             float peakDirtyRatio,
-            float randomPickRatio)
+            float randomPickRatio,
+            float peakConcurrentWorkRatio)
         {
             if (report == null) throw new ArgumentNullException(nameof(report));
+            // Timing warnings are diagnostic only. They must not make the estimator reject a
+            // logically solvable level or distort future strategy/cadence learning.
+            if (report.reason == CookingBotFailureReason.CustomerTimeout) return;
             const float retain = 0.85f;
             var unfinished = report.progress01 >= 0 ? 1f - Clamp(report.progress01, 0, 1) : 0;
             var gridDelta = (report.reason == CookingBotFailureReason.GridOverflow ? 1f : 0f) +
                             Math.Max(0, peakGridRatio - 0.7f);
             var dirtyDelta = (report.reason == CookingBotFailureReason.DirtyOverflow ? 1f : 0f) +
                              Math.Max(0, peakDirtyRatio - 0.35f);
-            var urgencyDelta = (report.reason == CookingBotFailureReason.CustomerTimeout ? 1f : 0f) +
-                               unfinished * 0.1f;
+            var urgencyDelta = unfinished * 0.1f;
             var scarcityDelta = (report.reason == CookingBotFailureReason.OutOfIngredient ? 1f : 0f) +
                                 (report.reason == CookingBotFailureReason.Deadlock ? 0.2f : 0f);
             var chainDelta = (report.reason == CookingBotFailureReason.Deadlock ? 1f : 0f) +
                              (report.reason == CookingBotFailureReason.OutOfIngredient ? 0.15f : 0f);
+            var pacingDelta = (report.reason == CookingBotFailureReason.GridOverflow ||
+                               report.reason == CookingBotFailureReason.DirtyOverflow
+                    ? 0.75f
+                    : 0f) +
+                Math.Max(0, peakConcurrentWorkRatio - 0.25f);
 
             failureCount++;
             gridPressure = Pressure(gridPressure, gridDelta, retain);
@@ -66,6 +75,7 @@ namespace CookingGraph
             scarcityPressure = Pressure(scarcityPressure, scarcityDelta, retain);
             chainPressure = Pressure(chainPressure, chainDelta, retain);
             randomPressure = Pressure(randomPressure, Clamp(randomPickRatio, 0, 1), retain);
+            pacingPressure = Pressure(pacingPressure, pacingDelta, retain);
         }
 
         internal void ApplyTo(EstimatorBotSettings settings)
@@ -82,6 +92,10 @@ namespace CookingGraph
             settings.detourPenalty *= 1 + gridPressure * 0.3f + randomPressure * 0.1f;
             settings.detourPenaltyTight *= 1 + gridPressure * 0.45f + dirtyPressure * 0.15f;
             settings.gridTightThreshold = Clamp(settings.gridTightThreshold + gridPressure * 0.05f, 0, 0.85f);
+            settings.pickIntervalSeconds = Clamp(
+                settings.pickIntervalSeconds + 0.35f * ((float)Math.Pow(2, pacingPressure) - 1),
+                0,
+                5);
 
             settings.scoreSweeper *= 1 + dirtyPressure * 0.35f;
             settings.scoreSweeperUrgent *= 1 + dirtyPressure * 0.65f;

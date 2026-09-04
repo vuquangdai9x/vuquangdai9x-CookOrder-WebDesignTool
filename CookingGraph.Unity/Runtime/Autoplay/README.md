@@ -40,9 +40,9 @@ void Update()
 }
 ```
 
-Calling `Tick` every frame is valid. For a human-looking tap speed, call it from a small scheduler,
-for example 5–15 times per second. The scheduler is a pacing rule only; it must not check whether
-all animations have finished.
+Calling `Tick` every frame is valid. The bot itself enforces `pickIntervalSeconds` against the
+snapshot's gameplay clock, so an extra tap scheduler is optional. Never use completion of all
+animations as the scheduler condition.
 
 Do not call `Tick` recursively from a gameplay `StateChanged` callback. Let the current call return
 and schedule the next decision for the next frame or scheduler pulse.
@@ -79,6 +79,7 @@ public sealed class GameBotBridge : MonoBehaviour,
         var result = new BotGameState
         {
             revision = GameSession.Revision,
+            gameplayTimeSeconds = GameSession.GameplayTime,
             isPlaying = GameSession.IsPlaying
         };
 
@@ -103,6 +104,9 @@ public sealed class GameBotBridge : MonoBehaviour,
 
 `GameSession` and the helper methods above are placeholders for your game systems. The important
 part is which logical data each helper supplies.
+
+`gameplayTimeSeconds` must be a monotonic level clock that advances only while gameplay is running.
+It lets the bot enforce its pick cadence consistently across variable frame rates and pauses.
 
 ### Visible queues
 
@@ -311,15 +315,33 @@ public bool TryPick(BotPickCommand command)
 
 ## 5. Picking while animations are running
 
-Animation must not be a global gameplay lock. Treat each accepted pickup as a logical transaction
-whose presentation can finish later:
+Animation must not be a global gameplay lock. Instead, `pickIntervalSeconds` sets the earliest
+gameplay time for the next accepted pick. Treat each accepted pickup as a logical transaction whose
+presentation can finish later:
 
 | Time | Logical state | Visual state | Bot action |
 |---|---|---|---|
 | Frame 100, rev 41 | Queue A and B are pickupable | Idle | Bot chooses A. |
 | Same frame, rev 42 | A is removed/reserved and its ingredient is committed | A begins flying | Sink returns `true`. |
-| Frame 101, rev 42 | B remains pickupable; A is already counted as supply | A is still flying | Bot may choose B. |
+| Before cadence expires, rev 42 | B remains pickupable; A is already counted as supply | A is still flying | Bot waits, even if `Tick` is called. |
+| Cadence expires, rev 42 | B remains pickupable; A is already counted as supply | A may still be flying | Bot may choose B. |
 | Later | A moves between tool/grid states without duplicating supply | A animation arrives | No wait or special bot callback is needed. |
+
+The default cadence is 1 gameplay second and can be configured or changed at runtime:
+
+```csharp
+var settings = new EstimatorBotSettings { pickIntervalSeconds = 0.5f };
+var bot = new CookingEstimatorBot(reader, sink, settings);
+
+// Recalculate the current cooldown and use 0.25 seconds for later picks.
+bot.SetPickIntervalSeconds(0.25f);
+```
+
+The setter is live: it recalculates the current deadline from the last accepted pick, so no
+reinitialization is required. After the deadline, the bot also projects occupied cells, committed
+ingredients, and the candidate footprint. It defers only when those eventual outputs exceed safe
+capacity. Inspect `IsWaitingForGridCapacity`, `LastDecision.projectedGridLoad`, and
+`LastDecision.usableGridCapacity` when diagnosing a false `Tick()` result.
 
 Use per-action legality in `pickupables`. For example, a queue whose destination tool is full may be
 temporarily absent while another queue remains available. Avoid conditions such as
@@ -410,10 +432,16 @@ SaveKnowledge(knowledge);
 bot.Init(graph, knowledge);
 ```
 
-The bot measures peak grid occupancy, peak dirty occupancy, and random accepted-pick rate from the
-snapshots it already receives. The failure reason adds urgency, scarcity, chain, grid, or dirty
-pressure. These bounded pressures retune the selected strategy on the next run. The supplied object
-is updated in place and returned for convenient persistence.
+The bot measures peak grid occupancy, peak dirty occupancy, concurrent committed work, and random
+accepted-pick rate from the snapshots it already receives. A grid/dirty overflow while many jobs
+are still committed adds bounded `pacingPressure`; on the next run that pressure increases
+`pickIntervalSeconds` multiplicatively and tightens the adaptive grid reserve, giving cooking and
+serving more time to drain between picks. Other failure reasons still add urgency, scarcity, chain,
+grid, or dirty pressure. The supplied object is updated in place and returned for persistence.
+
+Customer timeout is deliberately not accumulated as failure knowledge. Keep every expired
+`customerIndex` in `BotGameState.timedOutCustomerIndices`, including in the final snapshot after
+`isPlaying` becomes false. `TimedOutCustomerIndices` returns the unique sorted ids for the results UI.
 
 Knowledge never stores ingredient assets, item ids, lanes, customer identities, or queue history.
 It therefore cannot reveal content below the visible rows. Key saved knowledge by a stable level
@@ -427,6 +455,7 @@ Pass an `EstimatorBotSettings` instance to change scoring and lookahead:
 var settings = new EstimatorBotSettings
 {
     intelligent = 0.8f,
+    pickIntervalSeconds = 0.5f,
     visibleLookaheadRows = 3,
     respectHiddenStatus = true,
     randomSeed = 12345
@@ -460,6 +489,8 @@ At minimum, test these behaviours against the real gameplay adapter:
 8. Frozen, locked, hidden, and full-tool actions are absent from `pickupables` when illegal.
 9. Active order slots and preview composites match the UI-visible customer sequence.
 10. A mistakenly listed frozen leader or frozen combined/linked member is still rejected by the bot.
+11. Calls made before `gameplayTimeSeconds` reaches the next-pick deadline do not submit a command,
+    while a legal pick is accepted at the deadline even if an unrelated animation is still running.
 
 ## Common integration mistakes
 
@@ -473,3 +504,4 @@ At minimum, test these behaviours against the real gameplay adapter:
 - Exposing all front items as pickupable instead of using the game's real `CanPick` result.
 - Revealing hidden ingredient assets to the bot when a fair autoplay agent should not know them.
 - Blocking every queue because any unrelated animation is running.
+- Leaving `gameplayTimeSeconds` at zero, which intentionally prevents later paced picks.

@@ -265,6 +265,11 @@ export interface NodeSimOptions {
   pickPolicy?: "any" | "wanted-only";
   /** Play-mode loss classification; audits inspect the resting state themselves. */
   detectDeadlockLoss?: boolean;
+  /**
+   * Estimator/replay mode: record each expired customer once, then keep solving their order.
+   * Interactive play leaves this false and still loses immediately on a timeout.
+   */
+  continueAfterCustomerTimeout?: boolean;
 }
 
 const isStaffCustomer = (c: NodeCustomerConfig) => c.typeId === CUSTOMER_STAFF;
@@ -294,6 +299,8 @@ export class NodeSimulation {
   active: NodeCustomerState[] = [];
   servedCount = 0;
   events: SimEvent[] = [];
+  /** Zero-based customer indices whose patience expired during this run. */
+  readonly timedOutCustomerIndices = new Set<number>();
 
   /** Items in transit. The host animates these and calls completeFlight(). */
   flights: NodeFlight[] = [];
@@ -1808,7 +1815,13 @@ export class NodeSimulation {
       if (customer.timeLeft === Infinity) continue;
       customer.timeLeft -= dt;
       if (customer.timeLeft <= 0) {
-        this.log("customer-timeout", `Customer ${customer.index + 1} ran out of patience`);
+        this.timedOutCustomerIndices.add(customer.index);
+        this.log("customer-timeout", `Customer ${customer.index + 1} ran out of patience`, customer.index);
+        if (this.options.continueAfterCustomerTimeout) {
+          // Do not let this already-reported timeout repeatedly become the next fast-forward event.
+          customer.timeLeft = Infinity;
+          continue;
+        }
         this.lose("customer-timeout", `Customer ${customer.index + 1} left unserved`);
         return;
       }
@@ -2262,8 +2275,8 @@ export class NodeSimulation {
     this.log("lost", message);
   }
 
-  private log(type: SimEvent["type"], message: string): void {
-    this.events.push({ type, message, atTime: this.time });
+  private log(type: SimEvent["type"], message: string, customerIndex?: number): void {
+    this.events.push({ type, message, atTime: this.time, ...(customerIndex === undefined ? {} : { customerIndex }) });
     if (this.events.length > 200) this.events.shift();
   }
 }

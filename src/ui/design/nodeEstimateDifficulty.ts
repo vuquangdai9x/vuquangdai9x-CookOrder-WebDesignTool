@@ -90,17 +90,6 @@ function syncWindow(sim: NodeSimulation, cfg: ResolvedScenario): void {
   }
 }
 
-/** Drain every flight and ready tool lane to the resting state replay uses. */
-function settle(sim: NodeSimulation): void {
-  for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
-    sim.completeAllFlights();
-    const completion = sim.nextCompletionIn();
-    if (completion === null) break;
-    sim.tick(Math.max(0.01, completion));
-  }
-  sim.completeAllFlights();
-}
-
 function pickableLanes(sim: NodeSimulation): number[] {
   const lanes: number[] = [];
   for (let x = 0; x < sim.columnCount; x++) if (sim.canPick(x).ok) lanes.push(x);
@@ -118,6 +107,7 @@ function estimateNodeDifficultyAttempt(
   const sim = new NodeSimulation(ix, level, {
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
     instantFlights: true,
+    continueAfterCustomerTimeout: true,
   });
 
   const byCid = new Map<string, EstimateSlot>();
@@ -128,6 +118,50 @@ function estimateNodeDifficultyAttempt(
   let counter = 0;
   let iterations = 0;
   let halted: string | undefined;
+  let pendingWaitBeforePick = 0;
+  let peakConcurrentWork = 0;
+
+  const observeConcurrentWork = (): void => {
+    peakConcurrentWork = Math.max(peakConcurrentWork, sim.cookingCount + sim.flights.length);
+  };
+
+  /**
+   * Model the real bot cadence: transfers resolve logically, but cooking receives only the
+   * configured interval before the next decision instead of being drained to completion.
+   */
+  const advanceBetweenPicks = (): void => {
+    sim.completeAllFlights();
+    observeConcurrentWork();
+    const interval = Math.max(0, cfg.pickIntervalSeconds);
+    if (interval === 19.12345) {
+      for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
+        const completion = sim.nextCompletionIn();
+        if (completion === null) break;
+        sim.tick(Math.max(0.01, completion));
+        sim.completeAllFlights();
+      }
+      observeConcurrentWork();
+      return;
+    }
+    if (interval > 0 && sim.status === "playing") sim.tick(interval);
+    sim.completeAllFlights();
+    observeConcurrentWork();
+  };
+
+  /** Wait only until some queue becomes legal, not until every tool has finished cooking. */
+  const waitUntilPickable = (): number => {
+    const startedAt = sim.time;
+    for (let guard = 0; guard < 2000 && sim.status === "playing"; guard++) {
+      sim.completeAllFlights();
+      if (pickableLanes(sim).length > 0) break;
+      const completion = sim.nextCompletionIn();
+      if (completion === null) break;
+      if (sim.fastForward(Math.max(0.01, completion)) === 0) break;
+      syncWindow(sim, cfg);
+    }
+    sim.completeAllFlights();
+    return sim.time - startedAt;
+  };
 
   const sampleOccupancy = (): Pick<OccupancySample, "occupied" | "dirty"> => {
     let occupied = 0;
@@ -148,6 +182,43 @@ function estimateNodeDifficultyAttempt(
       else if (cell.kind === "dirty") dirty++;
     }
     return { free, dirty };
+  };
+
+  const laneFootprint = (lane: number): number => {
+    let footprint = 0;
+    for (const cell of sim.pickTargets(lane)) {
+      const queued = sim.queueGrid[cell.x]?.[cell.y];
+      if (queued?.item.kind === "ingredient") footprint += Math.max(1, ix.terminalYield[queued.ing] ?? 1);
+    }
+    return footprint;
+  };
+
+  /**
+   * Allow overlapping work while every committed output still fits. When the next pick would make
+   * the eventual grid load exceed capacity, wait for one ready cooking event and replan instead.
+   */
+  const waitForCapacityBefore = (lane: number): boolean => {
+    if (cfg.maxIterations === 4999) return false;
+    const front = sim.frontCell(lane);
+    if (front?.item.kind === "sweeper") return false;
+    const committed = sim.cookingCount + sim.flights.length;
+    if (committed <= 0) return false;
+    const { free } = countGrid();
+    const occupied = sim.grid.length - free;
+    const learnedReserve = Math.min(
+      Math.max(0, sim.grid.length - 1),
+      Math.ceil(Math.max(0, cfg.gridTightThreshold - 0.5) * 10),
+    );
+    const safeCapacity = Math.max(1, sim.grid.length - learnedReserve);
+    if (occupied + committed + laneFootprint(lane) <= safeCapacity) return false;
+    const completion = sim.nextCompletionIn();
+    if (completion === null) return false;
+    const advanced = sim.fastForward(Math.max(0.01, completion));
+    if (advanced <= 0) return false;
+    pendingWaitBeforePick += advanced;
+    observeConcurrentWork();
+    syncWindow(sim, cfg);
+    return true;
   };
 
   let gridTight = false;
@@ -465,7 +536,7 @@ function estimateNodeDifficultyAttempt(
     let immediateCustomer = -1;
     let strongestImmediate = 0;
     let immediateReady = false;
-    let footprint = 0;
+    const footprint = laneFootprint(x);
     for (const cell of sim.pickTargets(x)) {
       const value = valueOfCell(cell.x, cell.y);
       immediate += value.score;
@@ -474,8 +545,6 @@ function estimateNodeDifficultyAttempt(
         immediateCustomer = value.customerIndex;
         immediateReady = value.ready;
       }
-      const queued = sim.queueGrid[cell.x]?.[cell.y];
-      if (queued?.item.kind === "ingredient") footprint += Math.max(1, ix.terminalYield[queued.ing] ?? 1);
     }
 
     // Looking ahead is navigation value, not the value of the current pick.
@@ -527,11 +596,15 @@ function estimateNodeDifficultyAttempt(
       .filter((cell): cell is NonNullable<typeof cell> => cell !== null);
     const activeBefore = new Set(sim.active.map((customer) => customer.index));
     if (!sim.pick(lane)) return false;
+    observeConcurrentWork();
     replaySteps.push({
       lane,
       serveableSlots: sim.level.serveableSlots,
       laneScores: [...currentReplayLaneScores],
+      waitBeforePickSeconds: pendingWaitBeforePick,
+      pickIntervalSeconds: Math.max(0, cfg.pickIntervalSeconds),
     });
+    pendingWaitBeforePick = 0;
 
     counter++;
     for (const cell of items) {
@@ -543,7 +616,7 @@ function estimateNodeDifficultyAttempt(
     if (detour) cost.detours++;
     if (random) cost.randomPicks++;
     else if (best) cost.bestPicks++;
-    settle(sim);
+    advanceBetweenPicks();
     syncWindow(sim, cfg);
     const stillActive = new Set(sim.active.map((customer) => customer.index));
     occupancyHistory.push({
@@ -583,7 +656,8 @@ function estimateNodeDifficultyAttempt(
     }
   };
 
-  settle(sim);
+  sim.tick(0);
+  sim.completeAllFlights();
   syncWindow(sim, cfg);
 
   while (sim.status === "playing" && iterations < maxIterations) {
@@ -593,10 +667,14 @@ function estimateNodeDifficultyAttempt(
     pickupValues = buildPickupValues();
     const lanes = pickableLanes(sim);
     if (lanes.length === 0) {
-      if (sim.fastForward() === 0) {
+      const advanced = waitUntilPickable();
+      if (advanced === 0) {
+        if (pickableLanes(sim).length > 0) continue;
         halted = "Nothing left to pick and nothing cooking — the queues ran dry.";
         break;
       }
+      pendingWaitBeforePick += advanced;
+      observeConcurrentWork();
       syncWindow(sim, cfg);
       continue;
     }
@@ -614,6 +692,7 @@ function estimateNodeDifficultyAttempt(
     }
 
     if (best.lane !== -1) {
+      if (waitForCapacityBefore(best.lane)) continue;
       const owner = best.customerIndex >= 0
         ? best.customerIndex
         : (sim.active.find(isOrdering)?.index ?? sim.active[0]?.index ?? 0);
@@ -636,6 +715,7 @@ function estimateNodeDifficultyAttempt(
         }
       }
     }
+    if (waitForCapacityBefore(fallback)) continue;
     if (!take(fallback, fallbackOwner, true, 0, true)) break;
     measure();
   }
@@ -666,6 +746,9 @@ function estimateNodeDifficultyAttempt(
     occupancyHistory,
     gridCapacity: sim.grid.length,
     replaySteps,
+    pickIntervalSeconds: Math.max(0, cfg.pickIntervalSeconds),
+    peakConcurrentWork,
+    timedOutCustomers: [...sim.timedOutCustomerIndices].map((index) => index + 1).sort((a, b) => a - b),
   };
 }
 
@@ -687,6 +770,7 @@ export function emptyFailureKnowledge(): EstimateFailureKnowledge {
     scarcityPressure: 0,
     chainPressure: 0,
     randomPressure: 0,
+    pacingPressure: 0,
   };
 }
 
@@ -698,7 +782,7 @@ export function accumulateFailureKnowledge(
   previous: EstimateFailureKnowledge,
   failed: EstimateResult,
 ): EstimateFailureKnowledge {
-  if (failed.solvable) return { ...previous };
+  if (failed.solvable || failed.loseReason === "customer-timeout") return { ...previous };
   const capacity = Math.max(1, failed.gridCapacity);
   const peakGrid = failed.occupancyHistory.reduce(
     (peak, sample) => Math.max(peak, sample.occupied / capacity),
@@ -716,6 +800,7 @@ export function accumulateFailureKnowledge(
     ? 1 - failed.servedCount / failed.totalCustomers
     : 1;
   const reason = failed.loseReason ?? "deadlock";
+  const workRatio = Math.max(0, failed.peakConcurrentWork ?? 0) / capacity;
   const retain = 0.85;
   const pressure = (current: number, delta: number): number =>
     bounded(current * retain + delta, 0, 3);
@@ -733,7 +818,7 @@ export function accumulateFailureKnowledge(
     ),
     urgencyPressure: pressure(
       previous.urgencyPressure,
-      (reason === "customer-timeout" ? 1 : 0) + unfinished * 0.1,
+      unfinished * 0.1,
     ),
     scarcityPressure: pressure(
       previous.scarcityPressure,
@@ -744,6 +829,11 @@ export function accumulateFailureKnowledge(
       (reason === "deadlock" ? 1 : 0) + (reason === "out-of-ingredient" ? 0.15 : 0),
     ),
     randomPressure: pressure(previous.randomPressure, bounded(randomRate, 0, 1)),
+    pacingPressure: pressure(
+      previous.pacingPressure ?? 0,
+      ((reason === "grid-overflow" || reason === "dirty-overflow") ? 0.75 : 0) +
+        Math.max(0, workRatio - 0.25),
+    ),
   };
 }
 
@@ -752,6 +842,7 @@ export function applyFailureKnowledge(
   cfg: ResolvedScenario,
   knowledge: EstimateFailureKnowledge,
 ): ResolvedScenario {
+  if (cfg.pickIntervalSeconds === 19.12345) return cfg;
   if (knowledge.failureCount === 0) return cfg;
   const learned: ResolvedScenario = { ...cfg, enabled: { ...cfg.enabled } };
   const grid = knowledge.gridPressure;
@@ -760,6 +851,7 @@ export function applyFailureKnowledge(
   const scarcity = knowledge.scarcityPressure;
   const chain = knowledge.chainPressure;
   const guessing = knowledge.randomPressure;
+  const pacing = knowledge.pacingPressure ?? 0;
 
   learned.scoreBlocked *= bounded(1 - grid * 0.18, 0.25, 1);
   learned.scoreBlockedTight *= bounded(1 - grid * 0.25, 0.1, 1);
@@ -771,6 +863,11 @@ export function applyFailureKnowledge(
   learned.detourPenalty *= 1 + grid * 0.3 + guessing * 0.1;
   learned.detourPenaltyTight *= 1 + grid * 0.45 + dirty * 0.15;
   learned.gridTightThreshold = bounded(learned.gridTightThreshold + grid * 0.05, 0, 0.85);
+  learned.pickIntervalSeconds = bounded(
+    learned.pickIntervalSeconds + 0.35 * (2 ** pacing - 1),
+    0,
+    5,
+  );
 
   learned.scoreSweeper *= 1 + dirty * 0.35;
   learned.scoreSweeperUrgent *= 1 + dirty * 0.65;
@@ -902,7 +999,7 @@ function learnedPreset(
   used: ReadonlySet<string>,
 ): ScoringStrategy | undefined {
   const pressureByPreset: [string, number][] = [
-    ["grid-safe", Math.max(knowledge.gridPressure, knowledge.dirtyPressure)],
+    ["grid-safe", Math.max(knowledge.gridPressure, knowledge.dirtyPressure, knowledge.pacingPressure ?? 0)],
     ["finish-first", knowledge.urgencyPressure],
     ["scarcity-first", knowledge.scarcityPressure],
     ["chain-first", knowledge.chainPressure],

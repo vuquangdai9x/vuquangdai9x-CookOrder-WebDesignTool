@@ -52,7 +52,7 @@ export interface CustomerCost {
   bestPicks: number;
 }
 
-/** Grid pressure snapshot taken right after one pick has fully settled. */
+/** Grid pressure snapshot taken after one pick and its configured cadence interval. */
 export interface OccupancySample {
   /** Total grid cells not empty — cooked, parked raw, or dirty stacks alike. */
   occupied: number;
@@ -87,7 +87,7 @@ export interface EstimateResult {
   perCustomer: CustomerCost[];
   /**
    * Grid pressure after each pick, in pickup order — occupancyHistory[i] is
-   * the state right after pick #(i+1) (see byCid's 1-based `order`). Powers
+   * the state after pick #(i+1) and its cadence interval (see byCid's 1-based `order`). Powers
    * customerSection.ts's occupancy chart. Length equals totalPicks.
    */
   occupancyHistory: OccupancySample[];
@@ -103,6 +103,12 @@ export interface EstimateResult {
   learnedFromFailures?: number;
   /** Final visibility-safe knowledge accumulated while retrying this estimate. */
   failureKnowledge?: EstimateFailureKnowledge;
+  /** Pick cadence used for this attempt. */
+  pickIntervalSeconds?: number;
+  /** Peak aggregate count of active cooking jobs and logical flights. */
+  peakConcurrentWork?: number;
+  /** One-based customer numbers whose patience expired; warning-only for estimation. */
+  timedOutCustomers: number[];
 }
 
 /**
@@ -118,6 +124,8 @@ export interface EstimateFailureKnowledge {
   scarcityPressure: number;
   chainPressure: number;
   randomPressure: number;
+  /** Evidence that picks were arriving faster than in-progress work could drain. */
+  pacingPressure: number;
 }
 
 export interface EstimateReplayStep {
@@ -127,6 +135,10 @@ export interface EstimateReplayStep {
   serveableSlots: number;
   /** Score of every queue column at this decision; null means it was not pickable. */
   laneScores: (number | null)[];
+  /** Time the estimator fast-forwarded because no queue was currently pickable. */
+  waitBeforePickSeconds?: number;
+  /** Gameplay time advanced after this pick before the next decision. */
+  pickIntervalSeconds?: number;
 }
 
 export interface EstimateOptions {

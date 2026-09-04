@@ -152,7 +152,7 @@ namespace CookingGraph
             if (gridTight)
             {
                 fallback = candidates
-                    .OrderBy(value => value.picksSweeper ? -1 : Footprint(value, state))
+                    .OrderBy(value => value.picksSweeper ? -1 : EstimateFootprint(value, state))
                     .ThenBy(value => value.queueIndex)
                     .First();
             }
@@ -441,7 +441,7 @@ namespace CookingGraph
                 futureCustomer = value.customerIndex;
             }
 
-            var footprint = Footprint(candidate, state);
+            var footprint = EstimateFootprint(candidate, state);
             var penalty = immediate == 0 ? Math.Max(1, footprint) * (gridTight ? _settings.detourPenaltyTight : _settings.detourPenalty) : 0;
             return new CandidateValue
             {
@@ -452,7 +452,7 @@ namespace CookingGraph
             };
         }
 
-        private int Footprint(BotPickupOption option, BotGameState state)
+        internal int EstimateFootprint(BotPickupOption option, BotGameState state)
         {
             if (option.footprint > 0) return option.footprint;
             return IngredientsOf(option, state).Sum(TerminalYield);

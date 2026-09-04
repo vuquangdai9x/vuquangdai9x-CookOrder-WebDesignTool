@@ -156,6 +156,11 @@ namespace CookingGraph
     {
         /// <summary>Increment after every accepted logical state change, not after animation completion.</summary>
         public long revision;
+        /// <summary>
+        /// Monotonic gameplay clock in seconds. Advance it only while gameplay is running; the bot
+        /// uses it to pace picks without waiting for every visual animation to complete.
+        /// </summary>
+        public float gameplayTimeSeconds;
         public bool isPlaying = true;
         public List<BotQueueLaneState> visibleQueues = new List<BotQueueLaneState>();
         public List<BotPickupOption> pickupables = new List<BotPickupOption>();
@@ -164,6 +169,11 @@ namespace CookingGraph
         public List<BotCommittedIngredientState> committedIngredients = new List<BotCommittedIngredientState>();
         public List<BotCustomerOrderState> customerOrders = new List<BotCustomerOrderState>();
         public List<BotPreviewOrderState> previewOrders = new List<BotPreviewOrderState>();
+        /// <summary>
+        /// Customer ids whose patience expired in this run. Keep them here after the customer
+        /// leaves so a final stopped snapshot can expose exact warning information.
+        /// </summary>
+        public List<int> timedOutCustomerIndices = new List<int>();
     }
 
     /// <summary>Reads one internally consistent, authoritative logical snapshot.</summary>
@@ -183,6 +193,7 @@ namespace CookingGraph
         public bool randomFallback;
         public CookingBotPickingStrategy pickingStrategy;
         public float intelligent = 1f;
+        public float pickIntervalSeconds;
     }
 
     /// <summary>
@@ -204,5 +215,10 @@ namespace CookingGraph
         public int customerIndex = -1;
         public CookingBotPickingStrategy pickingStrategy;
         public float intelligent = 1f;
+        public float pickIntervalSeconds;
+        /// <summary>True when the candidate was intentionally held until committed work drains.</summary>
+        public bool deferredByGridPressure;
+        public int projectedGridLoad;
+        public int usableGridCapacity;
     }
 }

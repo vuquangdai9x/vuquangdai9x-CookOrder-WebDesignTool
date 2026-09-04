@@ -147,6 +147,21 @@ describe("core loop", () => {
     expect(s.loseReason).toBe("customer-timeout");
   });
 
+  it("can record a customer timeout and continue for estimator mode", () => {
+    const s = sim(
+      { queueString: "0,1", customerString: "0;2;0;{c0:17.{g0:18}}" },
+      { continueAfterCustomerTimeout: true },
+    );
+    expect(s.pick(0)).toBe(true);
+    expect(s.pick(0)).toBe(true);
+    s.tick(2.1);
+    expect(s.status).toBe("playing");
+    expect([...s.timedOutCustomerIndices]).toEqual([0]);
+    s.tick(1);
+    expect(s.status).toBe("won");
+    expect(s.events.filter((event) => event.type === "customer-timeout")).toHaveLength(1);
+  });
+
   it("halves patience for a weather-affected customer in bad weather", () => {
     const normal = sim({ queueString: "0", customerString: "0;10;1;{c0:17}" });
     const rainy = sim({ queueString: "0", customerString: "0;10;1;{c0:17}", weather: "Rainy" });

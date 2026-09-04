@@ -110,7 +110,7 @@ Minimal setup:
 var bot = new CookingEstimatorBot(stateReader, commandSink);
 bot.Init(graphAsset);
 
-// Update: one accepted logical pick at most; this never waits for a visual animation.
+// Update: one accepted logical pick at most; the state reader supplies gameplayTimeSeconds.
 bot.Tick();
 ```
 
@@ -119,10 +119,24 @@ list, grid and Save Me bag contents, in-flight/tool commitments, active orders, 
 The command includes both `observedRevision` and `expectedItemId`; the sink should reject it when
 either is stale.
 
+`EstimatorBotSettings.pickIntervalSeconds` defaults to `1`. The bot waits for that much
+`BotGameState.gameplayTimeSeconds` between accepted picks, but never waits for all animations. This
+matches the web estimator, where cooking advances only by the configured interval between solver
+decisions rather than being completed instantly after every pick.
+
+The interval is a minimum, not a promise to pick immediately. Before submitting, the bot projects
+`occupied grid + committed work + candidate footprint`. If that load cannot fit, `Tick()` returns
+false until live state shows that work has drained. `IsWaitingForGridCapacity` and the projected
+load fields on `LastDecision` distinguish this safety wait from the normal cooldown.
+
+Change the interval during a run with `bot.SetPickIntervalSeconds(seconds)`. The current cooldown is
+recalculated from the last accepted pick, so the new value affects the next `Tick()` without `Init`.
+
 An accepted command must update **logical** gameplay state immediately: increment the revision,
 remove/disable the queue item, and add its ingredient to `committedIngredients` before starting the
 visual flight. The animation then runs independently. On the next frame the bot can pick another
-legal queue, and the already-flying ingredient is included in demand accounting, so the bot neither
+legal queue only if the cadence deadline has passed; it still does not wait for the earlier visual
+flight to finish. The already-flying ingredient is included in demand accounting, so the bot neither
 waits for every animation nor orders the same requirement twice. `Departing` queue items may remain
 in the snapshot for rendering but are ignored as queue supply.
 
@@ -135,4 +149,10 @@ picks still exclude frozen and otherwise illegal items.
 Failed runs can also teach the next run without storing hidden queue data. Pass a
 `CookingBotFailureKnowledge` object to `Init(graph, knowledge)`, then call
 `AccumulateFailure(report)` after loss and persist the returned serializable object. It stores only
-bounded aggregate pressure such as grid risk, dirty buildup, urgency, scarcity, and chain stalls.
+bounded aggregate pressure such as grid risk, dirty buildup, urgency, scarcity, chain stalls, and
+pick pacing.
+
+Grid/dirty failures grow cadence multiplicatively and tighten the projected-capacity reserve on
+later runs. `CustomerTimeout` is warning-only and does not increment failure knowledge. Populate
+`BotGameState.timedOutCustomerIndices`; after the final snapshot, read
+`bot.TimedOutCustomerIndices` to display the exact customer ids.

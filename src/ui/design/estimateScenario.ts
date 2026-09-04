@@ -2,8 +2,9 @@
 // "scoring scenario". Design pops the scenario modal
 // (estimateScenarioDialog.ts) before each Estimate run; the solver
 // (nodeEstimateDifficulty.ts) reads nothing but the resolved numbers below.
-// Defaults reproduce the previous hard-coded behaviour exactly, so an
-// untouched scenario changes no existing estimate.
+// Scoring defaults reproduce the former hard-coded weights. Run controls also
+// include pick cadence so estimation reflects cooking still in progress when
+// the real autoplay bot is allowed to make its next move.
 
 export type ScenarioFieldKey =
   | "scoreBase"
@@ -27,6 +28,7 @@ export type ScenarioFieldKey =
   | "detourPenalty"
   | "detourPenaltyTight"
   | "gridTightThreshold"
+  | "pickIntervalSeconds"
   | "maxIterations"
   | "rngSeed"
   | "maxPairDishes"
@@ -281,6 +283,18 @@ export const SCENARIO_FIELDS: ScenarioFieldSpec[] = [
     min: 0,
     decimals: 2,
     hint: "Free-cell fraction at or below which the tight variants kick in. 0 = never tight.",
+  },
+
+  {
+    key: "pickIntervalSeconds",
+    group: "Run controls",
+    label: "Seconds between picks",
+    def: 1,
+    off: 0,
+    min: 0,
+    max: 5,
+    decimals: 2,
+    hint: "Gameplay time allowed to pass after an accepted pick before the solver may pick again. Cooking continues during this delay; visual transfers remain logically immediate.",
   },
 
   {

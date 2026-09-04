@@ -99,6 +99,10 @@ interface ReplayState {
    * from the start and fast-forward — so both directions land identically.
    */
   instant: boolean;
+  /** True for cadence-aware estimator steps; legacy recordings still settle completely. */
+  pacedStep: boolean;
+  /** Gameplay time to advance once this step's immediate transfer animations have landed. */
+  stepAdvanceSeconds: number;
 }
 
 /** Live nodes of the replay toolbar, kept across refreshes so a slider drag survives one. */
@@ -226,6 +230,8 @@ export class NodePlayView {
         busy: false,
         message: "Initial state",
         instant: false,
+        pacedStep: false,
+        stepAdvanceSeconds: 0,
       };
       this.replayKeyHandler = (event) => {
         if (event.key === "ArrowRight") {
@@ -300,6 +306,7 @@ export class NodePlayView {
     this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level), {
       instantFlights: false,
       detectDeadlockLoss: true,
+      continueAfterCustomerTimeout: this.replay !== null,
     });
     this.animating.clear();
     this.pendingPickOrigins = [];
@@ -1002,6 +1009,9 @@ export class NodePlayView {
       return;
     }
     const step = state.steps[state.index];
+    if ((step.waitBeforePickSeconds ?? 0) > 0) {
+      this.sim.fastForward(step.waitBeforePickSeconds);
+    }
     this.sim.level.serveableSlots = step.serveableSlots;
     this.sim.tick(0);
     this.capturePickOrigins(step.lane);
@@ -1013,6 +1023,8 @@ export class NodePlayView {
     }
     state.index++;
     state.busy = true;
+    state.pacedStep = step.pickIntervalSeconds !== undefined;
+    state.stepAdvanceSeconds = Math.max(0, step.pickIntervalSeconds ?? 0);
     state.message = `Animating queue ${step.lane + 1} at ×5`;
     this.dispatchFlights();
     this.syncPage();
@@ -1030,6 +1042,22 @@ export class NodePlayView {
       }
       this.dispatchFlights();
       if (this.sim.flights.length === 0 && this.animating.size === 0) {
+        if (this.replay.pacedStep) {
+          if (this.replay.stepAdvanceSeconds > 0 && this.sim.status === "playing") {
+            const advance = this.replay.stepAdvanceSeconds;
+            this.replay.stepAdvanceSeconds = 0;
+            this.sim.tick(advance);
+            this.dispatchFlights();
+            this.syncPage();
+            return;
+          }
+          this.replay.busy = false;
+          this.replay.message = `State after step ${this.replay.index}`;
+          this.stopClock();
+          this.syncPage();
+          this.refreshToolbar();
+          return;
+        }
         const completion = this.sim.nextCompletionIn();
         if (completion === null || this.sim.status !== "playing") {
           this.replay.busy = false;
@@ -1065,19 +1093,31 @@ export class NodePlayView {
     this.stopClock();
     this.animating.clear();
     document.querySelectorAll(".fx-layer .fx-flier").forEach((node) => node.remove());
-    this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level), { instantFlights: false });
+    this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level), {
+      instantFlights: false,
+      continueAfterCustomerTimeout: true,
+    });
     let reached = 0;
     for (; reached < target; reached++) {
       const step = state.steps[reached];
+      if ((step.waitBeforePickSeconds ?? 0) > 0) {
+        this.sim.fastForward(step.waitBeforePickSeconds);
+      }
       this.sim.level.serveableSlots = step.serveableSlots;
       this.sim.tick(0);
       this.sim.completeAllFlights();
       if (!this.sim.pick(step.lane)) break;
-      for (let guard = 0; guard < 500; guard++) {
-        this.sim.completeAllFlights();
-        const completion = this.sim.nextCompletionIn();
-        if (completion === null || this.sim.status !== "playing") break;
-        this.sim.tick(Math.max(0.01, completion));
+      this.sim.completeAllFlights();
+      if (step.pickIntervalSeconds !== undefined) {
+        const interval = Math.max(0, step.pickIntervalSeconds);
+        if (interval > 0 && this.sim.status === "playing") this.sim.tick(interval);
+      } else {
+        for (let guard = 0; guard < 500; guard++) {
+          this.sim.completeAllFlights();
+          const completion = this.sim.nextCompletionIn();
+          if (completion === null || this.sim.status !== "playing") break;
+          this.sim.tick(Math.max(0.01, completion));
+        }
       }
       this.sim.completeAllFlights();
     }

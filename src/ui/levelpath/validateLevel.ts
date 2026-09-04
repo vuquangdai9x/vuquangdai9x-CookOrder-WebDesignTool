@@ -102,6 +102,13 @@ export function validateLevel(
     } else if (estimate.servedCount < estimate.totalCustomers) {
       warnings.push(`Only ${estimate.servedCount}/${estimate.totalCustomers} customers served.`);
     }
+    const timedOutCustomers = estimate.timedOutCustomers ?? [];
+    if (timedOutCustomers.length > 0) {
+      warnings.push(
+        `Customer${timedOutCustomers.length === 1 ? "" : "s"} ` +
+        `${timedOutCustomers.join(", ")} timed out during estimation.`,
+      );
+    }
   } catch (err) {
     errors.push(`Estimate failed: ${(err as Error).message}`);
   }
