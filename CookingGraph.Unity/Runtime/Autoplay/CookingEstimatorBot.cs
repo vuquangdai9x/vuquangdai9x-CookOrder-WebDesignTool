@@ -24,6 +24,10 @@ namespace CookingGraph
         private EstimatorBotScorer _scorer;
         private Random _random;
         private long _nextCommandId = 1;
+        private float _peakGridRatio;
+        private float _peakDirtyRatio;
+        private int _acceptedPickCount;
+        private int _randomPickCount;
 
         public CookingGraphAsset Graph { get; private set; }
         public BotDecision LastDecision { get; private set; }
@@ -31,6 +35,7 @@ namespace CookingGraph
         public bool IsInitialized => _scorer != null;
         public CookingBotPickingStrategy PickingStrategy { get; private set; } = CookingBotPickingStrategy.Balanced;
         public float Intelligent { get; private set; }
+        public CookingBotFailureKnowledge FailureKnowledge { get; private set; }
 
         public CookingEstimatorBot(
             ICookingBotStateReader stateReader,
@@ -46,12 +51,26 @@ namespace CookingGraph
         /// <summary>Initializes or reinitializes the bot for one map graph.</summary>
         public void Init(CookingGraphAsset mapGraph)
         {
+            Init(mapGraph, null);
+        }
+
+        /// <summary>
+        /// Initializes the bot with optional aggregate lessons from an earlier failed run. Passing
+        /// null starts with empty knowledge; the supplied object is retained and updated in place.
+        /// </summary>
+        public void Init(CookingGraphAsset mapGraph, CookingBotFailureKnowledge failureKnowledge)
+        {
             Graph = mapGraph != null ? mapGraph : throw new ArgumentNullException(nameof(mapGraph));
-            _scorer = new EstimatorBotScorer(mapGraph, _settings.ForStrategy(PickingStrategy));
+            FailureKnowledge = failureKnowledge ?? new CookingBotFailureKnowledge();
+            _scorer = new EstimatorBotScorer(mapGraph, EffectiveSettings());
             _random = new Random(_settings.randomSeed);
             _pending.Clear();
             LastDecision = null;
             _nextCommandId = 1;
+            _peakGridRatio = 0;
+            _peakDirtyRatio = 0;
+            _acceptedPickCount = 0;
+            _randomPickCount = 0;
         }
 
         /// <summary>
@@ -63,7 +82,7 @@ namespace CookingGraph
             if (!Enum.IsDefined(typeof(CookingBotPickingStrategy), strategy))
                 throw new ArgumentOutOfRangeException(nameof(strategy), strategy, null);
             PickingStrategy = strategy;
-            _scorer?.SetSettings(_settings.ForStrategy(strategy));
+            _scorer?.SetSettings(EffectiveSettings());
         }
 
         /// <summary>
@@ -89,6 +108,8 @@ namespace CookingGraph
                 return false;
             }
 
+            ObserveRunState(state);
+
             ReconcilePending(state);
             var reserved = new HashSet<string>(_pending.SelectMany(value => value.itemIds), StringComparer.Ordinal);
             var optimistic = _pending.SelectMany(value => value.ingredients).ToList();
@@ -111,6 +132,9 @@ namespace CookingGraph
             };
             if (!_commandSink.TryPick(command)) return false;
 
+            _acceptedPickCount++;
+            if (decision.randomFallback) _randomPickCount++;
+
             var pending = new PendingPick { acceptedRevision = state.revision };
             if (decision.option.consumedItemIds != null && decision.option.consumedItemIds.Count > 0)
                 pending.itemIds.AddRange(decision.option.consumedItemIds.Where(value => !string.IsNullOrEmpty(value)));
@@ -129,6 +153,20 @@ namespace CookingGraph
                     });
             _pending.Add(pending);
             return true;
+        }
+
+        /// <summary>
+        /// Accumulates the completed run into the serializable knowledge supplied to Init and
+        /// returns that same object for persistence or use by the next bot instance.
+        /// </summary>
+        public CookingBotFailureKnowledge AccumulateFailure(CookingBotFailureReport failure)
+        {
+            if (_scorer == null) throw new InvalidOperationException("Call Init(mapGraph) before accumulating a failure.");
+            if (failure == null) throw new ArgumentNullException(nameof(failure));
+            var randomRatio = _acceptedPickCount > 0 ? (float)_randomPickCount / _acceptedPickCount : 0;
+            FailureKnowledge.Accumulate(failure, _peakGridRatio, _peakDirtyRatio, randomRatio);
+            _scorer.SetSettings(EffectiveSettings());
+            return FailureKnowledge;
         }
 
         private static List<IngredientNodeAsset> IngredientFromVisibleQueue(BotGameState state, BotPickupOption option)
@@ -158,6 +196,23 @@ namespace CookingGraph
             return option.consumedItemIds != null && option.consumedItemIds.Count > 0
                 ? (IEnumerable<string>)option.consumedItemIds
                 : new[] { option.itemId };
+        }
+
+        private EstimatorBotSettings EffectiveSettings()
+        {
+            var settings = _settings.ForStrategy(PickingStrategy);
+            FailureKnowledge?.ApplyTo(settings);
+            return settings;
+        }
+
+        private void ObserveRunState(BotGameState state)
+        {
+            var cells = state.grid?.cells;
+            if (cells == null || cells.Count == 0) return;
+            var occupied = cells.Count(cell => cell != null && cell.kind != BotGridItemKind.Empty);
+            var dirty = cells.Count(cell => cell != null && cell.kind == BotGridItemKind.Dirty);
+            _peakGridRatio = Math.Max(_peakGridRatio, (float)occupied / cells.Count);
+            _peakDirtyRatio = Math.Max(_peakDirtyRatio, (float)dirty / cells.Count);
         }
 
         private static float ClampIntelligent(float value)

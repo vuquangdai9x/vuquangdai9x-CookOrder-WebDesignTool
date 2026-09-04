@@ -16,6 +16,7 @@ import type {
   EstimateSlot,
   OccupancySample,
   EstimateReplayStep,
+  EstimateFailureKnowledge,
 } from "./estimateDifficulty.ts";
 
 // Every former tuning constant now lives in estimateScenario.ts, where the
@@ -676,6 +677,126 @@ interface ScoringStrategy {
 const scaled = (value: number, factor: number): number => value * factor;
 const bounded = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
+export function emptyFailureKnowledge(): EstimateFailureKnowledge {
+  return {
+    version: 1,
+    failureCount: 0,
+    gridPressure: 0,
+    dirtyPressure: 0,
+    urgencyPressure: 0,
+    scarcityPressure: 0,
+    chainPressure: 0,
+    randomPressure: 0,
+  };
+}
+
+/**
+ * Distil one failed run into bounded, visibility-safe pressures. The trace contains complete
+ * simulator state, but only occupancy and aggregate pick-quality measurements leave this function.
+ */
+export function accumulateFailureKnowledge(
+  previous: EstimateFailureKnowledge,
+  failed: EstimateResult,
+): EstimateFailureKnowledge {
+  if (failed.solvable) return { ...previous };
+  const capacity = Math.max(1, failed.gridCapacity);
+  const peakGrid = failed.occupancyHistory.reduce(
+    (peak, sample) => Math.max(peak, sample.occupied / capacity),
+    0,
+  );
+  const peakDirty = failed.occupancyHistory.reduce(
+    (peak, sample) => Math.max(peak, sample.dirty / capacity),
+    0,
+  );
+  const picks = failed.perCustomer.reduce((sum, cost) => sum + cost.picks, 0);
+  const randomPicks = failed.perCustomer.reduce((sum, cost) => sum + cost.randomPicks, 0);
+  const detours = failed.perCustomer.reduce((sum, cost) => sum + cost.detours, 0);
+  const randomRate = picks > 0 ? (randomPicks + detours * 0.25) / picks : 0;
+  const unfinished = failed.totalCustomers > 0
+    ? 1 - failed.servedCount / failed.totalCustomers
+    : 1;
+  const reason = failed.loseReason ?? "deadlock";
+  const retain = 0.85;
+  const pressure = (current: number, delta: number): number =>
+    bounded(current * retain + delta, 0, 3);
+
+  return {
+    version: 1,
+    failureCount: previous.failureCount + 1,
+    gridPressure: pressure(
+      previous.gridPressure,
+      (reason === "grid-overflow" ? 1 : 0) + Math.max(0, peakGrid - 0.7),
+    ),
+    dirtyPressure: pressure(
+      previous.dirtyPressure,
+      (reason === "dirty-overflow" ? 1 : 0) + Math.max(0, peakDirty - 0.35),
+    ),
+    urgencyPressure: pressure(
+      previous.urgencyPressure,
+      (reason === "customer-timeout" ? 1 : 0) + unfinished * 0.1,
+    ),
+    scarcityPressure: pressure(
+      previous.scarcityPressure,
+      (reason === "out-of-ingredient" ? 1 : 0) + (reason === "deadlock" ? 0.2 : 0),
+    ),
+    chainPressure: pressure(
+      previous.chainPressure,
+      (reason === "deadlock" ? 1 : 0) + (reason === "out-of-ingredient" ? 0.15 : 0),
+    ),
+    randomPressure: pressure(previous.randomPressure, bounded(randomRate, 0, 1)),
+  };
+}
+
+/** Apply prior failures after the selected preset, preserving the preset as the policy baseline. */
+export function applyFailureKnowledge(
+  cfg: ResolvedScenario,
+  knowledge: EstimateFailureKnowledge,
+): ResolvedScenario {
+  if (knowledge.failureCount === 0) return cfg;
+  const learned: ResolvedScenario = { ...cfg, enabled: { ...cfg.enabled } };
+  const grid = knowledge.gridPressure;
+  const dirty = knowledge.dirtyPressure;
+  const urgency = knowledge.urgencyPressure;
+  const scarcity = knowledge.scarcityPressure;
+  const chain = knowledge.chainPressure;
+  const guessing = knowledge.randomPressure;
+
+  learned.scoreBlocked *= bounded(1 - grid * 0.18, 0.25, 1);
+  learned.scoreBlockedTight *= bounded(1 - grid * 0.25, 0.1, 1);
+  learned.previewConfidence = bounded(
+    learned.previewConfidence * bounded(1 - grid * 0.16, 0.2, 1),
+    0,
+    1,
+  );
+  learned.detourPenalty *= 1 + grid * 0.3 + guessing * 0.1;
+  learned.detourPenaltyTight *= 1 + grid * 0.45 + dirty * 0.15;
+  learned.gridTightThreshold = bounded(learned.gridTightThreshold + grid * 0.05, 0, 0.85);
+
+  learned.scoreSweeper *= 1 + dirty * 0.35;
+  learned.scoreSweeperUrgent *= 1 + dirty * 0.65;
+
+  learned.scoreBase *= 1 + urgency * 0.08;
+  learned.scoreReady *= 1 + urgency * 0.25;
+  learned.nearCompletionBonus *= 1 + urgency * 0.5;
+  learned.customerPositionDecay *= 1 + urgency * 0.2;
+
+  learned.scarcityFactor *= 1 + scarcity * 0.55;
+  learned.scarcityCap *= 1 + scarcity * 0.4;
+
+  learned.depthBonusPerLevel *= 1 + chain * 0.2;
+  learned.multiInputBaseBonus *= 1 + chain * 0.25;
+  learned.multiInputBonus *= 1 + chain * 0.2;
+  learned.lastInputBonusMulti *= 1 + chain * 0.45;
+  learned.lastInputBonusSingle *= 1 + chain * 0.3;
+
+  learned.rowDecay = bounded(
+    learned.rowDecay + (1 - learned.rowDecay) * bounded(guessing * 0.15, 0, 0.45),
+    0,
+    1,
+  );
+  return learned;
+}
+
 function retune(
   base: ResolvedScenario,
   name: string,
@@ -774,6 +895,28 @@ function randomizedStrategy(base: ResolvedScenario, retryIndex: number, random: 
   });
 }
 
+/** Pick the next unused preset from the strongest learned failure signal. */
+function learnedPreset(
+  knowledge: EstimateFailureKnowledge,
+  presets: ScoringStrategy[],
+  used: ReadonlySet<string>,
+): ScoringStrategy | undefined {
+  const pressureByPreset: [string, number][] = [
+    ["grid-safe", Math.max(knowledge.gridPressure, knowledge.dirtyPressure)],
+    ["finish-first", knowledge.urgencyPressure],
+    ["scarcity-first", knowledge.scarcityPressure],
+    ["chain-first", knowledge.chainPressure],
+    ["front-loaded", knowledge.randomPressure],
+  ];
+  pressureByPreset.sort((a, b) => b[1] - a[1]);
+  for (const [name, pressure] of pressureByPreset) {
+    if (pressure <= 0 || used.has(name)) continue;
+    const preset = presets.find((candidate) => candidate.name === name);
+    if (preset) return preset;
+  }
+  return presets.find((candidate) => !used.has(candidate.name));
+}
+
 const betterFailure = (candidate: EstimateResult, current: EstimateResult | null): boolean => {
   if (!current) return true;
   if (candidate.servedCount !== current.servedCount) return candidate.servedCount > current.servedCount;
@@ -781,9 +924,10 @@ const betterFailure = (candidate: EstimateResult, current: EstimateResult | null
 };
 
 /**
- * Estimate a node level, retrying failed runs with distinct scoring sets.
- * Presets are exhausted before randomized sets are considered. A successful
- * attempt returns immediately; otherwise the closest failed run is retained.
+ * Estimate a node level, retrying failed runs with distinct scoring sets. Every failed attempt
+ * also contributes aggregate knowledge that retunes all later attempts. Presets are exhausted
+ * before randomized sets are considered. A successful attempt returns immediately; otherwise the
+ * closest failed run is retained.
  */
 export function estimateNodeDifficulty(
   ix: GraphIndex,
@@ -799,11 +943,19 @@ export function estimateNodeDifficulty(
     : Math.random;
   let best: EstimateResult | null = null;
   let bestStrategy = "authored";
+  let knowledge = emptyFailureKnowledge();
+  const usedStrategies = new Set<string>();
 
   for (let attempt = 0; attempt <= retryCount; attempt++) {
-    const strategy = attempt === 0
+    const baseline = attempt === 0
       ? { name: "authored", cfg: base }
-      : presets[attempt - 1] ?? randomizedStrategy(base, attempt - presets.length - 1, strategyRandom);
+      : learnedPreset(knowledge, presets, usedStrategies) ??
+        randomizedStrategy(base, Math.max(0, attempt - presets.length - 1), strategyRandom);
+    usedStrategies.add(baseline.name);
+    const strategy = {
+      name: baseline.name,
+      cfg: applyFailureKnowledge(baseline.cfg, knowledge),
+    };
     const attemptRng = opts.rng ?? (strategy.cfg.enabled.rngSeed
       ? seededRng((strategy.cfg.rngSeed + attempt * 0x6d2b79f5) >>> 0)
       : Math.random);
@@ -816,16 +968,20 @@ export function estimateNodeDifficulty(
     );
     result.attemptCount = attempt + 1;
     result.strategyName = strategy.name;
+    result.learnedFromFailures = knowledge.failureCount;
+    result.failureKnowledge = { ...knowledge };
     if (result.solvable) return result;
     if (betterFailure(result, best)) {
       best = result;
       bestStrategy = strategy.name;
     }
+    knowledge = accumulateFailureKnowledge(knowledge, result);
   }
 
   const result = best!;
   result.attemptCount = retryCount + 1;
   result.strategyName = bestStrategy;
+  result.failureKnowledge = { ...knowledge };
   result.reason = `${result.reason ?? "The solver could not finish."} Tried ${retryCount + 1} scoring strategies; best run used ${bestStrategy}.`;
   return result;
 }

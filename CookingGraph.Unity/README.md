@@ -105,3 +105,8 @@ The game may switch predefined picking behaviour at any time; for example,
 reinitializing the graph or clearing in-flight reservations. `bot.SetIntelligent(0.5f)` can also
 change the bot from fully strategic (`1`) toward fully random (`0`) on the next `Tick`; random
 picks still exclude frozen and otherwise illegal items.
+
+Failed runs can also teach the next run without storing hidden queue data. Pass a
+`CookingBotFailureKnowledge` object to `Init(graph, knowledge)`, then call
+`AccumulateFailure(report)` after loss and persist the returned serializable object. It stores only
+bounded aggregate pressure such as grid risk, dirty buildup, urgency, scarcity, and chain stalls.

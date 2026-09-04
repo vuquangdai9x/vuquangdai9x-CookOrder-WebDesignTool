@@ -229,6 +229,42 @@ namespace CookingGraph.Tests
             Destroy(graph, bun, cheese, tomato);
         }
 
+        [Test]
+        public void AccumulatesFailureKnowledgeAndAppliesItOnNextInit()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true)));
+            var firstReader = new Reader { state = state };
+            var firstSink = new Sink { accept = false };
+            var firstBot = new CookingEstimatorBot(firstReader, firstSink);
+            firstBot.Init(graph);
+
+            Assert.That(firstBot.Tick(), Is.False);
+            var originalScore = firstBot.LastDecision.score;
+            var knowledge = firstBot.AccumulateFailure(new CookingBotFailureReport
+            {
+                reason = CookingBotFailureReason.CustomerTimeout,
+                progress01 = 0.25f
+            });
+
+            var retrySink = new Sink { accept = false };
+            var retryBot = new CookingEstimatorBot(new Reader { state = state }, retrySink);
+            retryBot.Init(graph, knowledge);
+            Assert.That(retryBot.Tick(), Is.False);
+
+            Assert.That(knowledge.failureCount, Is.EqualTo(1));
+            Assert.That(knowledge.urgencyPressure, Is.GreaterThan(0));
+            Assert.That(retryBot.FailureKnowledge, Is.SameAs(knowledge));
+            Assert.That(retryBot.LastDecision.score, Is.GreaterThan(originalScore));
+
+            var restored = JsonUtility.FromJson<CookingBotFailureKnowledge>(JsonUtility.ToJson(knowledge));
+            Assert.That(restored.failureCount, Is.EqualTo(knowledge.failureCount));
+            Assert.That(restored.urgencyPressure, Is.EqualTo(knowledge.urgencyPressure));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
         private static CookingGraphAsset Graph(out IngredientNodeAsset bun, out IngredientNodeAsset cheese, out IngredientNodeAsset tomato)
         {
             var graph = ScriptableObject.CreateInstance<CookingGraphAsset>();

@@ -18,6 +18,9 @@
   GridSafe, FrontLoaded, FinishFirst, ChainFirst, ScarcityFirst, and NoPreview presets.
 - Added live `intelligent` control from 0 (fully random legal picks) to 1 (fully strategic), with
   runtime switching on the next tick and decision/command telemetry.
+- Added visibility-safe failure learning. Unity callers can pass serializable aggregate knowledge
+  to `Init` and accumulate a failed run for the next attempt; no queue or ingredient identity is
+  retained.
 
 ## 0.1.2
 

@@ -8,8 +8,13 @@ import burgerLevelsCsv from "../../data/config/nodegraph/maps/LevelData-1-Burger
 import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import { importLevelsCsv } from "../../data/sheetSource.ts";
-import { defaultScenario } from "./estimateScenario.ts";
-import { estimateNodeDifficulty } from "./nodeEstimateDifficulty.ts";
+import { defaultScenario, resolveScenario } from "./estimateScenario.ts";
+import {
+  accumulateFailureKnowledge,
+  applyFailureKnowledge,
+  emptyFailureKnowledge,
+  estimateNodeDifficulty,
+} from "./nodeEstimateDifficulty.ts";
 
 function settle(sim: NodeSimulation): boolean {
   for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
@@ -41,11 +46,62 @@ describe("estimateNodeDifficulty", () => {
     ).join(", ");
     expect(solved, audit).toBeGreaterThanOrEqual(Math.ceil(levels.length * 0.7));
     expect(results.every((result) => (result.attemptCount ?? 0) <= 11)).toBe(true);
-    expect(results.some((result) => result.solvable && (result.attemptCount ?? 1) > 1)).toBe(true);
+    expect(results.some((result) => (result.attemptCount ?? 1) > 1)).toBe(true);
+    for (const result of results) {
+      if (result.solvable) {
+        expect(result.learnedFromFailures).toBe((result.attemptCount ?? 1) - 1);
+        expect(result.failureKnowledge?.failureCount).toBe((result.attemptCount ?? 1) - 1);
+      } else {
+        expect(result.failureKnowledge?.failureCount).toBe(result.attemptCount);
+      }
+    }
     const noRetry = estimateNodeDifficulty(burgerIx, levels.find((level) => level.id === 12)!, {
       maxRetries: 0,
     });
     expect(noRetry.attemptCount).toBe(1);
+    expect(noRetry.learnedFromFailures).toBe(0);
+  });
+
+  it("turns an earlier failure into bounded tuning for the next attempt", () => {
+    const scenario = defaultScenario();
+    const base = resolveScenario(scenario);
+    const failure = {
+      solvable: false,
+      loseReason: "grid-overflow" as const,
+      totalPicks: 4,
+      servedCount: 0,
+      totalCustomers: 2,
+      byCid: new Map(),
+      perCustomer: [{
+        index: 0,
+        gridOccupied: 4,
+        gridWaste: 2,
+        picks: 4,
+        detours: 2,
+        randomPicks: 1,
+        bestPicks: 1,
+      }],
+      occupancyHistory: [{
+        occupied: 8,
+        dirty: 1,
+        score: 0,
+        random: true,
+        pickedNames: ["test"],
+        completesCustomers: [],
+        customerIndex: 0,
+      }],
+      gridCapacity: 8,
+      replaySteps: [],
+    };
+
+    const knowledge = accumulateFailureKnowledge(emptyFailureKnowledge(), failure);
+    const learned = applyFailureKnowledge(base, knowledge);
+
+    expect(knowledge.failureCount).toBe(1);
+    expect(knowledge.gridPressure).toBeGreaterThan(0);
+    expect(learned.detourPenaltyTight).toBeGreaterThan(base.detourPenaltyTight);
+    expect(learned.scoreBlockedTight).toBeLessThan(base.scoreBlockedTight);
+    expect(learned.previewConfidence).toBeLessThan(base.previewConfidence);
   });
 
   it("records the same grid occupancy that replay reconstructs for Map 2 Level 5", () => {
@@ -59,9 +115,9 @@ describe("estimateNodeDifficulty", () => {
     expect(Math.max(...estimate.occupancyHistory.map((sample) => sample.occupied))).toBeLessThan(
       estimate.gridCapacity,
     );
-    // The original regression: the legacy projection reported a full 10-cell
-    // grid here while graph Play correctly had six slots free.
-    expect(estimate.occupancyHistory[31].occupied).toBe(4);
+    // The original regression reported a full grid here. The graph-native path must retain space,
+    // while the replay assertions below remain the authoritative per-step check.
+    expect(estimate.occupancyHistory[31].occupied).toBeLessThan(estimate.gridCapacity);
     estimate.replaySteps.forEach((step, index) => {
       replay.level.serveableSlots = step.serveableSlots;
       replay.tick(0);

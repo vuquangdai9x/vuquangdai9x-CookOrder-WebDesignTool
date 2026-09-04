@@ -99,6 +99,25 @@ export interface EstimateResult {
   attemptCount?: number;
   /** Scoring strategy that produced this result. */
   strategyName?: string;
+  /** Number of earlier failed attempts whose aggregate lessons tuned this run. */
+  learnedFromFailures?: number;
+  /** Final visibility-safe knowledge accumulated while retrying this estimate. */
+  failureKnowledge?: EstimateFailureKnowledge;
+}
+
+/**
+ * Aggregate lessons from failed runs. These deliberately contain no queue ids, ingredient ids,
+ * customer identities, or hidden sequence data, so applying them cannot reveal future content.
+ */
+export interface EstimateFailureKnowledge {
+  version: 1;
+  failureCount: number;
+  gridPressure: number;
+  dirtyPressure: number;
+  urgencyPressure: number;
+  scarcityPressure: number;
+  chainPressure: number;
+  randomPressure: number;
 }
 
 export interface EstimateReplayStep {

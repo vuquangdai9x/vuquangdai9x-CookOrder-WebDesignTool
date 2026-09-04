@@ -389,6 +389,36 @@ progress, and pending reservations. Random mode still applies all legality check
 departing, stale, and already-reserved items cannot be selected. The active value is available as
 `bot.Intelligent` and copied to `LastDecision.intelligent` and `BotPickCommand.intelligent`.
 
+### Learn from a failed run
+
+Failure knowledge is an ordinary serializable object owned by the game. Pass it to `Init`, report
+the failure after the run ends, then save and reuse the returned object:
+
+```csharp
+var knowledge = loadResult ?? new CookingBotFailureKnowledge();
+bot.Init(graph, knowledge);
+
+// Run Tick normally. After the level fails:
+knowledge = bot.AccumulateFailure(new CookingBotFailureReport
+{
+    reason = CookingBotFailureReason.GridOverflow,
+    progress01 = 0.6f // optional; use -1 when unavailable
+});
+SaveKnowledge(knowledge);
+
+// Retry with the accumulated grid-pressure lesson.
+bot.Init(graph, knowledge);
+```
+
+The bot measures peak grid occupancy, peak dirty occupancy, and random accepted-pick rate from the
+snapshots it already receives. The failure reason adds urgency, scarcity, chain, grid, or dirty
+pressure. These bounded pressures retune the selected strategy on the next run. The supplied object
+is updated in place and returned for convenient persistence.
+
+Knowledge never stores ingredient assets, item ids, lanes, customer identities, or queue history.
+It therefore cannot reveal content below the visible rows. Key saved knowledge by a stable level
+and graph-version identifier, and discard it when that configuration changes.
+
 ### Custom base weights
 
 Pass an `EstimatorBotSettings` instance to change scoring and lookahead:

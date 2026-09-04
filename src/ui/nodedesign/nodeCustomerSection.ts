@@ -474,8 +474,10 @@ function estimateBar(
     el("strong", {}, [estimate.solvable ? "✓ " : "⚠ ", summary]),
   ];
   if ((estimate.attemptCount ?? 1) > 1) {
+    const learned = estimate.learnedFromFailures ?? 0;
     parts.push(el("span", { class: "estimate-metric" }, [
-      `${estimate.strategyName ?? "alternate"} strategy · ${estimate.attemptCount} attempts`,
+      `${estimate.strategyName ?? "alternate"} strategy · ${estimate.attemptCount} attempts` +
+      (learned > 0 ? ` · learned from ${learned} failure${learned === 1 ? "" : "s"}` : ""),
     ]));
   }
   if (estimate.reason) parts.push(el("span", { class: "estimate-reason" }, [estimate.reason]));
