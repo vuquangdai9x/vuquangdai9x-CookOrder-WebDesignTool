@@ -79,6 +79,18 @@ describe("estimateNodeDifficulty", () => {
     expect(result.loseReason).not.toBe("customer-timeout");
   });
 
+  it("solves timing-sensitive Map 1 Levels 10, 15, 24, and 25 without Save Me", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const levels = importLevelsCsv(burgerLevelsCsv);
+    for (const id of [10, 15, 24, 25]) {
+      const level = toNodeLevelConfig(levels.find((value) => value.id === id)!);
+      const result = estimateNodeDifficulty(burgerIx, level);
+      expect(result.solvable, `Level ${id}: ${result.reason}`).toBe(true);
+      expect(result.servedCount).toBe(result.totalCustomers);
+      expect(result.replaySteps.length).toBeGreaterThan(0);
+    }
+  });
+
   it("keeps customer timeouts as exact warnings instead of failed attempts", () => {
     const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
     const level = toNodeLevelConfig(importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 20)!);

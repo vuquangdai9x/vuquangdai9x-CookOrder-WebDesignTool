@@ -167,6 +167,19 @@ namespace CookingGraph
         public BotGridState grid = new BotGridState();
         public BotSaveMeBagState saveMeBag;
         public List<BotCommittedIngredientState> committedIngredients = new List<BotCommittedIngredientState>();
+
+        /// <summary>
+        /// Tool processes that will finish through passage of gameplay time. Do not count a
+        /// partially filled multi-input recipe that is waiting for another queue ingredient.
+        /// </summary>
+        public int activeToolProcessCount;
+
+        /// <summary>
+        /// Logical combine/merge transitions whose completion can change routing, serving, or grid
+        /// capacity. Do not count visual-only tweens after their logical result is already committed.
+        /// </summary>
+        public int activeMergeAnimationCount;
+
         public List<BotCustomerOrderState> customerOrders = new List<BotCustomerOrderState>();
         public List<BotPreviewOrderState> previewOrders = new List<BotPreviewOrderState>();
         /// <summary>
@@ -192,6 +205,7 @@ namespace CookingGraph
         public float score;
         public bool randomFallback;
         public CookingBotPickingStrategy pickingStrategy;
+        public CookingBotWorkWaitStrategy workWaitStrategy;
         public float intelligent = 1f;
         public float pickIntervalSeconds;
     }
@@ -206,6 +220,62 @@ namespace CookingGraph
         bool TryPick(BotPickCommand command);
     }
 
+    /// <summary>Structured stages emitted by the bot's optional verbose runtime trace.</summary>
+    public enum CookingBotVerboseLogKind
+    {
+        Initialized,
+        ConfigurationChanged,
+        StateUnavailable,
+        NotPlaying,
+        PendingReconciled,
+        Cooldown,
+        WaitingForWorkCompletion,
+        NoLegalPick,
+        DecisionSelected,
+        GridCapacityDeferred,
+        CommandRejected,
+        PickAccepted,
+        FailureKnowledgeAccumulated
+    }
+
+    /// <summary>
+    /// One synchronous diagnostic record. Scalar fields use -1 when that value does not apply to
+    /// the current stage, allowing listeners to serialize records without referencing game assets.
+    /// </summary>
+    [Serializable]
+    public sealed class CookingBotVerboseLog
+    {
+        public CookingBotVerboseLogKind kind;
+        public string message;
+        public long revision = -1;
+        public float gameplayTimeSeconds = -1;
+        public long commandId = -1;
+        public int queueIndex = -1;
+        public string itemId;
+        public float score = -1;
+        public bool randomFallback;
+        public int pendingPickCount;
+        public float nextPickAtSeconds = -1;
+        public int projectedGridLoad = -1;
+        public int usableGridCapacity = -1;
+        public CookingBotPickingStrategy pickingStrategy;
+        public CookingBotWorkWaitStrategy workWaitStrategy;
+        public CookingBotWorkWaitStrategy effectiveWorkWaitStrategy;
+        public float intelligent = 1f;
+        public float pickIntervalSeconds;
+        public int activeToolProcessCount = -1;
+        public int activeMergeAnimationCount = -1;
+    }
+
+    /// <summary>
+    /// Receives verbose bot records synchronously on the thread that calls the bot. Implementations
+    /// may forward them to Unity logging, an in-game console, telemetry, or a test recorder.
+    /// </summary>
+    public interface ICookingBotVerboseLogListener
+    {
+        void OnCookingBotVerboseLog(CookingBotVerboseLog entry);
+    }
+
     [Serializable]
     public sealed class BotDecision
     {
@@ -214,6 +284,7 @@ namespace CookingGraph
         public bool randomFallback;
         public int customerIndex = -1;
         public CookingBotPickingStrategy pickingStrategy;
+        public CookingBotWorkWaitStrategy workWaitStrategy;
         public float intelligent = 1f;
         public float pickIntervalSeconds;
         /// <summary>True when the candidate was intentionally held until committed work drains.</summary>

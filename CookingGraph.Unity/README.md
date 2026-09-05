@@ -119,10 +119,11 @@ list, grid and Save Me bag contents, in-flight/tool commitments, active orders, 
 The command includes both `observedRevision` and `expectedItemId`; the sink should reject it when
 either is stale.
 
-`EstimatorBotSettings.pickIntervalSeconds` defaults to `1`. The bot waits for that much
-`BotGameState.gameplayTimeSeconds` between accepted picks, but never waits for all animations. This
-matches the web estimator, where cooking advances only by the configured interval between solver
-decisions rather than being completed instantly after every pick.
+`EstimatorBotSettings.pickIntervalSeconds` defaults to `1` and remains the minimum delay between
+accepted picks. The separate `CookingBotWorkWaitStrategy` can additionally wait for the snapshot's
+active tool processes and logical merge transitions. `Adaptive` overlaps them on the first run and
+uses the completion barrier on a retry initialized with failure knowledge, matching the web
+estimator's synchronized retry strategy.
 
 The interval is a minimum, not a promise to pick immediately. Before submitting, the bot projects
 `occupied grid + committed work + candidate footprint`. If that load cannot fit, `Tick()` returns
@@ -131,14 +132,16 @@ load fields on `LastDecision` distinguish this safety wait from the normal coold
 
 Change the interval during a run with `bot.SetPickIntervalSeconds(seconds)`. The current cooldown is
 recalculated from the last accepted pick, so the new value affects the next `Tick()` without `Init`.
+Change synchronization independently with `bot.SetWorkWaitStrategy(...)`; this also affects the
+next tick without resetting pending picks.
 
 An accepted command must update **logical** gameplay state immediately: increment the revision,
 remove/disable the queue item, and add its ingredient to `committedIngredients` before starting the
-visual flight. The animation then runs independently. On the next frame the bot can pick another
-legal queue only if the cadence deadline has passed; it still does not wait for the earlier visual
-flight to finish. The already-flying ingredient is included in demand accounting, so the bot neither
-waits for every animation nor orders the same requirement twice. `Departing` queue items may remain
-in the snapshot for rendering but are ignored as queue supply.
+visual flight. The animation then runs independently. On a later frame the bot can pick another
+legal queue only if the cadence deadline has passed and its work-wait strategy permits it. The
+already-flying ingredient is included in demand accounting, so the bot does not order the same
+requirement twice. `Departing` queue items may remain in the snapshot for rendering but are ignored
+as queue supply.
 
 The game may switch predefined picking behaviour at any time; for example,
 `bot.SetPickingStrategy(CookingBotPickingStrategy.GridSafe)` takes effect on the next `Tick` without

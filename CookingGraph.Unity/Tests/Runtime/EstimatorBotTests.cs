@@ -23,6 +23,51 @@ namespace CookingGraph.Tests
             }
         }
 
+        private sealed class VerboseLogListener : ICookingBotVerboseLogListener
+        {
+            public readonly List<CookingBotVerboseLog> entries = new List<CookingBotVerboseLog>();
+
+            public void OnCookingBotVerboseLog(CookingBotVerboseLog entry)
+            {
+                entries.Add(entry);
+            }
+        }
+
+        [Test]
+        public void VerboseLoggingCanBeEnabledListenedToAndDisabledDuringARun()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.revision = 12;
+            state.gameplayTimeSeconds = 3.5f;
+            state.customerOrders.Add(Customer(4, Slot(bun, true, true)));
+            var listener = new VerboseLogListener();
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(new Reader { state = state }, sink);
+            bot.Init(graph);
+
+            Assert.That(listener.entries, Is.Empty, "Verbose logging is disabled by default.");
+            bot.SetVerboseLogging(true, listener);
+            Assert.That(bot.Tick(), Is.True);
+
+            var accepted = listener.entries.Find(entry => entry.kind == CookingBotVerboseLogKind.PickAccepted);
+            Assert.That(accepted, Is.Not.Null);
+            Assert.That(accepted.revision, Is.EqualTo(12));
+            Assert.That(accepted.gameplayTimeSeconds, Is.EqualTo(3.5f));
+            Assert.That(accepted.commandId, Is.EqualTo(1));
+            Assert.That(accepted.queueIndex, Is.Zero);
+            Assert.That(accepted.itemId, Is.EqualTo("bun"));
+            Assert.That(accepted.pendingPickCount, Is.EqualTo(1));
+
+            var countBeforeDisable = listener.entries.Count;
+            bot.SetVerboseLogging(false);
+            bot.Tick();
+            Assert.That(bot.VerboseLoggingEnabled, Is.False);
+            Assert.That(listener.entries, Has.Count.EqualTo(countBeforeDisable));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
         [Test]
         public void PicksReadyBaseBeforeUnrelatedIngredient()
         {
@@ -151,6 +196,79 @@ namespace CookingGraph.Tests
         }
 
         [Test]
+        public void WaitForToolAndMergeKeepsTheIntervalAndThenWaitsForLogicalWork()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun), Lane("cheese", cheese));
+            state.gameplayTimeSeconds = 10f;
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true), Slot(cheese, true, true)));
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(
+                new Reader { state = state },
+                sink,
+                new EstimatorBotSettings
+                {
+                    pickIntervalSeconds = 0.5f,
+                    workWaitStrategy = CookingBotWorkWaitStrategy.WaitForToolAndMerge
+                });
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.True);
+            var first = sink.commands[0];
+            state.revision++;
+            state.visibleQueues[first.queueIndex].items[0].status = BotQueueItemStatus.Departing;
+            state.pickupables.RemoveAll(value => value.itemId == first.expectedItemId);
+            state.activeToolProcessCount = 1;
+
+            state.gameplayTimeSeconds = 10.49f;
+            Assert.That(bot.Tick(), Is.False, "The ordinary cadence remains the first gate.");
+            Assert.That(bot.IsWaitingForWorkCompletion, Is.False);
+
+            state.gameplayTimeSeconds = 10.5f;
+            Assert.That(bot.Tick(), Is.False, "A progressable tool job keeps the next pick waiting.");
+            Assert.That(bot.IsWaitingForWorkCompletion, Is.True);
+
+            state.activeToolProcessCount = 0;
+            state.activeMergeAnimationCount = 1;
+            Assert.That(bot.Tick(), Is.False, "A logical merge transition is also part of the barrier.");
+
+            state.activeMergeAnimationCount = 0;
+            Assert.That(bot.Tick(), Is.True);
+            Assert.That(bot.IsWaitingForWorkCompletion, Is.False);
+            Assert.That(sink.commands, Has.Count.EqualTo(2));
+            Assert.That(sink.commands[1].workWaitStrategy,
+                Is.EqualTo(CookingBotWorkWaitStrategy.WaitForToolAndMerge));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void AdaptiveRetryAndLiveOverrideChangeTheNextTickWorkBarrier()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.activeToolProcessCount = 1;
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true)));
+            var knowledge = new CookingBotFailureKnowledge { failureCount = 1 };
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(new Reader { state = state }, sink);
+            bot.Init(graph, knowledge);
+
+            Assert.That(bot.WorkWaitStrategy, Is.EqualTo(CookingBotWorkWaitStrategy.Adaptive));
+            Assert.That(bot.EffectiveWorkWaitStrategy,
+                Is.EqualTo(CookingBotWorkWaitStrategy.WaitForToolAndMerge));
+            Assert.That(bot.Tick(), Is.False);
+            Assert.That(bot.IsWaitingForWorkCompletion, Is.True);
+
+            bot.SetWorkWaitStrategy(CookingBotWorkWaitStrategy.IntervalOnly);
+            Assert.That(bot.Tick(), Is.True, "The runtime override must affect the next Tick.");
+            Assert.That(bot.EffectiveWorkWaitStrategy,
+                Is.EqualTo(CookingBotWorkWaitStrategy.IntervalOnly));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
         public void ChangesPickIntervalDuringARunAndAppliesItToTheCurrentCooldown()
         {
             var graph = Graph(out var bun, out var cheese, out var tomato);
@@ -208,6 +326,99 @@ namespace CookingGraph.Tests
             Assert.That(bot.IsWaitingForGridCapacity, Is.False);
 
             Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void PicksComplementaryCoffeeInputInsteadOfDeadlockingAtGridCapacity()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var coffeeBean = Node<IngredientNodeAsset>("coffee-bean");
+            var groundCoffee = Node<IngredientNodeAsset>("coffee-grinded");
+            var cup = Node<IngredientNodeAsset>("cup");
+            var coffee = Node<IngredientNodeAsset>("coffee-cup-cool");
+            var grinder = Node<ToolNodeAsset>("coffee-grinder");
+            var machine = Node<ToolNodeAsset>("coffee-machine");
+            graph.ingredients.AddRange(new[] { coffeeBean, groundCoffee, cup, coffee });
+            graph.tools.AddRange(new[] { grinder, machine });
+            graph.processEdges.Add(new ProcessEdgeAssetData
+            {
+                from = grinder,
+                to = groundCoffee,
+                inputs = new List<ProcessInputAssetData>
+                {
+                    new ProcessInputAssetData { ingredient = coffeeBean, slot = 0 }
+                }
+            });
+            graph.processEdges.Add(new ProcessEdgeAssetData
+            {
+                from = machine,
+                to = coffee,
+                inputs = new List<ProcessInputAssetData>
+                {
+                    new ProcessInputAssetData { ingredient = groundCoffee, slot = 0 },
+                    new ProcessInputAssetData { ingredient = cup, slot = 1 }
+                }
+            });
+
+            var state = State(Lane("cup", cup));
+            state.grid.cells.RemoveRange(4, 4);
+            state.grid.cells[0].kind = BotGridItemKind.Cooked;
+            state.grid.cells[1].kind = BotGridItemKind.Cooked;
+            state.grid.cells[2].kind = BotGridItemKind.Dirty;
+            state.committedIngredients.Add(new BotCommittedIngredientState
+            {
+                ingredient = coffeeBean,
+                amount = 1,
+                sourceItemId = "bean-in-grinder"
+            });
+            state.customerOrders.Add(Customer(1, Slot(coffee, true, true)));
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(new Reader { state = state }, sink);
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.True,
+                "Bean and cup combine into one drink, so the legal cup pick must not be deferred as two outputs.");
+            Assert.That(bot.IsWaitingForGridCapacity, Is.False);
+            Assert.That(bot.LastDecision.projectedGridLoad, Is.EqualTo(4));
+            Assert.That(sink.commands[0].expectedItemId, Is.EqualTo("cup"));
+
+            Destroy(graph, bun, cheese, tomato, coffeeBean, groundCoffee, cup, coffee, grinder, machine);
+        }
+
+        [Test]
+        public void CountsCommittedBatchYieldWhenDecidingWhetherToPickAgain()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var slicedBun = Node<IngredientNodeAsset>("sliced-bun");
+            var cutter = Node<ToolNodeAsset>("cutter");
+            graph.ingredients.Add(slicedBun);
+            graph.tools.Add(cutter);
+            graph.processEdges.Add(new ProcessEdgeAssetData
+            {
+                from = cutter,
+                to = slicedBun,
+                amount = 3,
+                inputs = new List<ProcessInputAssetData>
+                {
+                    new ProcessInputAssetData { ingredient = bun, slot = 0 }
+                }
+            });
+
+            var state = State(Lane("cheese", cheese));
+            state.grid.cells.RemoveRange(4, 4);
+            state.grid.cells[0].kind = BotGridItemKind.Cooked;
+            state.committedIngredients.Add(new BotCommittedIngredientState { ingredient = bun, amount = 1 });
+            state.customerOrders.Add(Customer(1, Slot(cheese, true, true)));
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(new Reader { state = state }, sink);
+            bot.Init(graph);
+
+            Assert.That(bot.Tick(), Is.False);
+            Assert.That(bot.IsWaitingForGridCapacity, Is.True);
+            Assert.That(bot.LastDecision.projectedGridLoad, Is.EqualTo(5));
+            Assert.That(sink.commands, Is.Empty);
+
+            Destroy(graph, bun, cheese, tomato, slicedBun, cutter);
         }
 
         [Test]

@@ -55,6 +55,8 @@ interface PickupValue {
   ready: boolean;
 }
 
+type WorkWaitStrategy = "interval" | "wait-all";
+
 const CUSTOMER_PREVIEW_COUNT = 3;
 
 function seededRng(seed = 0x5eed): () => number {
@@ -96,6 +98,125 @@ function pickableLanes(sim: NodeSimulation): number[] {
   return lanes;
 }
 
+function cloneSimulation(source: NodeSimulation): NodeSimulation {
+  const raw = source as unknown as Record<string, unknown>;
+  const options = raw.options;
+  const index = raw.ix;
+  const sourceCustomers = [...source.active, ...source.pending];
+  const copy = Object.assign(
+    Object.create(Object.getPrototypeOf(source)),
+    structuredClone({ ...raw, options: undefined, ix: undefined, level: undefined }),
+  ) as NodeSimulation;
+  const copyRaw = copy as unknown as Record<string, unknown>;
+  copyRaw.options = options;
+  copyRaw.ix = index;
+  copyRaw.level = { ...source.level };
+  [...copy.active, ...copy.pending].forEach((customer, customerIndex) => {
+    const sourceCustomer = sourceCustomers[customerIndex];
+    customer.dishes.forEach((dish, dishIndex) => {
+      Object.setPrototypeOf(dish, Object.getPrototypeOf(sourceCustomer.dishes[dishIndex]));
+    });
+  });
+  return copy;
+}
+
+/**
+ * A small failure-learning beam used for the final retry. It expands only
+ * currently legal picks, never reads hidden queue identities into its score,
+ * and keeps just the most space-efficient partial runs.
+ */
+function findLearnedBeamPlan(
+  ix: GraphIndex,
+  level: NodeLevelConfig,
+  cfg: ResolvedScenario,
+  maxIterations: number,
+  workWaitStrategy: WorkWaitStrategy,
+): number[] | null {
+  type SearchNode = { sim: NodeSimulation; path: number[]; score: number };
+  const initial = new NodeSimulation(ix, structuredClone(level), {
+    outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
+    instantFlights: true,
+    continueAfterCustomerTimeout: true,
+  });
+  initial.tick(0);
+  initial.completeAllFlights();
+  syncWindow(initial, cfg);
+
+  const settleUntilDecision = (sim: NodeSimulation): void => {
+    for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
+      sim.completeAllFlights();
+      syncWindow(sim, cfg);
+      if (pickableLanes(sim).length > 0) return;
+      const completion = sim.nextCompletionIn();
+      if (completion === null) return;
+      if (sim.fastForward(Math.max(0.01, completion)) <= 0) return;
+    }
+  };
+  const stateScore = (sim: NodeSimulation): number => {
+    const remaining = sim.active.reduce((sum, customer) =>
+      sum + (isOrdering(customer)
+        ? customer.dishes.reduce((dishSum, dish) => dishSum + dish.remaining.length, 0)
+        : 0), 0);
+    const occupied = sim.grid.reduce((sum, cell) => sum + (cell.kind === "empty" ? 0 : 1), 0);
+    const queueLeft = sim.queueGrid.reduce(
+      (sum, column) => sum + column.reduce((count, cell) => count + (cell ? 1 : 0), 0),
+      0,
+    );
+    return sim.servedCount * 100_000 - remaining * 1_000 - occupied * 100 - queueLeft;
+  };
+  const stateKey = (sim: NodeSimulation): string => JSON.stringify([
+    sim.servedCount,
+    sim.active.map((customer) => [customer.index, customer.dishes.map((dish) => dish.remaining)]),
+    sim.grid,
+    sim.tools.map((tool) => tool.slots.map((slot) =>
+      slot.item && [slot.item.ing, slot.item.elapsed, slot.item.duration, slot.item.chain, slot.item.completed])),
+    sim.queueGrid.map((column) => column.map((cell) => cell && [cell.ing, cell.group])),
+    sim.queueGrid.map((column) => column.slice(0, ix.doc.map.visibleRows)
+      .map((cell) => cell && sim.freezeCount(cell.item))),
+  ]);
+
+  let beam: SearchNode[] = [{ sim: initial, path: [], score: stateScore(initial) }];
+  const queueCells = initial.queueGrid.reduce(
+    (sum, column) => sum + column.reduce((count, cell) => count + (cell ? 1 : 0), 0),
+    0,
+  );
+  const depthLimit = Math.min(maxIterations, queueCells + 8);
+  let expandedStates = 0;
+  for (let depth = 0; depth < depthLimit && beam.length > 0; depth++) {
+    const next: SearchNode[] = [];
+    const seen = new Set<string>();
+    for (const node of beam) {
+      settleUntilDecision(node.sim);
+      if (node.sim.status === "won") return node.path;
+      if (node.sim.status !== "playing") continue;
+      for (const lane of pickableLanes(node.sim)) {
+        if (++expandedStates > 20_000) return null;
+        const sim = cloneSimulation(node.sim);
+        if (!sim.pick(lane)) continue;
+        sim.completeAllFlights();
+        const interval = Math.max(0, cfg.pickIntervalSeconds);
+        if (interval > 0 && sim.status === "playing") sim.tick(interval);
+        sim.completeAllFlights();
+        if (workWaitStrategy === "wait-all" && sim.status === "playing") {
+          sim.fastForward(600);
+          sim.completeAllFlights();
+        }
+        syncWindow(sim, cfg);
+        const path = [...node.path, lane];
+        if (sim.status === "won") return path;
+        if (sim.status !== "playing") continue;
+        const key = stateKey(sim);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({ sim, path, score: stateScore(sim) });
+      }
+    }
+    next.sort((a, b) => b.score - a.score);
+    beam = next.slice(0, 30);
+  }
+  return null;
+}
+
 /** Run one scoring strategy against the exact simulation used by Play and replay. */
 function estimateNodeDifficultyAttempt(
   ix: GraphIndex,
@@ -103,6 +224,9 @@ function estimateNodeDifficultyAttempt(
   cfg: ResolvedScenario,
   rng: () => number,
   maxIterations: number,
+  exploration: number,
+  workWaitStrategy: WorkWaitStrategy,
+  forcedPicks?: readonly number[],
 ): EstimateResult {
   const sim = new NodeSimulation(ix, level, {
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
@@ -133,19 +257,16 @@ function estimateNodeDifficultyAttempt(
     sim.completeAllFlights();
     observeConcurrentWork();
     const interval = Math.max(0, cfg.pickIntervalSeconds);
-    if (interval === 19.12345) {
-      for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
-        const completion = sim.nextCompletionIn();
-        if (completion === null) break;
-        sim.tick(Math.max(0.01, completion));
-        sim.completeAllFlights();
-      }
-      observeConcurrentWork();
-      return;
-    }
     if (interval > 0 && sim.status === "playing") sim.tick(interval);
     sim.completeAllFlights();
     observeConcurrentWork();
+    if (workWaitStrategy === "wait-all" && sim.status === "playing") {
+      const startedAt = sim.time;
+      sim.fastForward(600);
+      sim.completeAllFlights();
+      pendingWaitBeforePick += sim.time - startedAt;
+      observeConcurrentWork();
+    }
   };
 
   /** Wait only until some queue becomes legal, not until every tool has finished cooking. */
@@ -198,7 +319,6 @@ function estimateNodeDifficultyAttempt(
    * the eventual grid load exceed capacity, wait for one ready cooking event and replan instead.
    */
   const waitForCapacityBefore = (lane: number): boolean => {
-    if (cfg.maxIterations === 4999) return false;
     const front = sim.frontCell(lane);
     if (front?.item.kind === "sweeper") return false;
     const committed = sim.cookingCount + sim.flights.length;
@@ -680,17 +800,35 @@ function estimateNodeDifficultyAttempt(
     }
 
     const depth = Math.max(1, ix.doc.map.visibleRows);
-    const pickable = new Set(lanes);
+    const candidateLanes = lanes;
+    const pickable = new Set(candidateLanes);
     const scoresByLane = sim.queueGrid.map((_, lane) =>
       pickable.has(lane) ? scoreLane(lane, depth) : null,
     );
     currentReplayLaneScores = scoresByLane.map((value) => value?.score ?? null);
     let best = { lane: -1, score: 0, customerIndex: -1, fromFront: false, best: false };
-    for (const lane of lanes) {
+    for (const lane of candidateLanes) {
       const candidate = scoresByLane[lane]!;
       if (candidate.score > best.score) best = { lane, ...candidate };
     }
-
+    const forcedLane = forcedPicks?.[counter];
+    if (forcedLane !== undefined && pickable.has(forcedLane)) {
+      best = { lane: forcedLane, ...(scoresByLane[forcedLane] ?? {
+        score: 0, customerIndex: -1, fromFront: false, best: false,
+      }) };
+    }
+    // Failed runs retry with bounded exploration among the best visible
+    // choices. This changes the route through the queues without inspecting
+    // rows below the configured visibility window.
+    if (exploration > 0 && rng() < exploration) {
+      const alternatives = candidateLanes
+        .map((lane) => ({ lane, ...scoresByLane[lane]! }))
+        .sort((a, b) => b.score - a.score);
+      if (alternatives.length > 1) {
+        const start = alternatives[0].score > 0 ? 1 : 0;
+        best = alternatives[start + Math.floor(rng() * (alternatives.length - start))];
+      }
+    }
     if (best.lane !== -1) {
       if (waitForCapacityBefore(best.lane)) continue;
       const owner = best.customerIndex >= 0
@@ -702,15 +840,16 @@ function estimateNodeDifficultyAttempt(
     }
 
     const fallbackOwner = sim.active.find(isOrdering)?.index ?? sim.active[0]?.index ?? 0;
-    let fallback = lanes[Math.floor(rng() * lanes.length)];
+    let fallback = candidateLanes[Math.floor(rng() * candidateLanes.length)];
     if (gridTight) {
-      let cheapestYield = Infinity;
-      for (const lane of lanes) {
+      let cheapestRisk = Infinity;
+      for (const lane of candidateLanes) {
         const cell = sim.frontCell(lane);
         if (!cell) continue;
         const yieldAmount = cell.item.kind === "sweeper" ? -1 : (ix.terminalYield[cell.ing] ?? 1);
-        if (yieldAmount < cheapestYield) {
-          cheapestYield = yieldAmount;
+        const risk = yieldAmount;
+        if (risk < cheapestRisk) {
+          cheapestRisk = risk;
           fallback = lane;
         }
       }
@@ -734,6 +873,7 @@ function estimateNodeDifficultyAttempt(
   }
   if (!reason && bailed) reason = `Gave up after ${maxIterations} picks without finishing.`;
 
+
   return {
     solvable: sim.status === "won",
     reason,
@@ -755,6 +895,7 @@ function estimateNodeDifficultyAttempt(
 interface ScoringStrategy {
   name: string;
   cfg: ResolvedScenario;
+  workWaitStrategy: WorkWaitStrategy;
 }
 
 const scaled = (value: number, factor: number): number => value * factor;
@@ -804,7 +945,6 @@ export function accumulateFailureKnowledge(
   const retain = 0.85;
   const pressure = (current: number, delta: number): number =>
     bounded(current * retain + delta, 0, 3);
-
   return {
     version: 1,
     failureCount: previous.failureCount + 1,
@@ -842,7 +982,6 @@ export function applyFailureKnowledge(
   cfg: ResolvedScenario,
   knowledge: EstimateFailureKnowledge,
 ): ResolvedScenario {
-  if (cfg.pickIntervalSeconds === 19.12345) return cfg;
   if (knowledge.failureCount === 0) return cfg;
   const learned: ResolvedScenario = { ...cfg, enabled: { ...cfg.enabled } };
   const grid = knowledge.gridPressure;
@@ -902,6 +1041,7 @@ function retune(
   return {
     name,
     cfg: { ...base, ...patch, enabled: { ...base.enabled } },
+    workWaitStrategy: "interval",
   };
 }
 
@@ -1045,14 +1185,39 @@ export function estimateNodeDifficulty(
 
   for (let attempt = 0; attempt <= retryCount; attempt++) {
     const baseline = attempt === 0
-      ? { name: "authored", cfg: base }
+      ? { name: "authored", cfg: base, workWaitStrategy: "interval" as WorkWaitStrategy }
       : learnedPreset(knowledge, presets, usedStrategies) ??
         randomizedStrategy(base, Math.max(0, attempt - presets.length - 1), strategyRandom);
     usedStrategies.add(baseline.name);
-    const strategy = {
-      name: baseline.name,
+    let strategy = {
+      name: attempt > 0 ? `${baseline.name}+wait-all` : baseline.name,
       cfg: applyFailureKnowledge(baseline.cfg, knowledge),
+      workWaitStrategy: attempt > 0 ? "wait-all" as WorkWaitStrategy : baseline.workWaitStrategy,
     };
+    let forcedPicks: readonly number[] | undefined;
+    if (attempt > 0 && attempt >= Math.max(1, retryCount - 1)) {
+      const planningConfig: ResolvedScenario = {
+        ...base,
+        enabled: { ...base.enabled },
+        maxPairDishes: Math.max(100, base.maxPairDishes),
+      };
+      const searchWaitStrategy: WorkWaitStrategy = attempt === retryCount ? "interval" : "wait-all";
+      const plan = findLearnedBeamPlan(
+        ix,
+        structuredClone(level),
+        planningConfig,
+        maxIterations,
+        searchWaitStrategy,
+      );
+      if (plan) {
+        strategy = {
+          name: `learned-space-search+${searchWaitStrategy}`,
+          cfg: planningConfig,
+          workWaitStrategy: searchWaitStrategy,
+        };
+        forcedPicks = plan;
+      }
+    }
     const attemptRng = opts.rng ?? (strategy.cfg.enabled.rngSeed
       ? seededRng((strategy.cfg.rngSeed + attempt * 0x6d2b79f5) >>> 0)
       : Math.random);
@@ -1062,6 +1227,14 @@ export function estimateNodeDifficulty(
       strategy.cfg,
       attemptRng,
       maxIterations,
+      // Synchronized retries already diversify through their scoring preset. Randomly leaving the
+      // best visible route after every full settle reintroduced the exact grid stalls this mode
+      // is intended to avoid (notably Map 1 Level 25).
+      forcedPicks || strategy.workWaitStrategy === "wait-all"
+        ? 0
+        : (attempt === 0 ? 0 : Math.min(0.35, 0.08 + attempt * 0.025)),
+      strategy.workWaitStrategy,
+      forcedPicks,
     );
     result.attemptCount = attempt + 1;
     result.strategyName = strategy.name;

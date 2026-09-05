@@ -15,6 +15,25 @@ namespace CookingGraph
         NoPreview
     }
 
+    /// <summary>Controls whether the cadence may overlap logical tool and merge work.</summary>
+    public enum CookingBotWorkWaitStrategy
+    {
+        /// <summary>
+        /// The first run uses interval pacing. A retry initialized with accumulated failure
+        /// knowledge waits for tool processing and merge transitions to settle.
+        /// </summary>
+        Adaptive,
+
+        /// <summary>Use only pickIntervalSeconds and the projected-capacity safety gate.</summary>
+        IntervalOnly,
+
+        /// <summary>
+        /// After the interval, wait until all progressable tool work and logical merge transitions
+        /// are complete before issuing another pick.
+        /// </summary>
+        WaitForToolAndMerge
+    }
+
     /// <summary>Runtime counterparts of the web estimator's default scoring scenario.</summary>
     [Serializable]
     public sealed class EstimatorBotSettings
@@ -51,6 +70,12 @@ namespace CookingGraph
         /// continue during the interval; this is pacing, not a global animation lock.
         /// </summary>
         [Min(0)] public float pickIntervalSeconds = 1f;
+
+        /// <summary>
+        /// Additional synchronization applied after the pick interval. Adaptive mirrors the web
+        /// estimator: overlap on the first run, then settle tool/merge work on learned retries.
+        /// </summary>
+        public CookingBotWorkWaitStrategy workWaitStrategy = CookingBotWorkWaitStrategy.Adaptive;
 
         /// <summary>Zero uses CookingGraphAsset.map.visibleRows.</summary>
         [Min(0)] public int visibleLookaheadRows;

@@ -62,6 +62,7 @@ namespace CookingGraph
         private EstimatorBotSettings _settings;
         private readonly Dictionary<IngredientNodeAsset, ProcessStep> _producer = new Dictionary<IngredientNodeAsset, ProcessStep>();
         private readonly Dictionary<IngredientNodeAsset, ProcessStep> _consumer = new Dictionary<IngredientNodeAsset, ProcessStep>();
+        private readonly List<ProcessStep> _processSteps = new List<ProcessStep>();
         private readonly Dictionary<IngredientNodeAsset, Dictionary<IngredientNodeAsset, float>> _requirements = new Dictionary<IngredientNodeAsset, Dictionary<IngredientNodeAsset, float>>();
         private readonly Dictionary<IngredientNodeAsset, int> _depths = new Dictionary<IngredientNodeAsset, int>();
         private readonly Dictionary<IngredientNodeAsset, bool> _multiInputRoutes = new Dictionary<IngredientNodeAsset, bool>();
@@ -458,6 +459,106 @@ namespace CookingGraph
             return IngredientsOf(option, state).Sum(TerminalYield);
         }
 
+        /// <summary>
+        /// Convert logical in-flight/tool amounts into their eventual grid footprint. Counting
+        /// jobs alone underestimates batch recipes whose single input produces multiple outputs.
+        /// </summary>
+        internal int EstimateCommittedFootprint(IEnumerable<BotCommittedIngredientState> ingredients)
+        {
+            return EstimatePipelineFootprint(CommittedInventory(ingredients));
+        }
+
+        /// <summary>
+        /// Projects state commitments, the bot's one-frame reservations, and a candidate together.
+        /// This is important for multi-input tools: complementary inputs produce one output and
+        /// must not each be counted as an independent future grid item.
+        /// </summary>
+        internal int EstimateProjectedFootprint(
+            IEnumerable<BotCommittedIngredientState> stateCommitted,
+            IEnumerable<BotCommittedIngredientState> optimisticPending,
+            BotPickupOption candidate,
+            BotGameState state)
+        {
+            var authoritative = CommittedInventory(stateCommitted);
+            var optimistic = CommittedInventory(optimisticPending);
+            foreach (var pair in optimistic)
+            {
+                float current;
+                authoritative.TryGetValue(pair.Key, out current);
+                authoritative[pair.Key] = Math.Max(current, pair.Value);
+            }
+
+            var withCandidate = new Dictionary<IngredientNodeAsset, float>(authoritative);
+            if (candidate != null && !candidate.picksSweeper)
+                foreach (var ingredient in IngredientsOf(candidate, state)) Add(withCandidate, ingredient, 1);
+            var combined = EstimatePipelineFootprint(withCandidate);
+
+            // A game adapter may know a linked/group pickup's footprint more accurately than the
+            // graph. Preserve that override while retaining the reduction from combining inputs.
+            if (candidate != null && candidate.footprint > 0 && !candidate.picksSweeper)
+            {
+                var candidateInventory = new Dictionary<IngredientNodeAsset, float>();
+                foreach (var ingredient in IngredientsOf(candidate, state)) Add(candidateInventory, ingredient, 1);
+                var graphCandidateFootprint = EstimatePipelineFootprint(candidateInventory);
+                combined += candidate.footprint - graphCandidateFootprint;
+            }
+            return Math.Max(0, combined);
+        }
+
+        private static Dictionary<IngredientNodeAsset, float> CommittedInventory(
+            IEnumerable<BotCommittedIngredientState> ingredients)
+        {
+            var result = new Dictionary<IngredientNodeAsset, float>();
+            foreach (var value in ingredients ?? Enumerable.Empty<BotCommittedIngredientState>())
+                if (value != null && value.ingredient != null)
+                    Add(result, value.ingredient, Math.Max(0, value.amount));
+            return result;
+        }
+
+        private int EstimatePipelineFootprint(Dictionary<IngredientNodeAsset, float> source)
+        {
+            var inventory = new Dictionary<IngredientNodeAsset, float>(source);
+            // Valid graphs are acyclic. The guard also makes malformed cyclic graph data harmless.
+            var changed = true;
+            var remainingPasses = Math.Max(1, _processSteps.Count * 2 + 1);
+            while (changed && remainingPasses-- > 0)
+            {
+                changed = false;
+                foreach (var step in _processSteps)
+                {
+                    if (step == null || step.output == null || step.inputs.Count == 0) continue;
+                    var required = new Dictionary<IngredientNodeAsset, int>();
+                    foreach (var input in step.inputs)
+                    {
+                        if (input == null) continue;
+                        int count;
+                        required.TryGetValue(input, out count);
+                        required[input] = count + 1;
+                    }
+                    if (required.Count == 0 || required.ContainsKey(step.output)) continue;
+
+                    var batches = float.PositiveInfinity;
+                    foreach (var pair in required)
+                    {
+                        float available;
+                        inventory.TryGetValue(pair.Key, out available);
+                        batches = Math.Min(batches, available / pair.Value);
+                    }
+                    if (float.IsInfinity(batches)) continue;
+                    batches = (float)Math.Floor(batches + 0.0001f);
+                    if (batches <= 0) continue;
+
+                    foreach (var pair in required)
+                        inventory[pair.Key] = Math.Max(0, inventory[pair.Key] - batches * pair.Value);
+                    Add(inventory, step.output, batches * Math.Max(1, step.amount));
+                    changed = true;
+                }
+            }
+
+            return (int)Math.Ceiling(inventory.Sum(pair =>
+                Math.Max(0, pair.Value) * TerminalYield(pair.Key)));
+        }
+
         private IEnumerable<IngredientNodeAsset> IngredientsOf(BotPickupOption option, BotGameState state)
         {
             if (option.ingredients != null && option.ingredients.Count > 0) return option.ingredients.Where(value => value != null);
@@ -611,6 +712,7 @@ namespace CookingGraph
                 foreach (var input in edge.inputs ?? new List<ProcessInputAssetData>())
                     if (input != null && input.ingredient != null) step.inputs.Add(input.ingredient);
                 if (!_producer.ContainsKey(step.output)) _producer.Add(step.output, step);
+                _processSteps.Add(step);
                 foreach (var input in step.inputs)
                     if (!_consumer.ContainsKey(input)) _consumer.Add(input, step);
             }

@@ -4,8 +4,8 @@
 the same demand-oriented scoring model as the web difficulty estimator, but it replans from the
 game's current authoritative state before every pick.
 
-The bot does not own the gameplay simulation, move scene objects, or wait for animations. Your game
-provides two small adapters:
+The bot does not own the gameplay simulation or move scene objects. It can use logical tool/merge
+activity as a non-blocking decision barrier; your game provides two small adapters:
 
 - `ICookingBotStateReader` builds a consistent `BotGameState` snapshot.
 - `ICookingBotCommandSink` validates and commits one queue pick.
@@ -41,8 +41,8 @@ void Update()
 ```
 
 Calling `Tick` every frame is valid. The bot itself enforces `pickIntervalSeconds` against the
-snapshot's gameplay clock, so an extra tap scheduler is optional. Never use completion of all
-animations as the scheduler condition.
+snapshot's gameplay clock, so an extra tap scheduler is optional. When a work-wait strategy is
+active, keep calling `Tick`; it returns `false` until the reported tool and merge counts reach zero.
 
 Do not call `Tick` recursively from a gameplay `StateChanged` callback. Let the current call return
 and schedule the next decision for the next frame or scheduler pulse.
@@ -80,7 +80,9 @@ public sealed class GameBotBridge : MonoBehaviour,
         {
             revision = GameSession.Revision,
             gameplayTimeSeconds = GameSession.GameplayTime,
-            isPlaying = GameSession.IsPlaying
+            isPlaying = GameSession.IsPlaying,
+            activeToolProcessCount = GameSession.ProgressableToolJobs.Count,
+            activeMergeAnimationCount = GameSession.LogicalMergeTransitions.Count
         };
 
         // Adapt the sections described below from your logical game model.
@@ -107,6 +109,13 @@ part is which logical data each helper supplies.
 
 `gameplayTimeSeconds` must be a monotonic level clock that advances only while gameplay is running.
 It lets the bot enforce its pick cadence consistently across variable frame rates and pauses.
+
+`activeToolProcessCount` includes only jobs that can complete through passage of gameplay time. A
+partial multi-input tool that needs another queue ingredient is not active; counting it would
+deadlock the bot before it can pick the missing input. `activeMergeAnimationCount` includes
+merge/combine transitions whose completion still changes logical routing, serving, or capacity.
+Do not include queue departure tweens, particles, customer reactions, or a merge tween whose
+logical result was already committed.
 
 ### Visible queues
 
@@ -182,6 +191,12 @@ Add every logical grid position to `grid.cells`, including blocked or locked pos
 Do not also add grid contents to `committedIngredients`; that would count the same supply twice.
 
 ### Save Me bag
+
+The autoplay bot never activates Save Me. Normal solve attempts use only ordinary legal queue
+picks; reserve the Save Me action for a separate economy estimate (for example, expected booster
+cost after a failed no-rescue run). The fields below are read-only state integration: if the host
+game has already created a bag, the bot must know its contents so it does not repurchase duplicate
+ingredients.
 
 When a Save Me backpack exists, set `BotGameState.saveMeBag` and expose every unit the bot is
 allowed to know. The bag is already-owned supply, so the scorer satisfies order demand from it
@@ -313,35 +328,59 @@ public bool TryPick(BotPickCommand command)
 }
 ```
 
-## 5. Picking while animations are running
+## 5. Pick cadence and work-settling strategies
 
-Animation must not be a global gameplay lock. Instead, `pickIntervalSeconds` sets the earliest
-gameplay time for the next accepted pick. Treat each accepted pickup as a logical transaction whose
-presentation can finish later:
+`pickIntervalSeconds` always sets the earliest gameplay time for the next accepted pick. A separate
+`CookingBotWorkWaitStrategy` decides whether active tool processing and logical merge transitions
+must also finish. Treat each accepted pickup as a logical transaction whose presentation can finish
+later:
 
 | Time | Logical state | Visual state | Bot action |
 |---|---|---|---|
 | Frame 100, rev 41 | Queue A and B are pickupable | Idle | Bot chooses A. |
 | Same frame, rev 42 | A is removed/reserved and its ingredient is committed | A begins flying | Sink returns `true`. |
 | Before cadence expires, rev 42 | B remains pickupable; A is already counted as supply | A is still flying | Bot waits, even if `Tick` is called. |
-| Cadence expires, rev 42 | B remains pickupable; A is already counted as supply | A may still be flying | Bot may choose B. |
+| Cadence expires, rev 42 | B remains pickupable; A is already counted as supply | A may still be flying | Interval-only may choose B; wait-for-work checks tool/merge counts. |
 | Later | A moves between tool/grid states without duplicating supply | A animation arrives | No wait or special bot callback is needed. |
 
 The default cadence is 1 gameplay second and can be configured or changed at runtime:
 
 ```csharp
-var settings = new EstimatorBotSettings { pickIntervalSeconds = 0.5f };
+var settings = new EstimatorBotSettings
+{
+    pickIntervalSeconds = 0.5f,
+    workWaitStrategy = CookingBotWorkWaitStrategy.Adaptive
+};
 var bot = new CookingEstimatorBot(reader, sink, settings);
 
 // Recalculate the current cooldown and use 0.25 seconds for later picks.
 bot.SetPickIntervalSeconds(0.25f);
+
+// The next Tick will additionally wait for active tool and logical merge work.
+bot.SetWorkWaitStrategy(CookingBotWorkWaitStrategy.WaitForToolAndMerge);
 ```
 
 The setter is live: it recalculates the current deadline from the last accepted pick, so no
-reinitialization is required. After the deadline, the bot also projects occupied cells, committed
-ingredients, and the candidate footprint. It defers only when those eventual outputs exceed safe
-capacity. Inspect `IsWaitingForGridCapacity`, `LastDecision.projectedGridLoad`, and
+reinitialization is required. The work strategy setter is also live and affects the next tick.
+
+| Work strategy | Behaviour after the interval expires |
+|---|---|
+| `Adaptive` | First run overlaps work; a retry initialized with non-timeout failure knowledge waits for tool and merge work. |
+| `IntervalOnly` | May pick while tool/merge work continues, subject to legality and capacity. |
+| `WaitForToolAndMerge` | Returns `false` until both active counts are zero, then replans from the fresh snapshot. |
+
+This is a non-blocking barrier: never await a coroutine inside `Tick`, and never stop scheduling it.
+`IsWaitingForWorkCompletion` identifies this case. Unrelated presentation animation can continue in
+every mode. After the barrier, the bot also projects occupied cells, committed ingredients, and the
+candidate footprint. It defers only when those eventual outputs exceed safe capacity. Inspect
+`IsWaitingForGridCapacity`, `LastDecision.projectedGridLoad`, and
 `LastDecision.usableGridCapacity` when diagnosing a false `Tick()` result.
+
+The projection evaluates committed and candidate ingredients together through the graph. For
+example, a committed coffee bean/ground coffee and a newly selected cup become one coffee-machine
+output, rather than two independent future grid items. This prevents a full-grid deadlock where
+the bot used to reject the exact complementary input needed to drain Map 2's multi-input tools.
+Explicit `BotPickupOption.footprint` values are still honored for game-specific linked pickups.
 
 Use per-action legality in `pickupables`. For example, a queue whose destination tool is full may be
 temporarily absent while another queue remains available. Avoid conditions such as
@@ -362,6 +401,42 @@ guard, not a substitute for immediate authoritative state updates.
 - To disable autoplay, stop scheduling `Tick`; do not destroy in-flight logical commitments.
 
 ## 7. Tuning and diagnostics
+
+### Listen to verbose runtime decisions
+
+Verbose logging is disabled by default. Implement `ICookingBotVerboseLogListener`, register it, and
+enable it whenever you need a decision trace. The bot sends records synchronously from the thread
+that calls `Tick`, so the listener should do little work and queue expensive serialization or
+telemetry for later.
+
+```csharp
+public sealed class BotLogListener : ICookingBotVerboseLogListener
+{
+    public void OnCookingBotVerboseLog(CookingBotVerboseLog entry)
+    {
+        Debug.Log($"[CookingBot] {entry.kind}: {entry.message} " +
+                  $"rev={entry.revision} queue={entry.queueIndex} item={entry.itemId} " +
+                  $"score={entry.score} pending={entry.pendingPickCount}");
+    }
+}
+
+var listener = new BotLogListener();
+bot.SetVerboseLogging(true, listener);
+
+// This takes effect immediately; later ticks allocate and emit no log records.
+bot.SetVerboseLogging(false);
+
+// The listener can also be replaced or cleared independently.
+bot.SetVerboseLogListener(otherListener);
+```
+
+`CookingBotVerboseLogKind` distinguishes initialization/configuration changes, missing or stopped
+state, cooldown and work-completion waits, no-decision ticks, selected decisions, grid-pressure deferrals, rejected
+commands, accepted picks, reconciled pending reservations, and accumulated failure knowledge.
+Every entry also captures applicable revision/time, command and queue identity, score, strategy,
+intelligence, cadence, projected grid load, and pending-pick count. A scalar value of `-1` means it
+does not apply to that event. The listener is not coupled to `UnityEngine.Debug`, so production code
+can send the same records to an overlay, file, test recorder, or telemetry pipeline.
 
 ### Change strategy while the bot is running
 
@@ -436,8 +511,10 @@ The bot measures peak grid occupancy, peak dirty occupancy, concurrent committed
 accepted-pick rate from the snapshots it already receives. A grid/dirty overflow while many jobs
 are still committed adds bounded `pacingPressure`; on the next run that pressure increases
 `pickIntervalSeconds` multiplicatively and tightens the adaptive grid reserve, giving cooking and
-serving more time to drain between picks. Other failure reasons still add urgency, scarcity, chain,
-grid, or dirty pressure. The supplied object is updated in place and returned for persistence.
+serving more time to drain between picks. With the default `Adaptive` work strategy, any accumulated
+non-timeout failure also enables the tool/merge completion barrier on the next run, matching the web
+solver's synchronized retries. Other failure reasons still add urgency, scarcity, chain, grid, or
+dirty pressure. The supplied object is updated in place and returned for persistence.
 
 Customer timeout is deliberately not accumulated as failure knowledge. Keep every expired
 `customerIndex` in `BotGameState.timedOutCustomerIndices`, including in the final snapshot after
@@ -456,6 +533,7 @@ var settings = new EstimatorBotSettings
 {
     intelligent = 0.8f,
     pickIntervalSeconds = 0.5f,
+    workWaitStrategy = CookingBotWorkWaitStrategy.Adaptive,
     visibleLookaheadRows = 3,
     respectHiddenStatus = true,
     randomSeed = 12345
@@ -491,6 +569,8 @@ At minimum, test these behaviours against the real gameplay adapter:
 10. A mistakenly listed frozen leader or frozen combined/linked member is still rejected by the bot.
 11. Calls made before `gameplayTimeSeconds` reaches the next-pick deadline do not submit a command,
     while a legal pick is accepted at the deadline even if an unrelated animation is still running.
+12. `WaitForToolAndMerge` preserves the cadence, waits while either logical work count is positive,
+    and resumes without a manual pick as soon as both become zero.
 
 ## Common integration mistakes
 
@@ -503,5 +583,6 @@ At minimum, test these behaviours against the real gameplay adapter:
 - Using queue row/index as `itemId` and accidentally accepting a shifted replacement item.
 - Exposing all front items as pickupable instead of using the game's real `CanPick` result.
 - Revealing hidden ingredient assets to the bot when a fair autoplay agent should not know them.
-- Blocking every queue because any unrelated animation is running.
+- Counting a partial multi-input tool or visual-only tween as active work, causing a permanent wait.
+- Stopping calls to `Tick` while it reports `IsWaitingForWorkCompletion`.
 - Leaving `gameplayTimeSeconds` at zero, which intentionally prevents later paced picks.

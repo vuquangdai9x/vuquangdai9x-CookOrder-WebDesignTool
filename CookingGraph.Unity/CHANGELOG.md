@@ -33,6 +33,12 @@
   committed outputs to drain. Pacing learning now grows multiplicatively beyond one second.
 - Runtime cadence changes recalculate the active cooldown. Customer timeouts are warning-only for
   estimator learning, with exact timeout ids available from the final Unity snapshot.
+- Fixed Map 2 capacity stalls by projecting complementary multi-input commitments as one combined
+  pipeline output instead of counting every coffee-machine input as an independent grid item.
+- Added an opt-in structured verbose-log listener with live enable/disable controls.
+- Added `CookingBotWorkWaitStrategy`. Pick cadence remains active in every mode; synchronized runs
+  additionally wait for progressable tool jobs and logical merge transitions. `Adaptive` enables
+  that barrier on learned retries, and the strategy can be changed during a run.
 
 ## 0.1.2
 
