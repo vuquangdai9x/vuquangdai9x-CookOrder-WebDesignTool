@@ -136,6 +136,7 @@ describe("estimateNodeDifficulty", () => {
       pickIntervalSeconds: 0.1,
       peakConcurrentWork: 6,
       timedOutCustomers: [],
+      failureCustomers: [{ customerIndex: 4, failureCount: 1, ingredientNames: ["bun"] }],
     };
 
     const knowledge = accumulateFailureKnowledge(emptyFailureKnowledge(), failure);
@@ -144,10 +145,66 @@ describe("estimateNodeDifficulty", () => {
     expect(knowledge.failureCount).toBe(1);
     expect(knowledge.gridPressure).toBeGreaterThan(0);
     expect(knowledge.pacingPressure).toBeGreaterThan(0);
+    expect(knowledge.recommendedStrategy).toBe("grid-safe");
+    expect(knowledge.customerPriorities).toEqual([
+      { customerIndex: 4, failureCount: 1, ingredientNames: ["bun"] },
+    ]);
+    expect(knowledge.attemptedStrategies).toEqual([]);
     expect(learned.detourPenaltyTight).toBeGreaterThan(base.detourPenaltyTight);
     expect(learned.scoreBlockedTight).toBeLessThan(base.scoreBlockedTight);
     expect(learned.previewConfidence).toBeLessThan(base.previewConfidence);
     expect(learned.pickIntervalSeconds).toBeGreaterThan(base.pickIntervalSeconds);
+
+    const afterGridSafeFailure = accumulateFailureKnowledge(knowledge, {
+      ...failure,
+      strategyName: "grid-safe+wait-all",
+    });
+    expect(afterGridSafeFailure.attemptedStrategies).toContain("grid-safe");
+    expect(afterGridSafeFailure.recommendedStrategy).not.toBe("grid-safe");
+    expect(afterGridSafeFailure.customerPriorities[0].failureCount).toBe(2);
+  });
+
+  it("uses adaptive only after every simple strategy failed and tightens its switch interval", () => {
+    const names = [
+      "grid-safe", "front-loaded", "finish-first", "chain-first",
+      "scarcity-first", "single-customer", "wide-counter", "no-preview",
+    ] as const;
+    let knowledge = emptyFailureKnowledge();
+    const failure = {
+      solvable: false,
+      loseReason: "deadlock" as const,
+      totalPicks: 1,
+      servedCount: 0,
+      totalCustomers: 1,
+      byCid: new Map(),
+      perCustomer: [],
+      occupancyHistory: [],
+      gridCapacity: 8,
+      replaySteps: [],
+      timedOutCustomers: [],
+    };
+    for (const name of names)
+      knowledge = accumulateFailureKnowledge(knowledge, { ...failure, strategyName: name });
+
+    expect(knowledge.recommendedStrategy).toBe("adaptive");
+    expect(knowledge.attemptedStrategies).toEqual(expect.arrayContaining([...names]));
+    const afterAdaptive = accumulateFailureKnowledge(knowledge, {
+      ...failure,
+      strategyName: "adaptive+wait-all",
+    });
+    expect(afterAdaptive.recommendedStrategy).toBe("adaptive");
+    expect(afterAdaptive.adaptiveFailureCount).toBe(1);
+    expect(afterAdaptive.adaptivePickInterval).toBe(4);
+  });
+
+  it("runs adaptive in the web retry loop after simple modes are exhausted", () => {
+    const result = estimateNodeDifficulty(ix, coffeeLevel(), { maxIterations: 1, maxRetries: 10 });
+
+    expect(result.solvable).toBe(false);
+    expect(result.failureKnowledge?.attemptedStrategies).toHaveLength(8);
+    expect(result.failureKnowledge?.adaptiveFailureCount).toBeGreaterThan(0);
+    expect(result.failureKnowledge?.adaptivePickInterval).toBeLessThan(5);
+    expect(result.failureKnowledge?.customerPriorities.length).toBeGreaterThan(0);
   });
 
   it("does not learn failure pressure from a customer-timeout result", () => {

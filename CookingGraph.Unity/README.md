@@ -115,7 +115,8 @@ bot.Tick();
 ```
 
 The reader snapshot contains visible queue items and statuses, the authoritative pickupable action
-list, grid and Save Me bag contents, in-flight/tool commitments, active orders, and composite-only preview orders.
+list, grid and Save Me bag contents, in-flight/tool commitments, active orders, the remaining
+customer count, and composite-only preview orders (at most three are consumed).
 The command includes both `observedRevision` and `expectedItemId`; the sink should reject it when
 either is stale.
 
@@ -147,15 +148,21 @@ The game may switch predefined picking behaviour at any time; for example,
 `bot.SetPickingStrategy(CookingBotPickingStrategy.GridSafe)` takes effect on the next `Tick` without
 reinitializing the graph or clearing in-flight reservations. `bot.SetIntelligent(0.5f)` can also
 change the bot from fully strategic (`1`) toward fully random (`0`) on the next `Tick`; random
-picks still exclude frozen and otherwise illegal items.
+picks still exclude frozen and otherwise illegal items. `Adaptive` is the automatic fallback after
+all simple profiles fail; it reselects an effective simple profile from live grid, customer,
+remaining-customer, preview, queue, and work state every configured number of accepted picks.
 
 Failed runs can also teach the next run without storing hidden queue data. Pass a
 `CookingBotFailureKnowledge` object to `Init(graph, knowledge)`, then call
 `AccumulateFailure(report)` after loss and persist the returned serializable object. It stores only
-bounded aggregate pressure such as grid risk, dirty buildup, urgency, scarcity, chain stalls, and
-pick pacing.
+bounded pressure such as grid risk, dirty buildup, urgency, scarcity, chain stalls, and pick
+pacing. It also remembers exact ingredients only for customers whose orders were active at the
+failure, records failed strategy bits, and recommends the strongest untried simple strategy;
+the next `Init(graph, knowledge)` applies that recommendation automatically. `SetPickingStrategy`
+remains a live testing override, not an initialization requirement.
 
 Grid/dirty failures grow cadence multiplicatively and tighten the projected-capacity reserve on
 later runs. `CustomerTimeout` is warning-only and does not increment failure knowledge. Populate
 `BotGameState.timedOutCustomerIndices`; after the final snapshot, read
-`bot.TimedOutCustomerIndices` to display the exact customer ids.
+`bot.TimedOutCustomerIndices` to display the exact customer ids. After Adaptive has also failed at
+its minimum re-evaluation interval, stop retrying when `knowledge.strategySearchExhausted` is true.

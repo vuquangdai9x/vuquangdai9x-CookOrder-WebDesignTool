@@ -183,6 +183,11 @@ namespace CookingGraph
         public List<BotCustomerOrderState> customerOrders = new List<BotCustomerOrderState>();
         public List<BotPreviewOrderState> previewOrders = new List<BotPreviewOrderState>();
         /// <summary>
+        /// Customers not yet served, including active and future customers. Use -1 when unknown;
+        /// adaptive strategy selection then falls back to active plus the three visible previews.
+        /// </summary>
+        public int remainingCustomerCount = -1;
+        /// <summary>
         /// Customer ids whose patience expired in this run. Keep them here after the customer
         /// leaves so a final stopped snapshot can expose exact warning information.
         /// </summary>
@@ -205,6 +210,8 @@ namespace CookingGraph
         public float score;
         public bool randomFallback;
         public CookingBotPickingStrategy pickingStrategy;
+        /// <summary>Selected mode; differs from pickingStrategy while Adaptive is active.</summary>
+        public CookingBotPickingStrategy strategyMode;
         public CookingBotWorkWaitStrategy workWaitStrategy;
         public float intelligent = 1f;
         public float pickIntervalSeconds;
@@ -259,12 +266,18 @@ namespace CookingGraph
         public int projectedGridLoad = -1;
         public int usableGridCapacity = -1;
         public CookingBotPickingStrategy pickingStrategy;
+        public CookingBotPickingStrategy strategyMode;
         public CookingBotWorkWaitStrategy workWaitStrategy;
         public CookingBotWorkWaitStrategy effectiveWorkWaitStrategy;
+        public bool hasRecommendedPickingStrategy;
+        public CookingBotPickingStrategy recommendedPickingStrategy;
+        public bool strategySearchExhausted;
+        public int adaptiveStrategyPickInterval = -1;
         public float intelligent = 1f;
         public float pickIntervalSeconds;
         public int activeToolProcessCount = -1;
         public int activeMergeAnimationCount = -1;
+        public int remainingCustomerCount = -1;
     }
 
     /// <summary>
@@ -284,6 +297,7 @@ namespace CookingGraph
         public bool randomFallback;
         public int customerIndex = -1;
         public CookingBotPickingStrategy pickingStrategy;
+        public CookingBotPickingStrategy strategyMode;
         public CookingBotWorkWaitStrategy workWaitStrategy;
         public float intelligent = 1f;
         public float pickIntervalSeconds;

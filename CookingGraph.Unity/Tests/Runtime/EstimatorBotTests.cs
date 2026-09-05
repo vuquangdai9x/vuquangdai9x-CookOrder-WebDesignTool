@@ -511,6 +511,36 @@ namespace CookingGraph.Tests
         }
 
         [Test]
+        public void AdaptiveStrategyUsesRemainingCustomersAndReevaluatesLive()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true)));
+            state.previewOrders.AddRange(new[]
+            {
+                new BotPreviewOrderState { customerIndex = 2 },
+                new BotPreviewOrderState { customerIndex = 3 },
+                new BotPreviewOrderState { customerIndex = 4 }
+            });
+            state.remainingCustomerCount = 100;
+            var bot = new CookingEstimatorBot(new Reader { state = state }, new Sink { accept = false });
+            bot.Init(graph);
+            bot.SetPickingStrategy(CookingBotPickingStrategy.Adaptive);
+
+            Assert.That(bot.Tick(), Is.False);
+            Assert.That(bot.PickingStrategy, Is.EqualTo(CookingBotPickingStrategy.Adaptive));
+            Assert.That(bot.EffectivePickingStrategy, Is.EqualTo(CookingBotPickingStrategy.ChainFirst));
+            Assert.That(bot.LastDecision.strategyMode, Is.EqualTo(CookingBotPickingStrategy.Adaptive));
+
+            state.remainingCustomerCount = 1;
+            bot.SetAdaptiveStrategyPickInterval(1);
+            Assert.That(bot.Tick(), Is.False);
+            Assert.That(bot.EffectivePickingStrategy, Is.EqualTo(CookingBotPickingStrategy.FinishFirst));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
         public void ChangesIntelligentOnNextTickWithoutAllowingFrozenItems()
         {
             var graph = Graph(out var bun, out var cheese, out var tomato);
@@ -563,8 +593,21 @@ namespace CookingGraph.Tests
 
             Assert.That(knowledge.failureCount, Is.EqualTo(1));
             Assert.That(knowledge.scarcityPressure, Is.GreaterThan(0));
+            Assert.That(knowledge.hasRecommendedPickingStrategy, Is.True);
+            Assert.That(knowledge.recommendedPickingStrategy,
+                Is.EqualTo(CookingBotPickingStrategy.ScarcityFirst));
+            Assert.That(knowledge.customerPriorities, Has.Count.EqualTo(1));
+            Assert.That(knowledge.customerPriorities[0].customerIndex, Is.EqualTo(1));
+            Assert.That(knowledge.customerPriorities[0].ingredientNodeNames, Does.Contain("bun"));
             Assert.That(retryBot.FailureKnowledge, Is.SameAs(knowledge));
+            Assert.That(retryBot.PickingStrategy, Is.EqualTo(CookingBotPickingStrategy.ScarcityFirst));
             Assert.That(retryBot.LastDecision.score, Is.GreaterThan(originalScore));
+
+            retryBot.SetPickingStrategy(CookingBotPickingStrategy.FrontLoaded);
+            Assert.That(retryBot.PickingStrategy, Is.EqualTo(CookingBotPickingStrategy.FrontLoaded));
+            retryBot.Init(graph, knowledge);
+            Assert.That(retryBot.PickingStrategy, Is.EqualTo(CookingBotPickingStrategy.ScarcityFirst),
+                "Init must replace a live test override with the knowledge recommendation.");
 
             var restored = JsonUtility.FromJson<CookingBotFailureKnowledge>(JsonUtility.ToJson(knowledge));
             Assert.That(restored.failureCount, Is.EqualTo(knowledge.failureCount));
@@ -589,6 +632,7 @@ namespace CookingGraph.Tests
             Assert.That(knowledge.failureCount, Is.Zero);
             Assert.That(knowledge.urgencyPressure, Is.Zero);
             Assert.That(knowledge.pacingPressure, Is.Zero);
+            Assert.That(knowledge.hasRecommendedPickingStrategy, Is.False);
 
             Destroy(graph, bun, cheese, tomato);
         }
@@ -629,9 +673,59 @@ namespace CookingGraph.Tests
             });
 
             Assert.That(knowledge.pacingPressure, Is.GreaterThan(0));
+            Assert.That(knowledge.recommendedPickingStrategy,
+                Is.EqualTo(CookingBotPickingStrategy.GridSafe));
             Assert.That(bot.PickIntervalSeconds, Is.GreaterThan(0.1f));
             var restored = JsonUtility.FromJson<CookingBotFailureKnowledge>(JsonUtility.ToJson(knowledge));
             Assert.That(restored.pacingPressure, Is.EqualTo(knowledge.pacingPressure));
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
+        public void FallsBackToAdaptiveAfterSimpleStrategiesAndThenTightensItsInterval()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.customerOrders.Add(Customer(1, Slot(bun, true, true)));
+            var knowledge = new CookingBotFailureKnowledge();
+            var attempted = new HashSet<CookingBotPickingStrategy>();
+
+            for (var attempt = 0; attempt < 7; attempt++)
+            {
+                var bot = new CookingEstimatorBot(new Reader { state = state }, new Sink { accept = false });
+                bot.Init(graph, knowledge);
+                Assert.That(attempted.Add(bot.PickingStrategy), Is.True,
+                    "Init must select an untried recommendation rather than repeat a failed strategy.");
+                knowledge = bot.AccumulateFailure(new CookingBotFailureReport
+                {
+                    reason = CookingBotFailureReason.Deadlock,
+                    progress01 = 0.5f
+                });
+            }
+
+            Assert.That(attempted, Has.Count.EqualTo(7));
+            Assert.That(knowledge.hasRecommendedPickingStrategy, Is.True);
+            Assert.That(knowledge.recommendedPickingStrategy, Is.EqualTo(CookingBotPickingStrategy.Adaptive));
+            Assert.That(knowledge.strategySearchExhausted, Is.False);
+
+            for (var adaptiveFailure = 0; adaptiveFailure < 5; adaptiveFailure++)
+            {
+                var bot = new CookingEstimatorBot(new Reader { state = state }, new Sink { accept = false });
+                bot.Init(graph, knowledge);
+                Assert.That(bot.PickingStrategy, Is.EqualTo(CookingBotPickingStrategy.Adaptive));
+                bot.Tick();
+                Assert.That(bot.EffectivePickingStrategy, Is.Not.EqualTo(CookingBotPickingStrategy.Adaptive));
+                knowledge = bot.AccumulateFailure(new CookingBotFailureReport
+                {
+                    reason = CookingBotFailureReason.Deadlock,
+                    progress01 = 0.5f
+                });
+            }
+
+            Assert.That(knowledge.adaptiveStrategyPickInterval, Is.EqualTo(1));
+            Assert.That(knowledge.hasRecommendedPickingStrategy, Is.False);
+            Assert.That(knowledge.strategySearchExhausted, Is.True);
 
             Destroy(graph, bun, cheese, tomato);
         }

@@ -60,6 +60,7 @@ namespace CookingGraph
 
         private readonly CookingGraphAsset _graph;
         private EstimatorBotSettings _settings;
+        private CookingBotFailureKnowledge _failureKnowledge;
         private readonly Dictionary<IngredientNodeAsset, ProcessStep> _producer = new Dictionary<IngredientNodeAsset, ProcessStep>();
         private readonly Dictionary<IngredientNodeAsset, ProcessStep> _consumer = new Dictionary<IngredientNodeAsset, ProcessStep>();
         private readonly List<ProcessStep> _processSteps = new List<ProcessStep>();
@@ -70,16 +71,25 @@ namespace CookingGraph
         private readonly Dictionary<CompositeNodeAsset, List<PreviewSlot>> _previewSlots = new Dictionary<CompositeNodeAsset, List<PreviewSlot>>();
         private readonly HashSet<IngredientNodeAsset> _servable = new HashSet<IngredientNodeAsset>();
 
-        public EstimatorBotScorer(CookingGraphAsset graph, EstimatorBotSettings settings)
+        public EstimatorBotScorer(
+            CookingGraphAsset graph,
+            EstimatorBotSettings settings,
+            CookingBotFailureKnowledge failureKnowledge = null)
         {
             _graph = graph ?? throw new ArgumentNullException(nameof(graph));
             _settings = settings ?? new EstimatorBotSettings();
+            _failureKnowledge = failureKnowledge;
             BuildIndex();
         }
 
         public void SetSettings(EstimatorBotSettings settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        }
+
+        public void SetFailureKnowledge(CookingBotFailureKnowledge knowledge)
+        {
+            _failureKnowledge = knowledge;
         }
 
         public BotDecision Decide(
@@ -225,6 +235,7 @@ namespace CookingGraph
                         if (multiInput) priority += slot.isBase ? _settings.multiInputBaseBonus : _settings.multiInputBonus;
                         priority += Math.Max(0, 4 - remaining) * _settings.nearCompletionBonus;
                         priority /= 1 + customerPosition * _settings.customerPositionDecay;
+                        priority *= ActiveFailurePriority(customer.customerIndex, slot.ingredient);
                         units.Add(new DemandUnit
                         {
                             target = slot.ingredient,
@@ -375,6 +386,7 @@ namespace CookingGraph
                         var priority = (slot.isBase ? _settings.scoreBase : _settings.scoreBlocked) * confidence;
                         priority /= 1 + (activeCount + previewPosition) * _settings.customerPositionDecay;
                         priority /= slot.options.Count;
+                        priority *= PreviewFailurePriority(customer.customerIndex);
                         foreach (var option in slot.options)
                         {
                             foreach (var leaf in RawRequirements(option, new HashSet<IngredientNodeAsset>()))
@@ -390,6 +402,31 @@ namespace CookingGraph
                 }
             }
             return result;
+        }
+
+        private float ActiveFailurePriority(int customerIndex, IngredientNodeAsset ingredient)
+        {
+            var memory = (_failureKnowledge?.customerPriorities ?? new List<CookingBotCustomerFailureMemory>())
+                .FirstOrDefault(value => value != null && value.customerIndex == customerIndex);
+            if (memory == null || ingredient == null) return 1;
+            var name = IngredientKnowledgeName(ingredient);
+            if (string.IsNullOrEmpty(name) || !(memory.ingredientNodeNames ?? new List<string>()).Contains(name)) return 1;
+            return 1 + Math.Min(1f, Math.Max(0, memory.failureCount) * 0.2f);
+        }
+
+        private float PreviewFailurePriority(int customerIndex)
+        {
+            var memory = (_failureKnowledge?.customerPriorities ?? new List<CookingBotCustomerFailureMemory>())
+                .FirstOrDefault(value => value != null && value.customerIndex == customerIndex);
+            return memory == null ? 1 : 1 + Math.Min(0.4f, Math.Max(0, memory.failureCount) * 0.08f);
+        }
+
+        internal static string IngredientKnowledgeName(IngredientNodeAsset ingredient)
+        {
+            if (ingredient == null) return null;
+            if (!string.IsNullOrEmpty(ingredient.nodeName)) return ingredient.nodeName;
+            if (!string.IsNullOrEmpty(ingredient.code)) return ingredient.code;
+            return ingredient.name;
         }
 
         private CandidateValue ScoreCandidate(

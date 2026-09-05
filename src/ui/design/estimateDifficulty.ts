@@ -99,6 +99,8 @@ export interface EstimateResult {
   attemptCount?: number;
   /** Scoring strategy that produced this result. */
   strategyName?: string;
+  /** Simple profiles selected during an adaptive attempt, in switch order. */
+  adaptiveStrategyHistory?: EstimatePickingStrategyName[];
   /** Number of earlier failed attempts whose aggregate lessons tuned this run. */
   learnedFromFailures?: number;
   /** Final visibility-safe knowledge accumulated while retrying this estimate. */
@@ -109,14 +111,24 @@ export interface EstimateResult {
   peakConcurrentWork?: number;
   /** One-based customer numbers whose patience expired; warning-only for estimation. */
   timedOutCustomers: number[];
+  /** Exact still-unfilled active orders at failure; never populated from hidden preview choices. */
+  failureCustomers?: EstimateFailureCustomer[];
+}
+
+/** Map-scoped memory of a customer that was active when an attempt failed. */
+export interface EstimateFailureCustomer {
+  customerIndex: number;
+  failureCount: number;
+  /** Stable graph ingredient names observed in that customer's active, exact order. */
+  ingredientNames: string[];
 }
 
 /**
- * Aggregate lessons from failed runs. These deliberately contain no queue ids, ingredient ids,
- * customer identities, or hidden sequence data, so applying them cannot reveal future content.
+ * Aggregate lessons from failed runs. They contain no queue ids or hidden sequence data. Exact
+ * ingredients are remembered only from orders that were active and visible at failure.
  */
 export interface EstimateFailureKnowledge {
-  version: 1;
+  version: 3;
   failureCount: number;
   gridPressure: number;
   dirtyPressure: number;
@@ -126,7 +138,29 @@ export interface EstimateFailureKnowledge {
   randomPressure: number;
   /** Evidence that picks were arriving faster than in-progress work could drain. */
   pacingPressure: number;
+  /** Visibility-safe strategy ids already used by failed attempts. */
+  attemptedStrategies: EstimatePickingStrategyName[];
+  /** Automatically selected policy for the next attempt. Adaptive follows exhausted simple modes. */
+  recommendedStrategy: EstimateStrategyName | null;
+  /** Failed active customers, accumulated across every earlier attempt. */
+  customerPriorities: EstimateFailureCustomer[];
+  /** Accepted picks between adaptive strategy re-evaluations. */
+  adaptivePickInterval: number;
+  /** Number of failed adaptive attempts; each one shortens adaptivePickInterval. */
+  adaptiveFailureCount: number;
 }
+
+export type EstimateStrategyName = EstimatePickingStrategyName | "adaptive";
+
+export type EstimatePickingStrategyName =
+  | "grid-safe"
+  | "front-loaded"
+  | "finish-first"
+  | "chain-first"
+  | "scarcity-first"
+  | "single-customer"
+  | "wide-counter"
+  | "no-preview";
 
 export interface EstimateReplayStep {
   /** Queue column picked at this solver step. */

@@ -1,5 +1,9 @@
 # Changelog
 
+- Added cumulative active-customer failure memory, remaining-customer input, and an Adaptive
+  picking mode. After simple profiles fail, Adaptive periodically re-selects a profile from the
+  current visible state and tightens its re-evaluation interval after each failed run.
+
 ## 0.2.0
 
 - Added `CookingEstimatorBot`, an online Unity runtime port of the web estimator's demand scoring.
@@ -39,6 +43,10 @@
 - Added `CookingBotWorkWaitStrategy`. Pick cadence remains active in every mode; synchronized runs
   additionally wait for progressable tool jobs and logical merge transitions. `Adaptive` enables
   that barrier on learned retries, and the strategy can be changed during a run.
+- Failure knowledge now records attempted picking strategies and recommends the strongest untried
+  strategy. Unity applies it automatically during `Init(graph, knowledge)` and exposes exhaustion;
+  the web retry loop uses the same pressure-driven recommendation instead of requiring a strategy
+  input from the caller.
 
 ## 0.1.2
 

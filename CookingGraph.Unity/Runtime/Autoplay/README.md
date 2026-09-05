@@ -81,6 +81,7 @@ public sealed class GameBotBridge : MonoBehaviour,
             revision = GameSession.Revision,
             gameplayTimeSeconds = GameSession.GameplayTime,
             isPlaying = GameSession.IsPlaying,
+            remainingCustomerCount = GameSession.CustomersRemaining,
             activeToolProcessCount = GameSession.ProgressableToolJobs.Count,
             activeMergeAnimationCount = GameSession.LogicalMergeTransitions.Count
         };
@@ -276,6 +277,13 @@ the web estimator, without pretending to know exact hidden topping choices.
 
 The scorer uses at most the first three previews.
 
+### Remaining customers
+
+Set `remainingCustomerCount` to every customer not yet served, including active and future
+customers. Adaptive mode uses it to distinguish early chain-building from late finish-first play.
+Use `-1` if the game cannot provide this count; the bot then uses active customers plus the three
+visible previews and does not inspect any hidden customer order.
+
 ## 3. Revision and item identity contract
 
 `BotGameState.revision` is a monotonically increasing logical-state version. Increment it whenever
@@ -459,11 +467,22 @@ bot.Tick();
 | `ChainFirst` | Starts long and multi-input cooking chains earlier. |
 | `ScarcityFirst` | Protects requirements with little visible queue supply. |
 | `NoPreview` | Ignores upcoming customer previews and focuses on active orders. |
+| `Adaptive` | Re-evaluates the best simple profile from current visible state every N accepted picks. |
 
-`PickingStrategy` reports the active value. The chosen strategy is also copied into
-`LastDecision.pickingStrategy` and `BotPickCommand.pickingStrategy` for telemetry. Changing strategy
+`PickingStrategy` reports the selected mode. In Adaptive mode, `EffectivePickingStrategy` reports
+the current simple profile. The effective profile and selected mode are copied into
+`pickingStrategy` and `strategyMode` on decisions, commands, and verbose logs. Changing strategy
 takes effect on the next decision and does not reset graph indexes, random tie-break progress, or
-accepted item reservations.
+accepted item reservations. This setter is a live testing/override control. On the next `Init`, the
+bot returns to `Balanced` for fresh knowledge or automatically uses the strategy recommended by the
+supplied failure knowledge; initialization does not take a picking-strategy parameter.
+
+Adaptive re-evaluates after `adaptiveStrategyPickInterval` accepted picks (default `5`). It scores
+the current grid/dirty pressure, active order completion, three visible previews, legal queue
+scarcity, active tool/merge work, accumulated failure pressure, and `remainingCustomerCount`, then
+uses the highest-scoring simple profile for the next pick. Change N live with
+`bot.SetAdaptiveStrategyPickInterval(n)`. Each failed Adaptive run automatically reduces N by one,
+down to `1`, so later retries react more frequently.
 
 ### Change intelligence while the bot is running
 
@@ -503,7 +522,7 @@ knowledge = bot.AccumulateFailure(new CookingBotFailureReport
 });
 SaveKnowledge(knowledge);
 
-// Retry with the accumulated grid-pressure lesson.
+// Retry with the accumulated lesson and its automatically recommended strategy.
 bot.Init(graph, knowledge);
 ```
 
@@ -516,13 +535,73 @@ non-timeout failure also enables the tool/merge completion barrier on the next r
 solver's synchronized retries. Other failure reasons still add urgency, scarcity, chain, grid, or
 dirty pressure. The supplied object is updated in place and returned for persistence.
 
+Failure knowledge also stores `attemptedPickingStrategyMask`, `recommendedPickingStrategy`,
+`hasRecommendedPickingStrategy`, and `strategySearchExhausted`. The recommendation is calculated
+from all accumulated pressures and excludes every simple strategy that already failed. `Init(graph,
+knowledge)` applies it automatically. The game never needs to choose or pass a strategy during
+initialization.
+
+At failure, the bot also snapshots the currently active customers' still-unfilled exact ingredient
+names into `customerPriorities`. On later runs those ingredients receive an increasing priority
+when the same customer becomes active. If that customer is only in the preview rows, the bot boosts
+all possibilities of the visible composite uniformly; it does not use the remembered exact topping
+to reveal a hidden choice. Knowledge must therefore remain keyed to the same level and graph
+version.
+
 Customer timeout is deliberately not accumulated as failure knowledge. Keep every expired
 `customerIndex` in `BotGameState.timedOutCustomerIndices`, including in the final snapshot after
 `isPlaying` becomes false. `TimedOutCustomerIndices` returns the unique sorted ids for the results UI.
 
-Knowledge never stores ingredient assets, item ids, lanes, customer identities, or queue history.
-It therefore cannot reveal content below the visible rows. Key saved knowledge by a stable level
-and graph-version identifier, and discard it when that configuration changes.
+Knowledge never stores asset references, item ids, lanes, queue history, or ingredients from hidden
+preview choices. Stable ingredient node names are stored only from exact active orders already
+visible to the player, so it cannot reveal queue content below the visible rows.
+
+### Retry with a different picking strategy
+
+`AccumulateFailure` records the strategy that just failed and recommends the strongest untried
+strategy. The game owns level restarts, but strategy selection is handled by the bot. The retry
+coordinator only preserves knowledge and checks whether the strategy search is exhausted:
+
+```csharp
+private CookingBotFailureKnowledge _knowledge = new CookingBotFailureKnowledge();
+
+private void StartAttempt()
+{
+    // Clears per-run state and automatically applies recommendedPickingStrategy.
+    _bot.Init(graph, _knowledge);
+}
+
+private bool TryStartNextAttempt(CookingBotFailureReport failure)
+{
+    if (failure.reason == CookingBotFailureReason.CustomerTimeout)
+    {
+        // Warning only: show TimedOutCustomerIndices and do not treat it as a failed solve.
+        return false;
+    }
+
+    _knowledge = _bot.AccumulateFailure(failure);
+    SaveKnowledge(_knowledge);
+
+    if (_knowledge.strategySearchExhausted)
+        return false; // Simple profiles and Adaptive at N=1 failed; show the final failure.
+
+    RestartLevelGameplayState();
+    StartAttempt();
+    return true;
+}
+```
+
+The knowledge is cumulative across the whole sequence: every non-timeout failure updates the same
+bounded pressures, retaining 85% of earlier pressure before adding the latest observation. It is
+not only the immediately preceding failure. The recommendation maps grid/dirty/pacing pressure to
+`GridSafe`, urgency to `FinishFirst`, scarcity to `ScarcityFirst`, chain stalls to `ChainFirst`, and
+poor speculative choices to `FrontLoaded` or `NoPreview`. After all simple profiles have failed,
+the recommendation becomes `Adaptive`. Each Adaptive failure reduces its re-evaluation interval;
+only a failure at interval 1 marks `strategySearchExhausted`, preventing an endless retry loop.
+
+For an experiment during a running attempt, call `SetPickingStrategy(...)` after `Init`. If that
+overridden attempt fails, `AccumulateFailure` records the strategy actually used and excludes it
+from the next automatic recommendation.
 
 ### Custom base weights
 
@@ -571,6 +650,12 @@ At minimum, test these behaviours against the real gameplay adapter:
     while a legal pick is accepted at the deadline even if an unrelated animation is still running.
 12. `WaitForToolAndMerge` preserves the cadence, waits while either logical work count is positive,
     and resumes without a manual pick as soon as both become zero.
+13. Every failed retry keeps the same knowledge object, automatically chooses an untried strategy,
+    falls back to Adaptive after the simple profiles, and stops cleanly when
+    `strategySearchExhausted` becomes true.
+14. `remainingCustomerCount` changes Adaptive's effective profile without exposing hidden orders.
+15. Active failure-customer ingredients gain priority later, while preview-only hidden topping
+    choices remain unavailable.
 
 ## Common integration mistakes
 
@@ -585,4 +670,6 @@ At minimum, test these behaviours against the real gameplay adapter:
 - Revealing hidden ingredient assets to the bot when a fair autoplay agent should not know them.
 - Counting a partial multi-input tool or visual-only tween as active work, causing a permanent wait.
 - Stopping calls to `Tick` while it reports `IsWaitingForWorkCompletion`.
+- Restarting with `Init(graph)` instead of `Init(graph, knowledge)`, which discards prior lessons.
+- Calling `SetPickingStrategy` after every `Init`, unintentionally replacing the automatic recommendation.
 - Leaving `gameplayTimeSeconds` at zero, which intentionally prevents later paced picks.

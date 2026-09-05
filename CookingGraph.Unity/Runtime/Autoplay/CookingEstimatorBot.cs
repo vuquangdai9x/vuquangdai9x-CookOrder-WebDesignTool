@@ -32,13 +32,19 @@ namespace CookingGraph
         private float _nextPickAtSeconds = float.NegativeInfinity;
         private float _lastAcceptedPickAtSeconds = float.NegativeInfinity;
         private readonly HashSet<int> _timedOutCustomerIndices = new HashSet<int>();
+        private readonly Dictionary<int, CookingBotCustomerFailureMemory> _lastObservedFailureCustomers =
+            new Dictionary<int, CookingBotCustomerFailureMemory>();
         private ICookingBotVerboseLogListener _verboseLogListener;
+        private CookingBotPickingStrategy _effectivePickingStrategy = CookingBotPickingStrategy.Balanced;
+        private int _nextAdaptiveEvaluationPick;
 
         public CookingGraphAsset Graph { get; private set; }
         public BotDecision LastDecision { get; private set; }
         public int PendingPickCount => _pending.Count;
         public bool IsInitialized => _scorer != null;
         public CookingBotPickingStrategy PickingStrategy { get; private set; } = CookingBotPickingStrategy.Balanced;
+        /// <summary>The simple scoring profile currently selected by Adaptive, or PickingStrategy.</summary>
+        public CookingBotPickingStrategy EffectivePickingStrategy => _effectivePickingStrategy;
         public float Intelligent { get; private set; }
         public float PickIntervalSeconds => EffectiveSettings().pickIntervalSeconds;
         public CookingBotWorkWaitStrategy WorkWaitStrategy => _settings.workWaitStrategy;
@@ -46,6 +52,7 @@ namespace CookingGraph
         public float NextPickAtSeconds => _nextPickAtSeconds;
         public bool IsWaitingForGridCapacity => LastDecision != null && LastDecision.deferredByGridPressure;
         public bool IsWaitingForWorkCompletion { get; private set; }
+        public bool StrategySearchExhausted => FailureKnowledge?.strategySearchExhausted ?? false;
         public IReadOnlyList<int> TimedOutCustomerIndices => _timedOutCustomerIndices.OrderBy(value => value).ToList();
         public CookingBotFailureKnowledge FailureKnowledge { get; private set; }
         public bool VerboseLoggingEnabled { get; private set; }
@@ -77,7 +84,17 @@ namespace CookingGraph
         {
             Graph = mapGraph != null ? mapGraph : throw new ArgumentNullException(nameof(mapGraph));
             FailureKnowledge = failureKnowledge ?? new CookingBotFailureKnowledge();
-            _scorer = new EstimatorBotScorer(mapGraph, EffectiveSettings());
+            FailureKnowledge.PrepareForNextRun();
+            if (FailureKnowledge.failureCount <= 0)
+                FailureKnowledge.adaptiveStrategyPickInterval = Math.Max(1, _settings.adaptiveStrategyPickInterval);
+            PickingStrategy = FailureKnowledge.hasRecommendedPickingStrategy
+                ? FailureKnowledge.recommendedPickingStrategy
+                : CookingBotPickingStrategy.Balanced;
+            _effectivePickingStrategy = PickingStrategy == CookingBotPickingStrategy.Adaptive
+                ? CookingBotPickingStrategy.Balanced
+                : PickingStrategy;
+            _nextAdaptiveEvaluationPick = 0;
+            _scorer = new EstimatorBotScorer(mapGraph, EffectiveSettings(), FailureKnowledge);
             _random = new Random(_settings.randomSeed);
             _pending.Clear();
             LastDecision = null;
@@ -90,6 +107,7 @@ namespace CookingGraph
             _nextPickAtSeconds = float.NegativeInfinity;
             _lastAcceptedPickAtSeconds = float.NegativeInfinity;
             _timedOutCustomerIndices.Clear();
+            _lastObservedFailureCustomers.Clear();
             IsWaitingForWorkCompletion = false;
             Verbose(
                 CookingBotVerboseLogKind.Initialized,
@@ -115,14 +133,19 @@ namespace CookingGraph
         }
 
         /// <summary>
-        /// Changes the scoring profile for the next Tick. Graph caches, RNG progress, and pending
-        /// accepted-pick reservations are preserved.
+        /// Overrides the automatically selected scoring profile for testing during the current
+        /// run. The next Init selects from failure knowledge again. Graph caches, RNG progress,
+        /// and pending accepted-pick reservations are preserved.
         /// </summary>
         public void SetPickingStrategy(CookingBotPickingStrategy strategy)
         {
             if (!Enum.IsDefined(typeof(CookingBotPickingStrategy), strategy))
                 throw new ArgumentOutOfRangeException(nameof(strategy), strategy, null);
             PickingStrategy = strategy;
+            _effectivePickingStrategy = strategy == CookingBotPickingStrategy.Adaptive
+                ? CookingBotPickingStrategy.Balanced
+                : strategy;
+            _nextAdaptiveEvaluationPick = _acceptedPickCount;
             _scorer?.SetSettings(EffectiveSettings());
             Verbose(CookingBotVerboseLogKind.ConfigurationChanged, "Picking strategy changed.");
         }
@@ -149,6 +172,19 @@ namespace CookingGraph
             if (!float.IsNegativeInfinity(_lastAcceptedPickAtSeconds))
                 _nextPickAtSeconds = _lastAcceptedPickAtSeconds + PickIntervalSeconds;
             Verbose(CookingBotVerboseLogKind.ConfigurationChanged, "Pick interval changed.");
+        }
+
+        /// <summary>
+        /// Changes how many accepted picks Adaptive keeps a simple profile before re-evaluating.
+        /// The new interval applies on the next Tick; failures also shorten it automatically.
+        /// </summary>
+        public void SetAdaptiveStrategyPickInterval(int pickedInterval)
+        {
+            _settings.adaptiveStrategyPickInterval = Math.Max(1, pickedInterval);
+            if (FailureKnowledge != null)
+                FailureKnowledge.adaptiveStrategyPickInterval = _settings.adaptiveStrategyPickInterval;
+            _nextAdaptiveEvaluationPick = _acceptedPickCount;
+            Verbose(CookingBotVerboseLogKind.ConfigurationChanged, "Adaptive strategy interval changed.");
         }
 
         /// <summary>
@@ -207,6 +243,7 @@ namespace CookingGraph
                     state);
                 return false;
             }
+            ReevaluateAdaptiveStrategy(state);
             var reserved = new HashSet<string>(_pending.SelectMany(value => value.itemIds), StringComparer.Ordinal);
             var optimistic = _pending.SelectMany(value => value.ingredients).ToList();
             var decision = _scorer.Decide(state, reserved, optimistic, _random, Intelligent);
@@ -216,7 +253,8 @@ namespace CookingGraph
                 Verbose(CookingBotVerboseLogKind.NoLegalPick, "No legal pickup option was selected.", state);
                 return false;
             }
-            decision.pickingStrategy = PickingStrategy;
+            decision.pickingStrategy = EffectivePickingStrategy;
+            decision.strategyMode = PickingStrategy;
             decision.workWaitStrategy = EffectiveWorkWaitStrategy;
             decision.intelligent = Intelligent;
             var pickIntervalSeconds = PickIntervalSeconds;
@@ -236,7 +274,8 @@ namespace CookingGraph
                 expectedItemId = decision.option.itemId,
                 score = decision.score,
                 randomFallback = decision.randomFallback,
-                pickingStrategy = PickingStrategy,
+                pickingStrategy = EffectivePickingStrategy,
+                strategyMode = PickingStrategy,
                 workWaitStrategy = EffectiveWorkWaitStrategy,
                 intelligent = Intelligent,
                 pickIntervalSeconds = pickIntervalSeconds
@@ -287,7 +326,10 @@ namespace CookingGraph
                 _peakGridRatio,
                 _peakDirtyRatio,
                 randomRatio,
-                _peakConcurrentWorkRatio);
+                _peakConcurrentWorkRatio,
+                PickingStrategy,
+                _lastObservedFailureCustomers.Values);
+            _scorer.SetFailureKnowledge(FailureKnowledge);
             _scorer.SetSettings(EffectiveSettings());
             Verbose(CookingBotVerboseLogKind.FailureKnowledgeAccumulated, "Failed-run knowledge accumulated for a later attempt.");
             return FailureKnowledge;
@@ -345,13 +387,20 @@ namespace CookingGraph
                 nextPickAtSeconds = float.IsNegativeInfinity(_nextPickAtSeconds) ? -1 : _nextPickAtSeconds,
                 projectedGridLoad = includesProjection ? decision.projectedGridLoad : -1,
                 usableGridCapacity = includesProjection ? decision.usableGridCapacity : -1,
-                pickingStrategy = PickingStrategy,
+                pickingStrategy = EffectivePickingStrategy,
+                strategyMode = PickingStrategy,
                 workWaitStrategy = WorkWaitStrategy,
                 effectiveWorkWaitStrategy = EffectiveWorkWaitStrategy,
+                hasRecommendedPickingStrategy = FailureKnowledge?.hasRecommendedPickingStrategy ?? false,
+                recommendedPickingStrategy = FailureKnowledge?.recommendedPickingStrategy ?? CookingBotPickingStrategy.Balanced,
+                strategySearchExhausted = FailureKnowledge?.strategySearchExhausted ?? false,
+                adaptiveStrategyPickInterval = FailureKnowledge?.adaptiveStrategyPickInterval ??
+                    Math.Max(1, _settings.adaptiveStrategyPickInterval),
                 intelligent = Intelligent,
                 pickIntervalSeconds = PickIntervalSeconds,
                 activeToolProcessCount = state != null ? Math.Max(0, state.activeToolProcessCount) : -1,
-                activeMergeAnimationCount = state != null ? Math.Max(0, state.activeMergeAnimationCount) : -1
+                activeMergeAnimationCount = state != null ? Math.Max(0, state.activeMergeAnimationCount) : -1,
+                remainingCustomerCount = state?.remainingCustomerCount ?? -1
             });
         }
 
@@ -364,9 +413,74 @@ namespace CookingGraph
 
         private EstimatorBotSettings EffectiveSettings()
         {
-            var settings = _settings.ForStrategy(PickingStrategy);
+            var settings = _settings.ForStrategy(EffectivePickingStrategy);
             FailureKnowledge?.ApplyTo(settings);
             return settings;
+        }
+
+        private void ReevaluateAdaptiveStrategy(BotGameState state)
+        {
+            if (PickingStrategy != CookingBotPickingStrategy.Adaptive ||
+                _acceptedPickCount < _nextAdaptiveEvaluationPick)
+                return;
+
+            var cells = state.grid?.cells ?? new List<BotGridCellState>();
+            var capacity = Math.Max(1, cells.Count);
+            var occupied = cells.Count(cell => cell != null && cell.kind != BotGridItemKind.Empty);
+            var dirty = cells.Count(cell => cell != null && cell.kind == BotGridItemKind.Dirty);
+            var occupiedRatio = (float)occupied / capacity;
+            var dirtyRatio = (float)dirty / capacity;
+            var active = (state.customerOrders ?? new List<BotCustomerOrderState>())
+                .Where(customer => customer != null && !customer.isStaff)
+                .ToList();
+            var activeRemaining = active.Sum(customer =>
+                (customer.dishes ?? new List<BotDishOrderState>()).Sum(dish =>
+                    dish == null ? 0 : (dish.slots ?? new List<BotOrderSlotState>())
+                        .Count(slot => slot != null && !slot.filled)));
+            var nearlyFinished = active.Any(customer =>
+                (customer.dishes ?? new List<BotDishOrderState>()).Any(dish =>
+                {
+                    if (dish == null) return false;
+                    var remaining = (dish.slots ?? new List<BotOrderSlotState>())
+                        .Count(slot => slot != null && !slot.filled);
+                    return remaining > 0 && remaining <= 2;
+                }));
+            var visiblePreview = Math.Min(3, (state.previewOrders ?? new List<BotPreviewOrderState>()).Count);
+            var remainingCustomers = state.remainingCustomerCount >= 0
+                ? state.remainingCustomerCount
+                : active.Count + visiblePreview;
+            var legalLanes = (state.pickupables ?? new List<BotPickupOption>())
+                .Where(option => option != null)
+                .Select(option => option.queueIndex)
+                .Distinct()
+                .Count();
+            var totalLanes = Math.Max(1, (state.visibleQueues ?? new List<BotQueueLaneState>()).Count);
+            var laneScarcity = 1f - Math.Min(1f, (float)legalLanes / totalLanes);
+            var workRatio = Math.Min(1f,
+                (Math.Max(0, state.activeToolProcessCount) + Math.Max(0, state.activeMergeAnimationCount)) /
+                (float)capacity);
+            var lateLevel = remainingCustomers <= active.Count ? 1f : 0f;
+            var knowledge = FailureKnowledge ?? new CookingBotFailureKnowledge();
+            var scores = new Dictionary<CookingBotPickingStrategy, float>
+            {
+                [CookingBotPickingStrategy.GridSafe] = occupiedRatio * 3 + dirtyRatio * 2 + workRatio + knowledge.gridPressure,
+                [CookingBotPickingStrategy.FrontLoaded] = active.Count * 0.35f + Math.Min(1f, activeRemaining / 8f) + knowledge.randomPressure,
+                [CookingBotPickingStrategy.FinishFirst] = (nearlyFinished ? 2f : 0f) + lateLevel + knowledge.urgencyPressure,
+                [CookingBotPickingStrategy.ChainFirst] = Math.Min(2f, remainingCustomers * 0.08f) + visiblePreview * 0.2f + knowledge.chainPressure,
+                [CookingBotPickingStrategy.ScarcityFirst] = laneScarcity * 2.5f + knowledge.scarcityPressure,
+                [CookingBotPickingStrategy.NoPreview] = occupiedRatio * 1.5f + lateLevel,
+                [CookingBotPickingStrategy.Balanced] = 0.5f
+            };
+            _effectivePickingStrategy = scores
+                .OrderByDescending(pair => pair.Value)
+                .ThenBy(pair => (int)pair.Key)
+                .First().Key;
+            var interval = Math.Max(1, FailureKnowledge?.adaptiveStrategyPickInterval ??
+                _settings.adaptiveStrategyPickInterval);
+            _nextAdaptiveEvaluationPick = _acceptedPickCount + interval;
+            _scorer.SetSettings(EffectiveSettings());
+            Verbose(CookingBotVerboseLogKind.ConfigurationChanged,
+                "Adaptive mode selected a simple strategy from the current visible state.", state);
         }
 
         private CookingBotWorkWaitStrategy ResolveWorkWaitStrategy()
@@ -427,6 +541,33 @@ namespace CookingGraph
         {
             foreach (var customerIndex in state.timedOutCustomerIndices ?? new List<int>())
                 _timedOutCustomerIndices.Add(customerIndex);
+            var activeCustomers = (state.customerOrders ?? new List<BotCustomerOrderState>())
+                .Where(customer => customer != null && !customer.isStaff)
+                .ToList();
+            // While playing, an empty active list is authoritative and clears stale customers.
+            // A stopped snapshot may remove customer objects, so retain the last playing snapshot.
+            if (activeCustomers.Count > 0 || state.isPlaying)
+                _lastObservedFailureCustomers.Clear();
+            if (activeCustomers.Count > 0)
+            {
+                foreach (var customer in activeCustomers)
+                {
+                    var memory = new CookingBotCustomerFailureMemory
+                    {
+                        customerIndex = customer.customerIndex,
+                        failureCount = 1
+                    };
+                    memory.ingredientNodeNames = (customer.dishes ?? new List<BotDishOrderState>())
+                        .Where(dish => dish != null)
+                        .SelectMany(dish => dish.slots ?? new List<BotOrderSlotState>())
+                        .Where(slot => slot != null && !slot.filled && slot.ingredient != null)
+                        .Select(slot => EstimatorBotScorer.IngredientKnowledgeName(slot.ingredient))
+                        .Where(name => !string.IsNullOrEmpty(name))
+                        .Distinct()
+                        .ToList();
+                    _lastObservedFailureCustomers[customer.customerIndex] = memory;
+                }
+            }
             var cells = state.grid?.cells;
             if (cells == null || cells.Count == 0) return;
             var occupied = cells.Count(cell => cell != null && cell.kind != BotGridItemKind.Empty);

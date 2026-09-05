@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace CookingGraph
@@ -24,13 +26,25 @@ namespace CookingGraph
     }
 
     /// <summary>
-    /// Serializable lessons learned from earlier failed runs. Only aggregate pressures are stored;
-    /// there are deliberately no ingredient, queue, item, or customer identities.
+    /// Map-scoped memory captured from an exact active order at failure. Preview-only hidden
+    /// ingredient choices are never written here.
+    /// </summary>
+    [Serializable]
+    public sealed class CookingBotCustomerFailureMemory
+    {
+        public int customerIndex;
+        [Min(0)] public int failureCount;
+        public List<string> ingredientNodeNames = new List<string>();
+    }
+
+    /// <summary>
+    /// Serializable lessons learned from earlier failed runs. Queue contents remain private; exact
+    /// ingredient names are stored only for customers whose orders were already active and visible.
     /// </summary>
     [Serializable]
     public sealed class CookingBotFailureKnowledge
     {
-        public int version = 1;
+        public int version = 3;
         [Min(0)] public int failureCount;
         [Range(0, 3)] public float gridPressure;
         [Range(0, 3)] public float dirtyPressure;
@@ -39,18 +53,39 @@ namespace CookingGraph
         [Range(0, 3)] public float chainPressure;
         [Range(0, 3)] public float randomPressure;
         [Range(0, 3)] public float pacingPressure;
+        [Min(0)] public int attemptedPickingStrategyMask;
+        public bool hasRecommendedPickingStrategy;
+        public CookingBotPickingStrategy recommendedPickingStrategy = CookingBotPickingStrategy.Balanced;
+        public bool strategySearchExhausted;
+        public List<CookingBotCustomerFailureMemory> customerPriorities = new List<CookingBotCustomerFailureMemory>();
+        [Min(1)] public int adaptiveStrategyPickInterval = 5;
+        [Min(0)] public int adaptiveFailureCount;
+        public bool adaptiveStrategyExhausted;
 
         internal void Accumulate(
             CookingBotFailureReport report,
             float peakGridRatio,
             float peakDirtyRatio,
             float randomPickRatio,
-            float peakConcurrentWorkRatio)
+            float peakConcurrentWorkRatio,
+            CookingBotPickingStrategy failedStrategy,
+            IEnumerable<CookingBotCustomerFailureMemory> failedCustomers)
         {
             if (report == null) throw new ArgumentNullException(nameof(report));
             // Timing warnings are diagnostic only. They must not make the estimator reject a
             // logically solvable level or distort future strategy/cadence learning.
             if (report.reason == CookingBotFailureReason.CustomerTimeout) return;
+            version = 3;
+            if (failedStrategy == CookingBotPickingStrategy.Adaptive)
+            {
+                adaptiveFailureCount++;
+                if (adaptiveStrategyPickInterval <= 1) adaptiveStrategyExhausted = true;
+                else adaptiveStrategyPickInterval--;
+            }
+            else
+            {
+                attemptedPickingStrategyMask |= 1 << (int)failedStrategy;
+            }
             const float retain = 0.85f;
             var unfinished = report.progress01 >= 0 ? 1f - Clamp(report.progress01, 0, 1) : 0;
             var gridDelta = (report.reason == CookingBotFailureReason.GridOverflow ? 1f : 0f) +
@@ -76,6 +111,23 @@ namespace CookingGraph
             chainPressure = Pressure(chainPressure, chainDelta, retain);
             randomPressure = Pressure(randomPressure, Clamp(randomPickRatio, 0, 1), retain);
             pacingPressure = Pressure(pacingPressure, pacingDelta, retain);
+            MergeFailedCustomers(failedCustomers);
+            RefreshRecommendedStrategy();
+        }
+
+        internal void PrepareForNextRun()
+        {
+            if (version < 3) version = 3;
+            if (adaptiveStrategyPickInterval < 1) adaptiveStrategyPickInterval = 5;
+            if (customerPriorities == null) customerPriorities = new List<CookingBotCustomerFailureMemory>();
+            if (failureCount <= 0)
+            {
+                hasRecommendedPickingStrategy = false;
+                strategySearchExhausted = false;
+                return;
+            }
+            if (!hasRecommendedPickingStrategy && !strategySearchExhausted)
+                RefreshRecommendedStrategy();
         }
 
         internal void ApplyTo(EstimatorBotSettings settings)
@@ -128,6 +180,94 @@ namespace CookingGraph
         private static float Clamp(float value, float min, float max)
         {
             return Math.Max(min, Math.Min(max, value));
+        }
+
+        private void RefreshRecommendedStrategy()
+        {
+            var candidates = new[]
+            {
+                CookingBotPickingStrategy.GridSafe,
+                CookingBotPickingStrategy.FinishFirst,
+                CookingBotPickingStrategy.ScarcityFirst,
+                CookingBotPickingStrategy.ChainFirst,
+                CookingBotPickingStrategy.FrontLoaded,
+                CookingBotPickingStrategy.NoPreview,
+                CookingBotPickingStrategy.Balanced
+            };
+            var found = false;
+            var best = CookingBotPickingStrategy.Balanced;
+            var bestScore = float.NegativeInfinity;
+            foreach (var candidate in candidates)
+            {
+                if ((attemptedPickingStrategyMask & (1 << (int)candidate)) != 0) continue;
+                var score = StrategyScore(candidate);
+                if (found && score <= bestScore) continue;
+                found = true;
+                best = candidate;
+                bestScore = score;
+            }
+
+            if (found)
+            {
+                hasRecommendedPickingStrategy = true;
+                strategySearchExhausted = false;
+                recommendedPickingStrategy = best;
+                return;
+            }
+
+            hasRecommendedPickingStrategy = !adaptiveStrategyExhausted;
+            strategySearchExhausted = adaptiveStrategyExhausted;
+            if (!adaptiveStrategyExhausted) recommendedPickingStrategy = CookingBotPickingStrategy.Adaptive;
+        }
+
+        private void MergeFailedCustomers(IEnumerable<CookingBotCustomerFailureMemory> failedCustomers)
+        {
+            if (customerPriorities == null) customerPriorities = new List<CookingBotCustomerFailureMemory>();
+            foreach (var failed in failedCustomers ?? Enumerable.Empty<CookingBotCustomerFailureMemory>())
+            {
+                if (failed == null) continue;
+                var existing = customerPriorities.FirstOrDefault(value =>
+                    value != null && value.customerIndex == failed.customerIndex);
+                if (existing == null)
+                {
+                    existing = new CookingBotCustomerFailureMemory { customerIndex = failed.customerIndex };
+                    customerPriorities.Add(existing);
+                }
+                existing.failureCount += Math.Max(1, failed.failureCount);
+                if (existing.ingredientNodeNames == null) existing.ingredientNodeNames = new List<string>();
+                foreach (var name in failed.ingredientNodeNames ?? new List<string>())
+                    if (!string.IsNullOrEmpty(name) && !existing.ingredientNodeNames.Contains(name))
+                        existing.ingredientNodeNames.Add(name);
+            }
+            customerPriorities = customerPriorities
+                .Where(value => value != null)
+                .OrderByDescending(value => value.failureCount)
+                .ThenBy(value => value.customerIndex)
+                .Take(32)
+                .ToList();
+        }
+
+        private float StrategyScore(CookingBotPickingStrategy strategy)
+        {
+            switch (strategy)
+            {
+                case CookingBotPickingStrategy.GridSafe:
+                    return Math.Max(gridPressure, Math.Max(dirtyPressure, pacingPressure));
+                case CookingBotPickingStrategy.FinishFirst:
+                    return urgencyPressure;
+                case CookingBotPickingStrategy.ScarcityFirst:
+                    return scarcityPressure;
+                case CookingBotPickingStrategy.ChainFirst:
+                    return chainPressure;
+                case CookingBotPickingStrategy.FrontLoaded:
+                    return randomPressure;
+                case CookingBotPickingStrategy.NoPreview:
+                    return randomPressure * 0.5f + gridPressure * 0.1f;
+                case CookingBotPickingStrategy.Balanced:
+                    return -0.01f;
+                default:
+                    return float.NegativeInfinity;
+            }
         }
     }
 }

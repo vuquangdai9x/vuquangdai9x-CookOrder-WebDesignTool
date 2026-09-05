@@ -12,7 +12,9 @@ namespace CookingGraph
         FinishFirst,
         ChainFirst,
         ScarcityFirst,
-        NoPreview
+        NoPreview,
+        /// <summary>Periodically selects the best simple profile from the current visible state.</summary>
+        Adaptive
     }
 
     /// <summary>Controls whether the cadence may overlap logical tool and merge work.</summary>
@@ -70,6 +72,9 @@ namespace CookingGraph
         /// continue during the interval; this is pacing, not a global animation lock.
         /// </summary>
         [Min(0)] public float pickIntervalSeconds = 1f;
+
+        /// <summary>Accepted picks between adaptive profile re-evaluations.</summary>
+        [Min(1)] public int adaptiveStrategyPickInterval = 5;
 
         /// <summary>
         /// Additional synchronization applied after the pick interval. Adaptive mirrors the web
@@ -134,6 +139,10 @@ namespace CookingGraph
                     tuned.scoreBlocked *= 0.45f;
                     tuned.scoreBlockedTight *= 0.25f;
                     tuned.rowDecay *= 0.5f;
+                    break;
+                case CookingBotPickingStrategy.Adaptive:
+                    // Adaptive is a mode, not a weight set. The bot replaces it with an effective
+                    // simple profile before scoring; Balanced is the safe standalone fallback.
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(strategy), strategy, null);

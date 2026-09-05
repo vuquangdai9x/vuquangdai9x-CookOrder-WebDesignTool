@@ -336,7 +336,7 @@ export const SCENARIO_FIELDS: ScenarioFieldSpec[] = [
     min: 0,
     max: 10,
     decimals: 0,
-    hint: "After the authored scoring run fails, try this many alternate scoring strategies (maximum 10).",
+    hint: "After authored scoring fails, try simple profiles, then adaptive switching and bounded search (maximum 10).",
   },
 ];
 

@@ -17,6 +17,9 @@ import type {
   OccupancySample,
   EstimateReplayStep,
   EstimateFailureKnowledge,
+  EstimateFailureCustomer,
+  EstimatePickingStrategyName,
+  EstimateStrategyName,
 } from "./estimateDifficulty.ts";
 
 // Every former tuning constant now lives in estimateScenario.ts, where the
@@ -227,6 +230,9 @@ function estimateNodeDifficultyAttempt(
   exploration: number,
   workWaitStrategy: WorkWaitStrategy,
   forcedPicks?: readonly number[],
+  failureKnowledge: EstimateFailureKnowledge = emptyFailureKnowledge(),
+  adaptiveStrategies?: readonly ScoringStrategy[],
+  adaptivePickInterval = 5,
 ): EstimateResult {
   const sim = new NodeSimulation(ix, level, {
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
@@ -244,6 +250,8 @@ function estimateNodeDifficultyAttempt(
   let halted: string | undefined;
   let pendingWaitBeforePick = 0;
   let peakConcurrentWork = 0;
+  let nextAdaptiveEvaluationPick = 0;
+  const adaptiveStrategyHistory: EstimatePickingStrategyName[] = [];
 
   const observeConcurrentWork = (): void => {
     peakConcurrentWork = Math.max(peakConcurrentWork, sim.cookingCount + sim.flights.length);
@@ -400,6 +408,31 @@ function estimateNodeDifficultyAttempt(
     return result;
   };
 
+  // These names were observed only after the customer became active in an earlier failed run.
+  // Exact remembered ingredients therefore affect exact active orders only. Preview scoring gets
+  // a customer-level boost, never a hidden topping reveal.
+  const learnedCustomerIngredients = new Map<number, Map<number, number>>();
+  const learnedCustomerFailures = new Map<number, number>();
+  for (const memory of failureKnowledge.customerPriorities ?? []) {
+    learnedCustomerFailures.set(memory.customerIndex, Math.max(0, memory.failureCount));
+    const ingredients = new Map<number, number>();
+    for (const name of memory.ingredientNames ?? []) {
+      const ing = ix.ingByName.get(name);
+      if (ing !== undefined) ingredients.set(ing, Math.max(0, memory.failureCount));
+    }
+    learnedCustomerIngredients.set(memory.customerIndex, ingredients);
+  }
+
+  const activeFailurePriority = (customerIndex: number, ingredient: number): number => {
+    const count = learnedCustomerIngredients.get(customerIndex)?.get(ingredient) ?? 0;
+    return 1 + Math.min(1, count * 0.2);
+  };
+
+  const previewFailurePriority = (customerIndex: number): number => {
+    const count = learnedCustomerFailures.get(customerIndex) ?? 0;
+    return 1 + Math.min(0.4, count * 0.08);
+  };
+
   /** Ingredients already committed to the pipeline, expressed as raw leaves. */
   const pipelineLeaves = (): Map<number, number> => {
     const supply = new Map<number, number>();
@@ -473,6 +506,7 @@ function estimateNodeDifficultyAttempt(
           if (multiInput) priority += base ? cfg.multiInputBaseBonus : cfg.multiInputBonus;
           priority += Math.max(0, 4 - remainingCount) * cfg.nearCompletionBonus;
           priority /= 1 + customerPosition * cfg.customerPositionDecay;
+          priority *= activeFailurePriority(customer.index, slot.ing);
           units.push({
             target: slot.ing,
             customerIndex: customer.index,
@@ -532,7 +566,7 @@ function estimateNodeDifficultyAttempt(
           const position = sim.active.length + previewPosition;
           const priority = (basePriority * confidence) /
             (1 + position * cfg.customerPositionDecay) /
-            slot.options.length;
+            slot.options.length * previewFailurePriority(customer.index);
           for (const option of slot.options) {
             for (const [leaf, units] of rawRequirements(option)) {
               const score = priority * units;
@@ -776,6 +810,42 @@ function estimateNodeDifficultyAttempt(
     }
   };
 
+  const selectAdaptiveStrategy = (): ScoringStrategy | undefined => {
+    if (!adaptiveStrategies || adaptiveStrategies.length === 0) return undefined;
+    const { free, dirty } = countGrid();
+    const capacity = Math.max(1, sim.grid.length);
+    const occupiedRatio = (capacity - free) / capacity;
+    const dirtyRatio = dirty / capacity;
+    const activeOrders = sim.active.filter(isOrdering);
+    const activeRemaining = activeOrders.reduce(
+      (sum, customer) => sum + customer.dishes.reduce((dishSum, dish) => dishSum + dish.remaining.length, 0),
+      0,
+    );
+    const nearlyFinished = activeOrders.some((customer) =>
+      customer.dishes.some((dish) => dish.remaining.length > 0 && dish.remaining.length <= 2));
+    const remainingCustomers = Math.max(0, sim.totalCustomers - sim.servedCount);
+    const visiblePreviewCount = Math.min(CUSTOMER_PREVIEW_COUNT, sim.pending.length);
+    const legalLanes = pickableLanes(sim).length;
+    const totalLanes = Math.max(1, sim.queueGrid.length);
+    const laneScarcity = 1 - legalLanes / totalLanes;
+    const workRatio = Math.min(1, (sim.cookingCount + sim.flights.length) / capacity);
+    const lateLevel = sim.totalCustomers > 0 ? 1 - remainingCustomers / sim.totalCustomers : 0;
+
+    const scores: Record<EstimatePickingStrategyName, number> = {
+      "grid-safe": occupiedRatio * 3 + dirtyRatio * 2 + workRatio + failureKnowledge.gridPressure,
+      "front-loaded": activeOrders.length * 0.35 + Math.min(1, activeRemaining / 8) + failureKnowledge.randomPressure,
+      "finish-first": (nearlyFinished ? 2 : 0) + lateLevel + failureKnowledge.urgencyPressure,
+      "chain-first": Math.min(2, remainingCustomers * 0.08) + visiblePreviewCount * 0.2 + failureKnowledge.chainPressure,
+      "scarcity-first": laneScarcity * 2.5 + failureKnowledge.scarcityPressure,
+      "single-customer": activeOrders.length === 1 ? 1.5 : 0.15,
+      "wide-counter": activeOrders.length >= 3 ? 1.25 : 0.2,
+      "no-preview": occupiedRatio * 1.5 + (remainingCustomers <= activeOrders.length ? 1 : 0),
+    };
+    return [...adaptiveStrategies].sort((a, b) =>
+      (scores[canonicalStrategyName(b.name) ?? "grid-safe"] ?? 0) -
+      (scores[canonicalStrategyName(a.name) ?? "grid-safe"] ?? 0))[0];
+  };
+
   sim.tick(0);
   sim.completeAllFlights();
   syncWindow(sim, cfg);
@@ -784,6 +854,18 @@ function estimateNodeDifficultyAttempt(
     iterations++;
     measure();
     gridTight = countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
+    if (adaptiveStrategies && counter >= nextAdaptiveEvaluationPick) {
+      const selected = selectAdaptiveStrategy();
+      if (selected) {
+        cfg = selected.cfg;
+        const selectedName = canonicalStrategyName(selected.name);
+        if (selectedName && adaptiveStrategyHistory.at(-1) !== selectedName)
+          adaptiveStrategyHistory.push(selectedName);
+        nextAdaptiveEvaluationPick = counter + Math.max(1, Math.floor(adaptivePickInterval));
+        syncWindow(sim, cfg);
+        gridTight = countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
+      }
+    }
     pickupValues = buildPickupValues();
     const lanes = pickableLanes(sim);
     if (lanes.length === 0) {
@@ -889,6 +971,18 @@ function estimateNodeDifficultyAttempt(
     pickIntervalSeconds: Math.max(0, cfg.pickIntervalSeconds),
     peakConcurrentWork,
     timedOutCustomers: [...sim.timedOutCustomerIndices].map((index) => index + 1).sort((a, b) => a - b),
+    adaptiveStrategyHistory: adaptiveStrategyHistory.length > 0 ? adaptiveStrategyHistory : undefined,
+    failureCustomers: sim.status === "won" ? [] : sim.active
+      .filter(isOrdering)
+      .map((customer): EstimateFailureCustomer => ({
+        customerIndex: customer.index,
+        failureCount: 1,
+        ingredientNames: [...new Set(customer.dishes.flatMap((dish) =>
+          dish.order.slots
+            .filter((_, slotIndex) => !dish.filled[slotIndex])
+            .map((slot) => ix.ingName[slot.ing])
+            .filter((name): name is string => Boolean(name))))],
+      })),
   };
 }
 
@@ -903,7 +997,7 @@ const bounded = (value: number, min: number, max: number): number => Math.max(mi
 
 export function emptyFailureKnowledge(): EstimateFailureKnowledge {
   return {
-    version: 1,
+    version: 3,
     failureCount: 0,
     gridPressure: 0,
     dirtyPressure: 0,
@@ -912,12 +1006,83 @@ export function emptyFailureKnowledge(): EstimateFailureKnowledge {
     chainPressure: 0,
     randomPressure: 0,
     pacingPressure: 0,
+    attemptedStrategies: [],
+    recommendedStrategy: null,
+    customerPriorities: [],
+    adaptivePickInterval: 5,
+    adaptiveFailureCount: 0,
   };
 }
 
+const PRESET_STRATEGY_NAMES: readonly EstimatePickingStrategyName[] = [
+  "grid-safe",
+  "front-loaded",
+  "finish-first",
+  "chain-first",
+  "scarcity-first",
+  "single-customer",
+  "wide-counter",
+  "no-preview",
+];
+
+function canonicalStrategyName(name: string | undefined): EstimatePickingStrategyName | null {
+  if (!name) return null;
+  const baseName = name.split("+")[0] as EstimatePickingStrategyName;
+  return PRESET_STRATEGY_NAMES.includes(baseName) ? baseName : null;
+}
+
+function recommendNextStrategy(
+  knowledge: Omit<EstimateFailureKnowledge, "recommendedStrategy">,
+): EstimateStrategyName {
+  const scores: Record<EstimatePickingStrategyName, number> = {
+    "grid-safe": Math.max(knowledge.gridPressure, knowledge.dirtyPressure, knowledge.pacingPressure),
+    "front-loaded": knowledge.randomPressure,
+    "finish-first": knowledge.urgencyPressure,
+    "chain-first": knowledge.chainPressure,
+    "scarcity-first": knowledge.scarcityPressure,
+    "single-customer": knowledge.gridPressure * 0.2 + knowledge.randomPressure * 0.2,
+    "wide-counter": knowledge.urgencyPressure * 0.5 + knowledge.chainPressure * 0.25,
+    "no-preview": knowledge.randomPressure * 0.5 + knowledge.gridPressure * 0.1,
+  };
+  const attempted = new Set(knowledge.attemptedStrategies ?? []);
+  return [...PRESET_STRATEGY_NAMES]
+    .filter((name) => !attempted.has(name))
+    .sort((a, b) => scores[b] - scores[a])[0] ?? "adaptive";
+}
+
+function mergeFailureCustomers(
+  previous: readonly EstimateFailureCustomer[],
+  current: readonly EstimateFailureCustomer[],
+): EstimateFailureCustomer[] {
+  const merged = new Map<number, EstimateFailureCustomer>();
+  for (const memory of previous ?? []) {
+    merged.set(memory.customerIndex, {
+      customerIndex: memory.customerIndex,
+      failureCount: Math.max(0, memory.failureCount),
+      ingredientNames: [...new Set(memory.ingredientNames ?? [])],
+    });
+  }
+  for (const memory of current ?? []) {
+    const existing = merged.get(memory.customerIndex);
+    if (!existing) {
+      merged.set(memory.customerIndex, {
+        customerIndex: memory.customerIndex,
+        failureCount: Math.max(1, memory.failureCount),
+        ingredientNames: [...new Set(memory.ingredientNames ?? [])],
+      });
+      continue;
+    }
+    existing.failureCount += Math.max(1, memory.failureCount);
+    existing.ingredientNames = [...new Set([...existing.ingredientNames, ...(memory.ingredientNames ?? [])])];
+  }
+  return [...merged.values()]
+    .sort((a, b) => b.failureCount - a.failureCount || a.customerIndex - b.customerIndex)
+    .slice(0, 32);
+}
+
 /**
- * Distil one failed run into bounded, visibility-safe pressures. The trace contains complete
- * simulator state, but only occupancy and aggregate pick-quality measurements leave this function.
+ * Distil one failed run into bounded pressures plus exact orders that were visibly active at the
+ * failure. Hidden preview choices never enter customer ingredient memory.
  */
 export function accumulateFailureKnowledge(
   previous: EstimateFailureKnowledge,
@@ -945,8 +1110,14 @@ export function accumulateFailureKnowledge(
   const retain = 0.85;
   const pressure = (current: number, delta: number): number =>
     bounded(current * retain + delta, 0, 3);
-  return {
-    version: 1,
+  const failedStrategy = canonicalStrategyName(failed.strategyName);
+  const failedAdaptive = failed.strategyName?.split("+")[0] === "adaptive";
+  const previousAttempts = previous.attemptedStrategies ?? [];
+  const attemptedStrategies = failedStrategy && !previousAttempts.includes(failedStrategy)
+    ? [...previousAttempts, failedStrategy]
+    : [...previousAttempts];
+  const nextWithoutRecommendation: Omit<EstimateFailureKnowledge, "recommendedStrategy"> = {
+    version: 3,
     failureCount: previous.failureCount + 1,
     gridPressure: pressure(
       previous.gridPressure,
@@ -974,6 +1145,19 @@ export function accumulateFailureKnowledge(
       ((reason === "grid-overflow" || reason === "dirty-overflow") ? 0.75 : 0) +
         Math.max(0, workRatio - 0.25),
     ),
+    attemptedStrategies,
+    customerPriorities: mergeFailureCustomers(
+      previous.customerPriorities ?? [],
+      failed.failureCustomers ?? [],
+    ),
+    adaptivePickInterval: failedAdaptive
+      ? Math.max(1, (previous.adaptivePickInterval ?? 5) - 1)
+      : Math.max(1, previous.adaptivePickInterval ?? 5),
+    adaptiveFailureCount: (previous.adaptiveFailureCount ?? 0) + (failedAdaptive ? 1 : 0),
+  };
+  return {
+    ...nextWithoutRecommendation,
+    recommendedStrategy: recommendNextStrategy(nextWithoutRecommendation),
   };
 }
 
@@ -1138,6 +1322,10 @@ function learnedPreset(
   presets: ScoringStrategy[],
   used: ReadonlySet<string>,
 ): ScoringStrategy | undefined {
+  if (knowledge.recommendedStrategy && !used.has(knowledge.recommendedStrategy)) {
+    const recommended = presets.find((candidate) => candidate.name === knowledge.recommendedStrategy);
+    if (recommended) return recommended;
+  }
   const pressureByPreset: [string, number][] = [
     ["grid-safe", Math.max(knowledge.gridPressure, knowledge.dirtyPressure, knowledge.pacingPressure ?? 0)],
     ["finish-first", knowledge.urgencyPressure],
@@ -1162,9 +1350,10 @@ const betterFailure = (candidate: EstimateResult, current: EstimateResult | null
 
 /**
  * Estimate a node level, retrying failed runs with distinct scoring sets. Every failed attempt
- * also contributes aggregate knowledge that retunes all later attempts. Presets are exhausted
- * before randomized sets are considered. A successful attempt returns immediately; otherwise the
- * closest failed run is retained.
+ * also contributes aggregate knowledge that retunes all later attempts. Simple presets are
+ * exhausted before Adaptive periodically reselects among them; the final bounded search remains a
+ * hard-level safety net. A successful attempt returns immediately; otherwise the closest failed
+ * run is retained.
  */
 export function estimateNodeDifficulty(
   ix: GraphIndex,
@@ -1184,8 +1373,11 @@ export function estimateNodeDifficulty(
   const usedStrategies = new Set<string>();
 
   for (let attempt = 0; attempt <= retryCount; attempt++) {
+    const adaptive = attempt > 0 && knowledge.recommendedStrategy === "adaptive";
     const baseline = attempt === 0
       ? { name: "authored", cfg: base, workWaitStrategy: "interval" as WorkWaitStrategy }
+      : adaptive
+        ? { name: "adaptive", cfg: base, workWaitStrategy: "wait-all" as WorkWaitStrategy }
       : learnedPreset(knowledge, presets, usedStrategies) ??
         randomizedStrategy(base, Math.max(0, attempt - presets.length - 1), strategyRandom);
     usedStrategies.add(baseline.name);
@@ -1195,7 +1387,9 @@ export function estimateNodeDifficulty(
       workWaitStrategy: attempt > 0 ? "wait-all" as WorkWaitStrategy : baseline.workWaitStrategy,
     };
     let forcedPicks: readonly number[] | undefined;
-    if (attempt > 0 && attempt >= Math.max(1, retryCount - 1)) {
+    // Keep the bounded final beam attempt as a safety net after Adaptive has been exercised. This
+    // preserves proven hard-level coverage without skipping the requested adaptive fallback.
+    if (attempt > 0 && attempt >= Math.max(1, retryCount - 1) && (!adaptive || attempt === retryCount)) {
       const planningConfig: ResolvedScenario = {
         ...base,
         enabled: { ...base.enabled },
@@ -1235,6 +1429,13 @@ export function estimateNodeDifficulty(
         : (attempt === 0 ? 0 : Math.min(0.35, 0.08 + attempt * 0.025)),
       strategy.workWaitStrategy,
       forcedPicks,
+      knowledge,
+      adaptive ? presets.map((preset) => ({
+        ...preset,
+        cfg: applyFailureKnowledge(preset.cfg, knowledge),
+        workWaitStrategy: "wait-all" as WorkWaitStrategy,
+      })) : undefined,
+      knowledge.adaptivePickInterval,
     );
     result.attemptCount = attempt + 1;
     result.strategyName = strategy.name;
