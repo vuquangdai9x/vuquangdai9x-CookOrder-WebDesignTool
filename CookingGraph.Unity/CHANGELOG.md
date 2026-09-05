@@ -1,5 +1,9 @@
 # Changelog
 
+- Fixed a Unity wait-all deadlock where a partially filled coffee machine was reported as active.
+  The bot can now bypass the work barrier only for a legal pickup that completes the committed
+  multi-input recipe, and emits `WorkBarrierBypassed` in verbose logs.
+
 - Added cumulative active-customer failure memory, remaining-customer input, and an Adaptive
   picking mode. After simple profiles fail, Adaptive periodically re-selects a profile from the
   current visible state and tightens its re-evaluation interval after each failed run.

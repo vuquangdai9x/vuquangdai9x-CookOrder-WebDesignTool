@@ -237,6 +237,7 @@ namespace CookingGraph
         PendingReconciled,
         Cooldown,
         WaitingForWorkCompletion,
+        WorkBarrierBypassed,
         NoLegalPick,
         DecisionSelected,
         GridCapacityDeferred,

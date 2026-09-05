@@ -243,6 +243,67 @@ namespace CookingGraph.Tests
         }
 
         [Test]
+        public void WorkBarrierAllowsOnlyTheMissingCoffeeMachineInput()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var coffeeBean = Node<IngredientNodeAsset>("coffee-bean");
+            var groundCoffee = Node<IngredientNodeAsset>("coffee-grinded");
+            var cup = Node<IngredientNodeAsset>("cup");
+            var coffee = Node<IngredientNodeAsset>("coffee-cup-hot");
+            var grinder = Node<ToolNodeAsset>("coffee-grinder");
+            var machine = Node<ToolNodeAsset>("coffee-machine");
+            graph.ingredients.AddRange(new[] { coffeeBean, groundCoffee, cup, coffee });
+            graph.tools.AddRange(new[] { grinder, machine });
+            graph.processEdges.Add(new ProcessEdgeAssetData
+            {
+                from = grinder,
+                to = groundCoffee,
+                inputs = new List<ProcessInputAssetData>
+                {
+                    new ProcessInputAssetData { ingredient = coffeeBean, slot = 0 }
+                }
+            });
+            graph.processEdges.Add(new ProcessEdgeAssetData
+            {
+                from = machine,
+                to = coffee,
+                inputs = new List<ProcessInputAssetData>
+                {
+                    new ProcessInputAssetData { ingredient = groundCoffee, slot = 0 },
+                    new ProcessInputAssetData { ingredient = cup, slot = 1 }
+                }
+            });
+
+            var state = State(Lane("coffee-bean", coffeeBean), Lane("unrelated-cheese", cheese));
+            state.activeToolProcessCount = 1; // Host incorrectly includes the cup waiting for ground coffee.
+            state.committedIngredients.Add(new BotCommittedIngredientState
+            {
+                ingredient = cup,
+                amount = 1,
+                sourceItemId = "cup-in-machine"
+            });
+            state.customerOrders.Add(Customer(1, Slot(coffee, true, true)));
+            var listener = new VerboseLogListener();
+            var sink = new Sink();
+            var bot = new CookingEstimatorBot(
+                new Reader { state = state },
+                sink,
+                new EstimatorBotSettings { workWaitStrategy = CookingBotWorkWaitStrategy.WaitForToolAndMerge });
+            bot.Init(graph);
+            bot.SetVerboseLogging(true, listener);
+
+            Assert.That(bot.Tick(), Is.True,
+                "The coffee bean becomes ground coffee and completes the cup's multi-input recipe.");
+            Assert.That(bot.IsWaitingForWorkCompletion, Is.False);
+            Assert.That(sink.commands, Has.Count.EqualTo(1));
+            Assert.That(sink.commands[0].expectedItemId, Is.EqualTo("coffee-bean"));
+            Assert.That(listener.entries.Exists(entry =>
+                entry.kind == CookingBotVerboseLogKind.WorkBarrierBypassed), Is.True);
+
+            Destroy(graph, bun, cheese, tomato, coffeeBean, groundCoffee, cup, coffee, grinder, machine);
+        }
+
+        [Test]
         public void AdaptiveRetryAndLiveOverrideChangeTheNextTickWorkBarrier()
         {
             var graph = Graph(out var bun, out var cheese, out var tomato);

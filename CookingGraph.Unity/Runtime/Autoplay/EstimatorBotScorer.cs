@@ -97,11 +97,13 @@ namespace CookingGraph
             ISet<string> reservedItemIds,
             IEnumerable<BotCommittedIngredientState> optimisticCommitted,
             Random random,
-            float intelligent)
+            float intelligent,
+            ISet<BotPickupOption> allowedOptions = null)
         {
             if (state == null || !state.isPlaying) return null;
             var candidates = (state.pickupables ?? new List<BotPickupOption>())
                 .Where(value => value != null && value.queueIndex >= 0 && !string.IsNullOrEmpty(value.itemId))
+                .Where(value => allowedOptions == null || allowedOptions.Contains(value))
                 .Where(value => IsVisiblyEligible(value, state))
                 .Where(value => reservedItemIds == null || !ConsumedIds(value).Any(reservedItemIds.Contains))
                 .OrderBy(value => value.queueIndex)
@@ -172,6 +174,91 @@ namespace CookingGraph
                 fallback = candidates[randomSource.Next(candidates.Count)];
             }
             return new BotDecision { option = fallback, randomFallback = true, customerIndex = FirstCustomer(state) };
+        }
+
+        /// <summary>
+        /// Finds legal pickups that supply the missing side of a partially committed multi-input
+        /// recipe. These are the only picks allowed to bypass the work-completion barrier: without
+        /// one of them, a tool slot reported as active can wait forever for an input the bot is not
+        /// permitted to pick.
+        /// </summary>
+        internal HashSet<BotPickupOption> WorkBarrierEscapeOptions(
+            BotGameState state,
+            ISet<string> reservedItemIds,
+            IEnumerable<BotCommittedIngredientState> optimisticCommitted)
+        {
+            var result = new HashSet<BotPickupOption>();
+            if (state == null) return result;
+
+            var baseline = CommittedInventory(state.committedIngredients);
+            var optimistic = CommittedInventory(optimisticCommitted);
+            foreach (var pair in optimistic)
+            {
+                float current;
+                baseline.TryGetValue(pair.Key, out current);
+                baseline[pair.Key] = Math.Max(current, pair.Value);
+            }
+            AdvanceSingleInputProcesses(baseline);
+
+            foreach (var option in state.pickupables ?? new List<BotPickupOption>())
+            {
+                if (option == null || !IsVisiblyEligible(option, state)) continue;
+                if (reservedItemIds != null &&
+                    (reservedItemIds.Contains(option.itemId) || ConsumedIds(option).Any(reservedItemIds.Contains)))
+                    continue;
+                var combined = new Dictionary<IngredientNodeAsset, float>(baseline);
+                foreach (var ingredient in IngredientsOf(option, state)) Add(combined, ingredient, 1);
+                AdvanceSingleInputProcesses(combined);
+
+                if (_processSteps.Any(step =>
+                    step.inputs.Count > 1 &&
+                    HasAnyInput(step, baseline) &&
+                    AvailableBatches(step, combined) > AvailableBatches(step, baseline)))
+                    result.Add(option);
+            }
+            return result;
+        }
+
+        private void AdvanceSingleInputProcesses(Dictionary<IngredientNodeAsset, float> inventory)
+        {
+            var changed = true;
+            var remainingPasses = Math.Max(1, _processSteps.Count * 2 + 1);
+            while (changed && remainingPasses-- > 0)
+            {
+                changed = false;
+                foreach (var step in _processSteps)
+                {
+                    if (step == null || step.output == null || step.inputs.Count != 1 || step.inputs[0] == step.output)
+                        continue;
+                    float available;
+                    if (!inventory.TryGetValue(step.inputs[0], out available) || available < 1) continue;
+                    var batches = (float)Math.Floor(available + 0.0001f);
+                    inventory[step.inputs[0]] = Math.Max(0, available - batches);
+                    Add(inventory, step.output, batches * Math.Max(1, step.amount));
+                    changed = true;
+                }
+            }
+        }
+
+        private static bool HasAnyInput(ProcessStep step, IReadOnlyDictionary<IngredientNodeAsset, float> inventory)
+        {
+            return step.inputs.Any(input => Amount(inventory, input) > 0);
+        }
+
+        private static int AvailableBatches(
+            ProcessStep step,
+            IReadOnlyDictionary<IngredientNodeAsset, float> inventory)
+        {
+            var required = new Dictionary<IngredientNodeAsset, int>();
+            foreach (var input in step.inputs)
+            {
+                int count;
+                required.TryGetValue(input, out count);
+                required[input] = count + 1;
+            }
+            if (required.Count == 0) return 0;
+            var batches = required.Min(pair => Amount(inventory, pair.Key) / pair.Value);
+            return (int)Math.Floor(batches + 0.0001f);
         }
 
         private static bool UsesRandomChoice(float intelligent, Random random)

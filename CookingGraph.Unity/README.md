@@ -126,6 +126,10 @@ active tool processes and logical merge transitions. `Adaptive` overlaps them on
 uses the completion barrier on a retry initialized with failure knowledge, matching the web
 estimator's synchronized retry strategy.
 
+To prevent a permanent wait when a host mistakenly counts a partially filled multi-input tool as
+active, the barrier permits only a legal pickup that completes that committed recipe. A cup waiting
+for ground coffee can therefore admit the coffee route while unrelated and frozen items still wait.
+
 The interval is a minimum, not a promise to pick immediately. Before submitting, the bot projects
 `occupied grid + committed work + candidate footprint`. If that load cannot fit, `Tick()` returns
 false until live state shows that work has drained. `IsWaitingForGridCapacity` and the projected

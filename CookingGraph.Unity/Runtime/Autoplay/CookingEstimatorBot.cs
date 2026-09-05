@@ -233,20 +233,41 @@ namespace CookingGraph
                 Verbose(CookingBotVerboseLogKind.Cooldown, "Waiting for the next pick deadline.", state);
                 return false;
             }
-            if (ShouldWaitForWorkCompletion(state))
-            {
-                LastDecision = null;
-                IsWaitingForWorkCompletion = true;
-                Verbose(
-                    CookingBotVerboseLogKind.WaitingForWorkCompletion,
-                    "Pick interval elapsed; waiting for active tool and merge work to settle.",
-                    state);
-                return false;
-            }
-            ReevaluateAdaptiveStrategy(state);
             var reserved = new HashSet<string>(_pending.SelectMany(value => value.itemIds), StringComparer.Ordinal);
             var optimistic = _pending.SelectMany(value => value.ingredients).ToList();
-            var decision = _scorer.Decide(state, reserved, optimistic, _random, Intelligent);
+            HashSet<BotPickupOption> workBarrierEscapeOptions = null;
+            if (ShouldWaitForWorkCompletion(state))
+            {
+                // Logical merges can finish without another ingredient, so never bypass them.
+                // A partially filled multi-input tool cannot: permit only a legal option that
+                // completes one such committed recipe, preventing a permanent cup/ground-coffee
+                // wait while retaining wait-all behavior for unrelated picks.
+                if (Math.Max(0, state.activeMergeAnimationCount) == 0 &&
+                    Math.Max(0, state.activeToolProcessCount) > 0)
+                    workBarrierEscapeOptions = _scorer.WorkBarrierEscapeOptions(state, reserved, optimistic);
+                if (workBarrierEscapeOptions == null || workBarrierEscapeOptions.Count == 0)
+                {
+                    LastDecision = null;
+                    IsWaitingForWorkCompletion = true;
+                    Verbose(
+                        CookingBotVerboseLogKind.WaitingForWorkCompletion,
+                        "Pick interval elapsed; waiting for active tool and merge work to settle.",
+                        state);
+                    return false;
+                }
+                Verbose(
+                    CookingBotVerboseLogKind.WorkBarrierBypassed,
+                    "Work wait bypassed for a legal pickup that completes a committed multi-input recipe.",
+                    state);
+            }
+            ReevaluateAdaptiveStrategy(state);
+            var decision = _scorer.Decide(
+                state,
+                reserved,
+                optimistic,
+                _random,
+                Intelligent,
+                workBarrierEscapeOptions);
             LastDecision = decision;
             if (decision?.option == null)
             {

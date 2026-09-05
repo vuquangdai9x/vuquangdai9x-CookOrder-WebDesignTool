@@ -113,7 +113,11 @@ It lets the bot enforce its pick cadence consistently across variable frame rate
 
 `activeToolProcessCount` includes only jobs that can complete through passage of gameplay time. A
 partial multi-input tool that needs another queue ingredient is not active; counting it would
-deadlock the bot before it can pick the missing input. `activeMergeAnimationCount` includes
+normally deadlock the bot before it can pick the missing input. The bot now defends against this
+adapter mistake: when there is no active merge, it may bypass the barrier only for a legal pickup
+that completes a partially committed multi-input graph recipe. For example, a cup already waiting
+in the coffee machine permits the coffee-bean/ground-coffee route, but not an unrelated pickup.
+`activeMergeAnimationCount` includes
 merge/combine transitions whose completion still changes logical routing, serving, or capacity.
 Do not include queue departure tweens, particles, customer reactions, or a merge tween whose
 logical result was already committed.
@@ -383,6 +387,13 @@ every mode. After the barrier, the bot also projects occupied cells, committed i
 candidate footprint. It defers only when those eventual outputs exceed safe capacity. Inspect
 `IsWaitingForGridCapacity`, `LastDecision.projectedGridLoad`, and
 `LastDecision.usableGridCapacity` when diagnosing a false `Tick()` result.
+
+The barrier has one deadlock escape. If a host reports a partially filled multi-input tool as an
+active process, the scorer checks committed tool/flight inputs against the graph. It restricts that
+tick's candidates to legal pickups that make a new multi-input batch possible, including required
+single-input preprocessing such as coffee bean to ground coffee. Verbose logging emits
+`WorkBarrierBypassed`. Active merge transitions, unrelated ingredients, frozen/locked items, and
+reserved stale items cannot use this escape.
 
 The projection evaluates committed and candidate ingredients together through the graph. For
 example, a committed coffee bean/ground coffee and a newly selected cup become one coffee-machine
@@ -656,6 +667,8 @@ At minimum, test these behaviours against the real gameplay adapter:
 14. `remainingCustomerCount` changes Adaptive's effective profile without exposing hidden orders.
 15. Active failure-customer ingredients gain priority later, while preview-only hidden topping
     choices remain unavailable.
+16. A cup waiting in a multi-input coffee tool can pick the missing coffee route even if the host
+    mistakenly counts that partial tool as active; unrelated and frozen picks remain blocked.
 
 ## Common integration mistakes
 
