@@ -10,8 +10,20 @@ import { parseGrid, parseQueueGroups, parseQueues } from "../core/parser.ts";
 import { parseNodeCustomers } from "../core/nodeParser.ts";
 import type { NodeLevelConfig } from "../core/nodeSim.ts";
 import type { LevelData } from "./mapLoader.ts";
+import { getCustomerCatalog } from "./customerCatalog.ts";
 
 export function toNodeLevelConfig(d: LevelData): NodeLevelConfig {
+  const bossCatalogIndices = new Set(
+    getCustomerCatalog()
+      .filter((entry) => entry.type.trim().toLowerCase() === "boss")
+      .map((entry) => entry.index),
+  );
+  const customers = parseNodeCustomers(d.customerString).map((customer) => ({
+    ...customer,
+    ...(customer.customerIndex !== undefined && bossCatalogIndices.has(customer.customerIndex)
+      ? { isBoss: true }
+      : {}),
+  }));
   return {
     id: d.id,
     name: d.name,
@@ -23,7 +35,7 @@ export function toNodeLevelConfig(d: LevelData): NodeLevelConfig {
     queues: parseQueues(d.queueString),
     queueGroups: parseQueueGroups(d.queueString),
     grid: parseGrid(d.gridString),
-    customers: parseNodeCustomers(d.customerString),
+    customers,
     ...(d.outOfSlotPolicy ? { outOfSlotPolicy: d.outOfSlotPolicy } : {}),
     ...(d.boosterCharges ? { boosterCharges: d.boosterCharges } : {}),
   };

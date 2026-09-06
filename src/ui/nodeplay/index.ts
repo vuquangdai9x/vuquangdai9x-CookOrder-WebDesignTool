@@ -157,6 +157,9 @@ export class NodePlayView {
   private customerAvatarByIndex = new Map<number, CustomerCatalogEntry>();
   /** Completed dish containers still travelling from the serving row to a customer. */
   private plateDeliveries = new Set<string>();
+  /** Full-screen ambient shade retained until the departing boss card finishes animating. */
+  private bossTintEl: HTMLElement | null = null;
+  private bossBackdropCustomerIndex: number | null = null;
 
   // ---------- flight animation ----------
   //
@@ -310,6 +313,7 @@ export class NodePlayView {
     });
     this.animating.clear();
     this.pendingPickOrigins = [];
+    this.bossBackdropCustomerIndex = null;
     this.boosterCharges = [...(this.level.boosterCharges ?? [3, 3, 3, 3])];
     this.ingredientPickMode = false;
     this.saveMeDeclined = false;
@@ -341,7 +345,8 @@ export class NodePlayView {
     // The boosters bar is a SIBLING of `.play-page`, not a child: the page has
     // a fixed height with sized gameplay tiers, so another child would shrink
     // them instead of sitting below.
-    const children = [this.weatherLayer(), this.toolbar(), this.page, this.boostersEl];
+    this.bossTintEl = el("div", { class: "boss-background-tint", "aria-hidden": "true" });
+    const children = [this.weatherLayer(), this.bossTintEl, this.toolbar(), this.page, this.boostersEl];
     if (!this.replay) {
       this.recipePanelEl = this.recipeGuidePanel();
       children.push(this.recipePanelEl);
@@ -368,6 +373,7 @@ export class NodePlayView {
     this.page.replaceChildren(this.customersEl, this.servingEl, this.middleEl, this.queuesEl);
     this.refreshQueueGroupOverlay();
     this.syncOverlay();
+    this.syncBossBackdrop();
     this.patchLiveValues();
   }
 
@@ -479,6 +485,7 @@ export class NodePlayView {
     }
 
     this.syncOverlay();
+    this.syncBossBackdrop();
     this.patchLiveValues();
   }
 
@@ -540,6 +547,9 @@ export class NodePlayView {
       const customerCard = flight.toCustomer
         ? this.page.querySelector<HTMLElement>(`[data-customer="${flight.toCustomer.index}"]`)
         : null;
+      const customerWasBoss = flight.toCustomer
+        ? this.sim.active.find((customer) => customer.index === flight.toCustomer!.index)?.config.isBoss === true
+        : false;
       const customerPoint = customerCard ? centerOf(customerCard) : null;
       const dishState = flight.toCustomer
         ? this.sim.active.find((customer) => customer.index === flight.toCustomer!.index)
@@ -588,6 +598,13 @@ export class NodePlayView {
               plateDurationMs + 400,
             );
             this.fx.burst(customerPoint, 10);
+            if (
+              customerWasBoss &&
+              customerCard &&
+              !this.sim.active.some((customer) => customer.index === flight.toCustomer!.index)
+            ) {
+              await this.animateBossDeparture(customerCard);
+            }
             this.plateDeliveries.delete(dishKey);
           }
 
@@ -622,6 +639,38 @@ export class NodePlayView {
         }, Math.max(50, afterMs)),
       ),
     ]);
+  }
+
+  /** Boss-only exit beat; the background tint is cleared by syncBossBackdrop after this resolves. */
+  private animateBossDeparture(card: HTMLElement): Promise<void> {
+    const durationMs = 420 / Math.max(1, this.speedFactor);
+    const animation = card.animate(
+      [
+        { transform: "translateX(0) scale(1)", opacity: 1 },
+        { transform: "translateX(2rem) scale(0.96)", opacity: 0 },
+      ],
+      { duration: durationMs, easing: "ease-in", fill: "forwards" },
+    );
+    return this.settled(animation.finished.then(() => undefined), durationMs + 400);
+  }
+
+  /**
+   * Activates as soon as a boss is seated. After logical completion the old
+   * card remains mounted while its delivery/exit animation runs, so checking
+   * both the active model and retained DOM card keeps the tint through exit.
+   */
+  private syncBossBackdrop(): void {
+    const activeBoss = this.sim.active.find((customer) => customer.config.isBoss);
+    if (activeBoss) this.bossBackdropCustomerIndex = activeBoss.index;
+
+    if (this.bossBackdropCustomerIndex !== null && !activeBoss) {
+      const index = this.bossBackdropCustomerIndex;
+      const retainedCard = this.page.querySelector(`[data-customer="${index}"]`);
+      const deliveryRunning = [...this.plateDeliveries].some((key) => key.startsWith(`${index}:`));
+      if (!retainedCard && !deliveryRunning) this.bossBackdropCustomerIndex = null;
+    }
+
+    this.bossTintEl?.classList.toggle("active", this.bossBackdropCustomerIndex !== null);
   }
 
   /** Removes fliers with no running animation — see `settled`. */
@@ -1137,7 +1186,7 @@ export class NodePlayView {
     const row = el("div", { class: "customer-cards play" });
     // Gameplay reads right-to-left: customer #1 owns the far-right counter
     // position. Upcoming previews stay to the left in the same sequence.
-    const previews = [...sim.pending.slice(0, CUSTOMER_PREVIEW_COUNT)].reverse();
+    const previews = [...sim.visiblePreviewCustomers(CUSTOMER_PREVIEW_COUNT)].reverse();
     for (const c of previews) row.append(this.customerPreviewCard(c));
     const active = [...sim.active].reverse();
     for (const c of active) row.append(this.customerCard(c, true));

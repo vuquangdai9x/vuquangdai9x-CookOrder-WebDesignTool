@@ -233,6 +233,13 @@ tool.
   Each preview is a half-width card with one vertical column of ordered-composite
   emojis; ingredient choices, quantities and toppings remain hidden. The estimator uses this same
   composite-only lookahead rather than treating pending orders as wholly unknown.
+- **Boss encounter rule**: a boss is exclusive and may occupy the serving counter only when every
+  earlier customer has departed. While the boss is active, no other customer may become active,
+  even when `serveableSlots` has unused capacity. A pending boss is an information barrier: the
+  boss has no preview card/avatar and exposes no order, and customers behind it are not previewed.
+  Once the boss becomes active, up to three previews behind it are visible again. Play mode applies
+  a subtle full-background dark tint from boss arrival through the end of the boss departure
+  animation, then restores the normal background.
 - **Serving row**: a compact strip between Customer status and the grid with at most five visual
   dish containers. Served ingredients fly here and merge in base-before-topping order. Once a dish
   is complete, one container (plate/cup/etc., represented by its composite icon) flies to the

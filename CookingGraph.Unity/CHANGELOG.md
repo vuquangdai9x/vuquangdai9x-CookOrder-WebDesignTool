@@ -1,5 +1,10 @@
 # Changelog
 
+- Added boss-aware autoplay visibility fields. Preview orders hidden by a pending boss no longer
+  influence normal pickup scoring or Adaptive strategy selection.
+- Documented exclusive boss seating, hidden boss/behind-boss previews, preview restoration after
+  arrival, and the encounter background-tint lifetime required of the host game.
+
 - Fixed a Unity wait-all deadlock where a partially filled coffee machine was reported as active.
   The bot can now bypass the work barrier only for a legal pickup that completes the committed
   multi-input recipe, and emits `WorkBarrierBypassed` in verbose logs.

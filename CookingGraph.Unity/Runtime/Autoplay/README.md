@@ -122,6 +122,34 @@ merge/combine transitions whose completion still changes logical routing, servin
 Do not include queue departure tweens, particles, customer reactions, or a merge tween whose
 logical result was already committed.
 
+### Boss customers and preview visibility
+
+The gameplay customer scheduler—not the autoplay bot—must enforce boss exclusivity: wait until all
+earlier active customers have departed before seating a boss, keep every other serving slot empty
+while that boss is active, and resume normal seating after its departure.
+
+Set `BotCustomerOrderState.isBoss = true` for the active boss. Preview input must match exactly what
+the player can see:
+
+```csharp
+if (NextPendingCustomerIsBoss())
+{
+    result.previewOrdersBlockedByBoss = true;
+    result.previewOrders.Clear(); // no boss card/Spine, boss order, or customers behind it
+}
+else
+{
+    result.previewOrdersBlockedByBoss = false;
+    AddUpToThreeVisiblePreviewOrders(result);
+}
+```
+
+Set `previewOrdersBlockedByBoss` back to `false` as soon as the boss becomes active; the next three
+customers behind it are then valid previews. The bot applies this visibility filter to both normal
+pickup scoring and Adaptive strategy selection. As defense in depth, a preview entry marked
+`isBoss` terminates lookahead and is never scored, but a correct adapter should omit that entry and
+leave its `dishes` undisclosed.
+
 ### Visible queues
 
 Create one `BotQueueLaneState` per game queue, preserving queue indices. `items` is front-first and

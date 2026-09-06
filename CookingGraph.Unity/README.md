@@ -120,6 +120,11 @@ customer count, and composite-only preview orders (at most three are consumed).
 The command includes both `observedRevision` and `expectedItemId`; the sink should reject it when
 either is stale.
 
+Boss visibility is explicit: mark the active customer with `isBoss`, and set
+`previewOrdersBlockedByBoss` while the next pending boss hides itself and all customers behind it.
+The bot ignores blocked previews in both ordinary scoring and Adaptive strategy selection; clear
+the flag when the boss becomes active so visible previews behind it can be used again.
+
 `EstimatorBotSettings.pickIntervalSeconds` defaults to `1` and remains the minimum delay between
 accepted picks. The separate `CookingBotWorkWaitStrategy` can additionally wait for the snapshot's
 active tool processes and logical merge transitions. `Adaptive` overlaps them on the first run and

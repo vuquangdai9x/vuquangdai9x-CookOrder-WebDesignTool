@@ -602,6 +602,35 @@ namespace CookingGraph.Tests
         }
 
         [Test]
+        public void BossPreviewBarrierRemovesHiddenOrdersFromEveryDecisionPath()
+        {
+            var graph = Graph(out var bun, out var cheese, out var tomato);
+            var state = State(Lane("bun", bun));
+            state.previewOrders.AddRange(new[]
+            {
+                new BotPreviewOrderState { customerIndex = 2 },
+                new BotPreviewOrderState { customerIndex = 3 },
+                new BotPreviewOrderState { customerIndex = 4 }
+            });
+            state.remainingCustomerCount = 1;
+            var bot = new CookingEstimatorBot(new Reader { state = state }, new Sink { accept = false });
+            bot.Init(graph);
+            bot.SetPickingStrategy(CookingBotPickingStrategy.Adaptive);
+
+            Assert.That(bot.Tick(), Is.False);
+            Assert.That(bot.EffectivePickingStrategy, Is.EqualTo(CookingBotPickingStrategy.ChainFirst),
+                "Three visible previews make ChainFirst the strongest profile in this isolated state.");
+
+            state.previewOrdersBlockedByBoss = true;
+            bot.SetAdaptiveStrategyPickInterval(1);
+            Assert.That(bot.Tick(), Is.False);
+            Assert.That(bot.EffectivePickingStrategy, Is.EqualTo(CookingBotPickingStrategy.Balanced),
+                "Orders hidden behind a pending boss must not affect adaptive selection.");
+
+            Destroy(graph, bun, cheese, tomato);
+        }
+
+        [Test]
         public void ChangesIntelligentOnNextTickWithoutAllowingFrozenItems()
         {
             var graph = Graph(out var bun, out var cheese, out var tomato);

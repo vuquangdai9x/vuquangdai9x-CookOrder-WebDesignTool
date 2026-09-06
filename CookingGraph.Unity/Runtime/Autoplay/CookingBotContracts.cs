@@ -136,6 +136,8 @@ namespace CookingGraph
     {
         public int customerIndex;
         public bool isStaff;
+        /// <summary>True for the currently visible boss customer.</summary>
+        public bool isBoss;
         public List<BotDishOrderState> dishes = new List<BotDishOrderState>();
     }
 
@@ -148,6 +150,12 @@ namespace CookingGraph
     {
         public int customerIndex;
         public bool isStaff;
+        /// <summary>
+        /// Defensive boundary marker only. A correctly visibility-filtered adapter normally omits
+        /// the boss preview entirely; if present, the bot ignores this entry and everything after it.
+        /// Do not populate its dishes.
+        /// </summary>
+        public bool isBoss;
         public List<CompositeNodeAsset> dishes = new List<CompositeNodeAsset>();
     }
 
@@ -183,6 +191,12 @@ namespace CookingGraph
         public List<BotCustomerOrderState> customerOrders = new List<BotCustomerOrderState>();
         public List<BotPreviewOrderState> previewOrders = new List<BotPreviewOrderState>();
         /// <summary>
+        /// True while the next pending customer is a hidden boss. During this phase the game shows
+        /// no preview orders, and the bot ignores previewOrders even if a stale adapter supplied some.
+        /// Set false once the boss becomes active so customers behind it may be previewed again.
+        /// </summary>
+        public bool previewOrdersBlockedByBoss;
+        /// <summary>
         /// Customers not yet served, including active and future customers. Use -1 when unknown;
         /// adaptive strategy selection then falls back to active plus the three visible previews.
         /// </summary>
@@ -192,6 +206,24 @@ namespace CookingGraph
         /// leaves so a final stopped snapshot can expose exact warning information.
         /// </summary>
         public List<int> timedOutCustomerIndices = new List<int>();
+    }
+
+    /// <summary>Shared information-visibility filter used by all autoplay decision paths.</summary>
+    internal static class BotGameStateVisibility
+    {
+        internal static List<BotPreviewOrderState> VisiblePreviewOrders(BotGameState state, int maximum = 3)
+        {
+            var result = new List<BotPreviewOrderState>();
+            if (state == null || state.previewOrdersBlockedByBoss || maximum <= 0) return result;
+            foreach (var preview in state.previewOrders ?? new List<BotPreviewOrderState>())
+            {
+                if (preview == null) continue;
+                if (preview.isBoss) break;
+                result.Add(preview);
+                if (result.Count >= maximum) break;
+            }
+            return result;
+        }
     }
 
     /// <summary>Reads one internally consistent, authoritative logical snapshot.</summary>

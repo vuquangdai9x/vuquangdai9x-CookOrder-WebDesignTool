@@ -489,7 +489,8 @@ Repeat (guard: 100 iterations) until neither `servedCount` nor `flights.length` 
 
 1. `advanceTools(0)` — retry completed-but-blocked lanes at zero elapsed time, so a held
    intermediate moves the instant space opens.
-2. `fillSlots()` — seat pending customers while `active.length < serveableSlots`.
+2. `fillSlots()` — seat pending customers while `active.length < serveableSlots`, subject to the
+   boss exclusivity rule below.
 3. `autoServe()` — launch every legal grid/backpack → customer match.
 4. `reclaimPreservedItems()` — move buffered ingredients into recipe slots.
 5. `reclaimProcessableBackpackItems()`.
@@ -498,7 +499,22 @@ Repeat (guard: 100 iterations) until neither `servedCount` nor `flights.length` 
 
 Bail out immediately if the status stops being `playing`.
 
-### 9.2 Queue gravity (`advanceQueues`)
+### 9.2 Boss arrival and preview visibility
+
+A customer is a **boss** when its pinned customer-catalog entry has `Type=Boss`.
+
+* **Exclusive arrival:** if the next pending customer is a boss, do not seat it until `active` is
+  empty. After seating a boss, stop filling slots. While an active boss exists, do not seat any
+  other customer, regardless of unused `serveableSlots` capacity.
+* **Hidden boss preview:** a pending boss produces no preview card, avatar/Spine instance, or order
+  information. It is also an information barrier: do not expose previews for customers behind it.
+* **Preview restoration:** once the boss becomes active, it leaves `pending`; the next three
+  pending non-boss customers may be previewed normally. A later pending boss starts a new barrier.
+* **Encounter tint:** darken the Play-mode background slightly when the boss becomes active. Keep
+  the tint during the boss's departure animation and restore the normal background only after that
+  animation completes.
+
+### 9.3 Queue gravity (`advanceQueues`)
 
 Every **movement instance** (a lone cell, or a whole *combined* group — a linked group is **not** a
 movement instance) rises toward row 0 until nothing can move.
@@ -510,7 +526,7 @@ movement instance) rises toward row 0 until nothing can move.
 * Called at construction (to settle authored misalignment before turn 1), after every pick, and by
   the Shift-up booster.
 
-### 9.3 `advanceTools(dt)` — cooking runs per **lane**, not per slot
+### 9.4 `advanceTools(dt)` — cooking runs per **lane**, not per slot
 
 For each tool, for each lane `0..laneCount-1`:
 
@@ -552,7 +568,7 @@ For each tool, for each lane `0..laneCount-1`:
 finishes; partially filled multi-input lanes, and lanes holding an output they cannot discharge, are
 resting points rather than pending completions.
 
-### 9.4 Slot selection
+### 9.5 Slot selection
 
 `freeSlotFor(tool, ing, point)`:
 
@@ -568,7 +584,7 @@ resting points rather than pending completions.
 `pointFor(tool, ing)` = the point named by any recipe of that tool taking `ing`
 (INV-INPUT-SLOT-STABLE guarantees that is unambiguous), else 0.
 
-### 9.5 Preservation buffers
+### 9.6 Preservation buffers
 
 Flat slot indices `[processSlotCount, slots.length)` are preservation positions.
 
@@ -579,7 +595,7 @@ Flat slot indices `[processSlotCount, slots.length)` are preservation positions.
   tool is permitted to start and a compatible slot is free (a `tool-to-tool` flight within the tool).
 * Preservation positions never cook and are excluded from `cookingCount`.
 
-### 9.6 The `auto` gate (manual processes)
+### 9.7 The `auto` gate (manual processes)
 
 `processMayStart(step)` = `step.auto || reachesAny(step.out, demand)`, where `demand` is the bitset
 of every ingredient some **active** dish still needs. So a manual recipe only starts while a seated
@@ -957,5 +973,5 @@ chips and patience, the booster bar, speed controls, and the win/lose/Save-Me ov
 
 **Verify** — a Unity run and a web-tool run of the same level with the same pick sequence must
 produce the same status, the same `servedCount` and the same lose reason. When they don't, the cause
-is almost always one of: the forwarding rule (§9.3), lane preference (§9.4), gate resolution (§7),
+is almost always one of: the forwarding rule (§9.4), lane preference (§9.5), gate resolution (§7),
 dirty-stack targeting (§11.4), or an iteration order (§16).

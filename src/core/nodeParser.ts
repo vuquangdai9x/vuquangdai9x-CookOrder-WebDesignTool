@@ -67,6 +67,12 @@ export interface NodeCustomerConfig {
   staffAmount?: number;
   /** Row index into the customer catalog (data/customerCatalog.ts) this arrival's avatar/identity is pinned to; unset = random. */
   customerIndex?: number;
+  /**
+   * Runtime-only identity flag resolved from the pinned customer catalog entry.
+   * It is intentionally not serialized into the level string: customerIndex
+   * remains the source of truth for authored data.
+   */
+  isBoss?: boolean;
 }
 
 function fail(message: string, context: string): never {

@@ -73,6 +73,33 @@ const chainedSim = (o: LevelStrings, options = {}) =>
 // groups g0 burger-toppings, g1 fried-basket-bases, g2 fried-basket-sauces.
 
 describe("core loop", () => {
+  it("keeps a boss alone and hides every preview at or behind the pending boss", () => {
+    const level = nodeLevel({
+      queueString: "0,0,0",
+      customerString: "0;0;0;{c0:17}|0;0;0;{c0:17}|0;0;0;{c0:17}",
+      serveableSlots: 3,
+    });
+    level.customers[1].isBoss = true;
+    const s = new NodeSimulation(burger, level);
+
+    expect(s.active.map((customer) => customer.index)).toEqual([0]);
+    expect(s.visiblePreviewCustomers()).toEqual([]);
+
+    // Model the preceding customer's completed departure. The next settle
+    // seats the boss, but leaves every other counter slot empty.
+    s.active.splice(0, 1);
+    s.tick(0);
+    expect(s.active.map((customer) => customer.index)).toEqual([1]);
+    expect(s.hasActiveBoss).toBe(true);
+    expect(s.visiblePreviewCustomers().map((customer) => customer.index)).toEqual([2]);
+
+    // Once the boss has departed, normal customers may fill the counter again.
+    s.active.splice(0, 1);
+    s.tick(0);
+    expect(s.active.map((customer) => customer.index)).toEqual([2]);
+    expect(s.hasActiveBoss).toBe(false);
+  });
+
   it("parks a manual process input until an active order needs its output", () => {
     const doc = structuredClone(burgerJson as unknown as NodeGraphMap);
     const patty = doc.edges.process.find((edge) => edge.to === "patty-cooked")!;

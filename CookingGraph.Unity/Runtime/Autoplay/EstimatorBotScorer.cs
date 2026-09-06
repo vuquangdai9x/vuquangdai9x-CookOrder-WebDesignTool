@@ -120,7 +120,9 @@ namespace CookingGraph
                 if (cell == null || (cell.kind == BotGridItemKind.Empty && cell.canHoldItem)) free++;
                 else if (cell.kind == BotGridItemKind.Dirty) dirty++;
             }
-            var gridTight = cells.Count > 0 && free <= cells.Count * _settings.gridTightThreshold;
+            var activeBoss = (state.customerOrders ?? new List<BotCustomerOrderState>())
+                .Any(customer => customer != null && customer.isBoss);
+            var gridTight = activeBoss || (cells.Count > 0 && free <= cells.Count * _settings.gridTightThreshold);
             var values = BuildPickupValues(state, reservedItemIds, optimisticCommitted, gridTight);
             var depth = _settings.visibleLookaheadRows > 0
                 ? _settings.visibleLookaheadRows
@@ -322,6 +324,7 @@ namespace CookingGraph
                         if (multiInput) priority += slot.isBase ? _settings.multiInputBaseBonus : _settings.multiInputBonus;
                         priority += Math.Max(0, 4 - remaining) * _settings.nearCompletionBonus;
                         priority /= 1 + customerPosition * _settings.customerPositionDecay;
+                        if (customer.isBoss) priority *= 1.25f;
                         priority *= ActiveFailurePriority(customer.customerIndex, slot.ingredient);
                         units.Add(new DemandUnit
                         {
@@ -458,7 +461,7 @@ namespace CookingGraph
         private Dictionary<IngredientNodeAsset, PickupValue> BuildPreviewClaims(BotGameState state, int activeCount)
         {
             var result = new Dictionary<IngredientNodeAsset, PickupValue>();
-            var previews = (state.previewOrders ?? new List<BotPreviewOrderState>()).Take(3).ToList();
+            var previews = BotGameStateVisibility.VisiblePreviewOrders(state);
             for (var previewPosition = 0; previewPosition < previews.Count; previewPosition++)
             {
                 var customer = previews[previewPosition];

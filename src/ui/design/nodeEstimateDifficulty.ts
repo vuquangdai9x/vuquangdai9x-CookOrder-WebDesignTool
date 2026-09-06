@@ -506,6 +506,10 @@ function estimateNodeDifficultyAttempt(
           if (multiInput) priority += base ? cfg.multiInputBaseBonus : cfg.multiInputBonus;
           priority += Math.max(0, 4 - remainingCount) * cfg.nearCompletionBonus;
           priority /= 1 + customerPosition * cfg.customerPositionDecay;
+          // A boss owns the counter alone, so every detour occupies capacity
+          // that no second active customer can consume. Weight only the boss's
+          // now-visible exact order more strongly; no pending detail is read.
+          if (customer.config.isBoss) priority *= 1.25;
           priority *= activeFailurePriority(customer.index, slot.ing);
           units.push({
             target: slot.ing,
@@ -553,7 +557,7 @@ function estimateNodeDifficultyAttempt(
     // legal options. This is intentionally separate from exact active claims:
     // preview demand never consumes committed supply or marks a pick "ready".
     const previewClaims = new Map<number, { score: number; customerIndex: number }>();
-    sim.pending.slice(0, CUSTOMER_PREVIEW_COUNT).forEach((customer, previewPosition) => {
+    sim.visiblePreviewCustomers(CUSTOMER_PREVIEW_COUNT).forEach((customer, previewPosition) => {
       if (!isOrdering(customer)) return;
       for (const dish of customer.dishes) {
         const slots = ix.slotsOfComposite[dish.order.orderable] ?? [];
@@ -824,7 +828,7 @@ function estimateNodeDifficultyAttempt(
     const nearlyFinished = activeOrders.some((customer) =>
       customer.dishes.some((dish) => dish.remaining.length > 0 && dish.remaining.length <= 2));
     const remainingCustomers = Math.max(0, sim.totalCustomers - sim.servedCount);
-    const visiblePreviewCount = Math.min(CUSTOMER_PREVIEW_COUNT, sim.pending.length);
+    const visiblePreviewCount = sim.visiblePreviewCustomers(CUSTOMER_PREVIEW_COUNT).length;
     const legalLanes = pickableLanes(sim).length;
     const totalLanes = Math.max(1, sim.queueGrid.length);
     const laneScarcity = 1 - legalLanes / totalLanes;
@@ -853,7 +857,7 @@ function estimateNodeDifficultyAttempt(
   while (sim.status === "playing" && iterations < maxIterations) {
     iterations++;
     measure();
-    gridTight = countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
+    gridTight = sim.hasActiveBoss || countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
     if (adaptiveStrategies && counter >= nextAdaptiveEvaluationPick) {
       const selected = selectAdaptiveStrategy();
       if (selected) {
@@ -863,7 +867,7 @@ function estimateNodeDifficultyAttempt(
           adaptiveStrategyHistory.push(selectedName);
         nextAdaptiveEvaluationPick = counter + Math.max(1, Math.floor(adaptivePickInterval));
         syncWindow(sim, cfg);
-        gridTight = countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
+        gridTight = sim.hasActiveBoss || countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
       }
     }
     pickupValues = buildPickupValues();

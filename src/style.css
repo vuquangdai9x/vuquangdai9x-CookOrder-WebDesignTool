@@ -2088,6 +2088,22 @@ td input {
   flex: 1 1 0;
 }
 
+/* Boss encounter ambience. It sits over weather/background but below every
+   gameplay panel, and remains active until the boss exit animation finishes. */
+.boss-background-tint {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(8, 10, 18, 0.24);
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+
+.boss-background-tint.active {
+  opacity: 1;
+}
+
 /* Play-only recipe guide. Fixed and pointer-transparent: it neither changes
    the gameplay layout nor intercepts a queue/grid click underneath it. */
 .recipe-guide-panel {

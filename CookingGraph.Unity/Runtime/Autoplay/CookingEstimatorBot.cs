@@ -466,7 +466,7 @@ namespace CookingGraph
                         .Count(slot => slot != null && !slot.filled);
                     return remaining > 0 && remaining <= 2;
                 }));
-            var visiblePreview = Math.Min(3, (state.previewOrders ?? new List<BotPreviewOrderState>()).Count);
+            var visiblePreview = BotGameStateVisibility.VisiblePreviewOrders(state).Count;
             var remainingCustomers = state.remainingCustomerCount >= 0
                 ? state.remainingCustomerCount
                 : active.Count + visiblePreview;

@@ -380,6 +380,27 @@ export class NodeSimulation {
     return this.level.customers.length;
   }
 
+  /** True while the exclusive boss customer occupies the serving counter. */
+  get hasActiveBoss(): boolean {
+    return this.active.some((customer) => customer.config.isBoss === true);
+  }
+
+  /**
+   * Pending customers whose orderable dish identities are visible to the player.
+   * A pending boss is never previewed and acts as an information barrier: neither
+   * the boss nor any customer behind it is returned. Once the boss is active it
+   * is no longer in `pending`, so previews behind it become visible normally.
+   */
+  visiblePreviewCustomers(maximum = 3): NodeCustomerState[] {
+    const visible: NodeCustomerState[] = [];
+    for (const customer of this.pending) {
+      if (customer.config.isBoss) break;
+      visible.push(customer);
+      if (visible.length >= Math.max(0, maximum)) break;
+    }
+    return visible;
+  }
+
   get effectContext(): Readonly<EffectContext> {
     return this.ctx;
   }
@@ -2137,6 +2158,11 @@ export class NodeSimulation {
 
   private fillSlots(): void {
     while (this.active.length < this.level.serveableSlots && this.pending.length > 0) {
+      // A boss owns the whole counter. It cannot join customers already being
+      // served, and no later customer may be seated while the boss is active.
+      if (this.active.some((active) => active.config.isBoss)) return;
+      const next = this.pending[0];
+      if (next.config.isBoss && this.active.length > 0) return;
       const customer = this.pending.shift()!;
       if (customer.isStaff) {
         // Visible in `active` while their stacks fly in, so the view has a card
@@ -2147,6 +2173,7 @@ export class NodeSimulation {
       }
       this.active.push(customer);
       this.log("customer-arrived", `Customer ${customer.index + 1} is ordering`);
+      if (customer.config.isBoss) return;
     }
   }
 
