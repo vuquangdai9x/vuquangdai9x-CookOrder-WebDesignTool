@@ -609,35 +609,40 @@
         "displayName": "Layered Sandwich",
         "emoji": "🥪",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "garden-salad",
         "displayName": "Garden Salad",
         "emoji": "🥗",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "seasoned-fried-potato",
         "displayName": "Seasoned Fried Potato",
         "emoji": "🍟",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "coca-with-ice",
         "displayName": "Coca with Ice",
         "emoji": "🥤",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "fresh-juice",
         "displayName": "Fresh Juice",
         "emoji": "🧃",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       }
     ],
     "dirty": [

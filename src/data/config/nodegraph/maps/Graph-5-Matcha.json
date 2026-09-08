@@ -423,35 +423,40 @@
         "displayName": "Iced Matcha Base",
         "emoji": "🧊",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "iced-matcha-latte",
         "displayName": "Iced Matcha Latte",
         "emoji": "🧋",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "filled-mochi",
         "displayName": "Filled Mochi",
         "emoji": "🍡",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "matcha-cheesecake-core",
         "displayName": "Matcha Cheesecake Core",
         "emoji": "🍰",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "matcha-cheesecake",
         "displayName": "Matcha Cheesecake",
         "emoji": "🍰",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       }
     ],
     "dirty": [

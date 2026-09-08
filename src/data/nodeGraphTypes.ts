@@ -205,6 +205,8 @@ export interface CompositeVertex {
    * the customer auto-generator rather than left to chance.
    */
   toppingRequired?: boolean;
+  /** Abstract height used when stacking this dish on the customer counter. */
+  customerSpaceHeight?: "Half" | "Full";
 }
 
 export interface DirtyVertex {

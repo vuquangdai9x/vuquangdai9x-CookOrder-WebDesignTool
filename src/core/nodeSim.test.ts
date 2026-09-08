@@ -73,6 +73,45 @@ const chainedSim = (o: LevelStrings, options = {}) =>
 // groups g0 burger-toppings, g1 fried-basket-bases, g2 fried-basket-sauces.
 
 describe("core loop", () => {
+  it("admits at most two customers even when three narrow cards fit", () => {
+    const s = sim({
+      queueString: "5",
+      customerString: "0;0;0;{c1:24}|0;0;0;{c1:24}|0;0;0;{c1:24}",
+    });
+
+    expect(s.active.map((customer) => customer.index)).toEqual([0, 1]);
+    expect(s.pending.map((customer) => customer.index)).toEqual([2]);
+  });
+
+  it("stops admission when the next two cards exceed the 5.5-unit counter", () => {
+    const s = sim({
+      queueString: "0",
+      customerString:
+        "0;0;0;{c0:17},{c0:17},{c0:17}|0;0;0;{c0:17},{c0:17}",
+    });
+
+    // Three Full burgers + avatar = 3.5; two Full burgers + avatar = 2.5.
+    expect(s.active.map((customer) => customer.index)).toEqual([0]);
+    expect(s.pending.map((customer) => customer.index)).toEqual([1]);
+
+    // Once the first card leaves, the same admission calculation runs again.
+    s.active.splice(0, 1);
+    s.tick(0);
+    expect(s.active.map((customer) => customer.index)).toEqual([1]);
+  });
+
+  it("admits two cards when Half composites stack within the 5.5-unit width", () => {
+    const s = sim({
+      queueString: "5",
+      customerString:
+        "0;0;0;{c1:24},{c2:{g1:25}},{c1:24},{c2:{g1:25}}|" +
+        "0;0;0;{c1:24},{c2:{g1:25}},{c1:24}",
+    });
+
+    // Four Half dishes + avatar = 2.5; three Half dishes + avatar = 2.5.
+    expect(s.active.map((customer) => customer.index)).toEqual([0, 1]);
+  });
+
   it("keeps a boss alone and hides every preview at or behind the pending boss", () => {
     const level = nodeLevel({
       queueString: "0,0,0",

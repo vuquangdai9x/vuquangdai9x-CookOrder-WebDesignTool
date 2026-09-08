@@ -476,6 +476,7 @@
         "displayName": "nigiri",
         "orderable": false,
         "toppingRequired": true,
+        "customerSpaceHeight": "Half",
         "emoji": "🍣"
       },
       {
@@ -483,6 +484,7 @@
         "displayName": "sashimi-with-topping",
         "orderable": true,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🐟"
       },
       {
@@ -490,6 +492,7 @@
         "displayName": "sushi-with-topping",
         "orderable": true,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🍣"
       },
       {
@@ -497,6 +500,7 @@
         "displayName": "teacup-with-topping",
         "orderable": true,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🍵"
       },
       {
@@ -504,6 +508,7 @@
         "displayName": "sushi",
         "orderable": false,
         "toppingRequired": true,
+        "customerSpaceHeight": "Half",
         "emoji": "🍣"
       },
       {
@@ -511,6 +516,7 @@
         "displayName": "seaweed-and-rice",
         "orderable": false,
         "toppingRequired": true,
+        "customerSpaceHeight": "Half",
         "emoji": "🍚"
       },
       {
@@ -518,6 +524,7 @@
         "displayName": "gunkan-with-topping",
         "orderable": true,
         "toppingRequired": true,
+        "customerSpaceHeight": "Half",
         "emoji": "🍙"
       },
       {
@@ -525,6 +532,7 @@
         "displayName": "nigiri-with-topping",
         "orderable": true,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🍱"
       }
     ],

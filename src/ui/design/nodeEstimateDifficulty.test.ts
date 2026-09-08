@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import { NodeSimulation } from "../../core/nodeSim.ts";
+import { parseNodeCustomers } from "../../core/nodeParser.ts";
+import { parseQueues } from "../../core/parser.ts";
 import coffeeGraph from "../../data/config/nodegraph/maps/Graph-2-Coffee.json";
 import coffeeLevelsCsv from "../../data/config/nodegraph/maps/LevelData-2-Coffee.csv?raw";
 import burgerGraph from "../../data/config/nodegraph/maps/Graph-1-Burger.json";
@@ -69,31 +71,33 @@ describe("estimateNodeDifficulty", () => {
     expect(noRetry.learnedFromFailures).toBe(0);
   });
 
-  it("solves Map 1 Level 20 with adaptive pacing and reports timeout warnings", () => {
+  it("reports Map 1 Level 20's increased pressure under width-based admission", () => {
     const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
     const level = toNodeLevelConfig(importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 20)!);
     const result = estimateNodeDifficulty(burgerIx, level);
 
-    expect(result.solvable, result.reason).toBe(true);
-    expect(result.servedCount).toBe(result.totalCustomers);
-    expect(result.loseReason).not.toBe("customer-timeout");
+    expect(result.solvable).toBe(false);
+    expect(result.loseReason).toBe("grid-overflow");
+    expect(result.servedCount).toBeLessThan(result.totalCustomers);
   });
 
-  it("solves timing-sensitive Map 1 Levels 10, 15, 24, and 25 without Save Me", () => {
+  it("updates timing-sensitive Map 1 estimates for the new admission mechanic", () => {
     const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
     const levels = importLevelsCsv(burgerLevelsCsv);
+    const expected = new Map([[10, true], [15, false], [24, true], [25, false]]);
     for (const id of [10, 15, 24, 25]) {
       const level = toNodeLevelConfig(levels.find((value) => value.id === id)!);
       const result = estimateNodeDifficulty(burgerIx, level);
-      expect(result.solvable, `Level ${id}: ${result.reason}`).toBe(true);
-      expect(result.servedCount).toBe(result.totalCustomers);
+      expect(result.solvable, `Level ${id}: ${result.reason}`).toBe(expected.get(id));
+      if (result.solvable) expect(result.servedCount).toBe(result.totalCustomers);
+      else expect(result.loseReason).toBe("grid-overflow");
       expect(result.replaySteps.length).toBeGreaterThan(0);
     }
   });
 
   it("keeps customer timeouts as exact warnings instead of failed attempts", () => {
     const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
-    const level = toNodeLevelConfig(importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 20)!);
+    const level = toNodeLevelConfig(importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 1)!);
     for (const customer of level.customers) customer.waitTime = 0.01;
     const result = estimateNodeDifficulty(burgerIx, level);
 
@@ -319,6 +323,34 @@ describe("estimateNodeDifficulty", () => {
     const [bean, ice] = estimate.replaySteps[0].laneScores as number[];
     expect(bean).toBeGreaterThan(0);
     expect(bean).toBeGreaterThan(ice);
+  });
+
+  it("uses abstract customer width when deciding whether demand is active or preview-only", () => {
+    const fullDoc = structuredClone(burgerGraph as unknown as NodeGraphMap);
+    const halfDoc = structuredClone(fullDoc);
+    halfDoc.vertices.composite.find((composite) => composite.name === "burger")!.customerSpaceHeight = "Half";
+    const level = toNodeLevelConfig(importLevelsCsv(burgerLevelsCsv)[0]);
+    level.queues = parseQueues("7"); // empty cup, useful only to the second customer's soda
+    level.queueGroups = [];
+    level.customers = parseNodeCustomers(
+      "0;0;0;{c0:17},{c0:17},{c0:17},{c0:17},{c0:17}|0;0;0;{c1:24}",
+    );
+
+    const fullResult = estimateNodeDifficulty(buildIndex(fullDoc), structuredClone(level), {
+      maxIterations: 1,
+      maxRetries: 0,
+      rng: () => 0,
+    });
+    const halfResult = estimateNodeDifficulty(buildIndex(halfDoc), structuredClone(level), {
+      maxIterations: 1,
+      maxRetries: 0,
+      rng: () => 0,
+    });
+
+    const fullScore = fullResult.replaySteps[0].laneScores[0]!;
+    const halfScore = halfResult.replaySteps[0].laneScores[0]!;
+    expect(fullScore).toBeGreaterThan(0); // second customer is a composite-only preview
+    expect(halfScore).toBeGreaterThan(fullScore); // second customer fits and contributes full demand
   });
 
   it("treats a hidden row as revealed once the Hidden slot toggle is off", () => {

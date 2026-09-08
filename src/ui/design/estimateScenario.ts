@@ -31,7 +31,6 @@ export type ScenarioFieldKey =
   | "pickIntervalSeconds"
   | "maxIterations"
   | "rngSeed"
-  | "maxPairDishes"
   | "retryCount";
 
 /** One row of the modal: its toggle, and the number its drag-input holds. */
@@ -316,16 +315,6 @@ export const SCENARIO_FIELDS: ScenarioFieldSpec[] = [
     min: 0,
     decimals: 0,
     hint: "Breaks ties between worthless picks. OFF = unseeded, so repeat runs differ.",
-  },
-  {
-    key: "maxPairDishes",
-    group: "Run controls",
-    label: "Max paired dishes for 2-slot window",
-    def: 5,
-    off: 0,
-    min: 0,
-    decimals: 0,
-    hint: "Two customers are served at once only while their dishes total at most this. 0 = never pair.",
   },
   {
     key: "retryCount",

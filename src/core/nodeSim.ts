@@ -62,6 +62,11 @@ import type { NodeCustomerConfig } from "./nodeParser.ts";
 import type { OrderIssue, ResolvedOrder } from "./nodeOrder.ts";
 import { describeIssue, orderIdIndex, resolveOrder } from "./nodeOrder.ts";
 import type { IdIndex } from "../data/nodeIdTable.ts";
+import {
+  CUSTOMER_SPACE_WIDTH,
+  MAX_ACTIVE_CUSTOMERS,
+  resolvedCustomerSpaceWidth,
+} from "./nodeCustomerSpace.ts";
 
 // The status/reason/event vocabulary is deliberately IMPORTED rather than
 // redeclared, so the two simulations cannot drift apart on the one surface a
@@ -80,6 +85,7 @@ export interface NodeLevelConfig {
   levelTag: string;
   featureUnlock: string;
   shuffleDistance: number;
+  /** Authored customer-count cap; runtime additionally clamps it to two and enforces abstract width. */
   serveableSlots: number;
   /** `QueueItem.id` is a DATA id, resolved through the map's id table. */
   queues: QueueItem[][];
@@ -2157,12 +2163,19 @@ export class NodeSimulation {
   }
 
   private fillSlots(): void {
-    while (this.active.length < this.level.serveableSlots && this.pending.length > 0) {
+    const activeLimit = Math.min(MAX_ACTIVE_CUSTOMERS, Math.max(0, this.level.serveableSlots));
+    while (this.active.length < activeLimit && this.pending.length > 0) {
       // A boss owns the whole counter. It cannot join customers already being
       // served, and no later customer may be seated while the boss is active.
       if (this.active.some((active) => active.config.isBoss)) return;
       const next = this.pending[0];
       if (next.config.isBoss && this.active.length > 0) return;
+      const occupiedWidth = this.active.reduce(
+        (sum, customer) => sum + resolvedCustomerSpaceWidth(this.ix, customer),
+        0,
+      );
+      const nextWidth = resolvedCustomerSpaceWidth(this.ix, next);
+      if (occupiedWidth + nextWidth > CUSTOMER_SPACE_WIDTH) return;
       const customer = this.pending.shift()!;
       if (customer.isStaff) {
         // Visible in `active` while their stacks fly in, so the view has a card

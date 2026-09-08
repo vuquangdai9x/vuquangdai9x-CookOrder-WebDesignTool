@@ -626,49 +626,56 @@
         "displayName": "Single Fruit Tanghulu",
         "emoji": "🍓",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "mixed-fruit-tanghulu",
         "displayName": "Mixed Fruit Tanghulu",
         "emoji": "🍡",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "marshmallow-skewer",
         "displayName": "Marshmallow Skewer",
         "emoji": "🍡",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "milk-tea-base",
         "displayName": "Milk Tea Base",
         "emoji": "🥛",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "milk-tea-with-topping",
         "displayName": "Milk Tea with Topping",
         "emoji": "🧋",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "fruit-tea-base",
         "displayName": "Fruit Tea Base",
         "emoji": "🫖",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "fruit-tea-with-topping",
         "displayName": "Fruit Tea with Topping",
         "emoji": "🧋",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       }
     ],
     "dirty": [

@@ -73,26 +73,12 @@ function seededRng(seed = 0x5eed): () => number {
 const isOrdering = (customer: NodeCustomerState): boolean =>
   customer.config.typeId !== CUSTOMER_STAFF;
 
-function serveableWindow(sim: NodeSimulation, cfg: ResolvedScenario): number {
-  const upcoming = [...sim.active, ...sim.pending];
-  if (upcoming.length < 2) return 1;
-  const dishes = upcoming[0].dishes.length + upcoming[1].dishes.length;
-  return dishes <= cfg.maxPairDishes ? 2 : 1;
-}
-
 /**
- * Keep the serve window in step with who is at the counter, then let pending
- * customers walk in.
+ * Let the simulation re-evaluate pending customers against the shared
+ * two-customer / 5.5-unit counter rules.
  */
-function syncWindow(sim: NodeSimulation, cfg: ResolvedScenario): void {
-  for (let guard = 0; guard < 8; guard++) {
-    sim.level.serveableSlots = serveableWindow(sim, cfg);
-    if (sim.status !== "playing") return;
-    if (sim.active.length >= sim.level.serveableSlots || sim.pending.length === 0) return;
-    const before = sim.active.length;
-    sim.tick(0);
-    if (sim.active.length === before) return;
-  }
+function syncCustomerAdmission(sim: NodeSimulation): void {
+  if (sim.status === "playing" && sim.pending.length > 0) sim.tick(0);
 }
 
 function pickableLanes(sim: NodeSimulation): number[] {
@@ -143,12 +129,12 @@ function findLearnedBeamPlan(
   });
   initial.tick(0);
   initial.completeAllFlights();
-  syncWindow(initial, cfg);
+  syncCustomerAdmission(initial);
 
   const settleUntilDecision = (sim: NodeSimulation): void => {
     for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
       sim.completeAllFlights();
-      syncWindow(sim, cfg);
+      syncCustomerAdmission(sim);
       if (pickableLanes(sim).length > 0) return;
       const completion = sim.nextCompletionIn();
       if (completion === null) return;
@@ -204,7 +190,7 @@ function findLearnedBeamPlan(
           sim.fastForward(600);
           sim.completeAllFlights();
         }
-        syncWindow(sim, cfg);
+        syncCustomerAdmission(sim);
         const path = [...node.path, lane];
         if (sim.status === "won") return path;
         if (sim.status !== "playing") continue;
@@ -286,7 +272,7 @@ function estimateNodeDifficultyAttempt(
       const completion = sim.nextCompletionIn();
       if (completion === null) break;
       if (sim.fastForward(Math.max(0.01, completion)) === 0) break;
-      syncWindow(sim, cfg);
+      syncCustomerAdmission(sim);
     }
     sim.completeAllFlights();
     return sim.time - startedAt;
@@ -345,7 +331,7 @@ function estimateNodeDifficultyAttempt(
     if (advanced <= 0) return false;
     pendingWaitBeforePick += advanced;
     observeConcurrentWork();
-    syncWindow(sim, cfg);
+    syncCustomerAdmission(sim);
     return true;
   };
 
@@ -775,7 +761,7 @@ function estimateNodeDifficultyAttempt(
     if (random) cost.randomPicks++;
     else if (best) cost.bestPicks++;
     advanceBetweenPicks();
-    syncWindow(sim, cfg);
+    syncCustomerAdmission(sim);
     const stillActive = new Set(sim.active.map((customer) => customer.index));
     occupancyHistory.push({
       ...sampleOccupancy(),
@@ -852,7 +838,7 @@ function estimateNodeDifficultyAttempt(
 
   sim.tick(0);
   sim.completeAllFlights();
-  syncWindow(sim, cfg);
+  syncCustomerAdmission(sim);
 
   while (sim.status === "playing" && iterations < maxIterations) {
     iterations++;
@@ -866,7 +852,7 @@ function estimateNodeDifficultyAttempt(
         if (selectedName && adaptiveStrategyHistory.at(-1) !== selectedName)
           adaptiveStrategyHistory.push(selectedName);
         nextAdaptiveEvaluationPick = counter + Math.max(1, Math.floor(adaptivePickInterval));
-        syncWindow(sim, cfg);
+        syncCustomerAdmission(sim);
         gridTight = sim.hasActiveBoss || countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
       }
     }
@@ -881,7 +867,7 @@ function estimateNodeDifficultyAttempt(
       }
       pendingWaitBeforePick += advanced;
       observeConcurrentWork();
-      syncWindow(sim, cfg);
+      syncCustomerAdmission(sim);
       continue;
     }
 
@@ -1281,13 +1267,11 @@ function strategicPresets(base: ResolvedScenario): ScoringStrategy[] {
     }),
     retune(base, "single-customer", {
       previewConfidence: 0,
-      maxPairDishes: 0,
       scoreBlocked: scaled(base.scoreBlocked, 0.25),
       rowDecay: scaled(base.rowDecay, 0.45),
     }),
     retune(base, "wide-counter", {
       previewConfidence: scaled(base.previewConfidence, 0.2),
-      maxPairDishes: Math.max(base.maxPairDishes, 100),
       scoreReady: scaled(base.scoreReady, 1.25),
       scoreBlocked: scaled(base.scoreBlocked, 0.4),
     }),
@@ -1316,7 +1300,6 @@ function randomizedStrategy(base: ResolvedScenario, retryIndex: number, random: 
     detourPenalty: scaled(base.detourPenalty, factor(0.8, 2.4)),
     detourPenaltyTight: scaled(base.detourPenaltyTight, factor(0.8, 2.4)),
     gridTightThreshold: factor(0.45, 0.8),
-    maxPairDishes: random() < 0.35 ? 0 : random() < 0.5 ? 100 : base.maxPairDishes,
   });
 }
 
@@ -1397,7 +1380,6 @@ export function estimateNodeDifficulty(
       const planningConfig: ResolvedScenario = {
         ...base,
         enabled: { ...base.enabled },
-        maxPairDishes: Math.max(100, base.maxPairDishes),
       };
       const searchWaitStrategy: WorkWaitStrategy = attempt === retryCount ? "interval" : "wait-all";
       const plan = findLearnedBeamPlan(

@@ -433,6 +433,7 @@
         "displayName": "cool-coffee-with-milk",
         "orderable": false,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🧋"
       },
       {
@@ -440,6 +441,7 @@
         "displayName": "hot-coffee-latte",
         "orderable": true,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "☕"
       },
       {
@@ -447,6 +449,7 @@
         "displayName": "cool-coffee-with-cream",
         "orderable": true,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🧋"
       },
       {
@@ -454,6 +457,7 @@
         "displayName": "cool-coffee-with-milk-ice",
         "orderable": true,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🥤"
       },
       {
@@ -461,6 +465,7 @@
         "displayName": "whiping-cream-with-topping",
         "orderable": false,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🍦"
       },
       {
@@ -468,6 +473,7 @@
         "displayName": "cupcake-with-cream",
         "orderable": true,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🧁"
       },
       {
@@ -475,6 +481,7 @@
         "displayName": "donut-with-topping",
         "orderable": true,
         "toppingRequired": false,
+        "customerSpaceHeight": "Half",
         "emoji": "🍩"
       },
       {
@@ -482,6 +489,7 @@
         "displayName": "donut-with-glaze",
         "orderable": false,
         "toppingRequired": true,
+        "customerSpaceHeight": "Half",
         "emoji": "🍪"
       }
     ],

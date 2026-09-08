@@ -165,7 +165,7 @@ export type EstimatePickingStrategyName =
 export interface EstimateReplayStep {
   /** Queue column picked at this solver step. */
   lane: number;
-  /** Dynamic serve window used by the estimator immediately before the pick. */
+  /** Authored active-customer cap used immediately before the pick (the runtime also applies width). */
   serveableSlots: number;
   /** Score of every queue column at this decision; null means it was not pickable. */
   laneScores: (number | null)[];

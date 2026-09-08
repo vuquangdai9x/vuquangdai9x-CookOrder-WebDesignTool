@@ -119,6 +119,7 @@ composite may be another composite's base, so assemblies nest.
 |---|---|---|
 | `orderable` | false | A customer may order it — a graph root. |
 | `toppingRequired` | false | The topping slot must be filled (a bare base is otherwise a legal order). |
+| `customerSpaceHeight` | `Half` | Abstract counter height: `Full` occupies a whole 1×1 unit column; two `Half` dishes can stack in one column. |
 | `emoji` | — | Identifies the dish type in lists (a composite has no artwork of its own; players see the stack of its parts). |
 
 **`dirty`** — what a served customer leaves on the grid.
@@ -489,8 +490,12 @@ Repeat (guard: 100 iterations) until neither `servedCount` nor `flights.length` 
 
 1. `advanceTools(0)` — retry completed-but-blocked lanes at zero elapsed time, so a held
    intermediate moves the instant space opens.
-2. `fillSlots()` — seat pending customers while `active.length < serveableSlots`, subject to the
-   boss exclusivity rule below.
+2. `fillSlots()` — seat pending customers while below both the authored `serveableSlots` cap and
+   the hard maximum of 2 active customers. Each card consumes 0.5 width for its avatar plus one
+   width per `Full` dish and one width per pair (or leftover single) of `Half` dishes. Stop before
+   the next card would take the 5.5-unit counter over capacity. Re-run this calculation at level
+   initialization and whenever a customer leaves. This capacity is abstract and does not resize
+   Play-mode cards.
 3. `autoServe()` — launch every legal grid/backpack → customer match.
 4. `reclaimPreservedItems()` — move buffered ingredients into recipe slots.
 5. `reclaimProcessableBackpackItems()`.
@@ -856,7 +861,7 @@ From the reference play view (`ui/nodeplay/index.ts`) — match these or levels 
   queue item in this level can ever reach is greyed out — informational only.
 * **Grid** shows cooked items (with a remaining-uses badge when `usesLeft > 1`), parked raws, dirty
   stacks with their count, locked cells with their progress label, and the backpack.
-* **Customers**: `serveableSlots` active cards, each dish drawn as its slots with per-slot filled
+* **Customers**: up to 2 active cards that fit the 5.5-unit abstract counter, each dish drawn as its slots with per-slot filled
   state (filled chips first, then still-wanted chips — slot structure is a design concern, the
   player only reads "what's left"). Patience shown only when finite.
 * **Customer draw order**: gameplay reads right-to-left — customer #1 (the active customer nearest

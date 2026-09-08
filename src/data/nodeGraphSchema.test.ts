@@ -35,6 +35,11 @@ describe("schema shape", () => {
     expect(field).toMatchObject({ type: "int", default: 5, min: 1 });
   });
 
+  it("exposes Half and Full customer-space heights for composites", () => {
+    const field = vertexFields("composite").find((candidate) => candidate.name === "customerSpaceHeight");
+    expect(field).toMatchObject({ type: "enum", default: "Half", options: ["Half", "Full"] });
+  });
+
   it("carries every invariant the plan relies on, each with a severity", () => {
     const required = [
       "INV-REF",

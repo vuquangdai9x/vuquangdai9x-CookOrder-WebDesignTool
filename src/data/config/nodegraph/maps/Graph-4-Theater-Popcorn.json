@@ -618,56 +618,64 @@
         "displayName": "Theater Popcorn",
         "emoji": "🍿",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "hotdog-core",
         "displayName": "Hotdog Core",
         "emoji": "🌭",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "simple-hotdog",
         "displayName": "Simple Hotdog",
         "emoji": "🌭",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "fried-potato-with-sauce",
         "displayName": "Fried Potato with Sauce",
         "emoji": "🍟",
         "orderable": false,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "chicken-and-potato-fried",
         "displayName": "Chicken and Potato Fried",
         "emoji": "🍗",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "coca-with-ice",
         "displayName": "Coca with Ice",
         "emoji": "🥤",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "fruit-tea-base",
         "displayName": "Fruit Tea Base",
         "emoji": "🫖",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "fruit-tea-with-ice",
         "displayName": "Fruit Tea with Ice",
         "emoji": "🧋",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       }
     ],
     "dirty": [

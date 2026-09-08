@@ -25,6 +25,7 @@ import { parseNodeCustomers, serializeNodeCustomers } from "../../core/nodeParse
 import type { DishNode, NodeCustomerConfig, NodeDish } from "../../core/nodeParser.ts";
 import type { GraphIndex, IndexedSlot } from "../../core/nodeIndex.ts";
 import { describeIssue, orderIdIndex, resolveOrder } from "../../core/nodeOrder.ts";
+import { compositeCustomerSpaceWidth } from "../../core/nodeCustomerSpace.ts";
 import type { ElementDef, GlobalDefs } from "../../core/types.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
 import { addToSlot as addToSlotTree, unmetSlotBase } from "./nodeDishEdit.ts";
@@ -722,6 +723,16 @@ function customerCard(
   const staff = isStaff(customer);
   const timed = customer.weatherEff !== 0 || customer.waitTime > 0;
   const card = el("div", { class: `customer-card${staff ? " staff" : ""}${timed ? " timed" : ""}` });
+  const compositeWidth = compositeCustomerSpaceWidth(
+    ix,
+    customer.dishes.map((dish) => resolveOrder(ix, dish, ids).order.orderable),
+  );
+  card.append(el("span", {
+    class: "customer-composite-width",
+    title:
+      `${compositeWidth} unit${compositeWidth === 1 ? "" : "s"} for composites after Half-height stacking; ` +
+      `${compositeWidth + 0.5} including the avatar`,
+  }, [String(compositeWidth)]));
   const catalog = getCustomerCatalog();
   const avatarEntry = customer.customerIndex === undefined
     ? randomNormalCustomer(catalog, ix.doc.map.id, () => ((index + 1) * 2654435761 >>> 0) / 4294967296)

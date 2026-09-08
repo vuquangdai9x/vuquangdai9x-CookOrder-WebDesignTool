@@ -354,6 +354,16 @@
           "description": "The topping slot must be filled. False = a bare base is a legal order (plain fries). Checked when a designer authors a dish and honoured by the customer auto-generator, which fills the slot rather than leaving it empty."
         },
         {
+          "name": "customerSpaceHeight",
+          "type": "enum",
+          "default": "Half",
+          "options": [
+            "Half",
+            "Full"
+          ],
+          "description": "Abstract customer-counter height. Full dishes occupy one whole 1 x 1 unit column; two Half dishes can stack in the same column."
+        },
+        {
           "name": "emoji",
           "type": "string",
           "description": "Glyph identifying this dish type wherever it is listed rather than drawn — the generator's dish-type weights, the Auto Generate config, the Level Path table. A composite has no artwork of its own (it IS the assembly of its parts), so this is what makes one dish type tellable from another at a glance."

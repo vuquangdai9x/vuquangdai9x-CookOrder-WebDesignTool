@@ -62,8 +62,6 @@ export interface ToolDeadlockReport {
 }
 
 const MAX_PICKS = 4000;
-const MAX_PAIR_DISHES = 5;
-
 /** Drain flights and ready tool lanes, the same resting state the estimator uses. */
 function settle(sim: NodeSimulation): void {
   for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
@@ -75,18 +73,9 @@ function settle(sim: NodeSimulation): void {
   sim.completeAllFlights();
 }
 
-/** Keep the serve window in step and let pending customers walk in. */
-function syncWindow(sim: NodeSimulation): void {
-  for (let guard = 0; guard < 8; guard++) {
-    const upcoming = [...sim.active, ...sim.pending];
-    sim.level.serveableSlots =
-      upcoming.length >= 2 && upcoming[0].dishes.length + upcoming[1].dishes.length <= MAX_PAIR_DISHES ? 2 : 1;
-    if (sim.status !== "playing") return;
-    if (sim.active.length >= sim.level.serveableSlots || sim.pending.length === 0) return;
-    const before = sim.active.length;
-    sim.tick(0);
-    if (sim.active.length === before) return;
-  }
+/** Re-evaluate pending customers against the runtime's shared counter rules. */
+function syncCustomerAdmission(sim: NodeSimulation): void {
+  if (sim.status === "playing" && sim.pending.length > 0) sim.tick(0);
 }
 
 function queuedItems(sim: NodeSimulation): number {
@@ -161,7 +150,7 @@ function playOnce(ix: GraphIndex, level: NodeLevelConfig, choose: Choose): RunOu
     instantFlights: true,
   });
   settle(sim);
-  syncWindow(sim);
+  syncCustomerAdmission(sim);
 
   let picks = 0;
   for (let guard = 0; guard < MAX_PICKS; guard++) {
@@ -174,7 +163,7 @@ function playOnce(ix: GraphIndex, level: NodeLevelConfig, choose: Choose): RunOu
       // Nothing pickable: either something is still cooking (fast-forward and
       // look again), or this is as far as the level goes.
       if (sim.fastForward() !== 0) {
-        syncWindow(sim);
+        syncCustomerAdmission(sim);
         continue;
       }
       if (queuedItems(sim) === 0) return { blocked: false, picks, reasons: [], sim };
@@ -185,7 +174,7 @@ function playOnce(ix: GraphIndex, level: NodeLevelConfig, choose: Choose): RunOu
     if (!sim.pick(lanes[index])) return { blocked: true, picks, reasons: blockingReasons(sim), sim };
     picks++;
     settle(sim);
-    syncWindow(sim);
+    syncCustomerAdmission(sim);
   }
   return { blocked: false, picks, reasons: [], sim };
 }

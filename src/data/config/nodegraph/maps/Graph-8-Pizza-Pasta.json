@@ -568,63 +568,72 @@
         "displayName": "Pizza Core",
         "emoji": "🍕",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "pizza-with-toppings",
         "displayName": "Pizza with Toppings",
         "emoji": "🍕",
         "orderable": true,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "spaghetti-with-sauce",
         "displayName": "Spaghetti with Sauce",
         "emoji": "🍝",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "spaghetti-pasta",
         "displayName": "Spaghetti Pasta",
         "emoji": "🍝",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "penne-with-sauce",
         "displayName": "Penne with Sauce",
         "emoji": "🥘",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "penne-pasta",
         "displayName": "Penne Pasta",
         "emoji": "🥘",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "fettuccine-with-sauce",
         "displayName": "Fettuccine with Sauce",
         "emoji": "🍜",
         "orderable": false,
-        "toppingRequired": true
+        "toppingRequired": true,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "fettuccine-pasta",
         "displayName": "Fettuccine Pasta",
         "emoji": "🍜",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "soup-bowl",
         "displayName": "Soup Bowl",
         "emoji": "🥣",
         "orderable": true,
-        "toppingRequired": false
+        "toppingRequired": false,
+        "customerSpaceHeight": "Half"
       }
     ],
     "dirty": [

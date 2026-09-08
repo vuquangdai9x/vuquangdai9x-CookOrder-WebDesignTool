@@ -487,19 +487,22 @@
         "name": "burger",
         "displayName": "Burger",
         "orderable": true,
-        "emoji": "🍔"
+        "emoji": "🍔",
+        "customerSpaceHeight": "Full"
       },
       {
         "name": "soda",
         "displayName": "Soda",
         "orderable": true,
-        "emoji": "🥤"
+        "emoji": "🥤",
+        "customerSpaceHeight": "Half"
       },
       {
         "name": "fried-basket",
         "displayName": "Fried Basket",
         "orderable": true,
-        "emoji": "🍟"
+        "emoji": "🍟",
+        "customerSpaceHeight": "Half"
       }
     ],
     "dirty": [
