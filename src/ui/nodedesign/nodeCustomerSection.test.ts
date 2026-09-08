@@ -5,15 +5,35 @@ import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import { orderIdIndex } from "../../core/nodeOrder.ts";
 import type { DishNode } from "../../core/nodeParser.ts";
-import { customerSpaceWidthColor, isCompositeCustomerView } from "./nodeCustomerView.ts";
+import {
+  customerSpaceWidthColor,
+  isCompositeCustomerView,
+  packCompositeSlots,
+} from "./nodeCustomerView.ts";
 
 describe("customer card view modes", () => {
-  it("keeps Auto detailed until a reorder starts", () => {
-    expect(isCompositeCustomerView("full", false)).toBe(false);
-    expect(isCompositeCustomerView("full", true)).toBe(false);
-    expect(isCompositeCustomerView("composite", false)).toBe(true);
-    expect(isCompositeCustomerView("auto", false)).toBe(false);
-    expect(isCompositeCustomerView("auto", true)).toBe(true);
+  it("keeps Auto detailed until a customer reorder starts", () => {
+    expect(isCompositeCustomerView("full", null)).toBe(false);
+    expect(isCompositeCustomerView("full", "customer")).toBe(false);
+    expect(isCompositeCustomerView("composite", null)).toBe(true);
+    expect(isCompositeCustomerView("auto", null)).toBe(false);
+    expect(isCompositeCustomerView("auto", "dish")).toBe(false);
+    expect(isCompositeCustomerView("auto", "customer")).toBe(true);
+  });
+
+  it("packs Full dishes into whole columns and pairs Half dishes independently of dish order", () => {
+    expect(packCompositeSlots([
+      { height: "Half", value: "half-a" },
+      { height: "Full", value: "full-a" },
+      { height: "Half", value: "half-b" },
+      { height: "Full", value: "full-b" },
+      { height: "Half", value: "half-c" },
+    ])).toEqual([
+      { height: "Full", values: ["full-a"] },
+      { height: "Full", values: ["full-b"] },
+      { height: "Half", values: ["half-a", "half-b"] },
+      { height: "Half", values: ["half-c"] },
+    ]);
   });
 
   it("assigns a stable different badge color to each footprint", () => {

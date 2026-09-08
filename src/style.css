@@ -1744,43 +1744,55 @@ footer {
   max-width: 13rem;
 }
 
-.dish-composite-preview {
+.composite-slot-layout {
   display: none;
-  width: 3.2rem;
-  height: 3.2rem;
+  height: 6.8rem;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.composite-slot-column {
+  width: 3.4rem;
+  height: 100%;
+  flex: 0 0 3.4rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.composite-slot-column.height-full {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.composite-slot-column.height-half {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.composite-slot-item {
+  min-height: 0;
+  display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
-  cursor: grab;
   user-select: none;
 }
 
-.dish-composite-preview .icon,
-.dish-composite-preview img {
+.composite-slot-item .icon,
+.composite-slot-item img {
   max-width: 100%;
   max-height: 100%;
 }
 
-/* Composite mode is a reorder-only overview. Auto applies the same class only
-   for the lifetime of a customer/dish drag. */
+/* Composite mode packs the abstract 1-unit-wide columns: Full dishes stretch
+   through both rows, while Half dishes are regrouped two per column. Auto
+   applies the same class only for the lifetime of a customer-card drag. */
 .customer-cards.composite-view .dish-list {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.3rem;
-  min-height: 3.4rem;
+  display: none;
 }
 
-.customer-cards.composite-view .dish-row {
-  padding: 0;
-  border-top: 0;
-  cursor: grab;
-}
-
-.customer-cards.composite-view .dish-label,
-.customer-cards.composite-view .dish-chips,
 .customer-cards.composite-view .add-dish,
 .customer-cards.composite-view .cust-cost,
 .customer-cards.composite-view .wait-badge,
@@ -1788,8 +1800,8 @@ footer {
   display: none;
 }
 
-.customer-cards.composite-view .dish-composite-preview {
-  display: inline-flex;
+.customer-cards.composite-view .composite-slot-layout {
+  display: flex;
 }
 
 .customer-cards.composite-view .customer-card {

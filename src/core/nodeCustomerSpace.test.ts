@@ -45,10 +45,15 @@ describe("abstract customer space", () => {
     expect(nonBurgerComposites.every((composite) => composite.customerSpaceHeight === "Half")).toBe(true);
   });
 
-  it("defaults missing height configuration to Half", () => {
+  it("keeps legacy Burger drafts Full while other missing heights default to Half", () => {
     const doc = structuredClone(burgerJson as unknown as NodeGraphMap);
-    delete doc.vertices.composite[0].customerSpaceHeight;
-    expect(compositeCustomerSpaceHeight(buildIndex(doc), 0)).toBe("Half");
+    const burgerIndex = doc.vertices.composite.findIndex((composite) => composite.name === "burger");
+    const sodaIndex = doc.vertices.composite.findIndex((composite) => composite.name === "soda");
+    delete doc.vertices.composite[burgerIndex].customerSpaceHeight;
+    delete doc.vertices.composite[sodaIndex].customerSpaceHeight;
+    const legacy = buildIndex(doc);
+    expect(compositeCustomerSpaceHeight(legacy, burgerIndex)).toBe("Full");
+    expect(compositeCustomerSpaceHeight(legacy, sodaIndex)).toBe("Half");
   });
 
   it("stacks Half composites in pairs and keeps Full composites separate", () => {

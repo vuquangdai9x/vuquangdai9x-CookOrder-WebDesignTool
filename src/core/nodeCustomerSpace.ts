@@ -14,12 +14,15 @@ export interface ResolvedCustomerSpaceOrder {
   dishes: readonly ResolvedCustomerSpaceDish[];
 }
 
-/** Missing or invalid configuration follows the global default: composites are Half-height. */
+/** Missing config follows the map rule, including legacy Burger drafts created before this field. */
 export function compositeCustomerSpaceHeight(
   ix: GraphIndex,
   orderable: number,
 ): CustomerSpaceHeight {
-  return ix.doc.vertices.composite[orderable]?.customerSpaceHeight === "Full" ? "Full" : "Half";
+  const composite = ix.doc.vertices.composite[orderable];
+  if (composite?.customerSpaceHeight === "Full") return "Full";
+  if (composite?.customerSpaceHeight === "Half") return "Half";
+  return ix.doc.map.id === "burger" && composite?.name === "burger" ? "Full" : "Half";
 }
 
 /** Width occupied by dishes only, after pairs of Half dishes have been stacked. */

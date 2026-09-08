@@ -25,7 +25,10 @@ import { parseNodeCustomers, serializeNodeCustomers } from "../../core/nodeParse
 import type { DishNode, NodeCustomerConfig, NodeDish } from "../../core/nodeParser.ts";
 import type { GraphIndex, IndexedSlot } from "../../core/nodeIndex.ts";
 import { describeIssue, orderIdIndex, resolveOrder } from "../../core/nodeOrder.ts";
-import { compositeCustomerSpaceWidth } from "../../core/nodeCustomerSpace.ts";
+import {
+  compositeCustomerSpaceHeight,
+  compositeCustomerSpaceWidth,
+} from "../../core/nodeCustomerSpace.ts";
 import type { ElementDef, GlobalDefs } from "../../core/types.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
 import { addToSlot as addToSlotTree, unmetSlotBase } from "./nodeDishEdit.ts";
@@ -72,6 +75,7 @@ import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import {
   customerSpaceWidthColor,
   isCompositeCustomerView,
+  packCompositeSlots,
   type CustomerCardViewMode,
 } from "./nodeCustomerView.ts";
 
@@ -181,8 +185,8 @@ function customerViewToggle(
   });
   const modes: Array<{ mode: CustomerCardViewMode; label: string; title: string }> = [
     { mode: "full", label: "Full", title: "Always show editable dish details" },
-    { mode: "composite", label: "Composite", title: "Show only dish-type icons; allow reordering only" },
-    { mode: "auto", label: "Auto", title: "Show details normally and compact every card while reordering" },
+    { mode: "composite", label: "Composite", title: "Show packed dish slots; allow customer reordering only" },
+    { mode: "auto", label: "Auto", title: "Compact every card while reordering customers; keep dish details while reordering dishes" },
   ];
   const buttons = modes.map(({ mode, label, title }) => button(label, () => {
     viewUi.mode = mode;
@@ -447,7 +451,7 @@ function renderBody(
     );
   }
 
-  const compositeView = isCompositeCustomerView(viewUi.mode, false);
+  const compositeView = isCompositeCustomerView(viewUi.mode, null);
   const row = el("div", {
     class: `customer-cards customer-view-${viewUi.mode}${compositeView ? " composite-view" : ""}`,
     "data-scroll-key": "customer-cards",
@@ -472,7 +476,7 @@ function renderBody(
     draggable: ".customer-card:not(.add-card)",
     handle: ".customer-head",
     onStart: () => {
-      if (isCompositeCustomerView(viewUi.mode, true)) row.classList.add("composite-view", "reordering");
+      if (isCompositeCustomerView(viewUi.mode, "customer")) row.classList.add("composite-view", "reordering");
     },
     onEnd: (evt) => {
       row.classList.toggle("composite-view", viewUi.mode === "composite");
@@ -914,12 +918,6 @@ function customerCard(
     const orderable = orderableOf(ix, ids, dish);
     const dishRow = el("div", { class: "dish-row" }, [
       el("span", { class: "dish-label" }, [`D${di + 1}`]),
-      el("span", {
-        class: "dish-composite-preview",
-        title: orderable === -1
-          ? `Unknown composite ${dish.root.id}`
-          : (ix.doc.vertices.composite[orderable]?.displayName ?? ix.compositeName[orderable]),
-      }, [compositeIconFor(ix, ids, orderable, 48)]),
     ]);
     const chipsRow = el("div", { class: "dish-chips" });
 
@@ -1024,34 +1022,27 @@ function customerCard(
     dishList.append(dishRow);
   });
 
-  Sortable.create(dishList, {
-    animation: 150,
-    group: "node-customer-dishes",
-    draggable: ".dish-row",
-    handle: reorderOnly ? ".dish-row" : ".dish-label",
-    emptyInsertThreshold: 20,
-    onStart: () => {
-      const customerRow = card.closest(".customer-cards");
-      if (customerRow && isCompositeCustomerView(viewMode, true)) {
-        customerRow.classList.add("composite-view", "reordering");
-      }
-    },
-    onEnd: (evt) => {
-      const customerRow = card.closest(".customer-cards");
-      customerRow?.classList.toggle("composite-view", viewMode === "composite");
-      customerRow?.classList.remove("reordering");
-      if (evt.oldIndex === undefined || evt.newIndex === undefined) return;
-      const from = draft[Number((evt.from as HTMLElement).dataset.customerIndex)];
-      const to = draft[Number((evt.to as HTMLElement).dataset.customerIndex)];
-      if (!from || !to) return;
-      if (from === to && evt.oldIndex === evt.newIndex) return;
-      const [moved] = from.dishes.splice(evt.oldIndex, 1);
-      if (!moved) return;
-      to.dishes.splice(Math.min(evt.newIndex, to.dishes.length), 0, moved);
-      section.commit(from === to ? "Reorder dishes" : "Move dish between customers");
-    },
-  });
-  orders.append(dishList);
+  if (!reorderOnly) {
+    Sortable.create(dishList, {
+      animation: 150,
+      group: "node-customer-dishes",
+      draggable: ".dish-row",
+      handle: ".dish-label",
+      emptyInsertThreshold: 20,
+      onEnd: (evt) => {
+        if (evt.oldIndex === undefined || evt.newIndex === undefined) return;
+        const from = draft[Number((evt.from as HTMLElement).dataset.customerIndex)];
+        const to = draft[Number((evt.to as HTMLElement).dataset.customerIndex)];
+        if (!from || !to) return;
+        if (from === to && evt.oldIndex === evt.newIndex) return;
+        const [moved] = from.dishes.splice(evt.oldIndex, 1);
+        if (!moved) return;
+        to.dishes.splice(Math.min(evt.newIndex, to.dishes.length), 0, moved);
+        section.commit(from === to ? "Reorder dishes" : "Move dish between customers");
+      },
+    });
+  }
+  orders.append(compositeSlotLayout(ix, ids, customer.dishes), dishList);
 
   if (!reorderOnly) {
     orders.append(
@@ -1069,6 +1060,39 @@ function customerCard(
   }
 
   return card;
+}
+
+function compositeSlotLayout(
+  ix: GraphIndex,
+  ids: IdIndex,
+  dishes: readonly NodeDish[],
+): HTMLElement {
+  const packed = packCompositeSlots(dishes.map((dish, dishIndex) => {
+    const orderable = orderableOf(ix, ids, dish);
+    return {
+      height: compositeCustomerSpaceHeight(ix, orderable),
+      value: { dishIndex, orderable, rootId: dish.root.id },
+    };
+  }));
+  const layout = el("div", {
+    class: "composite-slot-layout",
+    "aria-label": "Packed composite space",
+  });
+  packed.forEach((column) => {
+    const columnEl = el("div", { class: `composite-slot-column height-${column.height.toLowerCase()}` });
+    column.values.forEach(({ dishIndex, orderable, rootId }) => {
+      const name = orderable === -1
+        ? `Unknown composite ${rootId}`
+        : (ix.doc.vertices.composite[orderable]?.displayName ?? ix.compositeName[orderable]);
+      columnEl.append(el("div", {
+        class: `composite-slot-item height-${column.height.toLowerCase()}`,
+        title: `${name} — ${column.height} height`,
+        "aria-label": `Dish ${dishIndex + 1}: ${name}, ${column.height} height`,
+      }, [compositeIconFor(ix, ids, orderable, 48)]));
+    });
+    layout.append(columnEl);
+  });
+  return layout;
 }
 
 function compositeIconFor(ix: GraphIndex, ids: IdIndex, composite: number, size: number): HTMLElement {
