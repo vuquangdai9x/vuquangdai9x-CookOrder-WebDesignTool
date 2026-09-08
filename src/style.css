@@ -757,21 +757,23 @@ footer {
    The avatar's fixed 0.5 unit is intentionally not included in this number. */
 .customer-composite-width {
   position: absolute;
-  top: 0.3rem;
-  right: 0.3rem;
+  left: 50%;
+  bottom: 0.1rem;
+  transform: translateX(-50%);
   z-index: 3;
   min-width: 1.2rem;
   padding: 0.05rem 0.3rem;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--customer-width-color) 65%, white);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--panel) 88%, transparent);
-  color: var(--muted);
+  background: var(--customer-width-color, #64748b);
+  color: white;
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 1.15;
   text-align: center;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
 .customer-info {
@@ -801,6 +803,14 @@ footer {
   overflow: hidden;
   width: 100%;
   cursor: context-menu;
+}
+
+.customer-avatar-unset {
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.08em;
+  user-select: none;
 }
 
 /* Avatar art now belongs only to the Info section and is fully opaque. */
@@ -1732,6 +1742,62 @@ footer {
   flex-wrap: wrap;
   gap: 0.2rem;
   max-width: 13rem;
+}
+
+.dish-composite-preview {
+  display: none;
+  width: 3.2rem;
+  height: 3.2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: grab;
+  user-select: none;
+}
+
+.dish-composite-preview .icon,
+.dish-composite-preview img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Composite mode is a reorder-only overview. Auto applies the same class only
+   for the lifetime of a customer/dish drag. */
+.customer-cards.composite-view .dish-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 3.4rem;
+}
+
+.customer-cards.composite-view .dish-row {
+  padding: 0;
+  border-top: 0;
+  cursor: grab;
+}
+
+.customer-cards.composite-view .dish-label,
+.customer-cards.composite-view .dish-chips,
+.customer-cards.composite-view .add-dish,
+.customer-cards.composite-view .cust-cost,
+.customer-cards.composite-view .wait-badge,
+.customer-cards.composite-view .weather-toggle {
+  display: none;
+}
+
+.customer-cards.composite-view .dish-composite-preview {
+  display: inline-flex;
+}
+
+.customer-cards.composite-view .customer-card {
+  min-width: 7rem;
+}
+
+.customer-cards.reordering .add-card {
+  display: none;
 }
 
 .ctx-order-type {

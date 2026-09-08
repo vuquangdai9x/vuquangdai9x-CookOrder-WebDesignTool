@@ -5,6 +5,23 @@ import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import { orderIdIndex } from "../../core/nodeOrder.ts";
 import type { DishNode } from "../../core/nodeParser.ts";
+import { customerSpaceWidthColor, isCompositeCustomerView } from "./nodeCustomerView.ts";
+
+describe("customer card view modes", () => {
+  it("keeps Auto detailed until a reorder starts", () => {
+    expect(isCompositeCustomerView("full", false)).toBe(false);
+    expect(isCompositeCustomerView("full", true)).toBe(false);
+    expect(isCompositeCustomerView("composite", false)).toBe(true);
+    expect(isCompositeCustomerView("auto", false)).toBe(false);
+    expect(isCompositeCustomerView("auto", true)).toBe(true);
+  });
+
+  it("assigns a stable different badge color to each footprint", () => {
+    const colors = [0, 1, 2, 3, 4, 5].map(customerSpaceWidthColor);
+    expect(new Set(colors).size).toBe(colors.length);
+    expect(customerSpaceWidthColor(3)).toBe(customerSpaceWidthColor(3));
+  });
+});
 
 describe("nested group selection", () => {
   const ix = buildIndex(sushiJson as unknown as NodeGraphMap);

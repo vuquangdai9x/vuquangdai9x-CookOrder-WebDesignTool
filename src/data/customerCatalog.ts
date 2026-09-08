@@ -1,8 +1,9 @@
 // The named-customer catalog: one global roster shared across every map,
 // replacing the old per-map `customerAvatars` random-pool list. A level's
 // customer string can pin an arrival to a specific row via `customerIndex`
-// (see core/nodeParser.ts); an unset index means "random", filtered to
-// Type=Normal rows of the current map at render time (ui/customerAvatar.ts).
+// (see core/nodeParser.ts); an unset index means "random" in Play mode,
+// filtered to Type=Normal rows of the current map (ui/customerAvatar.ts).
+// Design mode intentionally renders [?] until an avatar is pinned.
 //
 // Bundled from customers.csv, mirroring nodeProject.ts's bundled-plus-draft
 // shape: a localStorage draft (whole-catalog Import/Export, not per-row

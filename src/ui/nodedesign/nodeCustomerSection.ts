@@ -41,7 +41,7 @@ import {
 import type { MenuItem } from "../contextMenu.ts";
 import { button, el } from "../dom.ts";
 import { cookedIconEl, customerTypeIconEl, iconEl } from "../icon.ts";
-import { customerAvatarIconSpec, randomNormalCustomer } from "../customerAvatar.ts";
+import { customerAvatarIconSpec } from "../customerAvatar.ts";
 import { getCustomerCatalog } from "../../data/customerCatalog.ts";
 import { openCustomerAvatarDialog } from "./customerAvatarDialog.ts";
 import {
@@ -69,9 +69,16 @@ import { createObstacleEditor } from "../levelpath/obstacleEditor.ts";
 import { parseObstacles, serializeObstacles } from "../levelpath/obstacles.ts";
 import type { ObstacleConfig } from "../levelpath/obstacles.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
+import {
+  customerSpaceWidthColor,
+  isCompositeCustomerView,
+  type CustomerCardViewMode,
+} from "./nodeCustomerView.ts";
 
 /** Foldout-open flag plus the per-category legend toggles — see occupancyChart.ts. */
 type ChartUi = { open: boolean } & ChartVisibility;
+
+type CustomerViewUi = { mode: CustomerCardViewMode };
 
 export interface NodeCustomerSectionDeps {
   ix: GraphIndex;
@@ -101,19 +108,20 @@ function typeDef(defs: GlobalDefs, typeId: number): ElementDef | undefined {
 export function createNodeCustomerSection(deps: NodeCustomerSectionDeps): Section<NodeCustomerConfig[]> {
   const ids: IdIndex = orderIdIndex(deps.ix);
   const chartUi: ChartUi = { open: false, scoredTint: true, randomTint: true, completeLines: true };
+  const viewUi: CustomerViewUi = { mode: "auto" };
 
   const section: Section<NodeCustomerConfig[]> = new Section<NodeCustomerConfig[]>({
     title: "Customers",
     saveLabel: "Save Customers",
     initial: parseSafely(deps.level.customerString),
-    renderBody: (draft, body) => renderBody(section, deps, ids, draft, body, chartUi),
+    renderBody: (draft, body) => renderBody(section, deps, ids, draft, body, chartUi, viewUi),
     onCommit: () => deps.onCommit?.(),
     save: (draft) => {
       deps.level.customerString = serializeNodeCustomers(draft);
       deps.onSaved();
     },
     stringPreview: (draft) => serializeNodeCustomers(draft),
-    headerButtons: () => {
+    headerButtons: (customerSection) => {
       const replay = button("▶ Replay Estimate", () => deps.onReplayEstimate?.(), {
         class: "estimate-replay-btn",
         title: "Open the Play board and step through the most recent estimate",
@@ -123,6 +131,7 @@ export function createNodeCustomerSection(deps: NodeCustomerSectionDeps): Sectio
         button("✨ Auto Generate", () => deps.onAutoGenerate?.(), {
         title: "Generate a customer sequence from a dish-count list, ingredient weights, and a complexity curve",
         }),
+        customerViewToggle(customerSection, viewUi),
         button("📊 Estimate Difficulty", () => deps.onEstimate?.(), {
         title:
           "Play the level with a solver and report, per customer, how much grid space their order takes and how much is wasted. Also numbers each queue tile in pickup order.",
@@ -159,6 +168,37 @@ export function createNodeCustomerSection(deps: NodeCustomerSectionDeps): Sectio
   });
   section.render();
   return section;
+}
+
+function customerViewToggle(
+  section: Section<NodeCustomerConfig[]>,
+  viewUi: CustomerViewUi,
+): HTMLElement {
+  const group = el("div", {
+    class: "toggle-group customer-view-toggle",
+    role: "group",
+    "aria-label": "Customer card view",
+  });
+  const modes: Array<{ mode: CustomerCardViewMode; label: string; title: string }> = [
+    { mode: "full", label: "Full", title: "Always show editable dish details" },
+    { mode: "composite", label: "Composite", title: "Show only dish-type icons; allow reordering only" },
+    { mode: "auto", label: "Auto", title: "Show details normally and compact every card while reordering" },
+  ];
+  const buttons = modes.map(({ mode, label, title }) => button(label, () => {
+    viewUi.mode = mode;
+    buttons.forEach((candidate, index) => {
+      const active = modes[index].mode === mode;
+      candidate.classList.toggle("active", active);
+      candidate.setAttribute("aria-pressed", String(active));
+    });
+    section.render();
+  }, {
+    class: `small-btn${viewUi.mode === mode ? " active" : ""}`,
+    title,
+    "aria-pressed": String(viewUi.mode === mode),
+  }));
+  group.append(...buttons);
+  return group;
 }
 
 /** A malformed stored string must open the editor, not blank the page. */
@@ -385,6 +425,7 @@ function renderBody(
   draft: NodeCustomerConfig[],
   body: HTMLElement,
   chartUi: ChartUi,
+  viewUi: CustomerViewUi,
 ): void {
   body.append(levelParamsBar(section, deps, ids));
 
@@ -406,25 +447,36 @@ function renderBody(
     );
   }
 
-  const row = el("div", { class: "customer-cards", "data-scroll-key": "customer-cards" });
+  const compositeView = isCompositeCustomerView(viewUi.mode, false);
+  const row = el("div", {
+    class: `customer-cards customer-view-${viewUi.mode}${compositeView ? " composite-view" : ""}`,
+    "data-scroll-key": "customer-cards",
+  });
   draft.forEach((customer, index) => {
-    row.append(customerCard(section, deps, ids, draft, customer, index, estimate));
+    row.append(customerCard(section, deps, ids, draft, customer, index, estimate, viewUi.mode));
   });
 
-  const addCard = el("div", { class: "customer-card add-card" }, ["＋"]);
-  addCard.title = "Append a customer";
-  addCard.addEventListener("click", () => {
-    const dish = newDish(deps.ix, ids);
-    draft.push({ typeId: 0, waitTime: 0, weatherEff: 0, dishes: dish ? [dish] : [] });
-    section.commit("Add customer", 1);
-  });
-  row.append(addCard);
+  if (viewUi.mode !== "composite") {
+    const addCard = el("div", { class: "customer-card add-card" }, ["＋"]);
+    addCard.title = "Append a customer";
+    addCard.addEventListener("click", () => {
+      const dish = newDish(deps.ix, ids);
+      draft.push({ typeId: 0, waitTime: 0, weatherEff: 0, dishes: dish ? [dish] : [] });
+      section.commit("Add customer", 1);
+    });
+    row.append(addCard);
+  }
 
   Sortable.create(row, {
     animation: 150,
     draggable: ".customer-card:not(.add-card)",
     handle: ".customer-head",
+    onStart: () => {
+      if (isCompositeCustomerView(viewUi.mode, true)) row.classList.add("composite-view", "reordering");
+    },
     onEnd: (evt) => {
+      row.classList.toggle("composite-view", viewUi.mode === "composite");
+      row.classList.remove("reordering");
       if (evt.oldIndex === undefined || evt.newIndex === undefined) return;
       if (evt.oldIndex === evt.newIndex) return;
       const [moved] = draft.splice(evt.oldIndex, 1);
@@ -718,24 +770,27 @@ function customerCard(
   customer: NodeCustomerConfig,
   index: number,
   estimate: EstimateResult | null,
+  viewMode: CustomerCardViewMode,
 ): HTMLElement {
   const { ix } = deps;
   const staff = isStaff(customer);
+  const reorderOnly = viewMode === "composite";
   const timed = customer.weatherEff !== 0 || customer.waitTime > 0;
   const card = el("div", { class: `customer-card${staff ? " staff" : ""}${timed ? " timed" : ""}` });
   const compositeWidth = compositeCustomerSpaceWidth(
     ix,
     customer.dishes.map((dish) => resolveOrder(ix, dish, ids).order.orderable),
   );
-  card.append(el("span", {
+  const widthBadge = el("span", {
     class: "customer-composite-width",
     title:
       `${compositeWidth} unit${compositeWidth === 1 ? "" : "s"} for composites after Half-height stacking; ` +
       `${compositeWidth + 0.5} including the avatar`,
-  }, [String(compositeWidth)]));
+  }, [String(compositeWidth)]);
+  widthBadge.style.setProperty("--customer-width-color", customerSpaceWidthColor(compositeWidth));
   const catalog = getCustomerCatalog();
   const avatarEntry = customer.customerIndex === undefined
-    ? randomNormalCustomer(catalog, ix.doc.map.id, () => ((index + 1) * 2654435761 >>> 0) / 4294967296)
+    ? undefined
     : catalog.find((entry) => entry.index === customer.customerIndex);
 
   const cost = estimate?.perCustomer.find((c) => c.index === index);
@@ -767,6 +822,7 @@ function customerCard(
     class: "wait-drag-input",
     title: "Patience timer in seconds (0 = no limit). Drag left/right in 5-second steps.",
   }) as HTMLInputElement;
+  waitInput.disabled = reorderOnly;
   const commitWaitTime = (value: number) => {
     customer.waitTime = Math.max(0, Math.round(value) || 0);
     waitInput.value = String(customer.waitTime);
@@ -786,30 +842,42 @@ function customerCard(
       title: "Weather-affected: bad weather halves this customer's patience",
     },
   );
+  weatherToggle.disabled = reorderOnly;
 
   const def = typeDef(deps.defs, customer.typeId);
   const typeMark = def && def.id !== 0 ? ` ${def.icon || def.name}` : "";
   const head = el("div", { class: "customer-head" }, [
     el("span", { class: "cust-index" }, [`#${index + 1}${typeMark}`]),
   ]);
-  head.addEventListener("contextmenu", (e) =>
-    showContextMenu(e, cardMenu(section, deps, ids, draft, customer, index), {
-      title: `Customer #${index + 1}`,
-    }),
-  );
+  if (!reorderOnly) {
+    head.addEventListener("contextmenu", (e) =>
+      showContextMenu(e, cardMenu(section, deps, ids, draft, customer, index), {
+        title: `Customer #${index + 1}`,
+      }),
+    );
+  }
   const avatarSlot = el("div", { class: "customer-avatar-slot" });
-  avatarSlot.title = "Right-click to change this customer's avatar";
-  avatarSlot.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    closeContextMenu();
-    openAvatarPicker(section, deps, customer);
-  });
+  avatarSlot.title = reorderOnly
+    ? (avatarEntry?.name || (staff ? "Staff" : "Avatar unset"))
+    : customer.customerIndex === undefined
+      ? "Avatar unset — right-click to choose one"
+      : "Right-click to change this customer's avatar";
+  if (!reorderOnly) {
+    avatarSlot.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeContextMenu();
+      openAvatarPicker(section, deps, customer);
+    });
+  }
   if (avatarEntry) {
     avatarSlot.append(iconEl(customerAvatarIconSpec(avatarEntry), { className: "customer-avatar-bg" }));
   } else if (staff) {
     avatarSlot.append(customerTypeIconEl(customer.typeId, 40));
+  } else {
+    avatarSlot.append(el("span", { class: "customer-avatar-unset", "aria-label": "Avatar unset" }, ["[?]"]));
   }
+  avatarSlot.append(widthBadge);
   const info = el("div", { class: "customer-info" }, [
     head,
     el("span", { class: "wait-badge" }, [waitInput]),
@@ -832,6 +900,7 @@ function customerCard(
       value: String(customer.staffAmount ?? 1),
       title: "How many dirty stacks this staff clears on arrival",
     }) as HTMLInputElement;
+    amountInput.disabled = reorderOnly;
     amountInput.addEventListener("change", () => {
       customer.staffAmount = Math.max(1, Number(amountInput.value) || 1);
       section.commit("Set staff stack amount");
@@ -845,6 +914,12 @@ function customerCard(
     const orderable = orderableOf(ix, ids, dish);
     const dishRow = el("div", { class: "dish-row" }, [
       el("span", { class: "dish-label" }, [`D${di + 1}`]),
+      el("span", {
+        class: "dish-composite-preview",
+        title: orderable === -1
+          ? `Unknown composite ${dish.root.id}`
+          : (ix.doc.vertices.composite[orderable]?.displayName ?? ix.compositeName[orderable]),
+      }, [compositeIconFor(ix, ids, orderable, 48)]),
     ]);
     const chipsRow = el("div", { class: "dish-chips" });
 
@@ -865,69 +940,73 @@ function customerCard(
         // The legacy swap picker, narrowed to this chip's own slot: swapping to
         // an ingredient from a different slot would be a different dish shape,
         // not a swap.
-        chip.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!slot) return;
-          const counts = new Map<number, number>();
-          for (const other of chipsOf(ix, ids, dish, orderable)) {
-            if (other.slotIndex !== ref.slotIndex) continue;
-            counts.set(other.ing, (counts.get(other.ing) ?? 0) + 1);
-          }
-          counts.set(ref.ing, Math.max(0, (counts.get(ref.ing) ?? 1) - 1));
+        if (!reorderOnly) {
+          chip.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!slot) return;
+            const counts = new Map<number, number>();
+            for (const other of chipsOf(ix, ids, dish, orderable)) {
+              if (other.slotIndex !== ref.slotIndex) continue;
+              counts.set(other.ing, (counts.get(other.ing) ?? 0) + 1);
+            }
+            counts.set(ref.ing, Math.max(0, (counts.get(ref.ing) ?? 1) - 1));
 
-          const wrap = el("div", { class: "ctx-swap" });
-          const unmetBase = unmetSlotBase(ix, ids, dish.root, orderable, ref.slotIndex);
-          if (unmetBase === -1) {
+            const wrap = el("div", { class: "ctx-swap" });
+            const unmetBase = unmetSlotBase(ix, ids, dish.root, orderable, ref.slotIndex);
+            if (unmetBase === -1) {
+              wrap.append(
+                addPickerGrid(
+                slot.options.map((option, at) => ({
+                  id: option,
+                  label: ix.doc.vertices.ingredient[option]?.displayName ?? ix.ingName[option],
+                  icon: iconFor(ix, ids, option),
+                  limit: (slot.optionMax[at] ?? -1) > 0 ? slot.optionMax[at] : undefined,
+                })),
+                counts,
+                (option) => {
+                  swapInSlot(ix, ids, dish.root, orderable, ref.slotIndex, ref.occurrence, option);
+                  section.commit("Swap dish ingredient");
+                  closeContextMenu();
+                },
+                ),
+              );
+            } else {
+              wrap.append(
+                el("div", { class: "warnings" }, [`Select ${baseRequirementLabel(ix, unmetBase)} first.`]),
+              );
+            }
             wrap.append(
-              addPickerGrid(
-              slot.options.map((option, at) => ({
-                id: option,
-                label: ix.doc.vertices.ingredient[option]?.displayName ?? ix.ingName[option],
-                icon: iconFor(ix, ids, option),
-                limit: (slot.optionMax[at] ?? -1) > 0 ? slot.optionMax[at] : undefined,
-              })),
-              counts,
-              (option) => {
-                swapInSlot(ix, ids, dish.root, orderable, ref.slotIndex, ref.occurrence, option);
-                section.commit("Swap dish ingredient");
-                closeContextMenu();
-              },
+              button(
+                "Remove",
+                () => {
+                  removeFromSlot(ix, ids, dish.root, orderable, ref.slotIndex, ref.occurrence);
+                  section.commit("Remove ingredient from dish", 0, 1);
+                  closeContextMenu();
+                },
+                { class: "danger ctx-swap-remove" },
               ),
             );
-          } else {
-            wrap.append(
-              el("div", { class: "warnings" }, [`Select ${baseRequirementLabel(ix, unmetBase)} first.`]),
-            );
-          }
-          wrap.append(
-            button(
-              "Remove",
-              () => {
-                removeFromSlot(ix, ids, dish.root, orderable, ref.slotIndex, ref.occurrence);
-                section.commit("Remove ingredient from dish", 0, 1);
-                closeContextMenu();
-              },
-              { class: "danger ctx-swap-remove" },
-            ),
-          );
-          showContextContent(e, wrap, { title: `Swap: ${chip.title}` });
-        });
+            showContextContent(e, wrap, { title: `Swap: ${chip.title}` });
+          });
+        }
         chipsRow.append(chip);
       }
 
       // `＋` adds, exactly as legacy — but grouped by slot, because "which slot
       // does this ingredient fill" is the one thing a flat picker cannot say.
-      const addChip = button(
-        "＋",
-        (e) => {
-          showContextContent(e, slotPicker(section, deps, ids, dish, orderable), {
-            title: `Dish ${di + 1}`,
-          });
-        },
-        { class: "chip add-chip" },
-      );
-      chipsRow.append(addChip);
+      if (!reorderOnly) {
+        const addChip = button(
+          "＋",
+          (e) => {
+            showContextContent(e, slotPicker(section, deps, ids, dish, orderable), {
+              title: `Dish ${di + 1}`,
+            });
+          },
+          { class: "chip add-chip" },
+        );
+        chipsRow.append(addChip);
+      }
     }
 
     dishRow.append(chipsRow);
@@ -935,11 +1014,13 @@ function customerCard(
     // THE difference from legacy: a node dish is a bracket tree, so its dish
     // menu is where that tree is configured — the composite it is an order of,
     // and each nested group's contents.
-    dishRow.addEventListener("contextmenu", (e) =>
-      showContextMenu(e, dishMenu(section, deps, ids, customer, dish, di, orderable), {
-        title: `Dish ${di + 1}`,
-      }),
-    );
+    if (!reorderOnly) {
+      dishRow.addEventListener("contextmenu", (e) =>
+        showContextMenu(e, dishMenu(section, deps, ids, customer, dish, di, orderable), {
+          title: `Dish ${di + 1}`,
+        }),
+      );
+    }
     dishList.append(dishRow);
   });
 
@@ -947,9 +1028,18 @@ function customerCard(
     animation: 150,
     group: "node-customer-dishes",
     draggable: ".dish-row",
-    handle: ".dish-label",
+    handle: reorderOnly ? ".dish-row" : ".dish-label",
     emptyInsertThreshold: 20,
+    onStart: () => {
+      const customerRow = card.closest(".customer-cards");
+      if (customerRow && isCompositeCustomerView(viewMode, true)) {
+        customerRow.classList.add("composite-view", "reordering");
+      }
+    },
     onEnd: (evt) => {
+      const customerRow = card.closest(".customer-cards");
+      customerRow?.classList.toggle("composite-view", viewMode === "composite");
+      customerRow?.classList.remove("reordering");
       if (evt.oldIndex === undefined || evt.newIndex === undefined) return;
       const from = draft[Number((evt.from as HTMLElement).dataset.customerIndex)];
       const to = draft[Number((evt.to as HTMLElement).dataset.customerIndex)];
@@ -963,25 +1053,39 @@ function customerCard(
   });
   orders.append(dishList);
 
-  orders.append(
-    button(
-      "+ Dish",
-      () => {
-        const dish = newDish(ix, ids);
-        if (!dish) return;
-        customer.dishes.push(dish);
-        section.commit("Add dish", 1);
-      },
-      { class: "small-btn add-dish" },
-    ),
-  );
+  if (!reorderOnly) {
+    orders.append(
+      button(
+        "+ Dish",
+        () => {
+          const dish = newDish(ix, ids);
+          if (!dish) return;
+          customer.dishes.push(dish);
+          section.commit("Add dish", 1);
+        },
+        { class: "small-btn add-dish" },
+      ),
+    );
+  }
 
   return card;
 }
 
-function iconFor(ix: GraphIndex, ids: IdIndex, ing: number): HTMLElement {
+function compositeIconFor(ix: GraphIndex, ids: IdIndex, composite: number, size: number): HTMLElement {
+  const vertex = ix.doc.vertices.composite[composite];
+  const name = vertex?.displayName ?? ix.compositeName[composite] ?? "Unknown composite";
+  if (vertex?.emoji) {
+    return iconEl({ name, emoji: vertex.emoji }, { size, className: "icon-composite" });
+  }
+  const baseIngredient = ix.slotsOfComposite[composite]?.find((slot) => slot.isBase)?.options[0];
+  return baseIngredient === undefined
+    ? iconEl({ name, emoji: "🍽️" }, { size, className: "icon-composite" })
+    : iconFor(ix, ids, baseIngredient, size);
+}
+
+function iconFor(ix: GraphIndex, ids: IdIndex, ing: number, size = 64): HTMLElement {
   const dataId = ids.byNode.ingredient.get(ix.ingName[ing]);
-  return dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : cookedIconEl(dataId, 64);
+  return dataId === undefined ? el("span", { class: "icon" }, ["❔"]) : cookedIconEl(dataId, size);
 }
 
 function baseRequirementLabel(ix: GraphIndex, composite: number): string {
