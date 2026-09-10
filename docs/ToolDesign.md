@@ -266,7 +266,8 @@ tool.
 - **When a tool is full**, a dropdown in the toolbar picks the behaviour: *Block the pick* (the
   queue tile is disabled with a reason tooltip) or *Park raw on the grid* (the raw ingredient
   waits on the grid, dimmed, and is pulled into the tool ahead of new picks the moment a slot
-  frees).
+  frees). Play mode starts with *Park raw on the grid* selected; a user's changed selection is a
+  Play preference and remains selected when switching maps or levels.
 - **Movement**: every hand-off animates as a floating item flying between the two places —
   queue→tool slot, queue→grid, tool→grid, tool→tool (a chained recipe's mid-hop, e.g. Potato:
   Cutting Board → Fryer), grid→tool (reclaiming a parked raw), grid→serving row, queue→serving row and
@@ -289,10 +290,12 @@ tool.
   customers need are highlighted. While the **Ingredient Pick** booster is armed (below), the
   window temporarily expands and *every* visible tile becomes clickable, not just the front row.
 - **Difficulty estimation retries**: preview demand is a light, configurable composite-only hint,
-  not active-order weight. A failed authored-scoring run retries with grid-safe, front-loaded,
-  finish-first, chain-first, scarcity and serve-window presets; only after those are exhausted are
-  randomized scoring sets used. The Scoring Scenario modal exposes **Retry count** from 0–10, and
-  the first successful run wins; if all attempts fail, the closest run is reported as unsolved.
+  not active-order weight. When the authored interval-paced run fails, its first fallback preserves
+  the authored scoring but waits for all progressable tool and merge work to settle before every
+  next pick. Later retries use learned grid-safe, front-loaded, finish-first, chain-first, scarcity,
+  and other scoring profiles in the same synchronized mode. The Scoring Scenario modal exposes
+  **Retry count** from 0–10; the attempt metric's tooltip shows the exact scoring/timing order. The
+  first successful run wins, otherwise the closest failed run is reported as unsolved.
 - **Boosters bar**: four booster buttons (icon, name, remaining-charge badge) rendered as a
   scrollable strip **below** the three main tiers, not inside them — so it never shrinks the
   page's fixed-height layout, it's just reachable by scrolling. Shift-up Row, Clean Table, and

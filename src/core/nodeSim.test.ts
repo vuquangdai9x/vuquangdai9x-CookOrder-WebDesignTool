@@ -83,14 +83,26 @@ describe("core loop", () => {
     expect(s.pending.map((customer) => customer.index)).toEqual([2]);
   });
 
-  it("stops admission when the next two cards exceed the 5.5-unit counter", () => {
+  it("admits two customers whose calculated widths total exactly six units", () => {
     const s = sim({
       queueString: "0",
       customerString:
-        "0;0;0;{c0:17},{c0:17},{c0:17}|0;0;0;{c0:17},{c0:17}",
+        "0;0;0;{c0:17},{c0:17}|0;0;0;{c0:17},{c0:17},{c0:17}",
     });
 
-    // Three Full burgers + avatar = 3.5; two Full burgers + avatar = 2.5.
+    // Two Full burgers + avatar = 2.5; three Full burgers + avatar = 3.5.
+    expect(s.active.map((customer) => customer.index)).toEqual([0, 1]);
+    expect(s.pending).toEqual([]);
+  });
+
+  it("stops admission when the next two cards exceed the six-unit order zone", () => {
+    const s = sim({
+      queueString: "0",
+      customerString:
+        "0;0;0;{c0:17},{c0:17},{c0:17}|0;0;0;{c0:17},{c0:17},{c0:17}",
+    });
+
+    // Each card occupies 3.5 units, so the seven-unit pair cannot appear together.
     expect(s.active.map((customer) => customer.index)).toEqual([0]);
     expect(s.pending.map((customer) => customer.index)).toEqual([1]);
 
@@ -100,7 +112,7 @@ describe("core loop", () => {
     expect(s.active.map((customer) => customer.index)).toEqual([1]);
   });
 
-  it("admits two cards when Half composites stack within the 5.5-unit width", () => {
+  it("admits two cards when Half composites stack within the six-unit width", () => {
     const s = sim({
       queueString: "5",
       customerString:

@@ -65,6 +65,7 @@ import { customersStructureKey, middleStructureKey, queuesStructureKey } from ".
 import { renderGroupOverlay } from "./groupOverlay.ts";
 import { replayScoreStepIndex } from "./replayScoreStep.ts";
 import { recipeGuideRows } from "./recipeGuide.ts";
+import { playOutOfSlotPolicy, setPlayOutOfSlotPolicy } from "./preferences.ts";
 import { centerOf, EffectsLayer } from "../effectsLayer.ts";
 import type { Point } from "../effectsLayer.ts";
 import type { NodeFlight } from "../../core/nodeSim.ts";
@@ -310,6 +311,7 @@ export class NodePlayView {
       instantFlights: false,
       detectDeadlockLoss: true,
       continueAfterCustomerTimeout: this.replay !== null,
+      outOfSlotPolicy: playOutOfSlotPolicy(),
     });
     this.animating.clear();
     this.pendingPickOrigins = [];
@@ -892,12 +894,13 @@ export class NodePlayView {
       ["park-on-grid", "Park raw on the grid"],
     ] as const) {
       const opt = el("option", { value }, [label]);
-      if ((this.level.outOfSlotPolicy ?? "block-pick") === value) (opt as HTMLOptionElement).selected = true;
+      if (playOutOfSlotPolicy() === value) (opt as HTMLOptionElement).selected = true;
       policy.append(opt);
     }
     policy.addEventListener("change", () => {
-      this.sim.setOutOfSlotPolicy(policy.value as OutOfSlotPolicy);
-      this.level.outOfSlotPolicy = policy.value as OutOfSlotPolicy;
+      const selected = policy.value as OutOfSlotPolicy;
+      setPlayOutOfSlotPolicy(selected);
+      this.sim.setOutOfSlotPolicy(selected);
       this.syncPage();
     });
 
@@ -1145,6 +1148,7 @@ export class NodePlayView {
     this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level), {
       instantFlights: false,
       continueAfterCustomerTimeout: true,
+      outOfSlotPolicy: playOutOfSlotPolicy(),
     });
     let reached = 0;
     for (; reached < target; reached++) {

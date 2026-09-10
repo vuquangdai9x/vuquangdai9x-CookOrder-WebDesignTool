@@ -10,6 +10,7 @@ import pizzaPastaJson from "../data/config/nodegraph/maps/Graph-8-Pizza-Pasta.js
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
 import { buildIndex } from "./nodeIndex.ts";
 import {
+  CUSTOMER_SPACE_WIDTH,
   compositeCustomerSpaceHeight,
   compositeCustomerSpaceWidth,
   resolvedCustomerSpaceWidth,
@@ -21,6 +22,10 @@ const soda = ix.compositeByName.get("soda")!;
 const friedBasket = ix.compositeByName.get("fried-basket")!;
 
 describe("abstract customer space", () => {
+  it("uses a six-unit order zone", () => {
+    expect(CUSTOMER_SPACE_WIDTH).toBe(6);
+  });
+
   it("uses the bundled Burger map height configuration", () => {
     expect(compositeCustomerSpaceHeight(ix, burger)).toBe("Full");
     expect(compositeCustomerSpaceHeight(ix, soda)).toBe("Half");

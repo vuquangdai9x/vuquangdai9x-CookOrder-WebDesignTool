@@ -1,6 +1,6 @@
 import type { GraphIndex } from "./nodeIndex.ts";
 
-export const CUSTOMER_SPACE_WIDTH = 5.5;
+export const CUSTOMER_SPACE_WIDTH = 6;
 export const CUSTOMER_AVATAR_WIDTH = 0.5;
 export const MAX_ACTIVE_CUSTOMERS = 2;
 

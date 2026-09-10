@@ -532,7 +532,13 @@ function estimateBar(
   ];
   if ((estimate.attemptCount ?? 1) > 1) {
     const learned = estimate.learnedFromFailures ?? 0;
-    parts.push(el("span", { class: "estimate-metric" }, [
+    const attempted = estimate.attemptedStrategyNames ?? [];
+    parts.push(el("span", {
+      class: "estimate-metric",
+      ...(attempted.length > 0
+        ? { title: `Attempt order: ${attempted.join(" → ")}` }
+        : {}),
+    }, [
       `${estimate.strategyName ?? "alternate"} strategy · ${estimate.attemptCount} attempts` +
       (learned > 0 ? ` · learned from ${learned} failure${learned === 1 ? "" : "s"}` : ""),
     ]));

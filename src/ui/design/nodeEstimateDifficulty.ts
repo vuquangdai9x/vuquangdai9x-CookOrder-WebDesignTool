@@ -75,7 +75,7 @@ const isOrdering = (customer: NodeCustomerState): boolean =>
 
 /**
  * Let the simulation re-evaluate pending customers against the shared
- * two-customer / 5.5-unit counter rules.
+ * two-customer / 6-unit order-zone rules.
  */
 function syncCustomerAdmission(sim: NodeSimulation): void {
   if (sim.status === "playing" && sim.pending.length > 0) sim.tick(0);
@@ -1358,19 +1358,27 @@ export function estimateNodeDifficulty(
   let bestStrategy = "authored";
   let knowledge = emptyFailureKnowledge();
   const usedStrategies = new Set<string>();
+  const attemptedStrategyNames: string[] = [];
 
   for (let attempt = 0; attempt <= retryCount; attempt++) {
-    const adaptive = attempt > 0 && knowledge.recommendedStrategy === "adaptive";
+    // Before changing scoring weights, isolate timing as the first fallback:
+    // retry the authored picker after every tool/merge chain has settled. This
+    // distinguishes a cadence failure from one that needs a different route.
+    const authoredWaitFallback = attempt === 1;
+    const adaptive = attempt > 1 && knowledge.recommendedStrategy === "adaptive";
     const baseline = attempt === 0
       ? { name: "authored", cfg: base, workWaitStrategy: "interval" as WorkWaitStrategy }
+      : authoredWaitFallback
+        ? { name: "authored", cfg: base, workWaitStrategy: "wait-all" as WorkWaitStrategy }
       : adaptive
         ? { name: "adaptive", cfg: base, workWaitStrategy: "wait-all" as WorkWaitStrategy }
       : learnedPreset(knowledge, presets, usedStrategies) ??
         randomizedStrategy(base, Math.max(0, attempt - presets.length - 1), strategyRandom);
     usedStrategies.add(baseline.name);
+    const attemptKnowledge = authoredWaitFallback ? emptyFailureKnowledge() : knowledge;
     let strategy = {
       name: attempt > 0 ? `${baseline.name}+wait-all` : baseline.name,
-      cfg: applyFailureKnowledge(baseline.cfg, knowledge),
+      cfg: applyFailureKnowledge(baseline.cfg, attemptKnowledge),
       workWaitStrategy: attempt > 0 ? "wait-all" as WorkWaitStrategy : baseline.workWaitStrategy,
     };
     let forcedPicks: readonly number[] | undefined;
@@ -1415,7 +1423,7 @@ export function estimateNodeDifficulty(
         : (attempt === 0 ? 0 : Math.min(0.35, 0.08 + attempt * 0.025)),
       strategy.workWaitStrategy,
       forcedPicks,
-      knowledge,
+      attemptKnowledge,
       adaptive ? presets.map((preset) => ({
         ...preset,
         cfg: applyFailureKnowledge(preset.cfg, knowledge),
@@ -1423,9 +1431,11 @@ export function estimateNodeDifficulty(
       })) : undefined,
       knowledge.adaptivePickInterval,
     );
+    attemptedStrategyNames.push(strategy.name);
     result.attemptCount = attempt + 1;
     result.strategyName = strategy.name;
-    result.learnedFromFailures = knowledge.failureCount;
+    result.attemptedStrategyNames = [...attemptedStrategyNames];
+    result.learnedFromFailures = attemptKnowledge.failureCount;
     result.failureKnowledge = { ...knowledge };
     if (result.solvable) return result;
     if (betterFailure(result, best)) {
@@ -1438,6 +1448,7 @@ export function estimateNodeDifficulty(
   const result = best!;
   result.attemptCount = retryCount + 1;
   result.strategyName = bestStrategy;
+  result.attemptedStrategyNames = [...attemptedStrategyNames];
   result.failureKnowledge = { ...knowledge };
   result.reason = `${result.reason ?? "The solver could not finish."} Tried ${retryCount + 1} scoring strategies; best run used ${bestStrategy}.`;
   return result;

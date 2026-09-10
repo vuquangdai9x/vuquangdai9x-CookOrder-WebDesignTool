@@ -44,9 +44,10 @@ Two neighboring queue items can be grouped so they behave as more than independe
 - Each map defines its **cooking tools** (`cooking-tools.json`). A tool has an integer id, name, **number of slots**, a **cooking time**, and a list of **recipes** mapping one raw ingredient to what comes out and **how many pieces** (e.g. the Cutting Board turns 1 tomato into 2 tomato slices).
 - Picking an ingredient sends it to the tool that has a recipe for it. **An ingredient with no recipe in any tool needs no processing** and goes straight to the grid (Map 1: Ice, Chili Bowl, Cheese Sauce).
 - A recipe may be a **chain**: `chainTools` lists further tool ids the ingredient hops through, in order, after the first one, before its final output is produced (e.g. Map 1's Potato: Cutting Board, then Fryer, then 2 pieces). Each hop still takes that tool's own `cookingTime`; if the next tool in the chain has no free slot, the item just waits at its current tool and retries every tick until one opens up — it never spills onto the grid mid-chain.
-- A tool processes as many ingredients at once as it has slots. **When every slot is busy**, behaviour follows a per-level toggle:
-  - **Block the pick** (default) — the queue tile cannot be picked until a slot frees.
-  - **Park raw on the grid** — the raw ingredient goes to the grid and waits; the moment a slot opens, parked raws are checked **first** and moved into the tool ahead of any new pick.
+- A tool processes as many ingredients at once as it has slots. **When every slot is busy**, Play mode follows its toolbar preference:
+  - **Park raw on the grid** (default) — the raw ingredient goes to the grid and waits; the moment a slot opens, parked raws are checked **first** and moved into the tool ahead of any new pick.
+  - **Block the pick** — the queue tile cannot be picked until a slot frees.
+  The selected preference remains active when switching maps or levels.
 - **A tool with no ingredient in the current level's queues is greyed out** in Play mode's tool bar (not clickable-relevant, purely informational) — see [ToolDesign.md](ToolDesign.md).
 - **Speed** is a single option group: **×1 / ×2 / ×3 / Skip**. Skip resolves everything instantly with no animation.
 

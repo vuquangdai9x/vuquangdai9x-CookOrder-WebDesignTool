@@ -493,7 +493,7 @@ Repeat (guard: 100 iterations) until neither `servedCount` nor `flights.length` 
 2. `fillSlots()` — seat pending customers while below both the authored `serveableSlots` cap and
    the hard maximum of 2 active customers. Each card consumes 0.5 width for its avatar plus one
    width per `Full` dish and one width per pair (or leftover single) of `Half` dishes. Stop before
-   the next card would take the 5.5-unit counter over capacity. Re-run this calculation at level
+   the next card would take the 6-unit order zone over capacity. Re-run this calculation at level
    initialization and whenever a customer leaves. This capacity is abstract and does not resize
    Play-mode cards.
 3. `autoServe()` — launch every legal grid/backpack → customer match.
@@ -861,7 +861,7 @@ From the reference play view (`ui/nodeplay/index.ts`) — match these or levels 
   queue item in this level can ever reach is greyed out — informational only.
 * **Grid** shows cooked items (with a remaining-uses badge when `usesLeft > 1`), parked raws, dirty
   stacks with their count, locked cells with their progress label, and the backpack.
-* **Customers**: up to 2 active cards that fit the 5.5-unit abstract counter, each dish drawn as its slots with per-slot filled
+* **Customers**: up to 2 active cards that fit the 6-unit abstract order zone, each dish drawn as its slots with per-slot filled
   state (filled chips first, then still-wanted chips — slot structure is a design concern, the
   player only reads "what's left"). Patience shown only when finite.
 * **Customer draw order**: gameplay reads right-to-left — customer #1 (the active customer nearest

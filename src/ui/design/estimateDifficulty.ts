@@ -99,6 +99,8 @@ export interface EstimateResult {
   attemptCount?: number;
   /** Scoring strategy that produced this result. */
   strategyName?: string;
+  /** Every attempted scoring/timing mode, in execution order. */
+  attemptedStrategyNames?: string[];
   /** Simple profiles selected during an adaptive attempt, in switch order. */
   adaptiveStrategyHistory?: EstimatePickingStrategyName[];
   /** Number of earlier failed attempts whose aggregate lessons tuned this run. */

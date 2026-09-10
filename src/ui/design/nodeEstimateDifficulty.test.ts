@@ -58,7 +58,10 @@ describe("estimateNodeDifficulty", () => {
     expect(results.some((result) => (result.attemptCount ?? 1) > 1)).toBe(true);
     for (const result of results) {
       if (result.solvable) {
-        expect(result.learnedFromFailures).toBe((result.attemptCount ?? 1) - 1);
+        const expectedLearned = result.strategyName === "authored+wait-all"
+          ? 0
+          : (result.attemptCount ?? 1) - 1;
+        expect(result.learnedFromFailures).toBe(expectedLearned);
         expect(result.failureKnowledge?.failureCount).toBe((result.attemptCount ?? 1) - 1);
       } else {
         expect(result.failureKnowledge?.failureCount).toBe(result.attemptCount);
@@ -81,10 +84,10 @@ describe("estimateNodeDifficulty", () => {
     expect(result.servedCount).toBeLessThan(result.totalCustomers);
   });
 
-  it("updates timing-sensitive Map 1 estimates for the new admission mechanic", () => {
+  it("uses authored wait-all as the first fallback for timing-sensitive Map 1 Level 15", () => {
     const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
     const levels = importLevelsCsv(burgerLevelsCsv);
-    const expected = new Map([[10, true], [15, false], [24, true], [25, false]]);
+    const expected = new Map([[10, true], [15, true], [24, true], [25, false]]);
     for (const id of [10, 15, 24, 25]) {
       const level = toNodeLevelConfig(levels.find((value) => value.id === id)!);
       const result = estimateNodeDifficulty(burgerIx, level);
@@ -92,6 +95,12 @@ describe("estimateNodeDifficulty", () => {
       if (result.solvable) expect(result.servedCount).toBe(result.totalCustomers);
       else expect(result.loseReason).toBe("grid-overflow");
       expect(result.replaySteps.length).toBeGreaterThan(0);
+      if (id === 15) {
+        expect(result.attemptedStrategyNames?.slice(0, 2)).toEqual([
+          "authored",
+          "authored+wait-all",
+        ]);
+      }
     }
   });
 
@@ -351,6 +360,29 @@ describe("estimateNodeDifficulty", () => {
     const halfScore = halfResult.replaySteps[0].laneScores[0]!;
     expect(fullScore).toBeGreaterThan(0); // second customer is a composite-only preview
     expect(halfScore).toBeGreaterThan(fullScore); // second customer fits and contributes full demand
+  });
+
+  it("treats demand from a customer at the exact six-unit boundary as active", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const baseLevel = toNodeLevelConfig(importLevelsCsv(burgerLevelsCsv)[0]);
+    const scoreForFirstCustomerBurgerCount = (burgerCount: number): number => {
+      const level = structuredClone(baseLevel);
+      level.queues = parseQueues("7"); // empty cup, useful only to the second customer's soda
+      level.queueGroups = [];
+      const burgers = Array.from({ length: burgerCount }, () => "{c0:17}").join(",");
+      level.customers = parseNodeCustomers(`0;0;0;${burgers}|0;0;0;{c1:24}`);
+      const result = estimateNodeDifficulty(burgerIx, level, {
+        maxIterations: 1,
+        maxRetries: 0,
+        rng: () => 0,
+      });
+      return result.replaySteps[0].laneScores[0]!;
+    };
+
+    // Four burgers occupy 4.5 units and the soda customer occupies 1.5: exactly 6.
+    const activeAtSix = scoreForFirstCustomerBurgerCount(4);
+    const previewAboveSix = scoreForFirstCustomerBurgerCount(5);
+    expect(activeAtSix).toBeGreaterThan(previewAboveSix);
   });
 
   it("treats a hidden row as revealed once the Hidden slot toggle is off", () => {
