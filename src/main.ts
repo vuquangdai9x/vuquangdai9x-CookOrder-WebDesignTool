@@ -20,6 +20,16 @@ import { setIconMap } from "./ui/icon.ts";
 import { preloadMapWithOverlay } from "./ui/preloadOverlay.ts";
 import { applyTheme, loadTheme, otherTheme, saveTheme, themeToggleLabel } from "./ui/theme.ts";
 import type { Theme } from "./ui/theme.ts";
+import {
+  applyLanguage,
+  installLanguageObserver,
+  languageToggleLabel,
+  languageToggleTitle,
+  loadLanguage,
+  otherLanguage,
+  saveLanguage,
+} from "./ui/i18n.ts";
+import type { Language } from "./ui/i18n.ts";
 
 type Mode = "mapproc" | "lpath" | "ndesign" | "nplay" | "nremote";
 
@@ -76,6 +86,9 @@ let sheetIdInput = "";
  */
 let theme: Theme = loadTheme();
 applyTheme(theme);
+let language: Language = loadLanguage();
+applyLanguage(language);
+installLanguageObserver();
 
 function saveNodeDraft(): void {
   saveNodeProject(node);
@@ -136,6 +149,16 @@ async function render(): Promise<void> {
       button("♻ Reset node draft", () => resetNodeDraft(), {
         class: "full-btn",
         title: "Discard every Map Process draft and reload the bundled graphs",
+      }),
+      button(languageToggleLabel(language), () => {
+        language = otherLanguage(language);
+        saveLanguage(language);
+        applyLanguage(language);
+        void render();
+      }, {
+        class: "small-btn language-toggle",
+        title: languageToggleTitle(language),
+        "aria-label": languageToggleTitle(language),
       }),
       // Toggling only touches <html>'s data-theme, so there is nothing to
       // re-render — the whole page restyles from the palette.

@@ -3169,6 +3169,11 @@ td input {
   box-shadow: 0 0 0 1px var(--bad);
 }
 
+.remote-box-mismatch {
+  border-color: var(--warn);
+  box-shadow: 0 0 0 1px var(--warn);
+}
+
 .remote-diff-changed {
   background: color-mix(in srgb, var(--bad) 35%, transparent);
   color: var(--text);
@@ -5513,6 +5518,12 @@ td input {
 
 .theme-toggle {
   white-space: nowrap;
+}
+
+.language-toggle {
+  min-width: 4.4rem;
+  white-space: nowrap;
+  font-weight: 700;
 }
 
 /* ---------- modal sheet ---------- */

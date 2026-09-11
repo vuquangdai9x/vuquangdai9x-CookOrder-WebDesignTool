@@ -47,7 +47,7 @@ import {
   type GraphLookupMap,
 } from "../../data/graphLookupData.ts";
 import type { LevelData, MapData } from "../../data/mapLoader.ts";
-import { remoteLevelValue, remoteLevelPayload } from "../../data/levelCompression.ts";
+import { decompressLevelString, remoteLevelValue, remoteLevelPayload } from "../../data/levelCompression.ts";
 import { applyRemoteField, applyRemoteFields } from "../../data/remoteLevelFields.ts";
 import { requestAccessTokenInteractive } from "../../data/googleAuth.ts";
 import { batchUpdateCells } from "../../data/sheetWrite.ts";
@@ -120,6 +120,30 @@ const scopedStates = new Map<string, RemoteViewState>();
 
 type RowStatus = "idle" | "loading" | "error";
 type FieldKey = (typeof REMOTE_LEVEL_FIELDS)[number]["key"];
+
+/** Each compressed sheet column's readable counterpart, for the sheet-side mismatch notice below. */
+const COMPRESSED_RAW_FIELD: Partial<Record<FieldKey, FieldKey>> = {
+  customerCompressed: "customerString",
+  queuesCompressed: "queueString",
+};
+
+/**
+ * True when a sheet's own compressed cell doesn't decode back to its own
+ * readable cell. Display-only: this never touches sheet data (see
+ * applyRemoteFields, which already refuses to apply a mismatched pair) —
+ * the tool side can't go stale the same way since remoteLevelValue always
+ * regenerates it from the current customer/queue strings on read.
+ */
+function sheetCompressedMismatch(row: LevelSheetRow, rawKey: FieldKey, compressedKey: FieldKey): boolean {
+  const raw = row.fields[rawKey];
+  const compressed = row.fields[compressedKey];
+  if (!raw || !compressed) return false;
+  try {
+    return decompressLevelString(compressed) !== raw;
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Module-level so it survives RemoteDataView being recreated on every
@@ -670,6 +694,10 @@ export class RemoteDataView {
       REMOTE_LEVEL_FIELDS.forEach((f, i) => {
         const sf = sheetFields[i];
         sf.box.classList.toggle("remote-box-empty", row === null);
+        const rawKey = COMPRESSED_RAW_FIELD[f.key];
+        const mismatched = row && rawKey ? sheetCompressedMismatch(row, rawKey, f.key) : false;
+        sf.box.classList.toggle("remote-box-mismatch", mismatched);
+        sf.box.title = mismatched ? `${f.label} doesn't decode to match the sheet's readable field — sheet left unchanged.` : "";
         sf.box.textContent = row ? row.fields[f.key] || "(empty)" : "(not loaded)";
         sf.applyBtn.disabled = row === null || !this.canApplySheet(entry);
 

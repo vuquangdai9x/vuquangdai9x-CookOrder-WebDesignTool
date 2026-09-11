@@ -1,5 +1,7 @@
 // Small DOM helpers shared by the Design and Play views.
 
+import { translateText } from "./i18n.ts";
+
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   attrs: Record<string, string> = {},
@@ -8,11 +10,11 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
-    else if (k === "text") node.textContent = v;
-    else node.setAttribute(k, v);
+    else if (k === "text") node.textContent = translateText(v);
+    else node.setAttribute(k, ["title", "placeholder", "aria-label"].includes(k) ? translateText(v) : v);
   }
   for (const child of children) {
-    node.append(typeof child === "string" ? document.createTextNode(child) : child);
+    node.append(typeof child === "string" ? document.createTextNode(translateText(child)) : child);
   }
   return node;
 }
