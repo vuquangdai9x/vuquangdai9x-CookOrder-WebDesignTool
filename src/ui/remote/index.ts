@@ -127,6 +127,12 @@ const COMPRESSED_RAW_FIELD: Partial<Record<FieldKey, FieldKey>> = {
   queuesCompressed: "queueString",
 };
 
+/** Reverse of the above — a per-field "Apply Tool" on customers/queues carries its compressed column along, so the sheet's pair never drifts apart. */
+const RAW_COMPRESSED_FIELD: Partial<Record<FieldKey, FieldKey>> = {
+  customerString: "customerCompressed",
+  queueString: "queuesCompressed",
+};
+
 /**
  * True when a sheet's own compressed cell doesn't decode back to its own
  * readable cell. Display-only: this never touches sheet data (see
@@ -681,8 +687,12 @@ export class RemoteDataView {
       title: "Write this level's customers~grid~queue strings to Firebase Remote Config",
     }) as HTMLButtonElement;
 
-    const sheetFields = REMOTE_LEVEL_FIELDS.map((f) => this.fieldEl(f.label, "sheet", () => this.applyFieldSheetToTool(entry, f.key)));
-    const toolFields = REMOTE_LEVEL_FIELDS.map((f) => this.fieldEl(f.label, "tool", () => void this.applyFieldToolToSheet(entry, f.key)));
+    const sheetFields = REMOTE_LEVEL_FIELDS.map((f) =>
+      this.fieldEl(f.label, "sheet", () => this.applyFieldSheetToTool(entry, f.key), !(f.key in COMPRESSED_RAW_FIELD)),
+    );
+    const toolFields = REMOTE_LEVEL_FIELDS.map((f) =>
+      this.fieldEl(f.label, "tool", () => void this.applyFieldToolToSheet(entry, f.key), !(f.key in COMPRESSED_RAW_FIELD)),
+    );
 
     const refresh = () => {
       const row = this.currentRows()?.get(entry.key) ?? null;
@@ -794,11 +804,18 @@ export class RemoteDataView {
     return row;
   }
 
-  /** One field row (label + read-only box + hover-revealed Apply button) for either column. */
+  /**
+   * One field row (label + read-only box + hover-revealed Apply button) for
+   * either column. Compressed columns get no Apply button of their own —
+   * they're display-only and only ever move alongside their readable
+   * counterpart (see RAW_COMPRESSED_FIELD / applyFieldToolToSheet and the
+   * refreshLevelCompression call inside applyRemoteField).
+   */
   private fieldEl(
     label: string,
     side: "sheet" | "tool",
     onApply: () => void,
+    allowApply: boolean,
   ): { element: HTMLElement; box: HTMLElement; applyBtn: HTMLButtonElement } {
     const box = el("div", { class: "remote-box" }, []);
     const applyBtn = button("Apply", onApply, {
@@ -807,7 +824,7 @@ export class RemoteDataView {
     }) as HTMLButtonElement;
     const element = el("div", { class: "remote-field" }, [
       el("div", { class: "remote-field-label" }, [label]),
-      el("div", { class: "remote-field-content" }, [box, applyBtn]),
+      el("div", { class: "remote-field-content" }, allowApply ? [box, applyBtn] : [box]),
     ]);
     return { element, box, applyBtn };
   }
@@ -1053,7 +1070,11 @@ export class RemoteDataView {
     this.recordLevelHistory(`apply ${fieldKey} to ${entry.key}`, before);
   }
 
-  /** Pushes one tool field onto the sheet — a single-cell batched write. */
+  /**
+   * Pushes one tool field onto the sheet — a single batched write. Customers
+   * and queues carry their compressed column along (see RAW_COMPRESSED_FIELD)
+   * so the sheet's readable/compressed pair never drifts apart.
+   */
   private async applyFieldToolToSheet(entry: LevelEntry, fieldKey: FieldKey): Promise<void> {
     const sheetId = this.getSheetId();
     if (!sheetId.trim()) {
@@ -1073,16 +1094,18 @@ export class RemoteDataView {
       this.setRowStatusByKey.get(entry.key)?.("error", "no sheet row for this level yet");
       return;
     }
-    const update = { row: row.rowNumber, col: this.state.columnOverrides[fieldKey], value };
-    const before = { ...update, value: row.fields[fieldKey] ?? "" };
-    const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, [update]));
+    const compressedKey = RAW_COMPRESSED_FIELD[fieldKey];
+    const keys: FieldKey[] = compressedKey ? [fieldKey, compressedKey] : [fieldKey];
+    const updates = keys.map((key) => ({ row: row.rowNumber, col: this.state.columnOverrides[key], value: this.toolField(entry, key) ?? "" }));
+    const before = keys.map((key) => ({ row: row.rowNumber, col: this.state.columnOverrides[key], value: row.fields[key] ?? "" }));
+    const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, updates));
     if (ok === null) {
       this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
       return;
     }
-    row.fields[fieldKey] = value;
+    for (const key of keys) row.fields[key] = this.toolField(entry, key) ?? "";
     this.setRowStatusByKey.get(entry.key)?.("idle");
-    this.recordSheetHistory(`apply ${fieldKey} from ${entry.key} to sheet`, sheetId, this.state.tabName, rows, [before], [update]);
+    this.recordSheetHistory(`apply ${fieldKey} from ${entry.key} to sheet`, sheetId, this.state.tabName, rows, before, updates);
   }
 
   private graphMatrixUpdates(rows: readonly (readonly string[])[], rowCount: number): CellUpdate[] {

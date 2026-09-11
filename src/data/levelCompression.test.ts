@@ -96,10 +96,17 @@ describe("compressed sheet fields", () => {
     expect(entry.queuesCompressed).toBe(compressLevelString(queues));
   });
 
-  it("rejects conflicts and invalid compressed fields without modifying a level", () => {
+  it("trusts the readable field and regenerates a mismatched compressed sheet cell instead of throwing", () => {
+    const entry = applyRemoteFields(level(), {
+      customerString: customers, customerCompressed: compressLevelString("0;0;0;{c1:24}"),
+    }, 10);
+    expect(entry.customerString).toBe(customers);
+    expect(entry.customerCompressed).toBe(compressLevelString(customers));
+  });
+
+  it("still rejects an invalid (undecodable) compressed field on a direct single-field apply", () => {
     const entry = level();
     const before = structuredClone(entry);
-    expect(() => applyRemoteFields(entry, { customerString: customers, customerCompressed: compressLevelString("0;0;0;{c1:24}") }, 10)).toThrow(/differs/);
     expect(() => applyRemoteField(entry, "queuesCompressed", "z1_!", 10)).toThrow();
     expect(entry).toEqual(before);
   });

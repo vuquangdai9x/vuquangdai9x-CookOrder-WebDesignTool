@@ -39,9 +39,12 @@ export function applyRemoteFields(level: LevelData, fields: LevelSheetRow["field
       if (!packed) continue;
       const rawKey = field.key === "customerCompressed" ? "customerString" : "queueString";
       const raw = fields[rawKey] ?? "";
-      if (raw && decompressLevelString(packed) !== raw) {
-        throw new Error(`${field.label} differs from its readable sheet field. Apply the desired field individually to resolve it.`);
-      }
+      // The readable field always wins: it's applied via its own entry above
+      // (REMOTE_LEVEL_FIELDS orders it before its compressed pair), and that
+      // application's refreshLevelCompression call regenerates this field to
+      // match — so a stale/mismatched compressed cell just gets skipped and
+      // silently replaced, rather than blocking the whole apply.
+      if (raw && decompressLevelString(packed) !== raw) continue;
     }
     applyRemoteField(next, field.key, fields[field.key] ?? "", gridCells);
   }
