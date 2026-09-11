@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { diffChars, levelSyncStatus, remoteLevelIds } from "./index.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
+import { compressLevelString } from "../../data/levelCompression.ts";
 
 /** Reconstructs newStr from the segments, and reconstructs which chars were "changed". */
 function apply(segments: { text: string; changed: boolean }[]) {
@@ -83,6 +84,8 @@ describe("levelSyncStatus", () => {
       customerString: "customer",
       gridString: "grid",
       queueString: "queue",
+      customerCompressed: compressLevelString("customer"),
+      queuesCompressed: compressLevelString("queue"),
     },
   };
 

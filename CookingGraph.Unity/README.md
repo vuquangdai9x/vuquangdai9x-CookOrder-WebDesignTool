@@ -65,7 +65,17 @@ the stable tie-breaker; the first is returned and the callback receives a warnin
 the warning when no callback is supplied). Invalid ingredient indices throw; no exact match
 returns `null`/`false`.
 
-The grid string carries no dimensions of its own, so only the graph overload can shape it: it checks the cell count against `gridWidth * gridHeight` — a grid of the wrong length silently shifts every later cell, so it is rejected rather than padded — fills in `width`/`height`, and verifies that any Ingredient-slot cell resolves through the ingredient id table. Read that one back with `GridLayoutTranslator.TryGetIngredientSlot`; it is the only cell effect whose parameters name a node, since OrderLock counts customers and ColorLock names a key colour. `GridLayoutTranslator.Blank(graph)` produces an all-blank grid string for a new level.
+The grid string carries no dimensions of its own, so only the graph overload can shape it. An empty string expands to `gridWidth * gridHeight` blank cells. Nonempty grids require that exact cell count. The overload fills in `width`/`height` and verifies that any Ingredient-slot cell resolves through the ingredient id table. Read that one back with `GridLayoutTranslator.TryGetIngredientSlot`. `GridLayoutTranslator.Blank(graph)` produces an explicit map-sized blank grid; `Serialize` emits an empty string when all cells are blank.
+
+Customer and ingredient queue parsers also accept compressed web exports: `z1_`
+followed by unpadded Base64url of raw DEFLATE UTF-8 bytes. Existing readable
+strings remain supported, and serializers still return readable customer and
+queue strings. `LevelStringCompression.Decode` exposes decoding separately.
+Firebase level values keep the `customers~grid~queues` envelope; preserve empty
+segments when splitting, and use the graph-aware grid parser. See
+[the compression format](../docs/LevelCompression.md) for sheet V/W mappings,
+compatibility, and the export workflow. Update the package in clients before
+publishing compressed Remote Config values.
 
 ## Generation
 

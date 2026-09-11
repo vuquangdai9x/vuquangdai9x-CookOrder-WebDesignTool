@@ -23,6 +23,7 @@ namespace CookingGraph
         /// </param>
         public static CustomerOrderData Parse(string source, IReadOnlyList<string> customerIds = null)
         {
+            source = LevelStringCompression.Decode(source);
             if (source == null)
                 throw new CookingGraphFormatException("Customer string is null", 0, string.Empty);
             var result = new CustomerOrderData();

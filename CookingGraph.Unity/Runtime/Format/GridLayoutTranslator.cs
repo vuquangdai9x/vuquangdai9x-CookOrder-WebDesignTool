@@ -14,7 +14,7 @@ namespace CookingGraph
     /// they come from the map header, which is why the graph overload is the one that can check the
     /// cell count and fill in width/height.
     ///
-    /// Mirrors <c>parseGrid</c> / <c>serializeGrid</c> in the web tool's <c>core/parser.ts</c>.
+    /// Uses the web grid grammar, with empty all-blank exports expanded by the graph overload.
     /// See GAMEPLAY_RULES.md §4.2.
     /// </summary>
     public static class GridLayoutTranslator
@@ -62,6 +62,12 @@ namespace CookingGraph
                 throw new CookingGraphFormatException($"Map '{graph.map?.id}' has no usable grid size ({width}x{height})", 0, source);
 
             var expected = width * height;
+            // Empty exported grids mean a default board of the map's full dimensions.
+            if (source.Length == 0)
+            {
+                data.cells.Clear();
+                for (var i = 0; i < expected; i++) data.cells.Add(new GridCellData());
+            }
             if (data.cells.Count != expected)
                 throw new CookingGraphFormatException(
                     $"Grid has {data.cells.Count} cell(s) but map '{graph.map.id}' is {width}x{height} ({expected})", 0, source);
@@ -110,6 +116,7 @@ namespace CookingGraph
         public static string Serialize(GridLayoutData data)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
+            if (data.cells.All(cell => cell == null || cell.IsBlank)) return string.Empty;
             return string.Join(",", data.cells.Select(cell =>
                 IngredientQueueTranslator.SerializeEffects(cell == null ? null : cell.effects)));
         }

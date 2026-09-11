@@ -9,6 +9,7 @@ namespace CookingGraph
     {
         public static IngredientQueueData Parse(string source)
         {
+            source = LevelStringCompression.Decode(source);
             if (source == null)
                 throw new CookingGraphFormatException("Queue string is null", 0, string.Empty);
 
@@ -23,6 +24,11 @@ namespace CookingGraph
                 foreach (var columnToken in queueSection.Split(new[] { '%' }, StringSplitOptions.None))
                 {
                     var column = new IngredientQueueColumnData();
+                    if (columnToken.Length == 0)
+                    {
+                        result.columns.Add(column);
+                        continue;
+                    }
                     foreach (var itemToken in columnToken.Split(new[] { ',' }, StringSplitOptions.None))
                     {
                         var parsed = ParseEffectToken(itemToken, source);

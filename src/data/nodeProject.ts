@@ -23,6 +23,7 @@
 import type { LevelData } from "./mapLoader.ts";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 import { importLevelsCsv } from "./sheetSource.ts";
+import { refreshLevelCompression } from "./levelCompression.ts";
 
 /**
  * Draft storage is PER MAP.
@@ -199,7 +200,7 @@ export function freshNodeProject(docId = defaultNodeMapId()): NodeProjectState {
     try {
       const levels = importLevelsCsv(bundled.levelsCsv);
       if (levels.length > 0) {
-        return { docId, doc, levels, origin: `${bundled.name} · committed level dataset` };
+        return { docId, doc, levels: withAtLeastOneLevel(doc, levels), origin: `${bundled.name} · committed level dataset` };
       }
     } catch (err) {
       console.warn("Committed node levels could not be read — falling back to a live migration", err);
@@ -273,7 +274,12 @@ export function blankLevel(doc: NodeGraphMap, id = 1): LevelData {
 
 /** Levels as given, or a single empty one — never an empty list. See `blankLevel`. */
 function withAtLeastOneLevel(doc: NodeGraphMap, levels: LevelData[]): LevelData[] {
-  return levels.length > 0 ? levels : [blankLevel(doc)];
+  const result = levels.length > 0 ? levels : [blankLevel(doc)];
+  for (const level of result) {
+    if (level.gridString === "") level.gridString = blankLevel(doc).gridString;
+    refreshLevelCompression(level);
+  }
+  return result;
 }
 
 function blankNodeProject(id: string, name: string): Omit<NodeProjectState, "docId"> {
@@ -417,13 +423,14 @@ export function loadNodeProject(docId = activeNodeMapId()): NodeProjectState {
   return { docId, doc: fresh.doc, levels: fresh.levels, origin: fresh.origin };
 }
 
-export function saveNodeProject(state: NodeProjectState): void {
+export function saveNodeProject(state: NodeProjectState, activate = true): void {
   try {
+    state.levels.forEach(refreshLevelCompression);
     localStorage.setItem(
       draftKey(state.docId),
       JSON.stringify({ version: NODE_DRAFT_VERSION, ...state } satisfies NodeDraft),
     );
-    localStorage.setItem(NODE_ACTIVE_KEY, state.docId);
+    if (activate) localStorage.setItem(NODE_ACTIVE_KEY, state.docId);
   } catch (err) {
     console.warn("Could not persist the node draft", err);
   }

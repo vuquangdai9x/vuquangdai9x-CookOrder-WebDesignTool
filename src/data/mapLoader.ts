@@ -19,6 +19,9 @@ export interface LevelData {
   queueString: string;
   gridString: string;
   customerString: string;
+  /** Derived export strings, persisted alongside readable Design strings. */
+  customerCompressed?: string;
+  queuesCompressed?: string;
   /** Optional per-level override of what happens when a tool is full. */
   outOfSlotPolicy?: "block-pick" | "park-on-grid";
   /** Starting charge count for each of the 4 boosters — see LevelConfig.boosterCharges. */

@@ -30,7 +30,6 @@ import {
   fetchLevelProgressRows,
   letterToColumn,
   REMOTE_LEVEL_FIELDS,
-  REMOTE_NUMERIC_FIELDS,
   REMOTE_SHEET_COLUMNS,
   REMOTE_SHEET_DEFAULT_TAB,
   SheetAuthRequiredError,
@@ -48,6 +47,8 @@ import {
   type GraphLookupMap,
 } from "../../data/graphLookupData.ts";
 import type { LevelData, MapData } from "../../data/mapLoader.ts";
+import { remoteLevelValue, remoteLevelPayload } from "../../data/levelCompression.ts";
+import { applyRemoteField, applyRemoteFields } from "../../data/remoteLevelFields.ts";
 import { requestAccessTokenInteractive } from "../../data/googleAuth.ts";
 import { batchUpdateCells } from "../../data/sheetWrite.ts";
 import type { CellUpdate } from "../../data/sheetWrite.ts";
@@ -199,7 +200,7 @@ export function levelSyncStatus(
   if (!sheetLoaded) return "Local";
   if (!row || !level) return "Edited";
   return REMOTE_LEVEL_FIELDS.every(
-    (field) => (row.fields[field.key] ?? "") === String((level as unknown as Record<string, unknown>)[field.key] ?? ""),
+    (field) => (row.fields[field.key] ?? "") === remoteLevelValue(level, field.key),
   )
     ? "Synced"
     : "Edited";
@@ -358,8 +359,7 @@ export class RemoteDataView {
 
   private toolField(entry: LevelEntry, key: FieldKey): string | null {
     if (!this.isLive(entry)) return null;
-    const value = (this.level(entry) as unknown as Record<string, unknown>)[key];
-    return value === undefined || value === null ? "" : String(value);
+    return remoteLevelValue(this.level(entry)!, key);
   }
 
   /**
@@ -372,14 +372,8 @@ export class RemoteDataView {
   private setToolField(entry: LevelEntry, key: FieldKey, value: string): void {
     const level = this.level(entry);
     if (!level) return;
-    const target = level as unknown as Record<string, unknown>;
-    if (REMOTE_NUMERIC_FIELDS.has(key)) {
-      const trimmed = value.trim();
-      if (trimmed === "" || !Number.isFinite(Number(trimmed))) delete target[key];
-      else target[key] = Math.trunc(Number(trimmed));
-      return;
-    }
-    target[key] = value;
+    const map = this.mapFor(entry)!;
+    applyRemoteField(level, key, value, map.gridWidth * map.gridHeight);
   }
 
   private cacheKeyNow(): string {
@@ -925,7 +919,14 @@ export class RemoteDataView {
     }
     const before = this.captureLevels();
     if (!this.ensureLevel(entry)) return;
-    for (const f of REMOTE_LEVEL_FIELDS) this.setToolField(entry, f.key, row.fields[f.key] ?? "");
+    try {
+      const map = this.mapFor(entry)!;
+      applyRemoteFields(this.level(entry)!, row.fields, map.gridWidth * map.gridHeight);
+    } catch (err) {
+      this.restoreLevels(before);
+      this.showRequestError("Could not apply level", err);
+      return;
+    }
     this.notifyLevelChanged(entry);
     this.refreshRowByKey.get(entry.key)?.();
     this.recordLevelHistory(`apply sheet to ${entry.key}`, before);
@@ -971,7 +972,7 @@ export class RemoteDataView {
   }
 
   /**
-   * Writes this level's tool data — customers, grid, and queue strings,
+   * Writes compressed customers/queues and the sparse blank-grid representation,
    * `~`-joined — to Firebase Remote Config under this level's own key, in
    * one GET-modify-PUT template round trip (see remoteConfigWrite.ts).
    * Reads the live draft, same source "← Apply Tool" pushes to the sheet.
@@ -983,10 +984,7 @@ export class RemoteDataView {
       return;
     }
     if (!this.isLive(entry)) return;
-    const customers = this.toolField(entry, "customerString") ?? "";
-    const grid = this.toolField(entry, "gridString") ?? "";
-    const queue = this.toolField(entry, "queueString") ?? "";
-    const value = `${customers}~${grid}~${queue}`;
+    const value = remoteLevelPayload(this.level(entry)!);
     this.setRowStatusByKey.get(entry.key)?.("loading");
     try {
       const previous = await pushRemoteConfigParameter(projectId, entry.key, value);
@@ -1015,7 +1013,13 @@ export class RemoteDataView {
     if (!row) return;
     const before = this.captureLevels();
     if (!this.ensureLevel(entry)) return;
-    this.setToolField(entry, fieldKey, row.fields[fieldKey] ?? "");
+    try {
+      this.setToolField(entry, fieldKey, row.fields[fieldKey] ?? "");
+    } catch (err) {
+      this.restoreLevels(before);
+      this.showRequestError("Could not apply field", err);
+      return;
+    }
     this.notifyLevelChanged(entry);
     this.refreshRowByKey.get(entry.key)?.();
     this.recordLevelHistory(`apply ${fieldKey} to ${entry.key}`, before);
@@ -1195,13 +1199,20 @@ export class RemoteDataView {
       const before = this.captureLevels();
       let applied = 0;
       const appliedMapIds = new Set<string>();
-      for (const e of entries) {
-        const row = rows.get(e.key);
-        if (!row) continue;
-        if (!this.ensureLevel(e)) continue;
-        for (const f of REMOTE_LEVEL_FIELDS) this.setToolField(e, f.key, row.fields[f.key] ?? "");
-        applied++;
-        appliedMapIds.add(e.mapId);
+      try {
+        for (const e of entries) {
+          const row = rows.get(e.key);
+          if (!row) continue;
+          if (!this.ensureLevel(e)) continue;
+          const map = this.mapFor(e)!;
+          applyRemoteFields(this.level(e)!, row.fields, map.gridWidth * map.gridHeight);
+          applied++;
+          appliedMapIds.add(e.mapId);
+        }
+      } catch (err) {
+        this.restoreLevels(before);
+        this.showRequestError("Could not apply sheet data", err);
+        return;
       }
       if (applied > 0) {
         for (const mapId of appliedMapIds) {

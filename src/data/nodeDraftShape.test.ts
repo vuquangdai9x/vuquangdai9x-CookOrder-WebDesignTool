@@ -23,6 +23,7 @@ import {
   saveNodeProject,
 } from "./nodeProject.ts";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
+import { decompressLevelString } from "./levelCompression.ts";
 
 /** A minimal in-memory localStorage — vitest runs without jsdom. */
 class MemoryStorage {
@@ -79,6 +80,20 @@ const isPositional = (doc: NodeGraphMap): boolean =>
   Object.values(doc.idTable).every((rows) => rows.every((row) => typeof row === "string"));
 
 describe("a draft from an older build is discarded, not loaded", () => {
+  it("persists refreshed compressed strings while retaining readable Design data", () => {
+    const project = loadNodeProject("burger");
+    project.levels[0].customerString = "0;0;0;{c1:24}";
+    project.levels[0].queueString = "0,1%2,3";
+    store.setItem(NODE_ACTIVE_KEY, "coffee");
+    saveNodeProject(project, false);
+    const saved = JSON.parse(store.getItem(draftKey("burger"))!);
+    expect(saved.levels[0].customerString).toBe("0;0;0;{c1:24}");
+    expect(decompressLevelString(saved.levels[0].customerCompressed)).toBe(saved.levels[0].customerString);
+    expect(decompressLevelString(saved.levels[0].queuesCompressed)).toBe(saved.levels[0].queueString);
+    expect(store.getItem(NODE_ACTIVE_KEY)).toBe("coffee");
+    expect(loadNodeProject("burger").levels[0].customerString).toBe(saved.levels[0].customerString);
+  });
+
   it("drops the wrapper-object idTable that used to crash the page", () => {
     store.setItem(draftKey("burger"), staleDraft());
     const loaded = loadNodeProject("burger");

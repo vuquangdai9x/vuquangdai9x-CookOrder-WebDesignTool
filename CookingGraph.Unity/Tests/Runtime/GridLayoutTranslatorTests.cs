@@ -23,13 +23,13 @@ namespace CookingGraph.Tests
         }
 
         [Test]
-        public void AllBlankGridRoundTrips()
+        public void AllBlankGridSerializesAsEmpty()
         {
             const string source = ",,,,,,,,,";
             var data = GridLayoutTranslator.Parse(source);
             Assert.That(data.cells, Has.Count.EqualTo(10));
             Assert.That(data.cells.TrueForAll(cell => cell.IsBlank), Is.True);
-            Assert.That(GridLayoutTranslator.Serialize(data), Is.EqualTo(source));
+            Assert.That(GridLayoutTranslator.Serialize(data), Is.Empty);
         }
 
         [Test]
@@ -84,6 +84,19 @@ namespace CookingGraph.Tests
             Assert.That(data.CellAt(0, 0).IsBlank, Is.True);
             Assert.That(data.CellAt(5, 0), Is.Null, "off the grid");
 
+            Object.DestroyImmediate(graph);
+        }
+
+        [Test]
+        public void EmptyExportExpandsToDefaultMapGrid()
+        {
+            var graph = Graph(5, 2);
+            var data = GridLayoutTranslator.Parse(string.Empty, graph);
+            Assert.That(data.cells, Has.Count.EqualTo(10));
+            Assert.That(data.cells.TrueForAll(cell => cell.IsBlank), Is.True);
+            Assert.That(data.width, Is.EqualTo(5));
+            Assert.That(data.height, Is.EqualTo(2));
+            Assert.That(GridLayoutTranslator.Serialize(data), Is.Empty);
             Object.DestroyImmediate(graph);
         }
 

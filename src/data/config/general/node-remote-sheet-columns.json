@@ -14,6 +14,8 @@
     "obstacleData": 8,
     "customerString": 15,
     "gridString": 16,
-    "queueString": 17
+    "queueString": 17,
+    "customerCompressed": 21,
+    "queuesCompressed": 22
   }
 }

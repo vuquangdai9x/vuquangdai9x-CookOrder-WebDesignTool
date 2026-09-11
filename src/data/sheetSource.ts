@@ -81,6 +81,8 @@ export interface RemoteSheetColumns {
   customerString: number;
   gridString: number;
   queueString: number;
+  customerCompressed: number;
+  queuesCompressed: number;
   ingredientWeights: number;
   customerDishesSequence: number;
   complexityCurve: number;
@@ -103,6 +105,8 @@ export const REMOTE_LEVEL_FIELDS: { label: string; key: keyof RemoteSheetColumns
   { label: "Customers", key: "customerString" },
   { label: "Grid", key: "gridString" },
   { label: "Queues", key: "queueString" },
+  { label: "Customer-compressed", key: "customerCompressed" },
+  { label: "Queues-compressed", key: "queuesCompressed" },
 ];
 
 /**

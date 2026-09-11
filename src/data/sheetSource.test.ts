@@ -127,6 +127,8 @@ describe("MapLevelProgress row schema", () => {
     row[15] = `customers-${suffix}`;
     row[16] = `grid-${suffix}`;
     row[17] = `queues-${suffix}`;
+    row[21] = `packed-customers-${suffix}`;
+    row[22] = `packed-queues-${suffix}`;
     return row;
   };
 
@@ -152,6 +154,8 @@ describe("MapLevelProgress row schema", () => {
         customerString: "customers-burger",
         gridString: "grid-burger",
         queueString: "queues-burger",
+        customerCompressed: "packed-customers-burger",
+        queuesCompressed: "packed-queues-burger",
       },
     });
   });

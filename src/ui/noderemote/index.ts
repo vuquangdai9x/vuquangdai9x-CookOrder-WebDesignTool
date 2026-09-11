@@ -24,17 +24,20 @@ export class NodeRemoteDataView extends RemoteDataView {
     onOpenInDesign: (levelId: number) => void,
     onOpenMapInDesign: (docId: string, levelId: number) => void,
   ) {
-    // RemoteDataView only consumes name + levels. Keep the public legacy type
+    // RemoteDataView also needs map dimensions to expand an empty exported grid.
+    // Keep the public legacy type
     // at its boundary while using the graph's semantic map id for sheet keys.
     const mapEntries = listNodeMaps();
     const projects = mapEntries.map((entry) =>
       entry.id === project.docId ? project : loadNodeProject(entry.id),
     );
-    const map = { name: project.doc.map.id, levels: project.levels } as MapData;
+    // Record derived exports for existing levels too, without changing the active map.
+    projects.forEach((source) => saveNodeProject(source, false));
+    const map = { ...project.doc.map, name: project.doc.map.id, levels: project.levels } as unknown as MapData;
     const mapSources = projects.map((source) => ({
       id: source.doc.map.id,
       title: mapEntries.find((entry) => entry.id === source.docId)?.name ?? source.doc.map.name,
-      map: { name: source.doc.map.id, levels: source.levels } as MapData,
+      map: { ...source.doc.map, name: source.doc.map.id, levels: source.levels } as unknown as MapData,
     }));
     const sheetMapAliases = Object.fromEntries(
       NODE_DOCS.flatMap((entry) => [
@@ -62,12 +65,12 @@ export class NodeRemoteDataView extends RemoteDataView {
       },
       onMapLevelChanged: (mapId) => {
         const changed = projects.find((source) => source.doc.map.id === mapId);
-        if (changed) saveNodeProject(changed);
+        if (changed) saveNodeProject(changed, false);
       },
       onGraphLookupChanged: (mapIndex) => {
         const docId = NODE_DOCS.find((entry) => entry.index === mapIndex)?.id;
         const changed = projects.find((source) => source.docId === docId);
-        if (changed) saveNodeProject(changed);
+        if (changed) saveNodeProject(changed, false);
       },
       onOpenMapInDesign: (mapId, levelId) => {
         const source = projects.find((candidate) => candidate.doc.map.id === mapId);
