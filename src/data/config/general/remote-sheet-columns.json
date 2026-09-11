@@ -14,7 +14,7 @@
     "customerString": 15,
     "gridString": 16,
     "queueString": 17,
-    "customerCompressed": 21,
-    "queuesCompressed": 22
+    "customerCompressed": 18,
+    "queuesCompressed": 20
   }
 }
