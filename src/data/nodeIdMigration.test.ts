@@ -57,6 +57,12 @@ describe("ID-table level migration", () => {
     expect(undone.levels[0].customerString).toBe(input.customerString);
   });
 
+  it("keeps bag amounts on remapped queue slots", () => {
+    const input = level({ queueString: "0:3#4:5,-1,2:2%1" });
+    const result = migrateLevelsForIdTableReorder([input], before, after);
+    expect(result.levels[0].queueString).toBe("1:3#4:5,-1,0:2%2");
+  });
+
   it("recognizes only pure reorders", () => {
     expect(idTablesAreReorders(before, after)).toBe(true);
     expect(idTablesAreReorders(before, { ...after, ingredient: ["nori", "rice"] })).toBe(false);

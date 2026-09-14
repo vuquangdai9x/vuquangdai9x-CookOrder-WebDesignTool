@@ -267,6 +267,8 @@ namespace CookingGraph.Editor
                     var ingredient = (IngredientNodeAsset)asset;
                     ingredient.pickupable = json.Value<bool?>("pickupable") ?? false;
                     ingredient.usageNum = json.Value<int?>("usageNum") ?? 1;
+                    ingredient.stackMin = Math.Max(1, json.Value<int?>("stackMin") ?? 1);
+                    ingredient.stackMax = Math.Max(ingredient.stackMin, json.Value<int?>("stackMax") ?? 1);
                     ingredient.price = json.Value<int?>("price") ?? 0;
                     ingredient.code = json.Value<string>("code") ?? string.Empty;
                     break;

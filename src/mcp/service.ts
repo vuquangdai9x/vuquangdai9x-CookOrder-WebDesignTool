@@ -22,6 +22,7 @@ import type {
   DraftCustomer,
   DraftDish,
   DraftQueueGroup,
+  DraftQueueSlot,
   MechanicAuthorization,
   MutationResult,
   SessionDraft,
@@ -119,7 +120,12 @@ function toQueueGroups(draft: SessionDraft): QueueGroup[] {
 function toNodeLevel(draft: SessionDraft, resources: AuthoringResources): NodeLevelConfig {
   return {
     ...draft.level,
-    queues: draft.lanes.map((lane) => lane.slots.map((slot): QueueItem => ({ kind: "ingredient", id: slot.ingredientId, effects: clone(slot.effects) }))),
+    queues: draft.lanes.map((lane) => lane.slots.map((slot): QueueItem => ({
+      kind: "ingredient",
+      id: slot.ingredientId,
+      effects: clone(slot.effects),
+      ...((slot.amount ?? 1) > 1 ? { amount: Math.floor(slot.amount!) } : {}),
+    }))),
     queueGroups: toQueueGroups(draft),
     grid: draft.grid.map((cell) => ({ effects: clone(cell.effects) })),
     customers: toNodeCustomers(draft, resources),
@@ -479,7 +485,7 @@ export class LevelAuthoringService {
     });
   }
 
-  async addQueueIngredient(sessionId: string, expectedRevision: number, input: { laneId: string; position: number; ingredient: string; count?: number; provisional?: boolean }): Promise<MutationResult> {
+  async addQueueIngredient(sessionId: string, expectedRevision: number, input: { laneId: string; position: number; ingredient: string; count?: number; amount?: number; provisional?: boolean }): Promise<MutationResult> {
     return this.mutate(sessionId, expectedRevision, "add_queue_ingredient", input, (session, resources) => {
       const lane = this.lane(session, input.laneId); const ids = buildIdIndex(resources.doc.idTable); const ix = buildIndex(resources.doc);
       const dense = ix.ingByName.get(input.ingredient); const name = dense === undefined ? ids.byId.ingredient.get(Number(input.ingredient)) : input.ingredient;
@@ -487,8 +493,10 @@ export class LevelAuthoringService {
       if (name === undefined || dataId === undefined || actualDense === undefined || !ix.pickupable[actualDense]) throw new Error(`"${input.ingredient}" is not a pickupable graph ingredient.`);
       const resolvedName = name;
       const count = Math.max(1, Math.min(100, Math.floor(input.count ?? 1))); const added = [];
+      // `count` = how many SLOTS to add; `amount` = pieces in each (a bag).
+      const amount = Math.max(1, Math.min(100, Math.floor(input.amount ?? 1)));
       for (let offset = 0; offset < count; offset++) {
-        const slot = { id: this.nextId(session, "slot"), ingredientId: dataId, ingredient: resolvedName, effects: [], provisional: Boolean(input.provisional) };
+        const slot: DraftQueueSlot = { id: this.nextId(session, "slot"), ingredientId: dataId, ingredient: resolvedName, effects: [], provisional: Boolean(input.provisional), ...(amount > 1 ? { amount } : {}) };
         lane.slots.splice(Math.max(0, Math.min(input.position + offset, lane.slots.length)), 0, slot); added.push(slot);
       }
       return added;
@@ -502,6 +510,16 @@ export class LevelAuthoringService {
       const dataId = name === undefined ? undefined : ids.byNode.ingredient.get(name); const actualDense = name === undefined ? undefined : ix.ingByName.get(name);
       if (name === undefined || dataId === undefined || actualDense === undefined || !ix.pickupable[actualDense]) throw new Error(`"${ingredient}" is not pickupable.`);
       slot.ingredient = name; slot.ingredientId = dataId; if (provisional !== undefined) slot.provisional = provisional; return [slot];
+    });
+  }
+
+  /** Sets a slot's bag size; 1 makes it a plain slot again. */
+  async setQueueSlotAmount(sessionId: string, expectedRevision: number, slotId: string, amount: number): Promise<MutationResult> {
+    return this.mutate(sessionId, expectedRevision, "set_queue_slot_amount", { slotId, amount }, (session) => {
+      const slot = this.slot(session, slotId);
+      const n = Math.max(1, Math.min(100, Math.floor(amount)));
+      if (n > 1) slot.amount = n; else delete slot.amount;
+      return [slot];
     });
   }
 

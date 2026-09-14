@@ -57,6 +57,19 @@ namespace CookingGraph.Editor.Tests
         }
 
         [Test]
+        public void IngredientStackRangeMustBeOrdered()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            var bun = (JObject)((JArray)document.Vertices["ingredient"]).First();
+            bun["stackMin"] = 3;
+            bun["stackMax"] = 2;
+            Assert.That(GraphValidator.Validate(document).Any(issue => issue.Code == "INV-STACK-RANGE"), Is.True);
+            bun["stackMin"] = 2;
+            bun["stackMax"] = 4;
+            Assert.That(GraphValidator.Validate(document).Any(issue => issue.Code == "INV-STACK-RANGE"), Is.False);
+        }
+
+        [Test]
         public void UnobtainableNodeIsAnErrorOnlyWhenAnOrderableReachesIt()
         {
             var unreachable = GraphJsonDocumentTests.MinimalDocument();

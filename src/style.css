@@ -1154,6 +1154,33 @@ footer {
   top: 2px;
 }
 
+/* A parked bag — pieces left, bottom-right, in the bag colour so it never
+   reads as a multi-use badge. */
+.cell-badge.bag-count {
+  color: #3b2400;
+  background: #ffd66b;
+  font-weight: 700;
+}
+
+/* A tool slot holding a finished output that has no free grid cell (§9.4). */
+.tool-slot.held {
+  outline: 2px dashed #ffd66b;
+  outline-offset: -2px;
+}
+
+.slot-held-badge {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #3b2400;
+  background: #ffd66b;
+  border-radius: 4px;
+  padding: 0 3px;
+  pointer-events: none;
+}
+
 .cell-swatch {
   width: 58%;
   height: 58%;
@@ -1325,6 +1352,47 @@ footer {
   padding: 0 0.25rem;
   line-height: 1.35;
   pointer-events: none;
+}
+
+/* Top-right: how many pieces a bag slot holds (only drawn for 2+). Shares the
+   corner with .tile-hidden in Design, which is nudged left of it. */
+.tile-amount {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #3b2400;
+  background: #ffd66b;
+  border-radius: 999px;
+  padding: 0 0.28rem;
+  line-height: 1.35;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tile-amount.outside-range {
+  background: #ff9f43;
+  box-shadow: 0 0 0 1px #7a3b00;
+}
+
+.queue-amount-row .ctx-field input {
+  width: 4rem;
+  cursor: ew-resize;
+}
+
+.queue-split {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.queue-split input[type="range"] {
+  width: 12rem;
+}
+
+.tile-amount + .tile-hidden,
+.tile-hidden:has(+ .tile-amount) {
+  right: 1.6rem;
 }
 
 .tile-remove {

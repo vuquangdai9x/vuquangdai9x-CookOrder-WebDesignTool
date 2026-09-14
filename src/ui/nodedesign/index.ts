@@ -168,6 +168,11 @@ export class NodeDesignView {
       // it needs the whole level — built from the LIVE drafts, exactly as
       // runEstimate does, not from the last-saved strings.
       deadlockLevel: () => ({ ix: this.projected.ix, level: this.liveLevel() }),
+      stackRange: (id) => {
+        const name = orderIdIndex(this.projected.ix).byId.ingredient.get(id);
+        const dense = name === undefined ? undefined : this.projected.ix.ingByName.get(name);
+        return dense === undefined ? undefined : this.projected.ix.stackRange[dense];
+      },
     };
 
     this.customers = createNodeCustomerSection({

@@ -145,6 +145,22 @@ Purpose: build the ordered sequence of ingredients a player pulls from during a 
     in the top-right corner, which coexists with Freeze's top-left badge and HoldingKey's
     bottom-right one. The `?` mask only happens in Play mode. Note this is unrelated to the
     Combine/Link grouping actions above.
+  - **Bags** — a slot can hold several pieces of its ingredient (queue string `<id>:<amount>`;
+    see `CookingGraph.Unity/GAMEPLAY_RULES.md` §4.1/§10.2 for how a bag plays):
+    - **Amount** — a number box; type a value, or press and drag left/right to scrub it
+      (`ui/scrubInput.ts`). With several tiles selected it applies to every selected ingredient
+      slot. `1` makes the slot plain again. The row also shows the ingredient's graph
+      `stackMin–stackMax` range when the host supplies one.
+    - **Split bag** (2+ only) — a slider from 1 to amount−1 = how many pieces **stay**; the Split
+      button inserts a new plain slot (no effects, not in the original's group) with the remainder
+      right after the tile in the same lane.
+    - **Merge N slots** — with 2+ tiles of the **same ingredient** selected: amounts sum into the
+      first-selected tile, which keeps its effects and grouping; the others are removed and any
+      combined/linked group they belonged to is broken. Disabled (with a hint) for mixed
+      selections or sweepers.
+    - A bag shows a `×N` badge top-right (2+ only); it turns orange when N falls outside the
+      ingredient's stack range. Recipe Pieces counts every piece of every bag and flags bags
+      outside the range.
   - **Remove**.
   - Hover also shows a small "X" remove button as a shortcut for the same action.
   - Visual encodes: a **frozen** tile (remaining thaw count > 0) gets an icy CSS filter and a

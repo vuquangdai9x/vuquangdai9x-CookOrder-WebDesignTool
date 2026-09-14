@@ -48,6 +48,7 @@ export function middleStructureKey(sim: NodeSimulation): string {
         return `c${cell.ing}${cell.usesLeft !== undefined ? `x${cell.usesLeft}` : ""}`;
       }
       if (cell.kind === "raw") return `r${cell.ing}`;
+      if (cell.kind === "bag") return `g${cell.ing}x${cell.count}`;
       if (cell.kind === "dirty") return `d${cell.dirtyId}:${cell.count}`;
       if (cell.kind === "backpack") return `b${cell.items.join(".")}`;
       return "-";
@@ -56,7 +57,7 @@ export function middleStructureKey(sim: NodeSimulation): string {
 
   // Which slots are occupied and by what — not how far along they are.
   const tools = sim.tools
-    .map((t) => `${t.index}[${t.slots.map((s) => (s.item ? s.item.ing : "-")).join("")}]`)
+    .map((t) => `${t.index}[${t.slots.map((s) => (s.item ? `${s.item.ing}${s.item.completed ? `h${s.item.completed.amount}` : ""}` : "-")).join("")}]`)
     .join(",");
 
   return `${sim.status}|${grid}|${tools}`;
@@ -79,7 +80,8 @@ export function queuesStructureKey(sim: NodeSimulation): string {
           // buried, still-frozen preview tile's badge stays live instead of
           // going stale until something else rebuilds the tier.
           const freeze = sim.freezeCount(cell.item);
-          return `${cell.item.id}/${cell.group}${freeze > 0 ? `f${freeze}` : ""}`;
+          const amount = cell.item.amount ?? 1;
+          return `${cell.item.id}${amount > 1 ? `x${amount}` : ""}/${cell.group}${freeze > 0 ? `f${freeze}` : ""}`;
         })
         .join(".");
       return `${cells}:${sim.canPick(x).ok ? 1 : 0}`;

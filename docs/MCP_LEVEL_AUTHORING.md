@@ -34,6 +34,7 @@ The stdio entrypoint is intentionally thin. Repository access, sessions, validat
 - Normal sessions authorize no obstacles or special mechanics.
 - Effects, statuses, groups, timers, and special customers are rejected until explicitly authorized by the brief or an approved requirement amendment.
 - Queue contents are authored through explicit ingredient/slot actions. No `generate_level` tool is exposed.
+- A queue slot may be a **bag**: `add_queue_ingredient` takes `count` (slots added) and `amount` (pieces per slot), and `set_queue_slot_amount` resizes one slot. A slot with `amount` 2+ serializes as `<id>:<amount>` and, in play, lands on one grid cell and drains a piece at a time; `amount` 1 is a plain slot.
 - Validation suggestions are evidence only and are never applied automatically.
 - Finalization requires valid serialization and structure, sufficient supply, solver victory, every customer served, and no customer timeouts.
 - Canonical level CSVs and browser drafts are never modified.

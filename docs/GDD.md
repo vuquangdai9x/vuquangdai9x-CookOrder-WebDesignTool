@@ -183,7 +183,7 @@ All three level-config strings are authored/parsed by the tool and must **round-
 ```
 
 - `%` separates queues (columns); `,` separates items within a queue, listed front-first (row 0 first).
-- Each item: `itemId` + optional effects (`1#4:5` = item 1 with effect 4, param 5).
+- Each item: `itemId[:amount]` + optional effects (`1#4:5` = item 1 with effect 4, param 5; `1:3#4:5` = a **bag** of three item-1 pickups with that effect). An absent, empty, `0` or `1` amount is a plain single-piece slot and is never written back. A bag is picked as one slot but lands on ONE grid cell and drains a piece at a time into tools / dish slots; a finished ingredient with no free cell waits in its tool instead of losing. Normative rules: `CookingGraph.Unity/GAMEPLAY_RULES.md` §4.1, §9.4, §10.2, §12.
 - Sweepers and other non-ingredient objects use reserved ids in the queue-item id space (`SWEEPER_ID = -1`; mapping defined in the map's object table).
 - **Combined/linked groups** (§2.1.1) are an optional trailer, `$<combinedSlots>$<linkedSlots>`, on the same string:
   - Each section lists groups separated by `;`, and each group lists its member cells separated by `,`.

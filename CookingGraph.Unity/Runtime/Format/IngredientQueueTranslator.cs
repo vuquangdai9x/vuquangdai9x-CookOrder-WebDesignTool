@@ -32,12 +32,20 @@ namespace CookingGraph
                     foreach (var itemToken in columnToken.Split(new[] { ',' }, StringSplitOptions.None))
                     {
                         var parsed = ParseEffectToken(itemToken, source);
-                        var id = ParseInteger(parsed.Base, source, source.IndexOf(itemToken, StringComparison.Ordinal));
+                        var position = source.IndexOf(itemToken, StringComparison.Ordinal);
+                        // "<id>[:<amount>]" — the amount is the bag size (web parser.ts parseQueues).
+                        var baseParts = parsed.Base.Split(new[] { ':' }, StringSplitOptions.None);
+                        if (baseParts.Length > 2)
+                            throw new CookingGraphFormatException($"Queue item \"{itemToken}\" must be <id>[:<amount>]", Math.Max(0, position), source);
+                        var id = ParseInteger(baseParts[0], source, position);
+                        var amount = baseParts.Length == 2 && baseParts[1].Length > 0 ? ParseInteger(baseParts[1], source, position) : 1;
+                        var sweeper = id < 0;
                         column.items.Add(new QueueItemData
                         {
                             id = id,
-                            index = id < 0 ? -1 : id,
-                            kind = id < 0 ? QueueItemKind.Sweeper : QueueItemKind.Ingredient,
+                            amount = sweeper ? 1 : Math.Max(1, amount),
+                            index = sweeper ? -1 : id,
+                            kind = sweeper ? QueueItemKind.Sweeper : QueueItemKind.Ingredient,
                             effects = parsed.Effects
                         });
                     }
@@ -115,9 +123,19 @@ namespace CookingGraph
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
             var queue = string.Join("%", data.columns.Select(column =>
-                string.Join(",", column.items.Select(item => item.id.ToString(CultureInfo.InvariantCulture) + SerializeEffects(item.effects)))));
+                string.Join(",", column.items.Select(SerializeItem))));
             if (data.groups == null || data.groups.Count == 0) return queue;
             return queue + "$" + SerializeGroups(data.groups, QueueGroupKind.Combined) + "$" + SerializeGroups(data.groups, QueueGroupKind.Linked);
+        }
+
+        /// <summary>"<id>[:<amount>]<effects>" — the amount suffix only for a real bag (2+), so pre-bag strings round-trip byte-for-byte.</summary>
+        public static string SerializeItem(QueueItemData item)
+        {
+            if (item == null) throw new ArgumentNullException(nameof(item));
+            var token = item.id.ToString(CultureInfo.InvariantCulture);
+            if (item.kind == QueueItemKind.Ingredient && item.amount > 1)
+                token += ":" + item.amount.ToString(CultureInfo.InvariantCulture);
+            return token + SerializeEffects(item.effects);
         }
 
         internal static (string Base, List<EffectData> Effects) ParseEffectToken(string token, string context)

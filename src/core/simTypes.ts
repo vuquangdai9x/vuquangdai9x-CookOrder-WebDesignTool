@@ -30,7 +30,11 @@ export type FlightKind =
   /** One dirty stack flying into a staff customer as they clear it. */
   | "dirty-to-staff"
   /** A cooked item served out of the Save Me backpack instead of the grid. */
-  | "backpack-to-customer";
+  | "backpack-to-customer"
+  /** The top piece of a bag parked on the grid entering a tool (process or preservation slot). */
+  | "bag-to-tool"
+  /** The top piece of a no-tool bag flying straight to a waiting dish slot. */
+  | "bag-to-customer";
 
 export interface SimEvent {
   type:

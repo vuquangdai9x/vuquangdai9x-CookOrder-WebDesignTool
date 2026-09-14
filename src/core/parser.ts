@@ -52,6 +52,10 @@ function parseIntStrict(s: string, context: string): number {
 // "<queueData>[$<combinedSlots>$<linkedSlots>]"
 //   queueData      "0,1#4:5,0,1%0,0,1,0%1,7,1,7,7" — '%' between columns, ','
 //                   between items, "#effectId:param" suffixes (unchanged).
+//   item           "<id>[:<amount>]" before the first '#': "1:3#4:5" is a bag
+//                   of three id-1 pickups carrying effect 4. An absent, empty,
+//                   0 or 1 amount is a plain slot and is never written back,
+//                   so pre-bag strings round-trip byte-for-byte.
 //   group sections "0-0,1-0;0-2,0-3" — ';' between groups, ',' between cells,
 //                   each cell "<x>-<y>" (x = column, y = row; both
 //                   non-negative, so '-' is an unambiguous separator).
@@ -72,8 +76,13 @@ export function parseQueues(s: string): QueueItem[][] {
   return data.split("%").map((queueStr) =>
     queueStr === "" ? [] : queueStr.split(",").map((itemStr) => {
       const { base, effects } = splitEffects(itemStr);
-      const id = parseIntStrict(base, itemStr);
-      return { kind: id < 0 ? "sweeper" : "ingredient", id, effects } as QueueItem;
+      const [idStr, amountStr, ...rest] = base.split(":");
+      if (rest.length > 0) throw new Error(`Invalid queue item "${itemStr}": expected "<id>[:<amount>]"`);
+      const id = parseIntStrict(idStr, itemStr);
+      const amount = amountStr === undefined || amountStr === "" ? 1 : parseIntStrict(amountStr, itemStr);
+      const item: QueueItem = { kind: id < 0 ? "sweeper" : "ingredient", id, effects };
+      if (amount > 1 && item.kind === "ingredient") item.amount = amount;
+      return item;
     }),
   );
 }
@@ -110,10 +119,21 @@ function parseGroupSection(section: string, kind: QueueGroupKind): QueueGroup[] 
  */
 export function serializeQueues(queues: QueueItem[][], groups: QueueGroup[] = []): string {
   const data = queues
-    .map((q) => q.map((item) => item.id + serializeEffects(item.effects)).join(","))
+    .map((q) => q.map((item) => serializeQueueItem(item)).join(","))
     .join("%");
   if (groups.length === 0) return data;
   return [data, serializeGroupSection(groups, "combined"), serializeGroupSection(groups, "linked")].join("$");
+}
+
+/** "<id>[:<amount>]<effects>" — the amount suffix only for a real bag (2+). */
+export function serializeQueueItem(item: QueueItem): string {
+  const amount = item.amount ?? 1;
+  return item.id + (amount > 1 ? `:${amount}` : "") + serializeEffects(item.effects);
+}
+
+/** Pieces a queue slot holds — 1 for a plain slot or a sweeper. */
+export function queueItemAmount(item: QueueItem): number {
+  return item.kind === "ingredient" ? Math.max(1, item.amount ?? 1) : 1;
 }
 
 function serializeGroupSection(groups: QueueGroup[], kind: QueueGroupKind): string {

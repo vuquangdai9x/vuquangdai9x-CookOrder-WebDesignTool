@@ -6,6 +6,7 @@ import type { GraphIndex } from "../../core/nodeIndex.ts";
 import { NodeSimulation } from "../../core/nodeSim.ts";
 import type { NodeCustomerState, NodeLevelConfig } from "../../core/nodeSim.ts";
 import type { QueueItem } from "../../core/types.ts";
+import { queueItemAmount } from "../../core/parser.ts";
 import { cidOf } from "./changeTracking.ts";
 import { resolveScenario } from "./estimateScenario.ts";
 import type { ResolvedScenario, ScenarioFieldKey } from "./estimateScenario.ts";
@@ -126,6 +127,12 @@ function findLearnedBeamPlan(
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
     instantFlights: true,
     continueAfterCustomerTimeout: true,
+    // Finished outputs wait in their tool instead of losing outright, so a
+    // stuck board is only ever reported through the sim's own no-legal-move
+    // check — the same one Play mode runs. Without it the solver would keep
+    // picking into a jammed grid until dirty dishes overflowed, and the
+    // failure-driven strategy fallbacks would read the wrong reason.
+    detectDeadlockLoss: true,
   });
   initial.tick(0);
   initial.completeAllFlights();
@@ -178,6 +185,9 @@ function findLearnedBeamPlan(
       settleUntilDecision(node.sim);
       if (node.sim.status === "won") return node.path;
       if (node.sim.status !== "playing") continue;
+      // Settling can jam the grid too (an output finishing with no cell); drop
+      // the branch here, before it costs expansions — see hasStrandedOutput.
+      if (hasStrandedOutput(node.sim)) continue;
       for (const lane of pickableLanes(node.sim)) {
         if (++expandedStates > 20_000) return null;
         const sim = cloneSimulation(node.sim);
@@ -194,6 +204,12 @@ function findLearnedBeamPlan(
         const path = [...node.path, lane];
         if (sim.status === "won") return path;
         if (sim.status !== "playing") continue;
+        // A finished output stranded in its tool means the grid jammed. The
+        // runtime lets that state live (the player may still free a cell), but
+        // as a SEARCH state it is where the pre-bag rules lost outright, and
+        // keeping such branches alive floods the beam with jammed boards until
+        // the expansion budget runs out. Prune them: a good plan never jams.
+        if (hasStrandedOutput(sim)) continue;
         const key = stateKey(sim);
         if (seen.has(key)) continue;
         seen.add(key);
@@ -204,6 +220,17 @@ function findLearnedBeamPlan(
     beam = next.slice(0, 30);
   }
   return null;
+}
+
+/**
+ * True once a finished output has ever found no grid cell in this run. The
+ * runtime lets the output wait in its tool (the player may still free a cell),
+ * but as a SEARCH state a jam is where the pre-bag rules lost outright, and
+ * keeping such branches alive floods the beam with jammed boards. Pruning on
+ * the first jam keeps the planner's behaviour — a good plan never jams.
+ */
+function hasStrandedOutput(sim: NodeSimulation): boolean {
+  return sim.gridJams > 0;
 }
 
 /** Run one scoring strategy against the exact simulation used by Play and replay. */
@@ -224,6 +251,12 @@ function estimateNodeDifficultyAttempt(
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
     instantFlights: true,
     continueAfterCustomerTimeout: true,
+    // Finished outputs wait in their tool instead of losing outright, so a
+    // stuck board is only ever reported through the sim's own no-legal-move
+    // check — the same one Play mode runs. Without it the solver would keep
+    // picking into a jammed grid until dirty dishes overflowed, and the
+    // failure-driven strategy fallbacks would read the wrong reason.
+    detectDeadlockLoss: true,
   });
 
   const byCid = new Map<string, EstimateSlot>();
@@ -303,7 +336,12 @@ function estimateNodeDifficultyAttempt(
     let footprint = 0;
     for (const cell of sim.pickTargets(lane)) {
       const queued = sim.queueGrid[cell.x]?.[cell.y];
-      if (queued?.item.kind === "ingredient") footprint += Math.max(1, ix.terminalYield[queued.ing] ?? 1);
+      if (queued?.item.kind !== "ingredient") continue;
+      const perPiece = Math.max(1, ix.terminalYield[queued.ing] ?? 1);
+      // A bag takes ONE cell for itself and cooks a piece at a time, so its
+      // near-term footprint is the bag plus one piece's output — not the
+      // whole bag's worth of pieces at once.
+      footprint += queueItemAmount(queued.item) > 1 ? 1 + perPiece : perPiece;
     }
     return footprint;
   };
@@ -862,7 +900,9 @@ function estimateNodeDifficultyAttempt(
       const advanced = waitUntilPickable();
       if (advanced === 0) {
         if (pickableLanes(sim).length > 0) continue;
-        halted = "Nothing left to pick and nothing cooking — the queues ran dry.";
+        halted = hasStrandedOutput(sim)
+          ? "Stuck: finished ingredients are waiting in their tools with no free grid cell."
+          : "Nothing left to pick and nothing cooking — the queues ran dry.";
         break;
       }
       pendingWaitBeforePick += advanced;
@@ -918,7 +958,9 @@ function estimateNodeDifficultyAttempt(
       for (const lane of candidateLanes) {
         const cell = sim.frontCell(lane);
         if (!cell) continue;
-        const yieldAmount = cell.item.kind === "sweeper" ? -1 : (ix.terminalYield[cell.ing] ?? 1);
+        const yieldAmount = cell.item.kind === "sweeper"
+          ? -1
+          : (ix.terminalYield[cell.ing] ?? 1) + (queueItemAmount(cell.item) > 1 ? 1 : 0);
         const risk = yieldAmount;
         if (risk < cheapestRisk) {
           cheapestRisk = risk;
@@ -936,12 +978,14 @@ function estimateNodeDifficultyAttempt(
   let reason = halted;
   if (!reason && lost) {
     reason = sim.loseReason === "grid-overflow"
-      ? "The grid filled up — no free cell for a finished ingredient."
+      ? "The grid filled up — finished ingredients are stuck in their tools and nothing can move."
       : sim.loseReason === "dirty-overflow"
         ? "The grid filled up with dirty dishes."
         : sim.loseReason === "customer-timeout"
           ? "A customer's patience ran out."
-          : "The queues ran out of ingredients before every order was filled.";
+          : sim.loseReason === "deadlock"
+            ? "Nothing on the board can move — no lane can be picked and no tool can finish."
+            : "The queues ran out of ingredients before every order was filled.";
   }
   if (!reason && bailed) reason = `Gave up after ${maxIterations} picks without finishing.`;
 

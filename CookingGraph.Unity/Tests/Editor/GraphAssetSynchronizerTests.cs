@@ -108,6 +108,21 @@ namespace CookingGraph.Editor.Tests
         }
 
         [Test]
+        public void StackRangeReachesTheIngredientAsset()
+        {
+            var document = GraphJsonDocumentTests.MinimalDocument();
+            var bun = (JObject)((JArray)document.Vertices["ingredient"]).First();
+            bun["stackMin"] = 2;
+            bun["stackMax"] = 5;
+
+            var graph = GraphAssetSynchronizer.Synchronize(document, "fixture.json", null);
+            var asset = graph.ingredients.Single(item => item.nodeName == "bun");
+
+            Assert.That(asset.stackMin, Is.EqualTo(2));
+            Assert.That(asset.stackMax, Is.EqualTo(5));
+        }
+
+        [Test]
         public void PreservationSlotsAndEdgesReachTheRuntimeGraph()
         {
             var document = GraphJsonDocumentTests.MinimalDocument();

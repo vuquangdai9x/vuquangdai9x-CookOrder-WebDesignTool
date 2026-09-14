@@ -77,6 +77,8 @@ export interface DraftQueueSlot {
   ingredient: string;
   effects: EffectInstance[];
   provisional: boolean;
+  /** Pieces in this slot (a bag); absent or 1 = a plain single-piece slot. Serialized as `<id>:<amount>`. */
+  amount?: number;
 }
 
 export interface DraftQueueLane {

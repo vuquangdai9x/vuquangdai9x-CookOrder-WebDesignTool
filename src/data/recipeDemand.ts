@@ -80,13 +80,13 @@ export function demandByRaw(map: ToolsAndCooked, customers: CustomerConfig[]): M
   return demand;
 }
 
-/** Raw pickups actually present in a queue, counted per raw id — not yet multiplied by yield (see rawYieldAmounts/RawDemand.amount for that). */
+/** Raw PIECES actually present in a queue, counted per raw id — a bag slot counts its whole amount — not yet multiplied by yield (see rawYieldAmounts/RawDemand.amount for that). */
 export function supplyByRaw(queues: QueueItem[][]): Map<Id, number> {
   const supply = new Map<Id, number>();
   for (const lane of queues) {
     for (const item of lane) {
       if (item.kind !== "ingredient") continue;
-      supply.set(item.id, (supply.get(item.id) ?? 0) + 1);
+      supply.set(item.id, (supply.get(item.id) ?? 0) + Math.max(1, item.amount ?? 1));
     }
   }
   return supply;

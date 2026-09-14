@@ -42,6 +42,8 @@ export interface LevelStats {
   /** Queue lanes, and total tiles across them. */
   numLanes: number;
   numQueueItems: number;
+  /** Pieces across every slot — a bag counts its whole amount; sweepers count 1. */
+  numQueuePieces: number;
   /** Ingredient-status id -> how many queue tiles carry it. */
   slotStatus: Map<number, number>;
   /** Cell-status id -> how many grid cells carry it. */
@@ -65,6 +67,7 @@ const emptyStats = (): LevelStats => ({
   itemTypes: 0,
   numLanes: 0,
   numQueueItems: 0,
+  numQueuePieces: 0,
   slotStatus: new Map(),
   cellStatus: new Map(),
   linkedSlots: 0,
@@ -130,6 +133,7 @@ export function computeLevelStats(level: LevelData, ix: GraphIndex, ids: IdIndex
     for (const lane of lanes) {
       for (const item of lane) {
         stats.numQueueItems++;
+        stats.numQueuePieces += item.kind === "ingredient" ? Math.max(1, item.amount ?? 1) : 1;
         if (item.kind === "ingredient") types.add(item.id);
         for (const effect of item.effects) {
           bump(stats.slotStatus, effect.effectId);

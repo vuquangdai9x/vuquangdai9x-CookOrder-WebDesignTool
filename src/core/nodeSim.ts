@@ -62,6 +62,7 @@ import type { NodeCustomerConfig } from "./nodeParser.ts";
 import type { OrderIssue, ResolvedOrder } from "./nodeOrder.ts";
 import { describeIssue, orderIdIndex, resolveOrder } from "./nodeOrder.ts";
 import type { IdIndex } from "../data/nodeIdTable.ts";
+import { queueItemAmount } from "./parser.ts";
 import {
   CUSTOMER_SPACE_WIDTH,
   MAX_ACTIVE_CUSTOMERS,
@@ -142,6 +143,14 @@ export type NodeCellContent =
   | { kind: "cooked"; ing: number; usesLeft?: number }
   /** A pickup parked because its tool was full (park-on-grid policy). */
   | { kind: "raw"; ing: number }
+  /**
+   * A picked BAG: `count` unprocessed pickups of one ingredient sharing a
+   * single cell. Only the top piece is ever active — it leaves for a tool or a
+   * waiting dish slot one at a time (reclaimBagItems) and the cell empties with
+   * the last piece. Distinct from the Save Me "backpack" below, which holds
+   * mixed items in their current processing state.
+   */
+  | { kind: "bag"; ing: number; count: number }
   /** dirtyId is a dense dirty index, or DIRTY_DISH_ID for the generic dish. Stacks never mix types. */
   | { kind: "dirty"; dirtyId: number; count: number }
   /** The Save Me booster's collapsed grid — items retain their current processing state. */
@@ -229,7 +238,9 @@ export interface NodeQueueCell {
 type Dispatch =
   | { kind: "sweeper" }
   | { kind: "tool"; tool: number; slot: number; step?: ProcessStep }
-  | { kind: "grid"; cell: number; raw: boolean };
+  | { kind: "grid"; cell: number; raw: boolean }
+  /** A bag of 2+ pieces landing whole on one grid cell. */
+  | { kind: "bag"; cell: number; count: number };
 
 export interface NodeFlight {
   id: number;
@@ -245,6 +256,8 @@ export interface NodeFlight {
   fromCustomer?: number;
   /** queue-to-grid only: true when the item is parked raw, awaiting a tool slot. */
   raw?: boolean;
+  /** queue-to-grid only: the landing cell becomes a bag of this many pieces. */
+  bagCount?: number;
   /** customer-to-grid / dirty-to-staff only: dense dirty index, or DIRTY_DISH_ID. */
   dirtyId?: number;
   /** tool-to-tool only, chainTools spelling: the chain state to install at the destination. */
@@ -284,7 +297,8 @@ const isServeFlight = (f: NodeFlight): boolean =>
   f.kind === "grid-to-customer" ||
   f.kind === "backpack-to-customer" ||
   f.kind === "tool-to-customer" ||
-  f.kind === "queue-to-customer";
+  f.kind === "queue-to-customer" ||
+  f.kind === "bag-to-customer";
 
 export class NodeSimulation {
   readonly ix: GraphIndex;
@@ -310,6 +324,12 @@ export class NodeSimulation {
 
   /** Items in transit. The host animates these and calls completeFlight(). */
   flights: NodeFlight[] = [];
+  /**
+   * How many times a finished output found no grid cell and had to wait in its
+   * tool. Before bags this was an immediate grid-overflow loss; the estimator's
+   * search still treats any jam as a dead branch, so it reads this counter.
+   */
+  gridJams = 0;
 
   outOfSlotPolicy: OutOfSlotPolicy;
   readonly instantFlights: boolean;
@@ -432,6 +452,14 @@ export class NodeSimulation {
     return n;
   }
 
+  /** Queued pieces (a bag counts its whole amount), plus pieces still parked in grid bags. */
+  get remainingPieces(): number {
+    let n = 0;
+    for (const col of this.queueGrid) for (const cell of col) if (cell) n += queueItemAmount(cell.item);
+    for (const cell of this.grid) if (cell.kind === "bag") n += cell.count;
+    return n;
+  }
+
   /** The cell fronting a lane (row 0), or null for an empty column or a hole. */
   frontCell(x: number): NodeQueueCell | null {
     return this.queueGrid[x]?.[0] ?? null;
@@ -538,6 +566,7 @@ export class NodeSimulation {
       case "queue-to-tool":
       case "grid-to-tool":
       case "backpack-to-tool":
+      case "bag-to-tool":
       case "tool-to-tool": {
         const { tool: toolIndex, slot } = flight.toTool!;
         this.releaseSlot(toolIndex, slot);
@@ -578,14 +607,20 @@ export class NodeSimulation {
             if (content.items.length === 0) this.grid[flight.fromCell] = { kind: "empty" };
           }
         }
+        if (flight.kind === "bag-to-tool" && flight.fromCell !== undefined) {
+          this.releaseCell(flight.fromCell);
+          this.takeFromBag(flight.fromCell);
+        }
         break;
       }
       case "queue-to-grid": {
         const cell = flight.toCell!;
         this.releaseCell(cell);
-        this.grid[cell] = flight.raw
-          ? { kind: "raw", ing: flight.ing }
-          : { kind: "cooked", ing: flight.ing, usesLeft: this.initialUsesLeft(flight.ing) };
+        this.grid[cell] = flight.bagCount !== undefined
+          ? { kind: "bag", ing: flight.ing, count: flight.bagCount }
+          : flight.raw
+            ? { kind: "raw", ing: flight.ing }
+            : { kind: "cooked", ing: flight.ing, usesLeft: this.initialUsesLeft(flight.ing) };
         break;
       }
       case "tool-to-grid": {
@@ -647,6 +682,14 @@ export class NodeSimulation {
           if (at !== -1) content.items.splice(at, 1);
           if (content.items.length === 0) this.grid[cell] = { kind: "empty" };
         }
+        this.fillDish(index, dish, slot);
+        break;
+      }
+      case "bag-to-customer": {
+        const { index, dish, slot } = flight.toCustomer!;
+        const cell = flight.fromCell!;
+        this.releaseCell(cell);
+        this.takeFromBag(cell);
         this.fillDish(index, dish, slot);
         break;
       }
@@ -775,10 +818,13 @@ export class NodeSimulation {
     type Take =
       | { source: "backpack"; cell: number; itemIndex: number }
       | { source: "grid"; cell: number }
+      /** One piece out of a parked bag whose terminal output is the wanted ingredient. */
+      | { source: "bag"; cell: number }
       | { source: "queue"; x: number; y: number; amount: number };
 
     const takenGridCells = new Set<number>();
     const takenQueueCells = new Set<string>();
+    const bagDraws = new Map<number, number>();
     const plan: Take[] = [];
 
     for (const { ing } of needed) {
@@ -803,6 +849,21 @@ export class NodeSimulation {
         continue;
       }
 
+      // A parked bag is a grid source too, one piece at a time (a bag may be
+      // drawn from repeatedly as long as pieces remain).
+      const bagCell = this.grid.findIndex(
+        (c, i) =>
+          c.kind === "bag" &&
+          this.ix.terminalOutput[c.ing] === ing &&
+          !this.reservedCells.has(i) &&
+          c.count > (bagDraws.get(i) ?? 0),
+      );
+      if (bagCell !== -1) {
+        bagDraws.set(bagCell, (bagDraws.get(bagCell) ?? 0) + 1);
+        plan.push({ source: "bag", cell: bagCell });
+        continue;
+      }
+
       let found: { x: number; y: number; amount: number } | null = null;
       for (let x = 0; x < this.queueGrid.length && !found; x++) {
         for (let y = 0; y < this.queueGrid[x].length; y++) {
@@ -810,7 +871,8 @@ export class NodeSimulation {
           const cell = this.queueGrid[x][y];
           if (!cell || cell.item.kind !== "ingredient" || cell.ing < 0) continue;
           if (this.ix.terminalOutput[cell.ing] !== ing) continue;
-          found = { x, y, amount: this.ix.terminalYield[cell.ing] };
+          // A queued bag yields amount × the chain's yield.
+          found = { x, y, amount: this.ix.terminalYield[cell.ing] * queueItemAmount(cell.item) };
           break;
         }
       }
@@ -830,6 +892,8 @@ export class NodeSimulation {
         }
       } else if (step.source === "grid") {
         this.consumeCookedCell(step.cell);
+      } else if (step.source === "bag") {
+        this.takeFromBag(step.cell);
       } else if (step.amount <= 1) {
         this.queueGrid[step.x][step.y] = null;
       } else {
@@ -922,7 +986,9 @@ export class NodeSimulation {
     if (maxUses >= 0 && this.saveMeUsed >= maxUses) return false;
     if (this.loseReason === "grid-overflow") {
       return this.grid.some((cell) =>
-        cell.kind === "raw" || (cell.kind === "cooked" && (cell.usesLeft ?? 1) <= SAVE_ME_BAG_CAPACITY)
+        cell.kind === "raw" ||
+        (cell.kind === "bag" && cell.count <= SAVE_ME_BAG_CAPACITY) ||
+        (cell.kind === "cooked" && (cell.usesLeft ?? 1) <= SAVE_ME_BAG_CAPACITY)
       );
     }
     return this.loseReason === "customer-timeout" || this.loseReason === "deadlock";
@@ -941,7 +1007,7 @@ export class NodeSimulation {
     return this.saveDeadlock(shuffleDepth, rng);
   }
 
-  /** Grid overflow: place at most `capacity` non-dirty ingredient units in one bag. */
+  /** Grid overflow: place at most `capacity` non-dirty ingredient units in one backpack (a parked bag contributes one entry per piece). */
   private saveGridOverflow(capacity: number): boolean {
     const items: number[] = [];
     let firstClearedCell = -1;
@@ -953,8 +1019,8 @@ export class NodeSimulation {
         if (firstClearedCell === -1) firstClearedCell = i;
         continue;
       }
-      if (cell.kind !== "cooked") continue; // dirty objects and existing bags stay put
-      const uses = cell.usesLeft ?? 1;
+      if (cell.kind !== "cooked" && cell.kind !== "bag") continue; // dirty objects and existing backpacks stay put
+      const uses = cell.kind === "bag" ? cell.count : (cell.usesLeft ?? 1);
       // Keep a multi-use object whole: the backpack represents each remaining
       // use as one entry, and partially sweeping it would leave no guaranteed
       // free cell for the bag on a completely full board.
@@ -1310,6 +1376,14 @@ export class NodeSimulation {
     }
   }
 
+  /** One piece leaves a bag cell — the cell empties with the last piece. */
+  private takeFromBag(cell: number): void {
+    const content = this.grid[cell];
+    if (content.kind !== "bag") return;
+    if (content.count > 1) this.grid[cell] = { kind: "bag", ing: content.ing, count: content.count - 1 };
+    else this.grid[cell] = { kind: "empty" };
+  }
+
   private customerTime(c: NodeCustomerConfig): number {
     if (c.waitTime <= 0) return Infinity;
     const bad = this.level?.weather && this.level.weather !== "Normal";
@@ -1489,6 +1563,22 @@ export class NodeSimulation {
         return { ok: false, reason: `${this.ingredientName(cell.ing)} can't complete any waiting order` };
       }
 
+      // A bag (2+ pieces) always lands whole on one grid cell and drains from
+      // there — reclaimBagItems() routes its top piece exactly as a fresh
+      // single pick would. Parking is inherent to the mechanic, so the
+      // out-of-slot policy does not apply; only grid space can refuse it.
+      const amount = queueItemAmount(cell.item);
+      if (amount > 1) {
+        const free = this.reserveCell();
+        if (free === -1) {
+          rollback();
+          return { ok: false, reason: "No free grid cell for a bag" };
+        }
+        reservedCells.push(free);
+        plan.push({ kind: "bag", cell: free, count: amount });
+        continue;
+      }
+
       const preservationTools = this.ix.preservationToolsForInput[cell.ing] ?? [];
       if (preservationTools.length > 0) {
         const destination = this.preservationDestination(cell.ing);
@@ -1582,6 +1672,10 @@ export class NodeSimulation {
     this.log("pick", `Picked ${this.ingredientName(cell.ing)}`);
     if (d.kind === "tool") {
       this.launch({ kind: "queue-to-tool", ing: cell.ing, toTool: { tool: d.tool, slot: d.slot }, step: d.step });
+      return;
+    }
+    if (d.kind === "bag") {
+      this.launch({ kind: "queue-to-grid", ing: cell.ing, toCell: d.cell, raw: true, bagCount: d.count });
       return;
     }
     if (!d.raw) {
@@ -1735,6 +1829,21 @@ export class NodeSimulation {
         const out = completed?.out ?? chain?.out ?? step?.out ?? lead.ing;
         const amount = completed?.amount ?? chain?.amount ?? step?.amount ?? 1;
 
+        // Output that cannot leave WAITS IN THE TOOL. The recipe is done, so
+        // the concrete output replaces the source item in the lead slot (ground
+        // coffee visible in the grinder, a patty visible on the griddle), the
+        // partner points are released, and the lane is retried on every
+        // settle() pass until downstream space opens. Nothing ages meanwhile
+        // (nextCompletionIn skips completed lanes) and the lane stays blocked
+        // for new input. Running out of grid cells is therefore never a loss by
+        // itself — checkEnd() loses only when nothing on the board can move.
+        const hold = (remaining: number) => {
+          for (const flat of filled) if (flat !== leadSlot) tool.slots[flat].item = null;
+          lead.ing = out;
+          lead.elapsed = lead.duration;
+          lead.completed = { out, amount: remaining };
+        };
+
         // --- spelling 2: a real intermediate vertex. Forward one produced
         // piece immediately when the next tool has room; surplus pieces park on
         // the grid and reclaimProcessableGridItems() moves them onward as that
@@ -1747,17 +1856,7 @@ export class NodeSimulation {
           // waits in its producer when the next tool is occupied. Grid parking
           // is specifically the surplus path of a batch output.
           if (amount === 1 && nextSlot === -1) {
-            // The recipe is done even though its output cannot advance. A
-            // buffered tool keeps the concrete output visible in the producer
-            // (ground coffee in the grinder), releases any partner points,
-            // and retries only when downstream state changes. Unbuffered tools
-            // retain their established source-item representation.
-            if (!completed && tool.preservationSlotCount > 0) {
-              for (const flat of filled) if (flat !== leadSlot) tool.slots[flat].item = null;
-              lead.ing = out;
-              lead.elapsed = lead.duration;
-              lead.completed = { out, amount };
-            }
+            if (!completed) hold(amount);
             continue;
           }
           let remaining = amount;
@@ -1773,18 +1872,21 @@ export class NodeSimulation {
             });
             remaining--;
           }
-          for (let n = 0; n < remaining; n++) {
+          while (remaining > 0) {
             const cell = this.reserveCell();
-            if (cell === -1) {
-              this.lose("grid-overflow", "No free grid cell for a process intermediate");
-              return;
-            }
+            if (cell === -1) break;
             this.launch({
               kind: "tool-to-grid",
               ing: out,
               fromTool: { tool: tool.index, slot: leadSlot },
               toCell: cell,
             });
+            remaining--;
+          }
+          if (remaining > 0) {
+            if (!completed) this.gridJams++;
+            hold(remaining);
+            continue;
           }
           clearLane();
           continue;
@@ -1792,9 +1894,10 @@ export class NodeSimulation {
 
         // The lane empties as the output leaves; each unit flies separately —
         // straight to a customer already waiting for it when there is one,
-        // skipping the grid; otherwise it lands on the grid as usual.
-        let overflowed = false;
-        for (let n = 0; n < amount; n++) {
+        // skipping the grid; otherwise it lands on the grid as usual. Units
+        // that fit nowhere stay in the tool (see `hold`).
+        let remaining = amount;
+        while (remaining > 0) {
           const target = this.findServeTarget(out);
           if (target) {
             this.launch({
@@ -1803,22 +1906,24 @@ export class NodeSimulation {
               fromTool: { tool: tool.index, slot: leadSlot },
               toCustomer: target,
             });
+            remaining--;
             continue;
           }
           const cell = this.reserveCell();
-          if (cell === -1) {
-            this.lose("grid-overflow", "No free grid cell for a cooked ingredient");
-            overflowed = true;
-            break;
-          }
+          if (cell === -1) break;
           this.launch({
             kind: "tool-to-grid",
             ing: out,
             fromTool: { tool: tool.index, slot: leadSlot },
             toCell: cell,
           });
+          remaining--;
         }
-        if (overflowed) return;
+        if (remaining > 0) {
+          if (!completed) this.gridJams++;
+          hold(remaining);
+          continue;
+        }
         clearLane();
       }
       if (this.status !== "playing") return;
@@ -1870,6 +1975,7 @@ export class NodeSimulation {
       this.reclaimPreservedItems();
       this.reclaimProcessableBackpackItems();
       this.reclaimProcessableGridItems();
+      this.reclaimBagItems();
       if (this.status !== "playing") return;
       if (`${this.servedCount}:${this.flights.length}` === before) return;
     }
@@ -2029,6 +2135,56 @@ export class NodeSimulation {
         });
         break;
       }
+    }
+  }
+
+  /**
+   * Advances the TOP piece of every parked bag: into a preservation buffer or a
+   * free tool slot when the ingredient needs processing, or straight to a
+   * waiting dish slot when it needs none. One piece is in motion per bag (the
+   * cell stays reserved until it lands), and a piece with nowhere to go simply
+   * waits in the bag — a no-tool bag never spills onto extra cells.
+   */
+  private reclaimBagItems(): void {
+    for (let cell = 0; cell < this.grid.length; cell++) {
+      const content = this.grid[cell];
+      if (content.kind !== "bag" || this.reservedCells.has(cell)) continue;
+      const ing = content.ing;
+      if ((this.ix.preservationToolsForInput[ing]?.length ?? 0) > 0) {
+        const destination = this.preservationDestination(ing);
+        if (!destination) continue;
+        const step = (this.ix.stepsForInput[ing] ?? []).find((candidate) => candidate.tool === destination.tool);
+        this.reservedCells.add(cell);
+        this.launch({
+          kind: "bag-to-tool",
+          ing,
+          fromCell: cell,
+          toTool: this.reserveSlot(destination.tool, destination.slot),
+          step,
+        });
+        continue;
+      }
+      const allSteps = this.ix.stepsForInput[ing] ?? [];
+      if (allSteps.length === 0) {
+        // No tool needed: the piece only ever leaves for a customer who wants it.
+        const target = this.findServeTarget(ing);
+        if (!target) continue;
+        this.reservedCells.add(cell);
+        this.launch({ kind: "bag-to-customer", ing, fromCell: cell, toCustomer: target });
+        continue;
+      }
+      const step = this.routingStep(ing);
+      if (!step) continue;
+      const slot = this.freeSlotFor(step.tool, ing, inputPoint(step, ing));
+      if (slot === -1) continue;
+      this.reservedCells.add(cell);
+      this.launch({
+        kind: "bag-to-tool",
+        ing,
+        fromCell: cell,
+        toTool: this.reserveSlot(step.tool, slot),
+        step,
+      });
     }
   }
 
@@ -2234,7 +2390,9 @@ export class NodeSimulation {
     }
     const queuesEmpty = this.remainingItems === 0;
     const nothingMoving =
-      this.cookingCount === 0 && this.flights.length === 0 && !this.grid.some((c) => c.kind === "raw");
+      this.cookingCount === 0 &&
+      this.flights.length === 0 &&
+      !this.grid.some((c) => c.kind === "raw" || c.kind === "bag");
     // A non-empty backpack still holds servable items even when everything else
     // is dry — without this, an out-of-ingredient loss could re-fire the instant
     // a Save Me rescue lands, before autoServe() ever draws from it.
@@ -2245,18 +2403,26 @@ export class NodeSimulation {
       return;
     }
 
-    // No passage of time can change a board with no cooking/flight/raw work in
-    // progress. If every non-empty lane is blocked, classify a full usable grid
-    // as space overflow; otherwise this is a queue/tool deadlock eligible for
-    // the ice/group/prioritization Save Me.
+    // The ONLY "stuck" loss. Time cannot change a board with no flight in the
+    // air and no ready lane cooking (held outputs and part-filled multi-input
+    // lanes are resting points). If, on top of that, no queue lane can be
+    // picked — and settle() has already moved everything that could move —
+    // the player has no legal action. A full usable grid holding ingredients
+    // reads as space overflow (Save Me sweeps it into the backpack); anything
+    // else is a queue/tool deadlock. This also covers empty queues whose
+    // finished outputs are stranded in their tools, which the out-of-ingredient
+    // test above deliberately does not catch (cookingCount > 0).
     const noTimedProgress = this.flights.length === 0 && this.nextCompletionIn() === null;
-    if (this.options.detectDeadlockLoss && !queuesEmpty && noTimedProgress && this.active.length > 0) {
+    if (this.options.detectDeadlockLoss && noTimedProgress && this.active.length > 0) {
       const checks = this.queueGrid.map((_, lane) => this.canPick(lane));
       if (!checks.some((check) => check.ok)) {
-        if (this.findFreeCell() === -1 && this.grid.some((cell) => cell.kind === "cooked" || cell.kind === "raw")) {
-          this.lose("grid-overflow", "No free grid slot and no queue lane can be picked");
+        const holdsItems = this.grid.some((cell) => cell.kind === "cooked" || cell.kind === "raw" || cell.kind === "bag");
+        if (this.findFreeCell() === -1 && holdsItems) {
+          this.lose("grid-overflow", "No free grid slot and nothing on the board can move");
         } else {
-          this.lose("deadlock", "No queue lane can be picked: ice or tool inputs are locked");
+          this.lose("deadlock", queuesEmpty
+            ? "Finished ingredients are stuck in their tools and nothing can move"
+            : "No queue lane can be picked: ice or tool inputs are locked");
         }
       }
     }
@@ -2290,7 +2456,7 @@ export class NodeSimulation {
     for (const cell of this.grid) {
       if (cell.kind === "cooked" && cell.ing === ing) return true;
       if (cell.kind === "backpack" && cell.items.includes(ing)) return true;
-      if (cell.kind === "raw" && this.ix.terminalOutput[cell.ing] === ing) return true;
+      if ((cell.kind === "raw" || cell.kind === "bag") && this.ix.terminalOutput[cell.ing] === ing) return true;
     }
     for (const flight of this.flights) if (flight.ing === ing) return true;
     for (const tool of this.tools) {

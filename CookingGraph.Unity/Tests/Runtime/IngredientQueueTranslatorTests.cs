@@ -35,6 +35,40 @@ namespace CookingGraph.Tests
             Assert.That(IngredientQueueTranslator.Serialize(IngredientQueueTranslator.Parse(source)), Is.EqualTo(source));
         }
 
+        [Test]
+        public void BagAmountRoundTripsAheadOfEffects()
+        {
+            const string source = "1:3#4:5,0%2:2";
+            var data = IngredientQueueTranslator.Parse(source);
+            Assert.That(data.columns[0].items[0].amount, Is.EqualTo(3));
+            Assert.That(data.columns[0].items[0].effects[0].effectId, Is.EqualTo(4));
+            Assert.That(data.columns[0].items[1].amount, Is.EqualTo(1));
+            Assert.That(data.columns[1].items[0].amount, Is.EqualTo(2));
+            Assert.That(IngredientQueueTranslator.Serialize(data), Is.EqualTo(source));
+        }
+
+        [TestCase("1")]
+        [TestCase("1:")]
+        [TestCase("1:0")]
+        [TestCase("1:1")]
+        public void PlainAmountsNormaliseToOneAndSerializeBare(string source)
+        {
+            var data = IngredientQueueTranslator.Parse(source);
+            Assert.That(data.columns[0].items[0].amount, Is.EqualTo(1));
+            Assert.That(IngredientQueueTranslator.Serialize(data), Is.EqualTo("1"));
+        }
+
+        [Test]
+        public void BagAmountsSurviveAGroupTrailerAndSweepersNeverCarryOne()
+        {
+            const string source = "1:2,-1%0:4,1$0-0,1-0$";
+            var data = IngredientQueueTranslator.Parse(source);
+            Assert.That(data.columns[0].items[1].kind, Is.EqualTo(QueueItemKind.Sweeper));
+            Assert.That(IngredientQueueTranslator.Parse("-1:3").columns[0].items[0].amount, Is.EqualTo(1));
+            Assert.That(IngredientQueueTranslator.Serialize(data), Is.EqualTo(source));
+            Assert.Throws<CookingGraphFormatException>(() => IngredientQueueTranslator.Parse("1:2:3"));
+        }
+
         [TestCase("0,1$-1-2$")]
         [TestCase("0,1$1-2-3$")]
         [TestCase("0,1$1-$")]

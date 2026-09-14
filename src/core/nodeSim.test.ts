@@ -443,10 +443,14 @@ describe("the two spellings of a two-tool route", () => {
 
     s.tick(1);
     // The potato hopped first (tools advance in graph order) and reserved the
-    // fryer slot; the coated breast found nothing free.
+    // fryer slot; the coated breast found nothing free, so the finished output
+    // is HELD in the flour tool (the recipe is done — the slot now shows the
+    // coated piece, exactly as ground coffee waits in the grinder).
     expect(s.flights.map((f) => f.kind)).toEqual(["tool-to-tool"]);
     expect(s.flights[0].ing).toBe(chainedIng("potato"));
-    expect(s.tools[chainedTool("flour")].slots[0].item?.ing).toBe(chainedIng("chicken-breast"));
+    const held = s.tools[chainedTool("flour")].slots[0].item;
+    expect(held?.ing).toBe(chainedIng("chicken-breast-flour-coated"));
+    expect(held?.completed).toEqual({ out: chainedIng("chicken-breast-flour-coated"), amount: 1 });
     expect(s.grid.every((c) => c.kind === "empty")).toBe(true);
 
     s.completeAllFlights();
@@ -454,6 +458,170 @@ describe("the two spellings of a two-tool route", () => {
     expect(s.flights.some((f) => f.ing === chainedIng("chicken-breast-flour-coated"))).toBe(true);
     s.completeAllFlights();
     s.runToEnd();
+    expect(s.status).toBe("won");
+  });
+});
+
+// A 5x2 grid with every cell Blocked except the last `free` ones.
+const blockedGrid = (free: number) =>
+  Array.from({ length: 10 }, (_, i) => (i < 10 - free ? "#1" : "")).join(",");
+
+describe("bags — a queue slot holding several pieces", () => {
+  it("lands a bag on ONE cell and drains it into the tool a piece at a time", () => {
+    const s = sim({ queueString: "1:3%0,0,0", customerString: "0;0;0;{c0:17.{g0:18}}|0;0;0;{c0:17.{g0:18}}" });
+    expect(s.remainingPieces).toBe(6);
+    expect(s.pick(0)).toBe(true);
+    // The bag landed whole, then its top piece moved straight into the griddle.
+    expect(s.grid.filter((c) => c.kind === "bag")).toEqual([{ kind: "bag", ing: ing("patty"), count: 2 }]);
+    expect(s.tools[tool("griddle")].slots[0].item?.ing).toBe(ing("patty"));
+    expect(s.remainingItems).toBe(3);
+    expect(s.remainingPieces).toBe(5);
+
+    s.tick(3); // first patty done -> grid; the bag refills the griddle
+    expect(s.grid.filter((c) => c.kind === "cooked" && c.ing === ing("patty-cooked")).length).toBe(1);
+    expect(s.grid.filter((c) => c.kind === "bag")).toEqual([{ kind: "bag", ing: ing("patty"), count: 1 }]);
+    s.tick(3);
+    expect(s.grid.some((c) => c.kind === "bag")).toBe(false); // last piece left the bag
+    expect(s.tools[tool("griddle")].slots[0].item?.ing).toBe(ing("patty"));
+    s.tick(3);
+    expect(s.grid.filter((c) => c.kind === "cooked" && c.ing === ing("patty-cooked")).length).toBe(3);
+
+    for (let i = 0; i < 3; i++) {
+      s.pick(1);
+      s.tick(1);
+    }
+    s.runToEnd();
+    expect(s.status).toBe("won");
+  });
+
+  it("a no-tool bag serves one piece per open dish slot and otherwise waits in the bag", () => {
+    const s = sim({ queueString: "8:2%7,7", customerString: "0;0;0;{c1:24.8}|0;0;0;{c1:24.8}" });
+    s.pick(0); // ice bag: both customers' ice slots are gated on the soda cup, so it waits
+    expect(s.grid.filter((c) => c.kind === "bag")).toEqual([{ kind: "bag", ing: ing("ice"), count: 2 }]);
+    expect(s.flights).toEqual([]);
+
+    s.pick(1);
+    s.tick(2); // soda cup -> customer 1 directly; the gate opens and one ice leaves the bag
+    expect(s.active[0].dishes[0].complete).toBe(false);
+    expect(s.grid.filter((c) => c.kind === "bag")).toEqual([{ kind: "bag", ing: ing("ice"), count: 1 }]);
+    expect(s.servedCount).toBe(1);
+
+    s.pick(1);
+    s.tick(2);
+    expect(s.grid.some((c) => c.kind === "bag")).toBe(false);
+    expect(s.status).toBe("won");
+  });
+
+  it("refuses a bag when the grid has no free cell, while a single pickup still goes straight to its tool", () => {
+    const s = sim({ queueString: "1:2%1", gridString: blockedGrid(0), customerString: "0;0;0;{c0:17.{g0:18}}" });
+    expect(s.canPick(0)).toEqual({ ok: false, reason: "No free grid cell for a bag" });
+    expect(s.pick(1)).toBe(true);
+    expect(s.tools[tool("griddle")].slots[0].item?.ing).toBe(ing("patty"));
+  });
+
+  it("a bag whose tool is full parks regardless of the block-pick policy", () => {
+    const s = sim(
+      { queueString: "1%1:2", customerString: "0;0;0;{c0:17.{g0:18}}" },
+      { outOfSlotPolicy: "block-pick" },
+    );
+    s.pick(0); // griddle (one slot) now busy
+    expect(s.canPick(0)).toEqual({ ok: false, reason: "Queue empty" });
+    expect(s.pick(1)).toBe(true);
+    expect(s.grid.filter((c) => c.kind === "bag")).toEqual([{ kind: "bag", ing: ing("patty"), count: 2 }]);
+    s.tick(3); // griddle frees -> a bag piece takes it
+    expect(s.grid.filter((c) => c.kind === "bag")).toEqual([{ kind: "bag", ing: ing("patty"), count: 1 }]);
+  });
+
+  it("Save Me sweeps a parked bag into the backpack one entry per piece", () => {
+    const s = sim({ queueString: "1:3", gridString: blockedGrid(1), customerString: "0;0;0;{c1:24}" }, { detectDeadlockLoss: true });
+    s.pick(0); // bag takes the only cell; one patty cooks
+    s.tick(3); // cooked patty has nowhere to land -> held in the griddle; nothing left to pick
+    expect(s.status).toBe("lost");
+    expect(s.loseReason).toBe("grid-overflow");
+    expect(s.saveMe(-1)).toBe(true);
+    expect(s.grid.filter((c) => c.kind === "backpack")).toEqual([{ kind: "backpack", items: [ing("patty"), ing("patty")] }]);
+  });
+
+  it("Auto Complete draws pieces out of a parked bag and counts a queued bag at amount x yield", () => {
+    const s = sim({ queueString: "8:2%7", customerString: "0;0;0;{c1:24.8}" });
+    s.pick(0); // ice bag parked (gated on the cup)
+    expect(s.autoCompleteDish()).toBe(true); // cup from the queue, ice from the bag
+    expect(s.grid.filter((c) => c.kind === "bag")).toEqual([{ kind: "bag", ing: ing("ice"), count: 1 }]);
+    expect(s.status).toBe("won");
+  });
+});
+
+describe("finished outputs wait in their tool", () => {
+  it("holds a cooked output that finds no cell, and lands it once a cell frees", () => {
+    // One free cell, one serve slot. Customer A's dirty plate takes the cell;
+    // the second patty then finishes with nowhere to go (B's patty slot is
+    // gated on its bun) and is HELD — pre-bag rules lost here. The sweeper
+    // clears the plate and the held patty lands on the freed cell.
+    const s = sim({
+      queueString: "0,0%1,1%-1",
+      gridString: blockedGrid(1),
+      customerString: "0;0;0;{c0:17.{g0:18}}|0;0;0;{c0:17.{g0:18}}",
+      serveableSlots: 1,
+    });
+    s.pick(0);
+    s.tick(1);
+    s.pick(1);
+    s.tick(3);
+    expect(s.servedCount).toBe(1);
+    expect(s.grid.filter((c) => c.kind === "dirty").length).toBe(1);
+
+    s.pick(1);
+    s.tick(3);
+    expect(s.status).toBe("playing");
+    const held = s.tools[tool("griddle")].slots[0].item;
+    expect(held?.ing).toBe(ing("patty-cooked"));
+    expect(held?.completed).toEqual({ out: ing("patty-cooked"), amount: 1 });
+    expect(s.gridJams).toBe(1);
+    expect(s.nextCompletionIn()).toBeNull();
+    expect(s.cookingCount).toBe(1);
+
+    s.pick(2); // sweeper
+    expect(s.tools[tool("griddle")].slots[0].item).toBeNull();
+    expect(s.grid.filter((c) => c.kind === "cooked")).toEqual([{ kind: "cooked", ing: ing("patty-cooked") }]);
+
+    s.pick(0);
+    s.tick(1);
+    expect(s.status).toBe("won");
+  });
+
+  it("a held output blocks its lane, so a pick needing that tool is refused", () => {
+    const s = sim({ queueString: "2%0", gridString: blockedGrid(1), customerString: "0;0;0;{c0:17.{g0:19.19}}" });
+    s.pick(0);
+    s.tick(1); // slice 1 lands on the only cell, slice 2 is held
+    expect(s.tools[tool("cutting-board")].slots[0].item?.completed).toEqual({ out: ing("tomato-sliced"), amount: 1 });
+    expect(s.nextCompletionIn()).toBeNull();
+    expect(s.canPick(1)).toEqual({ ok: false, reason: "Cutting Board is full" });
+  });
+
+  it("loses only when nothing on the board can move — even with the queues already empty", () => {
+    const s = sim(
+      { queueString: "1", gridString: blockedGrid(0), customerString: "0;0;0;{c1:24}" },
+      { detectDeadlockLoss: true },
+    );
+    s.pick(0);
+    s.tick(1);
+    expect(s.status).toBe("playing"); // still cooking
+    s.tick(2);
+    expect(s.tools[tool("griddle")].slots[0].item?.completed).toEqual({ out: ing("patty-cooked"), amount: 1 });
+    expect(s.status).toBe("lost");
+    expect(s.loseReason).toBe("deadlock");
+  });
+
+  it("does not lose while a held output can still be picked around", () => {
+    const s = sim(
+      { queueString: "1%7", gridString: blockedGrid(0), customerString: "0;0;0;{c1:24}" },
+      { detectDeadlockLoss: true },
+    );
+    s.pick(0);
+    s.tick(3); // patty held, but the cup lane is still pickable
+    expect(s.status).toBe("playing");
+    s.pick(1);
+    s.tick(2); // soda cup serves the customer directly
     expect(s.status).toBe("won");
   });
 });

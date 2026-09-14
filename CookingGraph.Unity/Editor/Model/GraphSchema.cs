@@ -74,7 +74,7 @@ namespace CookingGraph.Editor
         {
             new VertexDefinition("ingredient", "Ingredient", "#6bbf59",
                 F("name", "string", true), F("displayName", "string", true), F("pickupable", "bool", false, false),
-                F("usageNum", "int", false, 1), F("price", "int", false, 0),
+                F("usageNum", "int", false, 1), F("stackMin", "int", false, 1), F("stackMax", "int", false, 1), F("price", "int", false, 0),
                 F("code", "string"), F("emoji", "string"), F("localImage", "string"), F("imageURL", "string"), F("fileId", "string")),
             // preservationSlots are waiting positions OUTSIDE the recipe layout: a matching pickup
             // enters the buffer first, advances into a free process slot on its own, and is blocked

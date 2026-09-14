@@ -97,6 +97,13 @@ namespace CookingGraph.Editor
                 }
                 if (pair.Kind == "dirty" && pair.Node["maxStack"] != null && pair.Node.Value<int?>("maxStack") < 1)
                     Error(issues, "INV-DIRTY-STACK", $"Dirty object '{name}' has maxStack {pair.Node.Value<int>("maxStack")}; it must be positive.", name);
+                if (pair.Kind == "ingredient")
+                {
+                    var stackMin = pair.Node.Value<int?>("stackMin") ?? 1;
+                    var stackMax = pair.Node.Value<int?>("stackMax") ?? 1;
+                    if (stackMin < 1 || stackMax < stackMin)
+                        Error(issues, "INV-STACK-RANGE", $"Ingredient '{name}' has stackMin {stackMin} and stackMax {stackMax}; the range must satisfy 1 <= stackMin <= stackMax.", name);
+                }
             }
         }
 

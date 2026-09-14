@@ -24,6 +24,33 @@ import { parseQueueGroups, parseQueues } from "../../core/parser.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
+import { orderIdIndex } from "../../core/nodeOrder.ts";
+import { queueItemAmount } from "../../core/parser.ts";
+import type { QueueItem } from "../../core/types.ts";
+
+/** Bag slots whose amount falls outside their ingredient's stackMin..stackMax. */
+export function bagsOutsideStackRange(
+  queues: QueueItem[][],
+  ix: GraphIndex,
+): { name: string; amount: number; min: number; max: number }[] {
+  const ids = orderIdIndex(ix);
+  const out: { name: string; amount: number; min: number; max: number }[] = [];
+  for (const lane of queues) {
+    for (const item of lane) {
+      if (item.kind !== "ingredient") continue;
+      const amount = queueItemAmount(item);
+      if (amount < 2) continue;
+      const name = ids.byId.ingredient.get(item.id);
+      const dense = name === undefined ? undefined : ix.ingByName.get(name);
+      if (dense === undefined) continue;
+      const { min, max } = ix.stackRange[dense];
+      if (amount < min || amount > max) {
+        out.push({ name: ix.doc.vertices.ingredient[dense]?.displayName ?? name!, amount, min, max });
+      }
+    }
+  }
+  return out;
+}
 
 /** What the Status column shows for one level, newest run wins. */
 export interface LevelStatus {
@@ -89,6 +116,16 @@ export function validateLevel(
 
   if (config.customers.length === 0) warnings.push("No customers — nothing to serve.");
   if (config.queues.every((lane) => lane.length === 0)) warnings.push("Every queue lane is empty.");
+
+  // ---- bag sizes vs. the graph's stack range (soft: designers may exceed it) ----
+  const outside = bagsOutsideStackRange(config.queues, ix);
+  if (outside.length > 0) {
+    warnings.push(
+      `${outside.length} bag(s) outside the ingredient's stack range: ` +
+        outside.slice(0, 4).map((o) => `${o.name} ×${o.amount} (${o.min}–${o.max})`).join(", ") +
+        (outside.length > 4 ? ", …" : "") + ".",
+    );
+  }
 
   // ---- playable ----
   try {

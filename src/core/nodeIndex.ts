@@ -179,6 +179,8 @@ export interface GraphIndex {
   usageNum: Int32Array;
   servable: Uint8Array;
   pickupable: Uint8Array;
+  /** Auto Generate bag range per ingredient — `stackMin`/`stackMax`, both defaulting to 1. */
+  stackRange: { min: number; max: number }[];
 }
 
 function intern(names: string[]): Map<string, number> {
@@ -235,9 +237,12 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
   const usageNum = new Int32Array(n);
   const servable = new Uint8Array(n);
   const pickupable = new Uint8Array(n);
+  const stackRange: { min: number; max: number }[] = [];
   doc.vertices.ingredient.forEach((v, i) => {
     usageNum[i] = v.usageNum ?? 1;
     pickupable[i] = v.pickupable ? 1 : 0;
+    const min = Math.max(1, v.stackMin ?? 1);
+    stackRange[i] = { min, max: Math.max(min, v.stackMax ?? 1) };
   });
   for (const name of lookup.servable) {
     const i = ingByName.get(name);
@@ -430,6 +435,7 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
     usageNum,
     servable,
     pickupable,
+    stackRange,
   };
 }
 

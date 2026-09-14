@@ -54,6 +54,39 @@ describe("queue string", () => {
   });
 });
 
+describe("queue bag amounts", () => {
+  it("round-trips a bag with effects, amount before the effect list", () => {
+    const s = "1:3#4:5,0%2:2";
+    const q = parseQueues(s);
+    expect(q[0][0]).toEqual({ kind: "ingredient", id: 1, amount: 3, effects: [{ effectId: 4, params: [5] }] });
+    expect(q[0][1]).toEqual({ kind: "ingredient", id: 0, effects: [] });
+    expect(q[1][0]).toEqual({ kind: "ingredient", id: 2, amount: 2, effects: [] });
+    expect(serializeQueues(q)).toBe(s);
+  });
+
+  it("normalises an absent, empty, 0 or 1 amount to a plain slot", () => {
+    for (const s of ["1", "1:", "1:0", "1:1"]) {
+      const [[item]] = parseQueues(s);
+      expect(item).toEqual({ kind: "ingredient", id: 1, effects: [] });
+      expect(item.amount).toBeUndefined();
+      expect(serializeQueues(parseQueues(s))).toBe("1");
+    }
+  });
+
+  it("keeps amounts alongside a group trailer", () => {
+    const s = "1:2,0%0:4,1$0-0,1-0$";
+    expect(serializeQueues(parseQueues(s), parseQueueGroups(s))).toBe("1:2,0%0:4,1$0-0,1-0$");
+  });
+
+  it("a sweeper never carries an amount", () => {
+    expect(parseQueues("-1:3")[0][0]).toEqual({ kind: "sweeper", id: -1, effects: [] });
+  });
+
+  it("rejects a second ':' in the base token", () => {
+    expect(() => parseQueues("1:2:3")).toThrow();
+  });
+});
+
 describe("queue groups", () => {
   const grouped = "0,1,0%0,0,1%1,7,1$0-0,1-0;0-2,0-3$1-1,2-1";
 

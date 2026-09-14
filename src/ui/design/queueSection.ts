@@ -8,7 +8,8 @@
 
 import Sortable from "sortablejs";
 import { CELL_COLOR_LOCK, EFFECT_FREEZE, EFFECT_HIDDEN, EFFECT_HOLDING_KEY } from "../../core/effects.ts";
-import { parseQueueGroups, parseQueues, serializeQueues, SWEEPER_ID } from "../../core/parser.ts";
+import { parseQueueGroups, parseQueues, queueItemAmount, serializeQueues, SWEEPER_ID } from "../../core/parser.ts";
+import { makeScrubber } from "../scrubInput.ts";
 import type {
   CustomerConfig,
   EffectInstance,
@@ -101,6 +102,12 @@ export interface QueueSectionDeps {
   deadlockLevel?(): { ix: GraphIndex; level: NodeLevelConfig } | null;
   /** Legacy Design only: converts the live queue string to the active graph's current ids. */
   convertToNewFormat?(legacyString: string): string;
+  /**
+   * The graph's stackMin/stackMax for a pickupable data id — what Auto
+   * Generate will use for bag sizes. A hand-authored amount outside it is
+   * only flagged, never refused.
+   */
+  stackRange?(id: Id): { min: number; max: number } | undefined;
 }
 
 /**
@@ -156,7 +163,17 @@ function tagQueues(queues: QueueItem[][]): QueueItem[][] {
 }
 
 const sameQueueItem = (a: QueueItem, b: QueueItem) =>
-  a.kind === b.kind && a.id === b.id && JSON.stringify(a.effects) === JSON.stringify(b.effects);
+  a.kind === b.kind &&
+  a.id === b.id &&
+  queueItemAmount(a) === queueItemAmount(b) &&
+  JSON.stringify(a.effects) === JSON.stringify(b.effects);
+
+/** Writes a slot's bag size, dropping the field entirely for a plain (1-piece) slot. */
+function setItemAmount(item: QueueItem, amount: number): void {
+  const n = Math.max(1, Math.floor(amount) || 1);
+  if (n > 1 && item.kind === "ingredient") item.amount = n;
+  else delete item.amount;
+}
 
 // ---------- cid <-> coordinate ----------
 
@@ -952,6 +969,24 @@ function tileEl(
     badge.title = `Holds a ${KEY_COLORS[key.params[0] ?? 0]?.name ?? ""} key`;
     tile.append(badge);
   }
+  // Top-right bag size, same badge Play draws; only a real bag (2+) gets one.
+  const amount = queueItemAmount(item);
+  if (amount > 1) {
+    const range = deps.stackRange?.(item.id);
+    const outside = range !== undefined && (amount < range.min || amount > range.max);
+    tile.append(
+      el(
+        "span",
+        {
+          class: `tile-amount${outside ? " outside-range" : ""}`,
+          title: outside
+            ? `Bag of ${amount} — outside this ingredient's stack range ${range.min}–${range.max}`
+            : `Bag of ${amount}`,
+        },
+        [`×${amount}`],
+      ),
+    );
+  }
 
   const remove = button(
     "✕",
@@ -1265,6 +1300,8 @@ function tileMenu(
       ? [...selection].map((cid) => selectedItems.get(cid)).filter((it): it is QueueItem => !!it)
       : [item];
 
+  items.push(...bagMenuItems(section, deps, draft, lane, item, itemIndex, targetItems, selection));
+
   for (const def of deps.defs.effects.filter((d) => d.id !== 0)) {
     const existingList = targetItems.map((it) => it.effects.find((e) => e.effectId === def.id));
     const allActive = targetItems.length > 0 && existingList.every((e) => !!e);
@@ -1404,6 +1441,130 @@ function tileMenu(
       section.commit("Remove ingredient", 0, 1);
     },
   });
+  return items;
+}
+
+// ---------- bag amount / split / merge ----------
+
+/**
+ * The bag rows of a slot's right-click menu: an amount box (drag sideways to
+ * scrub), a split slider, and — with 2+ same-ingredient slots selected — a
+ * merge. Sweepers get none of this; a sweeper is never a bag.
+ */
+function bagMenuItems(
+  section: Section<QueueDraft>,
+  deps: QueueSectionDeps,
+  draft: QueueDraft,
+  lane: QueueItem[],
+  item: QueueItem,
+  itemIndex: number,
+  targetItems: QueueItem[],
+  selection: Set<string>,
+): MenuItem[] {
+  if (item.kind !== "ingredient") return [];
+  const items: MenuItem[] = [];
+  const ingredientTargets = targetItems.filter((it) => it.kind === "ingredient");
+  const amount = queueItemAmount(item);
+  const range = deps.stackRange?.(item.id);
+
+  // --- Amount: type, or press and drag left/right. Applies to every selected
+  // ingredient slot when several are selected (like the effect toggles).
+  const input = el("input", { type: "number", min: "1", step: "1", value: String(amount) }) as HTMLInputElement;
+  input.addEventListener("click", (e) => e.stopPropagation());
+  const applyAmount = (value: number, label: string) => {
+    let changed = false;
+    for (const it of ingredientTargets) {
+      if (queueItemAmount(it) === value) continue;
+      setItemAmount(it, value);
+      changed = true;
+    }
+    if (changed) section.commit(label);
+  };
+  makeScrubber(
+    input,
+    { min: 1, decimals: 0 },
+    (value) => applyAmount(value, "Scrub slot amount"),
+    (value) => applyAmount(value ?? 1, "Set slot amount"),
+  );
+  items.push({
+    label: "Amount",
+    separator: true,
+    content: el("div", { class: "ctx-inline queue-amount-row" }, [
+      el("label", { class: "ctx-field" }, [
+        ingredientTargets.length > 1 ? `Amount (${ingredientTargets.length} slots)` : "Amount",
+        input,
+      ]),
+      el("small", { class: "ctx-inline-label" }, [
+        range ? `drag ←→ to adjust · stack range ${range.min}–${range.max}` : "drag ←→ to adjust",
+      ]),
+    ]),
+  });
+
+  // --- Split: the slider is how many pieces STAY; the rest become a new
+  // plain slot right after this one in the same lane (no effects, no group).
+  items.push({
+    label: `Split bag${amount < 2 ? " (needs 2+)" : ""}`,
+    disabled: amount < 2,
+    expand: (close) => {
+      let keep = Math.max(1, Math.floor(amount / 2));
+      const slider = el("input", { type: "range", min: "1", max: String(amount - 1), value: String(keep) }) as HTMLInputElement;
+      const readout = el("span", { class: "ctx-inline-label" });
+      const update = () => {
+        readout.textContent = `keep ${keep} · split off ${amount - keep}`;
+      };
+      slider.addEventListener("click", (e) => e.stopPropagation());
+      slider.addEventListener("input", () => {
+        keep = Math.min(amount - 1, Math.max(1, Number(slider.value) || 1));
+        update();
+      });
+      update();
+      return el("div", { class: "ctx-sub queue-split" }, [
+        slider,
+        readout,
+        button("Split", () => {
+          setItemAmount(item, keep);
+          const rest: QueueItem = { kind: "ingredient", id: item.id, effects: [] };
+          setItemAmount(rest, amount - keep);
+          lane.splice(itemIndex + 1, 0, tagNew(rest));
+          section.commit("Split bag", 1);
+          close();
+        }),
+      ]);
+    },
+  });
+
+  // --- Merge: 2+ selected slots of the same ingredient collapse into the
+  // first-selected one, which keeps its effects and grouping; the others are
+  // removed, and any combined/linked group they belonged to is broken.
+  if (selection.size >= 2) {
+    const live = itemsByCid(draft.queues);
+    const ordered = [...selection].map((cid) => live.get(cid)).filter((it): it is QueueItem => !!it);
+    const sameIngredient =
+      ordered.length === selection.size &&
+      ordered.every((it) => it.kind === "ingredient" && it.id === ordered[0].id);
+    const total = ordered.reduce((n, it) => n + queueItemAmount(it), 0);
+    items.push({
+      label: sameIngredient
+        ? `Merge ${ordered.length} slots into one bag of ${total}`
+        : "Merge slots (select the same ingredient)",
+      disabled: !sameIngredient,
+      onSelect: () => {
+        const [first, ...rest] = ordered;
+        const removed = new Set(rest.map((it) => cidOf(it)).filter((c): c is string => !!c));
+        setItemAmount(first, total);
+        for (const q of draft.queues) {
+          for (let i = q.length - 1; i >= 0; i--) {
+            const cid = cidOf(q[i]);
+            if (cid && removed.has(cid)) q.splice(i, 1);
+          }
+        }
+        draft.groups = draft.groups.filter((g) => !g.cids.some((cid) => removed.has(cid)));
+        pruneGroups(draft);
+        selection.clear();
+        section.commit("Merge bags", 0, rest.length);
+      },
+    });
+  }
   return items;
 }
 
@@ -1593,6 +1754,21 @@ function recipeFoldout(
     }
   }
 
+  // Bags outside the graph's stackMin..stackMax — a soft flag, since a
+  // designer may exceed the generator's range on purpose.
+  let outsideRange = 0;
+  if (deps.stackRange) {
+    for (const lane of draft.queues) {
+      for (const item of lane) {
+        if (item.kind !== "ingredient") continue;
+        const amount = queueItemAmount(item);
+        if (amount < 2) continue;
+        const range = deps.stackRange(item.id);
+        if (range && (amount < range.min || amount > range.max)) outsideRange++;
+      }
+    }
+  }
+
   const shortPieces = [...pieceCounts].filter(([, { have, need }]) => have < need);
   const excessPieces = [...pieceCounts].filter(([, { have, need }]) => have > need);
   const shortKeys = [...keysNeeded].filter(
@@ -1616,6 +1792,9 @@ function recipeFoldout(
       : []),
     ...(!shortPieces.length && !shortKeys.length && !keysMismatch && excessPieces.length
       ? [el("span", { class: "warn-badge soft" }, ["⚠ Some queued capacity won't be used"])]
+      : []),
+    ...(outsideRange > 0
+      ? [el("span", { class: "warn-badge soft" }, [`⚠ ${outsideRange} bag(s) outside the stack range`])]
       : []),
   ]);
 
@@ -1650,7 +1829,7 @@ function recipeFoldout(
 
   foldout.append(
     el("div", { class: "foldout-body" }, [
-      el("div", {}, [el("small", {}, ["Uses (have / need)"]), pieceRows]),
+      el("div", {}, [el("small", {}, ["Uses (have / need) — bags count every piece"]), pieceRows]),
       ...(colorIds.size
         ? [el("div", {}, [el("small", {}, ["Keys (held / locks)"]), keyRows])]
         : []),

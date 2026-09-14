@@ -228,6 +228,15 @@ export interface QueueItem {
   /** Raw ingredient id for kind "ingredient"; reserved object id otherwise. */
   id: Id;
   effects: EffectInstance[];
+  /**
+   * Pieces of the same ingredient this slot holds — a "bag". Absent means 1
+   * (a plain slot, the only shape before bags existed). Never stored as 1 or
+   * less: the parser normalises `:0`, `:1` and `:` away so a plain slot always
+   * serializes as the bare id. A bag (2+) lands on the prep grid as ONE cell and
+   * drains a piece at a time; see nodeSim.ts's "bag" cell. Not to be confused
+   * with the Save Me backpack.
+   */
+  amount?: number;
 }
 
 /**

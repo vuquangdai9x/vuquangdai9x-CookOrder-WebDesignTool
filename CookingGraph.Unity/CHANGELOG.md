@@ -1,5 +1,11 @@
 # Changelog
 
+- Queue slots can be **bags**: `IngredientQueueTranslator` parses the `<id>[:<amount>]` token
+  (`1:3#4:5`) into `QueueItemData.amount` (1 for a plain slot or a sweeper) and serializes the
+  suffix only for 2+, so existing strings round-trip unchanged. `IngredientNodeAsset` gained
+  `stackMin`/`stackMax` (the Auto Generate bag range) with the `INV-STACK-RANGE` graph check.
+  Runtime rules for bags and for outputs that wait in their tool are in GAMEPLAY_RULES §8–§12.
+
 - Added boss-aware autoplay visibility fields. Preview orders hidden by a pending boss no longer
   influence normal pickup scoring or Adaptive strategy selection.
 - Documented exclusive boss seating, hidden boss/behind-boss previews, preview restoration after

@@ -23,6 +23,14 @@ namespace CookingGraph
         public QueueItemKind kind;
         /// <summary>Raw numeric token retained for lossless serialization.</summary>
         public int id;
+        /// <summary>
+        /// Pieces this slot holds — a "bag". Parsed from the optional <c>:amount</c> suffix
+        /// (<c>1:3#4:5</c> = three id-1 pickups carrying effect 4); an absent, empty, 0 or 1
+        /// amount is a plain single-piece slot and serializes as the bare id. A bag of 2+ lands on
+        /// ONE prep-grid cell and drains a piece at a time (GAMEPLAY_RULES §10.2). Sweepers are
+        /// always 1. Not the Save Me backpack.
+        /// </summary>
+        public int amount = 1;
         /// <summary>Position in CookingGraphAsset.idTable.ingredient, or -1 for a sweeper.</summary>
         public int index = -1;
         /// <summary>Resolved ingredient asset when parsed with a CookingGraphAsset.</summary>

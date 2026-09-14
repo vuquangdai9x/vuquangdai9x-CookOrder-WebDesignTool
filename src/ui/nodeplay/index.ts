@@ -56,6 +56,7 @@ import type { NodeCustomerState, NodeQueueCell } from "../../core/nodeSim.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import type { GraphIndex, ProcessStep } from "../../core/nodeIndex.ts";
 import type { OutOfSlotPolicy, QueueGroupKind, QueueItem } from "../../core/types.ts";
+import { queueItemAmount } from "../../core/parser.ts";
 import { nodeAsMapDef } from "../../data/nodeGraphToMapDef.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
@@ -127,7 +128,8 @@ function fillsDishChip(kind: NodeFlight["kind"]): boolean {
     kind === "grid-to-customer" ||
     kind === "backpack-to-customer" ||
     kind === "tool-to-customer" ||
-    kind === "queue-to-customer"
+    kind === "queue-to-customer" ||
+    kind === "bag-to-customer"
   );
 }
 
@@ -1480,6 +1482,12 @@ export class NodePlayView {
           el("span", { class: "cell-main parked" }, [this.ingredientIconForDense(content.ing, 96)]),
           el("small", { class: "cell-badge" }, ["waiting"]),
         );
+      } else if (content.kind === "bag") {
+        // A parked bag: pieces still to be processed/served, one at a time.
+        cell.append(
+          el("span", { class: "cell-main parked bag" }, [this.ingredientIconForDense(content.ing, 96)]),
+          el("small", { class: "cell-badge bag-count", title: `${content.count} piece(s) left in the bag` }, [`×${content.count}`]),
+        );
       } else if (content.kind === "dirty") {
         cell.append(
           el("span", { class: "cell-main dirty" }, [dirtyIconEl(content.dirtyId, 96)]),
@@ -1560,6 +1568,15 @@ export class NodePlayView {
             node.append(
               el("span", { class: "slot-item" }, [this.ingredientIconForDense(slot.item.ing, 96)]),
             );
+            // A finished output with nowhere to go waits here (§9.4). Say so,
+            // or a full griddle reads as "still cooking" forever.
+            if (slot.item.completed) {
+              node.classList.add("held");
+              node.title = `${this.sim.ingredientName(slot.item.completed.out)} is done — waiting for a free grid cell`;
+              node.append(el("small", { class: "slot-held-badge" }, [
+                slot.item.completed.amount > 1 ? `⏸ ×${slot.item.completed.amount}` : "⏸",
+              ]));
+            }
           }
           node.append(el("div", { class: "bar-track" }, [bar]));
           group.append(node);
@@ -1778,6 +1795,12 @@ export class NodePlayView {
         el("span", { class: "tile-freeze-count" }, [String(freezeRemaining)]),
       );
     }
+    // A bag: how many pieces this slot holds. Never masked — a hidden bag
+    // shows "?" but its size is still fair information.
+    const amount = queueItemAmount(item);
+    if (amount > 1) {
+      tile.append(el("span", { class: "tile-amount", title: `Bag of ${amount}` }, [`×${amount}`]));
+    }
     if (key) {
       const badge = el("span", { class: "tile-key" }, [statusIconEl(EFFECT_HOLDING_KEY, 48)]);
       badge.style.background = KEY_COLORS[key.params[0] ?? 0]?.hex ?? "transparent";
@@ -1823,7 +1846,7 @@ export class NodePlayView {
     const rescue = reason === "grid-overflow"
       ? {
           icon: backpackIconEl(64),
-          copy: `Save Me: place up to ${SAVE_ME_BAG_CAPACITY} non-dirty grid items into a bag.`,
+          copy: `Save Me: place up to ${SAVE_ME_BAG_CAPACITY} non-dirty grid items into the backpack.`,
           button: "🎒 Pack grid items",
         }
       : reason === "customer-timeout"

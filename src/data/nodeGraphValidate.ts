@@ -96,6 +96,16 @@ export function validateNodeGraph(doc: NodeGraphMap): GraphValidation {
 type Add = (id: string, message: string, extra?: Partial<GraphIssue>) => void;
 
 function checkDirtyStacks(doc: NodeGraphMap, add: Add): void {
+  for (const ing of doc.vertices.ingredient) {
+    const min = ing.stackMin ?? 1;
+    const max = ing.stackMax ?? 1;
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max < min) {
+      add("INV-STACK-RANGE", `Ingredient "${ing.name}" has stackMin ${min} and stackMax ${max}; the range must satisfy 1 <= stackMin <= stackMax.`, {
+        vertexKind: "ingredient",
+        vertexName: ing.name,
+      });
+    }
+  }
   for (const dirty of doc.vertices.dirty) {
     if (dirty.maxStack === undefined) continue;
     if (!Number.isInteger(dirty.maxStack) || dirty.maxStack < 1) {

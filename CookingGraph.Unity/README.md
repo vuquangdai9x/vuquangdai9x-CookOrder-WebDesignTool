@@ -24,6 +24,8 @@ bool blocked = cell.Has(CellStatusId.Blocked);
 // Queue ingredients expose both the positional index and typed asset.
 int ingredientIndex = queues.columns[0].items[0].index;
 IngredientNodeAsset ingredient = queues.columns[0].items[0].ingredient;
+// A slot may be a bag of several pieces ("1:3" in the string); 1 is a plain slot.
+int pieces = queues.columns[0].items[0].amount;
 
 // Customer members expose their positional index and resolved node asset.
 int memberIndex = customers.customers[0].dishes[0].root.index;

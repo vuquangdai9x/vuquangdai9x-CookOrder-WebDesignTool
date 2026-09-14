@@ -48,8 +48,9 @@ pick queue front  →  (tool: prepare/cook, timed)  →  finished ingredient lan
 ```
 
 * **Win:** every customer of the level has been served (Staff customers count as served).
-* **Lose:** one of exactly four reasons — `grid-overflow`, `dirty-overflow`, `out-of-ingredient`,
-  `customer-timeout` (§12).
+* **Lose:** one of five reasons — `grid-overflow`, `deadlock`, `dirty-overflow`, `out-of-ingredient`,
+  `customer-timeout` (§12). A finished ingredient with no free cell is **not** a loss by itself:
+  it waits in its tool (§9.4), and the run is lost only when the player has no legal move left.
 * **Save Me** can reverse a loss one or more times (§13.2). It is the only transition that moves
   status backwards.
 
@@ -88,6 +89,7 @@ and editor-only `layout` / `notes` (the runtime ignores the last two).
 | `displayName` | — | Player/designer facing. |
 | `pickupable` | false | Can come off the ingredient queue. A pickupable is a graph leaf. |
 | `usageNum` | 1 | Dish slots one landed piece can fill before it is consumed. `>1` also **disables direct-serve** for it (§11.2). |
+| `stackMin`, `stackMax` | 1, 1 | The **bag range** Auto Generate uses for this ingredient's queue slots (pieces per slot). Not read by the sim; a hand-authored amount outside it is only a level warning. |
 | `price`, `code` | 0, "" | Economy / Unity-facing string id. Not read by the sim. |
 | `emoji`, `localImage`, `imageURL`, `fileId` | — | Artwork fallbacks (web tool only; in Unity assign a `Sprite`). |
 
@@ -172,6 +174,7 @@ Errors (a map violating one is not playable):
 | INV-GROUP-NONEMPTY | Every group has ≥1 option edge. |
 | INV-GROUP-QUANTITY | `minQuantity ≥ 0` and ≤ a finite `maxQuantity`. |
 | INV-DIRTY-STACK | `maxStack`, if present, is a positive integer. |
+| INV-STACK-RANGE | `1 ≤ stackMin ≤ stackMax` on every ingredient. |
 | INV-ORDER-REBUILDABLE | One ingredient must not be offered by **two slots of the same composite** (it would resolve into the wrong slot and carry a gate that never opens). Sharing across *different* orderables is fine — a bracket dish names its composite, so lookup is scoped to it. |
 | INV-DISH-SINGLE-ORDERABLE | Every member of a dish belongs to the composite its outermost bracket names. |
 | INV-INPUT-SLOT-RANGE | Every process input's `slot` indexes a real `slotConfigs` entry. |
@@ -231,8 +234,14 @@ One level = one CSV row / one `LevelData`:
 
 * `%` separates **columns** (queues); `,` separates items within a column, **front-first**
   (row 0 = the pickable front).
-* Each item is `<dataId>` plus optional effects: `1#4:5` = item id 1 carrying effect 4 with param 5.
-  Effect grammar is global: `#id` attaches an effect, each `:param` appends a param (`#4:1:1`).
+* Each item is `<dataId>[:<amount>]` plus optional effects: `1#4:5` = item id 1 carrying effect 4
+  with param 5; `1:3#4:5` = a **bag** of three id-1 pickups carrying that effect. An absent, empty,
+  `0` or `1` amount is a plain single-piece slot and is never written back, so pre-bag strings
+  round-trip byte-for-byte. A sweeper never carries an amount. Effect grammar is global: `#id`
+  attaches an effect, each `:param` appends a param (`#4:1:1`).
+* **A bag is one slot.** It moves, freezes, hides and is picked as one tile; a key on it is
+  granted once; `picksMade`/`picksByIngredient` count the pick, not the pieces. What differs is
+  where it lands (§10.2) — on ONE grid cell, draining a piece at a time (§8, §9.1).
 * **Negative ids are non-ingredient objects.** `SWEEPER_ID = -1` (the Sweeper).
 * Optional trailer `$<combined>$<linked>` describes queue **groups** (§8.2): groups separated by
   `;`, member cells by `,`, each cell `<x>-<y>` (x = column, y = row, both non-negative so `-` is
@@ -400,8 +409,10 @@ queueGrid[x][y]: column x, row y (0 = front). Rectangular; null = hole. Each cel
 tools[]        : { index, numSlots = processSlotCount + preservationSlotCount,
                    slots[] { item | null }, layout }
                  slot item: { uid, ing, elapsed, duration, chain?, completed? }
-grid[]         : per cell — empty | cooked{ing, usesLeft?} | raw{ing} |
+grid[]         : per cell — empty | cooked{ing, usesLeft?} | raw{ing} | bag{ing, count} |
                  dirty{dirtyId, count} | backpack{items[]}
+                 (`bag` = a picked bag's still-unprocessed pieces; NOT the Save Me backpack)
+gridJams       : how often a finished output found no cell and waited in its tool (§9.4)
 pending[] / active[] : customers; servedCount
 flights[]      : items in transit (§8.1)
 dirtyOrder[]   : grid cell indices of dirty stacks, oldest first
@@ -419,7 +430,7 @@ animated runs stay identical.
 
 Flight kinds: `queue-to-tool`, `queue-to-grid`, `tool-to-grid`, `grid-to-tool`, `backpack-to-tool`,
 `tool-to-tool`, `grid-to-customer`, `tool-to-customer`, `queue-to-customer`, `customer-to-grid`
-(dirty dish), `dirty-to-staff`, `backpack-to-customer`.
+(dirty dish), `dirty-to-staff`, `backpack-to-customer`, `bag-to-tool`, `bag-to-customer`.
 
 A flight carries: `ing` (-1 for a dirty dish), `fromCell`/`toCell`, `fromTool`/`toTool`,
 `toCustomer {index, dish, slot}`, `fromCustomer`, `raw`, `dirtyId`, `chain`, `step`.
@@ -435,8 +446,10 @@ On landing:
 * `*-to-tool`: release the slot reservation and install the item — `duration` is the **destination
   tool's `cookingTime`** for a chain hop, otherwise `step.duration ?? tool.cookingTime`; a
   `grid-to-tool` / `backpack-to-tool` also clears its source cell / backpack entry.
-* `queue-to-grid`: the cell becomes `raw` (parked) or `cooked` with
-  `usesLeft = usageNum > 1 ? usageNum : —`.
+* `queue-to-grid`: with `bagCount` the cell becomes `bag{ing, count}`; otherwise `raw` (parked) or
+  `cooked` with `usesLeft = usageNum > 1 ? usageNum : —`.
+* `bag-to-tool` / `bag-to-customer`: install the piece like `grid-to-tool` / fill the slot like
+  `grid-to-customer`, then decrement the source bag's `count`; at 0 the cell becomes `empty`.
 * `tool-to-grid`: the cell becomes `cooked`.
 * `customer-to-grid`: decrement that cell's pending-dirty tally, then place/increment the stack.
 * `dirty-to-staff`: clear the cell, remove it from `dirtyOrder`, decrement the staff's outstanding
@@ -501,6 +514,12 @@ Repeat (guard: 100 iterations) until neither `servedCount` nor `flights.length` 
 5. `reclaimProcessableBackpackItems()`.
 6. `reclaimProcessableGridItems()` — move parked raws and non-servable intermediates into a tool as
    soon as one frees (a raw wired to a preservation buffer goes there first).
+7. `reclaimBagItems()` — for every unreserved `bag` cell, advance its **top piece only**: into a
+   preservation buffer, else into the first eligible recipe's free slot (`routingStep` +
+   `freeSlotFor`), else — for an ingredient that needs no tool — straight to a slot that wants it
+   (`findServeTarget`). The cell stays reserved while that one piece is in flight, so a bag never
+   has two pieces moving. A piece with nowhere to go simply waits in the bag; a no-tool bag never
+   spills onto extra cells.
 
 Bail out immediately if the status stops being `playing`.
 
@@ -566,7 +585,15 @@ For each tool, for each lane `0..laneCount-1`:
        slices: one enters the fryer, the other visibly waits.) No free cell ⇒ `grid-overflow` loss.
    * **Normal output** — emit `amount` units, each independently: if `findServeTarget(out)` finds a
      waiting slot, fly `tool-to-customer` (skipping the grid); otherwise reserve a cell and fly
-     `tool-to-grid`. No free cell ⇒ `grid-overflow` loss.
+     `tool-to-grid`.
+   * **No free cell ⇒ the output WAITS IN THE TOOL** (never an immediate loss). Whatever units did
+     find a destination leave; for the rest, free the partner points, set `lead.ing = out`,
+     `elapsed = duration`, `completed = {out, amount: remaining}`, increment `gridJams`, and
+     retry on every `settle()` pass (`advanceTools(0)`). A held lane does not age, is not a pending
+     completion for `nextCompletionIn()`, still counts in `cookingCount`, and **blocks its lane**
+     for new input (a pick needing that tool is refused `<Tool> is full`). This applies to every
+     tool and every output kind — the surplus of a batch intermediate is held the same way; the
+     single-intermediate "wait for the next tool" case (above) is unchanged.
    * Empty the lane.
 
 `nextCompletionIn()` (used by fast-forward / skip) returns the seconds until the next **ready** lane
@@ -579,6 +606,7 @@ resting points rather than pending completions.
 
 * `point` = where this ingredient belongs (from the step); a chain hop forces point 0.
 * Consider every lane's flat slot at that point that is neither occupied nor reserved.
+* A lane holding a **held output** (§9.4) is never a candidate — the output is no recipe input.
 * **Reject a lane committed to an incompatible recipe:** ask "does *some* recipe of this tool accept
   everything already in the lane **plus** the incoming item?" (Resolving the lane's recipe first and
   then testing against it is wrong — coffee alone fits both drinks, so an arbitrary choice would
@@ -632,8 +660,12 @@ customer needs its output or something downstream of it.
 2. Unresolved id (`ing < 0`) → refuse `Unknown ingredient id N`.
 3. `pickPolicy == "wanted-only"` (opt-in; **default is `"any"`**) → refuse if nothing the item can
    become is currently demanded.
-4. Ingredient wired to a preservation buffer → reserve a preservation position, else refuse.
-5. Otherwise `eligible` = the steps of `stepsForInput[ing]` whose `processMayStart` is true.
+4. **Bag (`amount ≥ 2`)** → reserve a grid cell for the whole bag (refuse `No free grid cell for a
+   bag`) and plan `bag{cell, count}`. Nothing else below applies to a bag: it always parks,
+   regardless of `outOfSlotPolicy`, and its pieces are routed later by `reclaimBagItems()` exactly
+   as steps 5–6 would route a single pickup. A plain slot (`amount` 1) continues:
+5. Ingredient wired to a preservation buffer → reserve a preservation position, else refuse.
+6. Otherwise `eligible` = the steps of `stepsForInput[ing]` whose `processMayStart` is true.
    * **No steps at all** → the item needs no tool; reserve a grid cell (refuse `No free grid cell`).
    * Route into the first eligible step that has a free compatible slot → reserve it.
    * No route, and `eligible` is empty (only manual recipes, none currently wanted) → **park the raw
@@ -653,7 +685,9 @@ customer needs its output or something downstream of it.
 3. Run each member's `onPick` effect handler.
 4. Dispatch each member:
    * sweeper → `clearDirtyStacks(1)` (the oldest stack, whole, instantly);
-   * otherwise `picksMade++`, `picksByIngredient[dataId]++`, then
+   * otherwise `picksMade++`, `picksByIngredient[dataId]++` (once per pick, not per piece), then
+     - bag → `queue-to-grid` with `bagCount` (landing creates the `bag` cell; `settle()` then
+       starts draining it);
      - tool → `queue-to-tool`;
      - grid non-raw → **direct-serve if someone is already waiting** (`queue-to-customer`), else
        `queue-to-grid`;
@@ -735,11 +769,20 @@ re-evaluated live against `ctx`, so a lock can open mid-level.
 `checkEnd()` runs after each tick and after every landed flight:
 
 * **Win** — `servedCount >= level.customers.length` ⇒ `won`.
-* **`out-of-ingredient`** — all of: queues empty; `cookingCount == 0`; no flights; no `raw` cell on
-  the grid; the backpack empty; and at least one customer still active. A level may bind a handler to
-  this event (e.g. spawn ingredients); the **default handler loses**.
-* **`grid-overflow`** — a finished cooked ingredient (or a process intermediate) had no free cell.
-* **`dirty-overflow`** — a dirty dish had no free cell.
+* **`out-of-ingredient`** — all of: queues empty; `cookingCount == 0`; no flights; no `raw` or
+  `bag` cell on the grid; the backpack empty; and at least one customer still active. A level may
+  bind a handler to this event (e.g. spawn ingredients); the **default handler loses**.
+* **`grid-overflow` / `deadlock` — the "no legal move" loss** (`detectDeadlockLoss`, on in Play):
+  after `settle()` has moved everything that can move, if there are no flights,
+  `nextCompletionIn()` is null (held outputs and part-filled multi-input lanes are resting
+  points), a customer is active, and **no queue lane passes `canPick`**, the player can do nothing.
+  Classified `grid-overflow` when `findFreeCell() == -1` and the grid holds ingredients
+  (`cooked`/`raw`/`bag`) — Save Me sweeps them into the backpack — otherwise `deadlock`. This
+  check runs whether or not the queues are empty: outputs stranded in their tools with empty
+  queues are caught here, not by `out-of-ingredient` (their `cookingCount` is non-zero).
+  **A finished ingredient finding no cell is never a loss by itself** (§9.4).
+* **`dirty-overflow`** — a dirty dish had no free cell (unchanged: a served customer's plate must
+  land).
 * **`customer-timeout`** — an active customer's patience reached 0 (`advanceCustomers` ticks every
   active customer with a finite timer and loses on the first expiry).
 
@@ -776,10 +819,11 @@ The left-most active customer, their first incomplete dish. For every unfilled s
 strict priority **backpack → grid → queue**:
 
 * backpack: a cell whose items contain the ingredient;
-* grid: an unreserved `cooked` cell of that ingredient;
+* grid: an unreserved `cooked` cell of that ingredient, then one piece out of an unreserved `bag`
+  whose `terminalOutput` is the wanted ingredient (a bag may be drawn from repeatedly);
 * queue: any cell whose `terminalOutput` equals the wanted ingredient — i.e. what it *would become*,
   following the whole chain, so a raw chicken breast counts toward a fried one rather than a coated
-  one — taken at its **terminal yield**.
+  one — taken at its **terminal yield × the slot's amount**.
 
 **All-or-nothing:** if any slot can't be covered from any source, nothing is taken. On commit, gates
 are irrelevant — the dish completes atomically. A multi-yield queue pickup is only *partially*
@@ -791,8 +835,8 @@ complete the customer if that was their last dish, `settle()`, `checkEnd()`.
 
 Offered on **any** loss while uses remain (`saveMeCount`; `-1` = unlimited). Accepting:
 
-1. Sweep every `cooked` and `raw` cell into a **backpack** cell (a multi-use item contributes
-   `usesLeft` separate entries). Items keep their processing state — a raw in the backpack can fly
+1. Sweep every `cooked`, `raw` and `bag` cell into a **backpack** cell (a multi-use item contributes
+   `usesLeft` separate entries; a bag contributes one raw entry per remaining piece). Items keep their processing state — a raw in the backpack can fly
    back to a tool later, under the same `auto` gate as a grid item. Dirty stacks are untouched. The
    backpack goes into an existing backpack cell, else the first free cell, else the first cell that
    was just cleared.
@@ -855,12 +899,18 @@ From the reference play view (`ui/nodeplay/index.ts`) — match these or levels 
   speed factor. The model does not change until the animation lands — that is what makes movement
   readable rather than a teleport.
 * **Queue column** shows `visibleRows` rows: row 0 interactable, the rest preview-only; anything
-  deeper is not shown. Hidden slots render `?`. Frozen slots show their remaining thaw count. Linked
-  chains draw a rope between column-adjacent members; a combined block renders as one tile.
+  deeper is not shown. Hidden slots render `?`. Frozen slots show their remaining thaw count
+  (bottom-right). A bag shows its piece count **top-right** (`×N`, only for 2+; still shown on a
+  hidden `?` tile). Linked chains draw a rope between column-adjacent members; a combined block
+  renders as one tile.
 * **Tools** show their slot points and lanes (and preservation buffers separately); a tool that no
-  queue item in this level can ever reach is greyed out — informational only.
-* **Grid** shows cooked items (with a remaining-uses badge when `usesLeft > 1`), parked raws, dirty
-  stacks with their count, locked cells with their progress label, and the backpack.
+  queue item in this level can ever reach is greyed out — informational only. A lane holding a
+  **held output** (§9.4) shows the finished output with a "waiting for space" marker (`⏸`, with
+  `×N` when several units wait) — it must not read as still cooking.
+* **Grid** shows cooked items (with a remaining-uses badge when `usesLeft > 1`), parked raws,
+  **bags** (the ingredient icon with a bottom-right `×N` pieces-left badge, styled distinctly from
+  the multi-use badge), dirty stacks with their count, locked cells with their progress label, and
+  the backpack.
 * **Customers**: up to 2 active cards that fit the 6-unit abstract order zone, each dish drawn as its slots with per-slot filled
   state (filled chips first, then still-wanted chips — slot structure is a design concern, the
   player only reads "what's left"). Patience shown only when finite.
@@ -963,7 +1013,8 @@ unresolved ids fail loudly.
 reachability bitsets, slot trees, `dirtyOf`, `usageNum`/`servable`/`pickupable`). Preservation is
 already resolved for you: `ToolNodeAsset.preservationSlots` plus `CookingGraphPreservation`.
 
-**Simulate** — a pure C# class with no `MonoBehaviour`, no coroutines and no `Time.deltaTime` inside:
+**Simulate** — a pure C# class with no `MonoBehaviour`, no coroutines and no `Time.deltaTime` inside
+(`QueueItemData.amount` is the bag size — §10.2, §9.1 step 7; held outputs — §9.4; loss — §12):
 `Tick(float dt)`, `Pick(int column)`, `PickAt(int x, int y)`, `CompleteFlight(int id)`, plus the
 booster entry points `ForceShiftUp()`, `ClearDirtyStacks(int)`, `AutoCompleteDish()`,
 `SaveMe(int maxUses)`. Keep it headless-testable — the web tool's headless mode

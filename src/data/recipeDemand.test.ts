@@ -114,6 +114,17 @@ describe("supplyByRaw", () => {
   });
 });
 
+describe("supplyByRaw counts bag pieces", () => {
+  it("a bag slot contributes its whole amount", () => {
+    const queues = [[
+      { kind: "ingredient" as const, id: 1, effects: [], amount: 3 },
+      { kind: "ingredient" as const, id: 1, effects: [] },
+      { kind: "sweeper" as const, id: -1, effects: [] },
+    ]];
+    expect(supplyByRaw(queues).get(1)).toBe(4);
+  });
+});
+
 describe("rawYieldAmounts", () => {
   it("reports each recipe's raw-id yield, and omits raw ids with no recipe", () => {
     const amounts = rawYieldAmounts(testMap);

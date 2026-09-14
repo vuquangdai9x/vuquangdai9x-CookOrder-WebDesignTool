@@ -87,6 +87,13 @@ function queuedItems(sim: NodeSimulation): number {
 /** Why each lane that still holds something refuses to be picked. */
 function blockingReasons(sim: NodeSimulation): string[] {
   const seen = new Set<string>();
+  // A finished output stranded in its tool (no free cell) blocks that tool's
+  // lane, so every lane routed there now reads "<Tool> is full" — but the jam
+  // is the GRID, not the tool: before bags this run simply lost on grid
+  // overflow, which this audit deliberately does not count as a tool
+  // deadlock. Name the real cause so it classifies as a grid block.
+  const stranded = sim.tools.some((tool) => tool.slots.some((slot) => slot.item?.completed !== undefined));
+  if (stranded) seen.add("No free grid cell for a finished ingredient waiting in its tool");
   for (let x = 0; x < sim.columnCount; x++) {
     if (!sim.frontCell(x)) continue;
     const check = sim.canPick(x);
@@ -201,11 +208,14 @@ export function checkToolDeadlock(
   const note = (outcome: RunOutcome) => {
     if (!outcome.blocked) return;
     const kinds = new Set(outcome.reasons.map(classifyReason));
-    if (kinds.has("tool")) toolBlocked++;
+    // A stranded output turns every "<Tool> is full" into a symptom of the
+    // full grid (see blockingReasons); count the run as a grid block.
+    const strandedOutput = outcome.sim.tools.some((tool) => tool.slots.some((slot) => slot.item?.completed !== undefined));
+    if (kinds.has("tool") && !strandedOutput) toolBlocked++;
     else if (kinds.has("grid")) gridBlocked++;
     // A tool jam is the more specific diagnosis, so keep the first one of those
     // for the slot snapshot rather than whichever run stalled first.
-    if (!firstBlocked || (kinds.has("tool") && !firstBlocked.reasons.some((r) => classifyReason(r) === "tool"))) {
+    if (!firstBlocked || (kinds.has("tool") && !strandedOutput && !firstBlocked.reasons.some((r) => classifyReason(r) === "tool"))) {
       firstBlocked = outcome;
     }
     for (const reason of outcome.reasons) reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);

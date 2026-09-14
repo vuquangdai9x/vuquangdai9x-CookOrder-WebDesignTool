@@ -84,6 +84,19 @@ describe("graph structure invariants", () => {
     expect(errors.find((error) => error.invariantId === "INV-DIRTY-STACK")?.vertexName).toBe("dirty-plate");
   });
 
+  it("INV-STACK-RANGE: stackMin must be >= 1 and no greater than stackMax", () => {
+    const doc = clone();
+    const name = doc.vertices.ingredient[0].name;
+    doc.vertices.ingredient[0].stackMin = 3;
+    doc.vertices.ingredient[0].stackMax = 2;
+    expect(validateNodeGraph(doc).errors.find((e) => e.invariantId === "INV-STACK-RANGE")?.vertexName).toBe(name);
+    doc.vertices.ingredient[0].stackMin = 0;
+    doc.vertices.ingredient[0].stackMax = 4;
+    expect(validateNodeGraph(doc).errors.some((e) => e.invariantId === "INV-STACK-RANGE")).toBe(true);
+    doc.vertices.ingredient[0].stackMin = 2;
+    expect(validateNodeGraph(doc).errors.some((e) => e.invariantId === "INV-STACK-RANGE")).toBe(false);
+  });
+
   it("INV-UNIQUE-PRODUCER: two tools producing one ingredient", () => {
     const doc = clone();
     doc.edges.process.push({ from: "griddle", to: "bun-sliced", inputs: [{ ingredient: "bun", slot: 0 }], amount: 1 });
