@@ -6,7 +6,7 @@ import { parseNodeCustomers } from "./nodeParser.ts";
 import { NodeSimulation } from "./nodeSim.ts";
 import type { NodeLevelConfig } from "./nodeSim.ts";
 import { parseGrid, parseQueueGroups, parseQueues } from "./parser.ts";
-import { chainedPotato } from "./nodeTestFixtures.ts";
+import { chainedPotato, legacyYields } from "./nodeTestFixtures.ts";
 import { EMPTY_GRID } from "./testFixtures.ts";
 
 const burger = buildIndex(burgerJson as unknown as NodeGraphMap);
@@ -590,7 +590,9 @@ describe("finished outputs wait in their tool", () => {
   });
 
   it("a held output blocks its lane, so a pick needing that tool is refused", () => {
-    const s = sim({ queueString: "2%0", gridString: blockedGrid(1), customerString: "0;0;0;{c0:17.{g0:19.19}}" });
+    // Tomato -> 2 slices (pre-bag yield restored): slice 1 lands, slice 2 holds.
+    const yieldIx = buildIndex(legacyYields(burgerJson as unknown as NodeGraphMap));
+    const s = new NodeSimulation(yieldIx, nodeLevel({ queueString: "2%0", gridString: blockedGrid(1), customerString: "0;0;0;{c0:17.{g0:19.19}}" }));
     s.pick(0);
     s.tick(1); // slice 1 lands on the only cell, slice 2 is held
     expect(s.tools[tool("cutting-board")].slots[0].item?.completed).toEqual({ out: ing("tomato-sliced"), amount: 1 });

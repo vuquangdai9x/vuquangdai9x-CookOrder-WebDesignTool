@@ -11,8 +11,11 @@ describe("bagsOutsideStackRange", () => {
     const patty = doc.vertices.ingredient.find((v) => v.name === "patty")!;
     patty.stackMin = 2;
     patty.stackMax = 3;
+    const bun = doc.vertices.ingredient.find((v) => v.name === "bun")!;
+    bun.stackMin = 1;
+    bun.stackMax = 1;
     const ix = buildIndex(doc);
-    // id 1 = patty (range 2-3), id 0 = bun (default range 1-1)
+    // id 1 = patty (range 2-3), id 0 = bun (range 1-1)
     const flagged = bagsOutsideStackRange(parseQueues("1:3,1:5,1,0:2%0"), ix);
     expect(flagged.map((f) => `${f.name} ${f.amount} ${f.min}-${f.max}`)).toEqual([
       "Patty 5 2-3",

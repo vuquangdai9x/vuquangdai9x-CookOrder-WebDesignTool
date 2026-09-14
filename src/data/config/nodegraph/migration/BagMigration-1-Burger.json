@@ -1,0 +1,19 @@
+{
+  "_note": "Bag migration lookup for Graph-1-Burger. Key = ingredient DATA id (idTable.ingredient index) of a pickupable whose single-input process used to yield several pieces; value = that former output multiplier. The process edges now yield 1 and an old level string (no ':amount' on any slot) is migrated by writing '<id>:<value>' on every slot carrying that id — see data/bagMigration.ts and the Level Path 'Migrate bags' button.",
+  "multipliers": {
+    "2": 2,
+    "3": 2,
+    "4": 2,
+    "5": 3,
+    "15": 2,
+    "13": 2
+  },
+  "names": {
+    "2": "tomato",
+    "3": "lettuce",
+    "4": "onion",
+    "5": "cheese",
+    "15": "chive",
+    "13": "potato"
+  }
+}

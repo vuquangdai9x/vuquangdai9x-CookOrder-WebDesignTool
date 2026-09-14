@@ -62,8 +62,11 @@ import {
   listNodeMaps,
   loadNodeProject,
   NODE_ACTIVE_KEY,
+  NODE_DOCS,
   saveNodeProject,
 } from "../../data/nodeProject.ts";
+import { bagMigrationLookup, migrateQueueString } from "../../data/bagMigration.ts";
+import type { BagMigrationLookup } from "../../data/bagMigration.ts";
 import type { NodeProjectState } from "../../data/nodeProject.ts";
 import { buildColumns, widthVar } from "./columns.ts";
 import type { ColumnDef } from "./columns.ts";
@@ -543,7 +546,22 @@ export class LevelPathView {
       this.deleteMap(entry);
     }, { class: "small-btn danger" });
 
+    const lookup = bagMigrationLookup(NODE_DOCS.find((d) => d.id === entry.docId)?.index ?? -1);
+    // Count levels the migration would actually change — an old string with no
+    // slot in the lookup stays old forever and must not keep the button lit.
+    const oldLevels = lookup
+      ? entry.project.levels.filter((level) => migrateQueueString(level.queueString, lookup) !== level.queueString).length
+      : 0;
     return el("div", { class: "lp-map-actions" }, [
+      button(`🎒 Migrate bags${oldLevels ? ` (${oldLevels})` : ""}`, () => this.migrateBags(entry, lookup!), {
+        class: "small-btn",
+        ...(!lookup || oldLevels === 0 ? { disabled: "" } : {}),
+        title: !lookup
+          ? "No bag-migration lookup shipped for this map"
+          : oldLevels === 0
+            ? "Every level already carries bag amounts"
+            : `Rewrite ${oldLevels} old queue string(s): stamp the former process multiplier (e.g. tomato x2) onto each matching slot as a bag amount`,
+      }),
       button("✨ Batch generate", () => this.promptBatchGenerate(entry), {
         class: "small-btn",
         title: "Generate a range of levels, creating any that do not exist yet",
@@ -554,6 +572,40 @@ export class LevelPathView {
       }),
       deleteBtn,
     ]);
+  }
+
+  /**
+   * Old strings -> bags, for every level of one map. An old string is one with
+   * no `:amount` on any slot; each slot whose id is in the map's lookup gets
+   * the former process multiplier as its bag amount, so the queue supplies
+   * exactly the pieces it did before the processes became 1-in/1-out.
+   */
+  private migrateBags(entry: MapEntry, lookup: BagMigrationLookup): void {
+    const targets = entry.project.levels.filter(
+      (level) => migrateQueueString(level.queueString, lookup) !== level.queueString,
+    );
+    if (targets.length === 0) return;
+    const names = Object.values(lookup.names ?? {}).join(", ") || Object.keys(lookup.multipliers).join(", ");
+    if (!confirm(
+      `Migrate ${targets.length} level(s) of "${entry.title}" to bag amounts?
+
+` +
+      `Slots holding ${names} get their former yield as an amount; everything else is untouched. ` +
+      `Levels that already carry an amount are skipped.`,
+    )) return;
+
+    let changed = 0;
+    for (const level of targets) {
+      const next = migrateQueueString(level.queueString, lookup);
+      level.queueString = next;
+      level.queuesCompressed = undefined;
+      entry.status.delete(level.id); // a validate result for the old string no longer applies
+      this.restat(entry, level);
+      changed++;
+    }
+    this.persist(entry);
+    this.renderMap(entry);
+    alert(`Migrated ${changed} level(s) to bag amounts.`);
   }
 
   private deleteMap(entry: MapEntry): void {

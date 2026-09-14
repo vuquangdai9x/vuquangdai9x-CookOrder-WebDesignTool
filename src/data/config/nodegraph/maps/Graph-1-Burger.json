@@ -76,7 +76,9 @@
         "price": 4,
         "code": "burger_bun_raw",
         "emoji": "🍞",
-        "localImage": "Map1-burger/ingredients/burger_bun_raw.png"
+        "localImage": "Map1-burger/ingredients/burger_bun_raw.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "patty",
@@ -85,7 +87,9 @@
         "price": 10,
         "code": "beef_patty_raw",
         "emoji": "🥩",
-        "localImage": "Map1-burger/ingredients/beef_patty_raw.png"
+        "localImage": "Map1-burger/ingredients/beef_patty_raw.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "tomato",
@@ -94,7 +98,9 @@
         "price": 5,
         "code": "tomato",
         "emoji": "🍅",
-        "localImage": "Map1-burger/ingredients/tomato.png"
+        "localImage": "Map1-burger/ingredients/tomato.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "lettuce",
@@ -103,7 +109,9 @@
         "price": 5,
         "code": "lettuce_raw",
         "emoji": "🥬",
-        "localImage": "Map1-burger/ingredients/lettuce_raw.png"
+        "localImage": "Map1-burger/ingredients/lettuce_raw.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "onion",
@@ -112,7 +120,9 @@
         "price": 5,
         "code": "onion",
         "emoji": "🧅",
-        "localImage": "Map1-burger/ingredients/onion.png"
+        "localImage": "Map1-burger/ingredients/onion.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "cheese",
@@ -121,7 +131,9 @@
         "price": 6,
         "code": "cheese",
         "emoji": "🧀",
-        "localImage": "Map1-burger/ingredients/cheese.png"
+        "localImage": "Map1-burger/ingredients/cheese.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "egg",
@@ -130,7 +142,9 @@
         "price": 7,
         "code": "egg",
         "emoji": "🥚",
-        "localImage": "Map1-burger/ingredients/egg.png"
+        "localImage": "Map1-burger/ingredients/egg.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "cup",
@@ -139,7 +153,9 @@
         "price": 8,
         "code": "cup",
         "emoji": "🥤",
-        "localImage": "Map1-burger/ingredients/cup.png"
+        "localImage": "Map1-burger/ingredients/cup.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "chicken-breast",
@@ -148,7 +164,9 @@
         "price": 0,
         "code": "chicken_breast_raw",
         "emoji": "🍗",
-        "localImage": "Map1-burger/ingredients/chicken_breast_raw.png"
+        "localImage": "Map1-burger/ingredients/chicken_breast_raw.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "chicken-wing",
@@ -157,7 +175,9 @@
         "price": 20,
         "code": "chicken_wing_raw",
         "emoji": "🍗",
-        "localImage": "Map1-burger/ingredients/chick_wing_raw.png"
+        "localImage": "Map1-burger/ingredients/chick_wing_raw.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "chicken-thigh",
@@ -166,7 +186,9 @@
         "price": 24,
         "code": "chicken_thigh_raw",
         "emoji": "🍗",
-        "localImage": "Map1-burger/ingredients/chick_thigh_raw.png"
+        "localImage": "Map1-burger/ingredients/chick_thigh_raw.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "chicken-nugget",
@@ -175,7 +197,9 @@
         "price": 28,
         "code": "chicken_nugget_raw",
         "emoji": "🍗",
-        "localImage": "Map1-burger/ingredients/chick_nugget_raw.png"
+        "localImage": "Map1-burger/ingredients/chick_nugget_raw.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "potato",
@@ -184,7 +208,9 @@
         "price": 14,
         "code": "potato",
         "emoji": "🥔",
-        "localImage": "Map1-burger/ingredients/potato.png"
+        "localImage": "Map1-burger/ingredients/potato.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "chive",
@@ -193,7 +219,9 @@
         "price": 8,
         "code": "chive",
         "emoji": "🌿",
-        "localImage": "Map1-burger/ingredients/chive.png"
+        "localImage": "Map1-burger/ingredients/chive.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "ice",
@@ -203,7 +231,9 @@
         "price": 0,
         "code": "ice",
         "emoji": "🧊",
-        "localImage": "Map1-burger/ingredients/ice.png"
+        "localImage": "Map1-burger/ingredients/ice.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "chili-bowl",
@@ -213,7 +243,9 @@
         "price": 0,
         "code": "chili_bowl",
         "emoji": "🌶️",
-        "localImage": "Map1-burger/ingredients/chili_bowl.png"
+        "localImage": "Map1-burger/ingredients/chili_bowl.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "cheese-sauce",
@@ -223,7 +255,9 @@
         "price": 0,
         "code": "cheese_sauce",
         "emoji": "🧀",
-        "localImage": "Map1-burger/ingredients/cheese_sauce.png"
+        "localImage": "Map1-burger/ingredients/cheese_sauce.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "bun-sliced",
@@ -231,7 +265,9 @@
         "usageNum": 1,
         "emoji": "🍞",
         "localImage": "Map1-burger/ingredients/bun-sliced.png",
-        "price": 10
+        "price": 10,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "patty-cooked",
@@ -239,7 +275,9 @@
         "usageNum": 1,
         "emoji": "🥩",
         "localImage": "Map1-burger/ingredients/patty-cooked.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "tomato-sliced",
@@ -247,7 +285,9 @@
         "usageNum": 1,
         "emoji": "🍅",
         "localImage": "Map1-burger/ingredients/tomato-sliced.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "lettuce-sliced",
@@ -255,7 +295,9 @@
         "usageNum": 1,
         "emoji": "🥬",
         "localImage": "Map1-burger/ingredients/lettuce_sliced.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "onion-sliced",
@@ -263,7 +305,9 @@
         "usageNum": 1,
         "emoji": "🧅",
         "localImage": "Map1-burger/ingredients/onion-sliced.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "cheese-sliced",
@@ -271,7 +315,9 @@
         "usageNum": 1,
         "emoji": "🧀",
         "localImage": "Map1-burger/ingredients/cheese_sliced.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "egg-cooked",
@@ -279,7 +325,9 @@
         "usageNum": 1,
         "emoji": "🍳",
         "localImage": "Map1-burger/ingredients/egg_cooked.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "soda-cup",
@@ -287,7 +335,9 @@
         "usageNum": 1,
         "emoji": "🥤",
         "localImage": "Map1-burger/ingredients/cup_soda.png",
-        "price": 10
+        "price": 10,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "chicken-breast-fried",
@@ -295,7 +345,9 @@
         "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chicken_breast_fried.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "chicken-wing-fried",
@@ -303,7 +355,9 @@
         "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chick_wing_fried.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "chicken-thigh-fried",
@@ -311,7 +365,9 @@
         "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chick_thigh_fried.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "chicken-nugget-fried",
@@ -319,7 +375,9 @@
         "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chick_nugget_fried.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "potato-fried",
@@ -327,7 +385,9 @@
         "usageNum": 1,
         "emoji": "🍟",
         "localImage": "Map1-burger/ingredients/potato_fried.png",
-        "price": 5
+        "price": 5,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "chive-sliced",
@@ -335,31 +395,41 @@
         "usageNum": 1,
         "emoji": "🌿",
         "localImage": "Map1-burger/ingredients/chive_sliced.png",
-        "price": 0
+        "price": 0,
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "chicken-breast-flour-coated",
         "displayName": "Coated Breast",
         "emoji": "🍗",
-        "localImage": "Map1-burger/ingredients/chick_breast_coated.png"
+        "localImage": "Map1-burger/ingredients/chick_breast_coated.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "chicken-wing-flour-coated",
         "displayName": "Coated Wing",
         "emoji": "🍗",
-        "localImage": "Map1-burger/ingredients/chick_wing_coated.png"
+        "localImage": "Map1-burger/ingredients/chick_wing_coated.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "chicken-thigh-flour-coated",
         "displayName": "Coated Thigh",
         "emoji": "🍗",
-        "localImage": "Map1-burger/ingredients/chick_thigh_coated.png"
+        "localImage": "Map1-burger/ingredients/chick_thigh_coated.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "chicken-nugget-flour-coated",
         "displayName": "Coated Nugget",
         "emoji": "🍗",
-        "localImage": "Map1-burger/ingredients/chick_nugget_coated.png"
+        "localImage": "Map1-burger/ingredients/chick_nugget_coated.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "potato_sliced",
@@ -367,7 +437,9 @@
         "pickupable": false,
         "usageNum": 1,
         "price": 0,
-        "localImage": "Map1-burger/ingredients/potato-coated.png"
+        "localImage": "Map1-burger/ingredients/potato-coated.png",
+        "stackMin": 1,
+        "stackMax": 3
       }
     ],
     "tool": [
@@ -585,7 +657,7 @@
             "slot": 0
           }
         ],
-        "amount": 2
+        "amount": 1
       },
       {
         "from": "cutting-board",
@@ -596,7 +668,7 @@
             "slot": 0
           }
         ],
-        "amount": 2
+        "amount": 1
       },
       {
         "from": "cutting-board",
@@ -607,7 +679,7 @@
             "slot": 0
           }
         ],
-        "amount": 2
+        "amount": 1
       },
       {
         "from": "cutting-board",
@@ -618,7 +690,7 @@
             "slot": 0
           }
         ],
-        "amount": 3
+        "amount": 1
       },
       {
         "from": "cutting-board",
@@ -629,7 +701,7 @@
             "slot": 0
           }
         ],
-        "amount": 2
+        "amount": 1
       },
       {
         "from": "flour",
@@ -728,7 +800,7 @@
             "slot": 0
           }
         ],
-        "amount": 2
+        "amount": 1
       },
       {
         "from": "fryer",

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import burgerJson from "../data/config/nodegraph/maps/Graph-1-Burger.json";
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
 import { buildIndex, reaches, reachesAny } from "./nodeIndex.ts";
-import { chainedPotato } from "./nodeTestFixtures.ts";
+import { chainedPotato, legacyYields } from "./nodeTestFixtures.ts";
 
 const ix = buildIndex(burgerJson as unknown as NodeGraphMap);
 const ing = (name: string): number => {
@@ -40,10 +40,12 @@ describe("terminalOutput / terminalYield / chainDepth", () => {
   });
 
   it("carries the real yield, not 1 — a chopping board drops several pieces", () => {
-    expect(ix.terminalYield[ing("tomato")]).toBe(2);
-    // cheese yields 3 in cooking-tools.json, disagreeing with numSlices 2;
-    // `amount` is authoritative because that is what the sim reads.
-    expect(ix.terminalYield[ing("cheese")]).toBe(3);
+    // The shipped graph is 1-out since the bag migration; restore the old
+    // multi-piece edges on a clone to test the yield walk itself.
+    const yx = buildIndex(legacyYields(burgerJson as unknown as NodeGraphMap));
+    expect(yx.terminalYield[ing("tomato")]).toBe(2);
+    expect(yx.terminalYield[ing("cheese")]).toBe(3);
+    expect(ix.terminalYield[ing("tomato")]).toBe(1);
   });
 
   it("follows the chicken chain THROUGH the coated intermediate to the fried output", () => {

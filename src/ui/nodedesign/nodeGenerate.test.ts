@@ -4,6 +4,7 @@ import coffeeJson from "../../data/config/nodegraph/maps/Graph-2-Coffee.json";
 import sushiJson from "../../data/config/nodegraph/maps/Graph-3-Sushi.json";
 import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
+import { legacyYields } from "../../core/nodeTestFixtures.ts";
 import { orderIdIndex, resolveOrder } from "../../core/nodeOrder.ts";
 import { serializeNodeCustomers, parseNodeCustomers } from "../../core/nodeParser.ts";
 import { defaultCurve } from "../design/curveEditor.ts";
@@ -325,7 +326,8 @@ describe("nested group generation", () => {
 
 describe("recipe-piece alignment", () => {
   it("appends a customer when a two-piece recipe remainder cannot fit an existing dish", () => {
-    const clone = structuredClone(doc);
+    // Potato -> 2 fries is a pre-bag yield; restore it on the clone.
+    const clone = legacyYields(doc);
     clone.vertices.composite.forEach((value) => {
       value.orderable = value.name === "fried-basket";
     });

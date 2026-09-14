@@ -13,6 +13,7 @@ import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 import { validateNodeGraph } from "./nodeGraphValidate.ts";
 import { buildIdIndex } from "./nodeIdTable.ts";
 import { buildIndex } from "../core/nodeIndex.ts";
+import { legacyYields } from "../core/nodeTestFixtures.ts";
 import { parseNodeCustomers } from "../core/nodeParser.ts";
 import { nodePickupSequence } from "../ui/nodedesign/nodeQueueGenerate.ts";
 
@@ -86,7 +87,8 @@ describe("WARN-UNEVEN-LANES", () => {
 });
 
 describe("the queue generator supplies every input", () => {
-  const doc = coffee();
+  // Kiwi -> 2 slices is a pre-bag yield (the shipped graph is 1-out now).
+  const doc = legacyYields(coffee());
   const ix = buildIndex(doc);
   const ids = buildIdIndex(doc.idTable);
   const cid = (n: string) => doc.idTable.composite.indexOf(n);

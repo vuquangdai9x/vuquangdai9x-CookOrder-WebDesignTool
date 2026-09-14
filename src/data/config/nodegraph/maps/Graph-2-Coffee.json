@@ -77,7 +77,9 @@
         "usageNum": 1,
         "price": 0,
         "emoji": "🥜",
-        "localImage": "Map2-coffee/ingredients/coffee-bean.png"
+        "localImage": "Map2-coffee/ingredients/coffee-bean.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "coffee-grinded",
@@ -86,7 +88,9 @@
         "usageNum": 1,
         "price": 0,
         "emoji": "🧂",
-        "localImage": "Map2-coffee/ingredients/coffee-grinded.png"
+        "localImage": "Map2-coffee/ingredients/coffee-grinded.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "cup",
@@ -95,7 +99,9 @@
         "usageNum": 1,
         "price": 0,
         "emoji": "🥤",
-        "localImage": "Map2-coffee/ingredients/cup.png"
+        "localImage": "Map2-coffee/ingredients/cup.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "teacup",
@@ -104,7 +110,9 @@
         "usageNum": 1,
         "price": 0,
         "emoji": "☕",
-        "localImage": "Map2-coffee/ingredients/teacup.png"
+        "localImage": "Map2-coffee/ingredients/teacup.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "ice",
@@ -113,7 +121,9 @@
         "usageNum": 1,
         "price": 0,
         "emoji": "🧊",
-        "localImage": "Map2-coffee/ingredients/ice.png"
+        "localImage": "Map2-coffee/ingredients/ice.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "milk",
@@ -122,7 +132,9 @@
         "usageNum": 2,
         "price": 5,
         "emoji": "🍼",
-        "localImage": "Map2-coffee/ingredients/milk.png"
+        "localImage": "Map2-coffee/ingredients/milk.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "coffee-cup-cool",
@@ -131,7 +143,9 @@
         "usageNum": 1,
         "price": 10,
         "emoji": "🥤",
-        "localImage": "Map2-coffee/ingredients/coffee-cup-cool.png"
+        "localImage": "Map2-coffee/ingredients/coffee-cup-cool.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "coffee-teacup-hot",
@@ -140,7 +154,9 @@
         "usageNum": 1,
         "price": 10,
         "emoji": "☕",
-        "localImage": "Map2-coffee/ingredients/coffee-cup-hot.png"
+        "localImage": "Map2-coffee/ingredients/coffee-cup-hot.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "whiping-cream",
@@ -148,7 +164,9 @@
         "pickupable": true,
         "usageNum": 1,
         "price": 5,
-        "localImage": "Map2-coffee/ingredients/whipping-cream.png"
+        "localImage": "Map2-coffee/ingredients/whipping-cream.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "whiping-choco",
@@ -156,7 +174,9 @@
         "pickupable": true,
         "usageNum": 1,
         "price": 5,
-        "localImage": "Map2-coffee/ingredients/whipping-choco.png"
+        "localImage": "Map2-coffee/ingredients/whipping-choco.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "sprinkle",
@@ -164,7 +184,9 @@
         "pickupable": true,
         "usageNum": 1,
         "price": 5,
-        "localImage": "Map2-coffee/ingredients/sprinkle.png"
+        "localImage": "Map2-coffee/ingredients/sprinkle.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "pineapple-sliced",
@@ -173,7 +195,9 @@
         "usageNum": 1,
         "price": 5,
         "emoji": "🍍",
-        "localImage": "Map2-coffee/ingredients/pineapple-sliced.png"
+        "localImage": "Map2-coffee/ingredients/pineapple-sliced.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "pineapple",
@@ -182,7 +206,9 @@
         "usageNum": 1,
         "price": 0,
         "emoji": "🍍🍍",
-        "localImage": "Map2-coffee/ingredients/pineapple.png"
+        "localImage": "Map2-coffee/ingredients/pineapple.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "blueberry",
@@ -191,7 +217,9 @@
         "usageNum": 1,
         "price": 5,
         "emoji": "🔵",
-        "localImage": "Map2-coffee/ingredients/blueberry.png"
+        "localImage": "Map2-coffee/ingredients/blueberry.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "strawberry",
@@ -200,7 +228,9 @@
         "usageNum": 1,
         "price": 0,
         "emoji": "🍓🍓",
-        "localImage": "Map2-coffee/ingredients/strawberry.png"
+        "localImage": "Map2-coffee/ingredients/strawberry.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "strawberry-sliced",
@@ -209,7 +239,9 @@
         "usageNum": 1,
         "price": 5,
         "emoji": "🍓",
-        "localImage": "Map2-coffee/ingredients/strawberry-sliced.png"
+        "localImage": "Map2-coffee/ingredients/strawberry-sliced.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "kiwi",
@@ -218,7 +250,9 @@
         "usageNum": 1,
         "price": 0,
         "emoji": "🥝🥝",
-        "localImage": "Map2-coffee/ingredients/kiwi.png"
+        "localImage": "Map2-coffee/ingredients/kiwi.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "kiwi-sliced",
@@ -227,7 +261,9 @@
         "usageNum": 1,
         "price": 5,
         "emoji": "🥝",
-        "localImage": "Map2-coffee/ingredients/kiwi-sliced.png"
+        "localImage": "Map2-coffee/ingredients/kiwi-sliced.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "cupcake",
@@ -236,7 +272,9 @@
         "usageNum": 1,
         "price": 0,
         "emoji": "🧁",
-        "localImage": "Map2-coffee/ingredients/cupcake.png"
+        "localImage": "Map2-coffee/ingredients/cupcake.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "cupcake-baked",
@@ -245,7 +283,9 @@
         "usageNum": 1,
         "price": 10,
         "emoji": "🧁",
-        "localImage": "Map2-coffee/ingredients/cupcake-baked.png"
+        "localImage": "Map2-coffee/ingredients/cupcake-baked.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "donut",
@@ -253,7 +293,9 @@
         "pickupable": true,
         "usageNum": 1,
         "price": 0,
-        "localImage": "Map2-coffee/ingredients/donut.png"
+        "localImage": "Map2-coffee/ingredients/donut.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "donut-8",
@@ -261,7 +303,9 @@
         "pickupable": false,
         "usageNum": 1,
         "price": 0,
-        "localImage": "Map2-coffee/ingredients/donut-8.png"
+        "localImage": "Map2-coffee/ingredients/donut-8.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "donut-bar",
@@ -269,7 +313,9 @@
         "pickupable": false,
         "usageNum": 1,
         "price": 0,
-        "localImage": "Map2-coffee/ingredients/donut-bar.png"
+        "localImage": "Map2-coffee/ingredients/donut-bar.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "donut-fried",
@@ -277,7 +323,9 @@
         "pickupable": false,
         "usageNum": 1,
         "price": 10,
-        "localImage": "Map2-coffee/ingredients/donut-fried.png"
+        "localImage": "Map2-coffee/ingredients/donut-fried.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "donut-8-fried",
@@ -285,7 +333,9 @@
         "pickupable": false,
         "usageNum": 1,
         "price": 10,
-        "localImage": "Map2-coffee/ingredients/donut-8-fried.png"
+        "localImage": "Map2-coffee/ingredients/donut-8-fried.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "donut-bar-fried",
@@ -293,7 +343,9 @@
         "pickupable": false,
         "usageNum": 1,
         "price": 10,
-        "localImage": "Map2-coffee/ingredients/donut-bar-fried.png"
+        "localImage": "Map2-coffee/ingredients/donut-bar-fried.png",
+        "stackMin": 1,
+        "stackMax": 3
       },
       {
         "name": "glaze-choco",
@@ -301,7 +353,9 @@
         "pickupable": true,
         "usageNum": 2,
         "price": 0,
-        "localImage": "Map2-coffee/ingredients/glaze-choco.png"
+        "localImage": "Map2-coffee/ingredients/glaze-choco.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "glaze-strawberry",
@@ -309,7 +363,9 @@
         "pickupable": true,
         "usageNum": 2,
         "price": 0,
-        "localImage": "Map2-coffee/ingredients/glaze-strawberry.png"
+        "localImage": "Map2-coffee/ingredients/glaze-strawberry.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "glaze-vanilla",
@@ -317,7 +373,9 @@
         "pickupable": true,
         "usageNum": 2,
         "price": 0,
-        "localImage": "Map2-coffee/ingredients/glaze-vanilla.png"
+        "localImage": "Map2-coffee/ingredients/glaze-vanilla.png",
+        "stackMin": 1,
+        "stackMax": 5
       },
       {
         "name": "glaze-blue",
@@ -325,7 +383,9 @@
         "pickupable": true,
         "usageNum": 2,
         "price": 0,
-        "localImage": "Map2-coffee/ingredients/glaze-blue.png"
+        "localImage": "Map2-coffee/ingredients/glaze-blue.png",
+        "stackMin": 1,
+        "stackMax": 5
       }
     ],
     "tool": [
@@ -566,7 +626,7 @@
             "slot": 0
           }
         ],
-        "amount": 2
+        "amount": 1
       },
       {
         "from": "cutting-board",
@@ -577,7 +637,7 @@
             "slot": 0
           }
         ],
-        "amount": 2
+        "amount": 1
       },
       {
         "from": "cutting-board",
@@ -588,7 +648,7 @@
             "slot": 0
           }
         ],
-        "amount": 3
+        "amount": 1
       },
       {
         "from": "baker",

@@ -6,6 +6,7 @@ import { nodeAsMapDef, nodeLevelAsLevelConfig } from "./nodeGraphToMapDef.ts";
 import type { NodeGraphMap } from "./nodeGraphTypes.ts";
 import { buildIdIndex } from "./nodeIdTable.ts";
 import { buildIndex } from "../core/nodeIndex.ts";
+import { legacyYields } from "../core/nodeTestFixtures.ts";
 
 const doc = burgerJson as unknown as NodeGraphMap;
 const projected = nodeAsMapDef(doc);
@@ -59,8 +60,12 @@ describe("the projection carries what the Design sections read", () => {
     // `amount` along the route, which is the number the Design sections need.
     // Compared against the index rather than hard-coded, so re-authoring a route
     // moves both sides together instead of breaking this.
-    const raw = (node: string) => projected.map.rawIngredients.find((r) => r.id === dataId(node))!;
-    const ix = buildIndex(doc);
+    // The shipped graph is 1-out since the bag migration; the multi-piece
+    // edges are restored on a clone so this still exercises the chain product.
+    const yieldDoc = legacyYields(doc);
+    const yieldProjected = nodeAsMapDef(yieldDoc);
+    const raw = (node: string) => yieldProjected.map.rawIngredients.find((r) => r.id === dataId(node))!;
+    const ix = buildIndex(yieldDoc);
     for (const node of ["tomato", "potato", "chicken-breast"]) {
       expect(raw(node).numSlices, node).toBe(ix.terminalYield[ix.ingByName.get(node)!]);
     }

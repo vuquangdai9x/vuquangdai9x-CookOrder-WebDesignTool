@@ -86,6 +86,29 @@ export function expandChainTools(doc: NodeGraphMap, output: string): NodeGraphMa
 }
 
 /** The chainTools spelling of whatever `burger.json` currently says about potato. */
+/**
+ * The pre-bag yields, for tests ABOUT multi-piece processes. The shipped
+ * graphs were migrated to 1-in/1-out edges (the multiplier moved onto the queue
+ * slot as a bag amount — see data/bagMigration.ts), so a test that needs "a
+ * chopping board drops several pieces" restores it on a clone here rather than
+ * relying on data that no longer says so.
+ */
+export function legacyYields(doc: NodeGraphMap, amounts: Record<string, number> = LEGACY_YIELDS): NodeGraphMap {
+  const copy = structuredClone(doc);
+  for (const edge of copy.edges.process) {
+    if (edge.inputs.length !== 1) continue;
+    const amount = amounts[edge.inputs[0].ingredient];
+    if (amount !== undefined) edge.amount = amount;
+  }
+  return copy;
+}
+
+/** What Graph-1-Burger / Graph-2-Coffee used to yield per pickup before the bag migration. */
+export const LEGACY_YIELDS: Record<string, number> = {
+  tomato: 2, lettuce: 2, onion: 2, cheese: 3, chive: 2, potato: 2,
+  kiwi: 2, strawberry: 2, pineapple: 3,
+};
+
 export function chainedPotato(doc: NodeGraphMap): NodeGraphMap {
   return hasIntermediate(doc, "potato_sliced") ? collapseToChainTools(doc, "potato_sliced") : doc;
 }
