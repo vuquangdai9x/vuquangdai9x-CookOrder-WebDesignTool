@@ -1,0 +1,32 @@
+[
+  {
+    "Index": 0,
+    "Name": "None",
+    "Color": "#00000000"
+  },
+  {
+    "Index": 1,
+    "Name": "Red",
+    "Color": "#FF0000FF"
+  },
+  {
+    "Index": 2,
+    "Name": "Yellow",
+    "Color": "#FFFF00FF"
+  },
+  {
+    "Index": 3,
+    "Name": "Green",
+    "Color": "#008000FF"
+  },
+  {
+    "Index": 4,
+    "Name": "Blue",
+    "Color": "#0000FFFF"
+  },
+  {
+    "Index": 5,
+    "Name": "Purple",
+    "Color": "#800080FF"
+  }
+]

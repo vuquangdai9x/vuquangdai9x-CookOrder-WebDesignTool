@@ -1,0 +1,1101 @@
+[
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_start",
+    "Param": "level_name",
+    "Type": "string",
+    "Note": "[GA4] Standard param. '{mapIndex}_{levelIndex}' - globally unique level key. High cardinality: GA4 collapses past ~500 distinct daily values into '(other)', so break down by map_id in console and use BigQuery for per-level work"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_start",
+    "Param": "hash",
+    "Type": "string",
+    "Note": "LevelDataHasher fingerprint of the level config. Changes whenever authored level data changes - use it to compare before/after a retune without a build-version join"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_start",
+    "Param": "mode",
+    "Type": "string",
+    "Note": "Lowercased CookOrderLevelPlayMode"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_start",
+    "Param": "map_id",
+    "Type": "string",
+    "Note": "Authored map id"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_start",
+    "Param": "level",
+    "Type": "int",
+    "Note": "Level index within the map (0-based)"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_start",
+    "Param": "level_accumulated",
+    "Type": "int",
+    "Note": "Global level number = [sum of numRequiredLevels across every map BEFORE this one] + level index. 0-based like `level`, so the first level of the game is 0. Accumulates numRequiredLevels (levels needed to unlock the next map), NOT numMainLevels - so it deliberately does not match the global number the Journey UI shows. -1 when map data is missing; filter level_accumulated >= 0"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_start",
+    "Param": "attempt_number",
+    "Type": "int",
+    "Note": "Attempt count on this level"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_start",
+    "Param": "is_replay_after_win",
+    "Type": "int",
+    "Note": "0/1. ONLY on this event - join to level_end by level_name + attempt_number"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "level_name",
+    "Type": "string",
+    "Note": "[GA4] Standard param"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "hash",
+    "Type": "string",
+    "Note": "Same level-config fingerprint as level_start"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "success",
+    "Type": "int",
+    "Note": "[GA4] Standard param. 1 = win or skip, 0 = lose or quit. NOT win rate - skip also counts as success"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "end_state",
+    "Type": "string",
+    "Note": "win | skip | lose | quit. Real win rate MUST filter end_state='win'. Skip used to be logged as a plain completion and inflated win rate; this param is what makes it filterable"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "end_reason",
+    "Type": "string",
+    "Note": "Lowercased LevelEndReason: level_completed, grid_overflow, dirty_overflow, out_of_ingredient, customer_timeout, out_of_serve_slots, belt_deadlock, out_of_hearts, challenge_timeout, challenge_condition_failed, manual_quit, restart, skip, cheat. Quit reason is folded in here"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "mode",
+    "Type": "string",
+    "Note": "Lowercased playMode"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "map_id",
+    "Type": "string",
+    "Note": "Authored map id"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "level",
+    "Type": "int",
+    "Note": "Level index within the map"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "level_accumulated",
+    "Type": "int",
+    "Note": "= [sum of numRequiredLevels of all previous maps] + level index. 0-based"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "player_type",
+    "Type": "string",
+    "Note": "bot | player. Sticky once the bot touched the run. Present on ALL outcomes including quit, so bot runs can be filtered out of quit rate too. Always filter player_type != 'bot' before reading any metric"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "attempt_number",
+    "Type": "int",
+    "Note": "Attempt count on this level"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "duration_sec",
+    "Type": "float",
+    "Note": "resultData.durationSeconds, or timeCounter.totalTime on quit"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "heart_remaining",
+    "Type": "int",
+    "Note": "Hearts left. Life-gate pressure: a high share of losses at 0 followed by session end means the gate is ending sessions instead of monetizing them. 0 on quit"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_end",
+    "Param": "booster_use_count",
+    "Type": "int",
+    "Note": "Total boosters used in the run (sum over countBoosterUsage)"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "level_name",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "hash",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "mode",
+    "Type": "string",
+    "Note": "Lowercased playMode"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "map_id",
+    "Type": "string",
+    "Note": "Authored map id"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "level",
+    "Type": "int",
+    "Note": "Level index within the map"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "level_accumulated",
+    "Type": "int",
+    "Note": "= [sum of numRequiredLevels of all previous maps] + level index. 0-based"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "attempt_number",
+    "Type": "int",
+    "Note": null
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "booster_id",
+    "Type": "string",
+    "Note": "Which booster was used"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "acquire_method",
+    "Type": "string",
+    "Note": "free / reward / item / buy. The monetization-critical field: it says whether the booster was free, from a rewarded video, spent from inventory, or bought with hard currency"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "cost",
+    "Type": "int",
+    "Note": "Hard currency spent to buy the booster. 0 for free / reward / item"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "booster_used",
+    "Param": "level_time_sec",
+    "Type": "float",
+    "Note": "When in the run the player reached for help. Clustered near duration_sec means players only use boosters after they have already lost - surface the booster earlier"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "liveops_interaction",
+    "Param": "liveops_id",
+    "Type": "string",
+    "Note": "Event id, e.g. daily_reward, login_7d"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "liveops_interaction",
+    "Param": "action",
+    "Type": "string",
+    "Note": "open | reward_claimed"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "liveops_interaction",
+    "Param": "milestone_index",
+    "Type": "int",
+    "Note": "-1 when N/A (e.g. on 'open')"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "liveops_interaction",
+    "Param": "reward_id",
+    "Type": "string",
+    "Note": "One event per reward: a milestone paying several reward types fires this event once per type, so per-type detail is not lost"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "liveops_interaction",
+    "Param": "reward_amount",
+    "Type": "int",
+    "Note": "Amount of this one reward"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_dish_serve",
+    "Param": "level_name",
+    "Type": "string",
+    "Note": "Join to level_end by level_name + attempt_number"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_dish_serve",
+    "Param": "hash",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_dish_serve",
+    "Param": "sequence_index",
+    "Type": "int",
+    "Note": "Order within the run. The whole sequence is flushed in one batch at level end, so event_timestamp is USELESS for ordering - always sort by this or serve_time_sec"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_dish_serve",
+    "Param": "serve_time_sec",
+    "Type": "float",
+    "Note": "Use this for ordering, not event_timestamp"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_dish_serve",
+    "Param": "delta_sec",
+    "Type": "float",
+    "Note": "Gap since the previous serve. A long right tail early in a level means players are decoding the board, not playing it"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_dish_serve",
+    "Param": "customer_index",
+    "Type": "int",
+    "Note": "Which customer was served"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_dish_serve",
+    "Param": "dish_index",
+    "Type": "int",
+    "Note": "Which dish of that customer"
+  },
+  {
+    "Category": "Level Lifecycle",
+    "Event": "level_dish_serve",
+    "Param": "attempt_number",
+    "Type": "int",
+    "Note": null
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "earn_virtual_currency",
+    "Param": "virtual_currency_name",
+    "Type": "string",
+    "Note": "[GA4] Standard param. The currency / item id"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "earn_virtual_currency",
+    "Param": "value",
+    "Type": "double",
+    "Note": "[GA4] Standard param. Absolute delta. Sent as double so it lands in double_value alongside purchase.value and ad_impression.value"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "earn_virtual_currency",
+    "Param": "source",
+    "Type": "string",
+    "Note": "Faucet label: level_reward, daily_reward, journey_reward, iap_pack, map_completion, login_7d, npc_daily_reward, tutorial_reward. EARN only - spend uses item_name instead"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "earn_virtual_currency",
+    "Param": "mode",
+    "Type": "string",
+    "Note": "Game mode at the time of the transaction"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "earn_virtual_currency",
+    "Param": "level_name",
+    "Type": "string",
+    "Note": "Level context at the time of the transaction. Deliberately NOT cleared at level end, because level rewards are granted after the level finishes - clearing early would lose level attribution on the most important earn"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "earn_virtual_currency",
+    "Param": "hash",
+    "Type": "string",
+    "Note": "Level-config fingerprint at the time of the transaction"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "earn_virtual_currency",
+    "Param": "balance_before",
+    "Type": "int",
+    "Note": null
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "earn_virtual_currency",
+    "Param": "balance_after",
+    "Type": "int",
+    "Note": "Inflation and broke-rate analysis. Rising p50/p90 over install cohorts = currency drifting toward worthless; long runs at 0 = a hard gate forming"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "spend_virtual_currency",
+    "Param": "virtual_currency_name",
+    "Type": "string",
+    "Note": "[GA4] Standard param"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "spend_virtual_currency",
+    "Param": "value",
+    "Type": "double",
+    "Note": "[GA4] Standard param. Absolute delta"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "spend_virtual_currency",
+    "Param": "item_name",
+    "Type": "string",
+    "Note": "[GA4] Standard param. SPEND only. The sink: tool_upgrade, heart_refill, booster_use, pet_uses, level_entry, iap_pack. Replaces 'source' on the spend side - same value, sent under the GA4 standard name"
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "spend_virtual_currency",
+    "Param": "mode",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "spend_virtual_currency",
+    "Param": "level_name",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "spend_virtual_currency",
+    "Param": "hash",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "spend_virtual_currency",
+    "Param": "balance_before",
+    "Type": "int",
+    "Note": null
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "spend_virtual_currency",
+    "Param": "balance_after",
+    "Type": "int",
+    "Note": null
+  },
+  {
+    "Category": "Virtual Currency",
+    "Event": "spend_virtual_currency",
+    "Param": "[NOTE]",
+    "Type": null,
+    "Note": "Both events are dropped when the delta is 0, so zero-value transactions are invisible. NEVER add a 'currency' param here: value + currency is GA4's real-money pair and would route virtual coins into revenue reports"
+  },
+  {
+    "Category": "Real Money (IAP)",
+    "Event": "purchase",
+    "Param": "transaction_id",
+    "Type": "string",
+    "Note": "Or 'unknown'. De-duplicated at source, so restore flows do not double-count"
+  },
+  {
+    "Category": "Real Money (IAP)",
+    "Event": "purchase",
+    "Param": "currency",
+    "Type": "string",
+    "Note": "[GA4] Standard param. ISO currency code"
+  },
+  {
+    "Category": "Real Money (IAP)",
+    "Event": "purchase",
+    "Param": "value",
+    "Type": "double",
+    "Note": "[GA4] Standard param. LOCALIZED price - convert to USD before summing across geos"
+  },
+  {
+    "Category": "Real Money (IAP)",
+    "Event": "purchase",
+    "Param": "product_id",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Real Money (IAP)",
+    "Event": "iap_purchase_result",
+    "Param": "product_id",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Real Money (IAP)",
+    "Event": "iap_purchase_result",
+    "Param": "result",
+    "Type": "string",
+    "Note": "success' plus failure / cancel paths. Denominator for purchase reliability"
+  },
+  {
+    "Category": "Real Money (IAP)",
+    "Event": "iap_purchase_result",
+    "Param": "detail",
+    "Type": "string",
+    "Note": "Failure detail - check this when popup-to-click is high but click-to-confirm is low (price or store friction rather than a weak offer)"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression",
+    "Param": "ad_platform",
+    "Type": "string",
+    "Note": "[GA4] Standard param. admob | applovin | unknown"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression",
+    "Param": "ad_source",
+    "Type": "string",
+    "Note": "[GA4] Standard param. Network name"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression",
+    "Param": "ad_unit_name",
+    "Type": "string",
+    "Note": "[GA4] Standard param"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression",
+    "Param": "ad_format",
+    "Type": "string",
+    "Note": "[GA4] Standard param"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression",
+    "Param": "value",
+    "Type": "double",
+    "Note": "[GA4] Standard param. Revenue"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression",
+    "Param": "currency",
+    "Type": "string",
+    "Note": "[GA4] Standard param"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression",
+    "Param": "placement",
+    "Type": "string",
+    "Note": "Custom addition on top of the 6 standard params. Splits revenue by display position"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression",
+    "Param": "[WARNING]",
+    "Type": null,
+    "Note": "AppLovin ONLY by default (AdsDataTracking.LogAdImpressionForAdmob = false), because the AdMob-Firebase link auto-logs this event and logging it manually too would double-count revenue. VERIFY that link in Firebase console > Integrations > AdMob; if it is off, flip the flag to true so this event covers both networks as the Ad Revenue report expects"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_d14",
+    "Param": "ad_platform",
+    "Type": "string",
+    "Note": "Same payload as ad_impression. Mirror for the D14 ROAS dashboard"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_d14",
+    "Param": "ad_source",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_d14",
+    "Param": "ad_unit_name",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_d14",
+    "Param": "ad_format",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_d14",
+    "Param": "value",
+    "Type": "double",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_d14",
+    "Param": "currency",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_d14",
+    "Param": "placement",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_abi",
+    "Param": "ad_platform",
+    "Type": "string",
+    "Note": "Internal BI mirror. Covers BOTH networks, so this is the only guaranteed cross-network revenue source until the AdMob link is confirmed. Three events fire per impression (abi always, plus ad_impression and ad_impression_d14 for Max) - NEVER sum across them"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_abi",
+    "Param": "ad_source",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_abi",
+    "Param": "ad_unit_name",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_abi",
+    "Param": "ad_format",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_abi",
+    "Param": "value",
+    "Type": "double",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_abi",
+    "Param": "currency",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_impression_abi",
+    "Param": "placement",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_show_requested",
+    "Param": "ad_type",
+    "Type": "string",
+    "Note": "rewarded | interstitial"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_show_requested",
+    "Param": "placement",
+    "Type": "string",
+    "Note": "Where the ad was asked for"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_availability",
+    "Param": "ad_type",
+    "Type": "string",
+    "Note": "interstitial"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_availability",
+    "Param": "placement",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_availability",
+    "Param": "available",
+    "Type": "int",
+    "Note": "ALWAYS 1 - no available=0 row is ever logged, so ad fill rate is NOT computable from this data. Fixing this needs a code change"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_show_result",
+    "Param": "ad_type",
+    "Type": "string",
+    "Note": "banner | collapsible_banner | interstitial | app_open"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_show_result",
+    "Param": "result",
+    "Type": "string",
+    "Note": "HARD-CODED 'shown'. No failure row exists, so show-rate is really shows-per-request and silently conflates no-fill, load timeout and user dismissal"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_show_result",
+    "Param": "placement",
+    "Type": "string",
+    "Note": "Interstitial only - banner and app_open rows carry no placement"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_reward_granted",
+    "Param": "ad_type",
+    "Type": "string",
+    "Note": "rewarded"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_reward_granted",
+    "Param": "placement",
+    "Type": "string",
+    "Note": "No rewarded 'shown' row exists between requested and granted, so abandonment cannot be separated from delivery failure"
+  },
+  {
+    "Category": "Ads",
+    "Event": "first_ads",
+    "Param": "placement",
+    "Type": "string",
+    "Note": "First ad of the install"
+  },
+  {
+    "Category": "Ads",
+    "Event": "first_ads",
+    "Param": "duration",
+    "Type": "string",
+    "Note": "Seconds of playtime before the first ad. Check this against D1 retention when retention is poor but difficulty looks healthy"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_inter_show",
+    "Param": "placement",
+    "Type": "string",
+    "Note": "Interstitial actually shown, with level context attached - measures interstitial density per level, which ad_show_result cannot answer"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_inter_show",
+    "Param": "level_name",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_inter_show",
+    "Param": "hash",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_inter_show",
+    "Param": "mode",
+    "Type": "string",
+    "Note": "Lowercased playMode"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_inter_show",
+    "Param": "map_id",
+    "Type": "string",
+    "Note": "Authored map id"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_inter_show",
+    "Param": "level",
+    "Type": "int",
+    "Note": "Level index within the map"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_inter_show",
+    "Param": "level_accumulated",
+    "Type": "int",
+    "Note": "= [sum of numRequiredLevels of all previous maps] + level index. 0-based"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_rw_complete",
+    "Param": "placement",
+    "Type": "string",
+    "Note": "Rewarded video completed, with level context attached"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_rw_complete",
+    "Param": "count",
+    "Type": "int",
+    "Note": "How many rewarded videos have been completed so far in THIS level. Resets at level start. Defaults to 1 outside a level, where there is nothing to accumulate against"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_rw_complete",
+    "Param": "level_name",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_rw_complete",
+    "Param": "hash",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_rw_complete",
+    "Param": "mode",
+    "Type": "string",
+    "Note": "Lowercased playMode"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_rw_complete",
+    "Param": "map_id",
+    "Type": "string",
+    "Note": "Authored map id"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_rw_complete",
+    "Param": "level",
+    "Type": "int",
+    "Note": "Level index within the map"
+  },
+  {
+    "Category": "Ads",
+    "Event": "ad_rw_complete",
+    "Param": "level_accumulated",
+    "Type": "int",
+    "Note": "= [sum of numRequiredLevels of all previous maps] + level index. 0-based"
+  },
+  {
+    "Category": "IAP UI Funnel",
+    "Event": "iap_popup",
+    "Param": "pack_ID",
+    "Type": "string",
+    "Note": "Or 'shop'. Shop or offer opened"
+  },
+  {
+    "Category": "IAP UI Funnel",
+    "Event": "iap_click",
+    "Param": "pack_ID",
+    "Type": "string",
+    "Note": "Buy pressed"
+  },
+  {
+    "Category": "IAP UI Funnel",
+    "Event": "iapPurchased_confirmed",
+    "Param": "pack_ID",
+    "Type": "string",
+    "Note": "Purchase confirmed"
+  },
+  {
+    "Category": "IAP UI Funnel",
+    "Event": "iap_firstpurchased",
+    "Param": "duration_level",
+    "Type": "int",
+    "Note": "Total playtime seconds at the first purchase ever"
+  },
+  {
+    "Category": "IAP UI Funnel",
+    "Event": "iap_firstpurchased",
+    "Param": "pack_ID",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_purchase",
+    "Param": "af_content_id",
+    "Type": "string",
+    "Note": "Product id"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_purchase",
+    "Param": "af_currency",
+    "Type": "string",
+    "Note": null
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_purchase",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Always '1'"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_purchase",
+    "Param": "af_revenue",
+    "Type": "string",
+    "Note": "Price multiplied by 0.63 - a net-of-store-cut estimate. NEVER compare this to Firebase purchase.value, which is the gross localized price"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "ad_impression_abi",
+    "Param": "(ad_platform, ad_source, ad_unit_name, currency, value, placement, ad_format)",
+    "Type": "string",
+    "Note": "AppsFlyer copy of the BI mirror"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_level_achieved",
+    "Param": "af_map_id",
+    "Type": "string",
+    "Note": "Fired on level WIN only (not skip, lose or quit). One event name carrying params, replacing the old 'level_achieved_{n}' which minted a distinct event name per level and ate the 500-event-name budget"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_level_achieved",
+    "Param": "af_level",
+    "Type": "int",
+    "Note": "Level index within the map"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_level_achieved",
+    "Param": "af_level_accumulated",
+    "Type": "int",
+    "Note": "= [sum of numRequiredLevels of all previous maps] + level index. 0-based"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "first_open_app",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Always '1'"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_aoa_displayed",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Always '1'"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_inters_aoa_displayed",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Always '1'"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_inters_logicgame",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Interstitial triggered"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_inters_successfullyloaded",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Interstitial loaded"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_inters_displayed",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Interstitial displayed"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_rewarded_logicgame",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Rewarded triggered"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_rewarded_successfullyloaded",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Rewarded loaded"
+  },
+  {
+    "Category": "AppsFlyer (not Firebase)",
+    "Event": "af_rewarded_displayed",
+    "Param": "af_quantity",
+    "Type": "string",
+    "Note": "Rewarded displayed"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "open_count_bucket",
+    "Type": "string",
+    "Note": "0 | 1 | 2_3 | 4_10 | 11_25 | 26_50 | 51_plus"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "active_days_bucket",
+    "Type": "string",
+    "Note": "Same bucket set"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "iap_count_bucket",
+    "Type": "string",
+    "Note": "Same bucket set"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "ad_rv_count_bucket",
+    "Type": "string",
+    "Note": "Same bucket set"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "ad_int_count_bucket",
+    "Type": "string",
+    "Note": "Same bucket set"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "ad_aoa_count_bucket",
+    "Type": "string",
+    "Note": "Same bucket set"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "playtime_bucket",
+    "Type": "string",
+    "Note": "under_10m | 10m_1h | 1h_5h | 5h_20h | 20h_plus"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "max_map",
+    "Type": "int",
+    "Note": "Highest map reached. Raw value, sent as string"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "max_level",
+    "Type": "int",
+    "Note": "Highest level reached. Raw value, sent as string"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "payer_status",
+    "Type": "string",
+    "Note": "never | new (1 purchase) | repeat (2+)"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "inters",
+    "Type": "int",
+    "Note": "Raw interstitial count"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "rewards",
+    "Type": "int",
+    "Note": "Raw rewarded count"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "camp_name2",
+    "Type": "string",
+    "Note": "AppsFlyer campaign. 'no_camp' when absent"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "camp_id",
+    "Type": "string",
+    "Note": "AppsFlyer campaign id"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "media_source",
+    "Type": "string",
+    "Note": "AppsFlyer media source"
+  },
+  {
+    "Category": "User Properties",
+    "Event": "(user-scoped)",
+    "Param": "user_source",
+    "Type": "string",
+    "Note": "AppsFlyer install status (organic / non-organic)"
+  }
+]

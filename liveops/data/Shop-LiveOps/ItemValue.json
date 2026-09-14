@@ -1,0 +1,92 @@
+[
+  {
+    "Item": "hard-currency",
+    "Type": "base",
+    "Hard Currency": 1,
+    "Value$": 0.001
+  },
+  {
+    "Item": "1-minute-unlimited-heart",
+    "Type": "base",
+    "Hard Currency": 50,
+    "Value$": 0.05
+  },
+  {
+    "Item": "removeads",
+    "Type": "base",
+    "Hard Currency": null,
+    "Value$": 4.99
+  },
+  {
+    "Item": "booster_ingredient_pick",
+    "Type": "booster",
+    "Hard Currency": 600,
+    "Value$": 0.6
+  },
+  {
+    "Item": "booster_clean_dirty",
+    "Type": "booster",
+    "Hard Currency": 600,
+    "Value$": 0.6
+  },
+  {
+    "Item": "booster_shift_up_row",
+    "Type": "booster",
+    "Hard Currency": 1000,
+    "Value$": 1
+  },
+  {
+    "Item": "booster_auto_cook",
+    "Type": "booster",
+    "Hard Currency": 1000,
+    "Value$": 1
+  },
+  {
+    "Item": "booster_refill_wait_time",
+    "Type": "booster",
+    "Hard Currency": 0,
+    "Value$": 0
+  },
+  {
+    "Item": "saveme_1",
+    "Type": "saveme",
+    "Hard Currency": 900,
+    "Value$": 0.9
+  },
+  {
+    "Item": "saveme_2",
+    "Type": "saveme",
+    "Hard Currency": 1900,
+    "Value$": 1.9
+  },
+  {
+    "Item": "saveme_3",
+    "Type": "saveme",
+    "Hard Currency": 2900,
+    "Value$": 2.9
+  },
+  {
+    "Item": "saveme_4",
+    "Type": "saveme",
+    "Hard Currency": 3900,
+    "Value$": 3.9
+  },
+  {
+    "Item": "Normal",
+    "Type": "reward-win-lv",
+    "Hard Currency": 50,
+    "Value$": 0.05
+  },
+  {
+    "Item": "Hard",
+    "Type": "reward-win-lv",
+    "Hard Currency": 80,
+    "Value$": 0.08
+  },
+  {
+    "Item": "Super Hard",
+    "Type": "reward-win-lv",
+    "Hard Currency": 100,
+    "Value$": 0.1
+  }
+]

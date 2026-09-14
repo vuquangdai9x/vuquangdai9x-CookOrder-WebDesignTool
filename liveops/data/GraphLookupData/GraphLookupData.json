@@ -1,0 +1,178 @@
+[
+  {
+    "Map": 1,
+    "Category": "ingredient",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "ingredient",
+    "Index Data": 1,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "ingredient",
+    "Index Data": 2,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "group",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "group",
+    "Index Data": 1,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "composite",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "composite",
+    "Index Data": 1,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "tool",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "tool",
+    "Index Data": 1,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "dirty",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 1,
+    "Category": "dirty",
+    "Index Data": 1,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "ingredient",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "ingredient",
+    "Index Data": 1,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "ingredient",
+    "Index Data": 2,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "ingredient",
+    "Index Data": 3,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "group",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "composite",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "composite",
+    "Index Data": 1,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "tool",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "tool",
+    "Index Data": 1,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "tool",
+    "Index Data": 2,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  },
+  {
+    "Map": 2,
+    "Category": "dirty",
+    "Index Data": 0,
+    "Price": null,
+    "Speed Mul": null,
+    "Max Stack": null
+  }
+]

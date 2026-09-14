@@ -1,0 +1,77 @@
+[
+  {
+    "key": "buffInt",
+    "value": 2,
+    "value-enum": null
+  },
+  {
+    "key": "buffIntBack",
+    "value": 1,
+    "value-enum": null
+  },
+  {
+    "key": "buffRv",
+    "value": 2,
+    "value-enum": null
+  },
+  {
+    "key": "buffRvBack",
+    "value": 1,
+    "value-enum": null
+  },
+  {
+    "key": "buffAOA",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "buffAOAInt",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "buffBanner",
+    "value": 2,
+    "value-enum": null
+  },
+  {
+    "key": "baseRateBanner",
+    "value": 5,
+    "value-enum": null
+  },
+  {
+    "key": "sourceBanner",
+    "value": "[]",
+    "value-enum": null
+  },
+  {
+    "key": "rateBanner",
+    "value": "[]",
+    "value-enum": null
+  },
+  {
+    "key": "buffMrec",
+    "value": 2,
+    "value-enum": null
+  },
+  {
+    "key": "baseRateMrec",
+    "value": 5,
+    "value-enum": null
+  },
+  {
+    "key": "sourceMrec",
+    "value": "[]",
+    "value-enum": null
+  },
+  {
+    "key": "rateMrec",
+    "value": "[]",
+    "value-enum": null
+  },
+  {
+    "key": "useFlexSizeMrec",
+    "value": 0,
+    "value-enum": null
+  }
+]

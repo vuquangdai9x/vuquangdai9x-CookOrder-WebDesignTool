@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cookorder-level-authoring": {
+      "type": "stdio",
+      "command": "npm.cmd",
+      "args": ["run", "mcp"],
+      "cwd": "D:/daivq/ProjectCookOrder-WebGameLevelDesignTool"
+    }
+  }
+}
+

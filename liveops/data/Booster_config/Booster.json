@@ -1,0 +1,62 @@
+[
+  {
+    "ID": "booster_ingredient_pick",
+    "Title": "Ingredient Pick",
+    "Desc": "Freely pick one ingredient plate.",
+    "Note": "Nhìn thấy N hàng tất cả và pick thoải mái 1 đĩa nguyên liệu.\n- Nếu là đĩa ghép hoặc đĩa link, pick tất cả lên.\n- Phải thoả mãn điều kiện pick được lên (có slot trên tool + đủ slot thừa trên grid)",
+    "Enable": 1,
+    "Lv Unlock": 3,
+    "Free": 0,
+    "MaxAds": 99,
+    "Data List": "visibleRows",
+    "Data Value List": 7
+  },
+  {
+    "ID": "booster_clean_dirty",
+    "Title": "Sweeper",
+    "Desc": "Remove a dirty stack on the table.",
+    "Note": "Loại bỏ X chồng đồ bẩn trên khay phục vụ.\nƯu tiên chồng cao nhất",
+    "Enable": 1,
+    "Lv Unlock": 6,
+    "Free": 0,
+    "MaxAds": 99,
+    "Data List": "num",
+    "Data Value List": -1
+  },
+  {
+    "ID": "booster_shift_up_row",
+    "Title": "Shuffle",
+    "Desc": "Swap ingredient rows.",
+    "Note": "Đẩy toàn bộ các hàng nguyên liệu đang hiển thị lên trên 1 hàng. Nguyên liệu dư ra ở hàng trên cùng sẽ được điền lấp vào các khoảng trống (hole) do việc đẩy hàng tạo ra phía dưới.\n- Trường hợp khối đẩy lên là đĩa ghép, ngay cả khi khoảng trống được tạo ra nằm ngoài phạm vi cửa sổ hiển thị, nguyên liệu dư vẫn sẽ lấp vào khoảng trống đó.\n- Nếu đĩa chứa link, link đó cũng di chuyển tương ứng theo nguyên liệu",
+    "Enable": 1,
+    "Lv Unlock": 9,
+    "Free": 0,
+    "MaxAds": 99,
+    "Data List": null,
+    "Data Value List": null
+  },
+  {
+    "ID": "booster_auto_cook",
+    "Title": "Auto Cook",
+    "Desc": "Automatically cook a dish instantly.",
+    "Note": "Tự động làm X món",
+    "Enable": 1,
+    "Lv Unlock": 12,
+    "Free": 0,
+    "MaxAds": 99,
+    "Data List": "num",
+    "Data Value List": 1
+  },
+  {
+    "ID": "booster_refill_wait_time",
+    "Title": "Calm Customers",
+    "Desc": "Restore customer wait time so they stay longer.",
+    "Note": "Hồi lại wait time của khách",
+    "Enable": 0,
+    "Lv Unlock": -1,
+    "Free": 0,
+    "MaxAds": 99,
+    "Data List": null,
+    "Data Value List": null
+  }
+]

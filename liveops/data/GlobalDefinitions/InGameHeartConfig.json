@@ -1,0 +1,26 @@
+[
+  {
+    "Key": "enableFromLv",
+    "Value": 3
+  },
+  {
+    "Key": "initAmount",
+    "Value": 5
+  },
+  {
+    "Key": "lostReasonFlags",
+    "Value": 7
+  },
+  {
+    "Key": "saveMeCost",
+    "Value": 500
+  },
+  {
+    "Key": "saveMeAdd",
+    "Value": 3
+  },
+  {
+    "Key": "maxAds",
+    "Value": 99
+  }
+]

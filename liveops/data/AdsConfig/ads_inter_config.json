@@ -1,0 +1,47 @@
+[
+  {
+    "key": "passLvRq",
+    "value": 10,
+    "value-enum": null
+  },
+  {
+    "key": "showAfterNumPlay",
+    "value": 1,
+    "value-enum": null
+  },
+  {
+    "key": "capNumLv",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "capTimeVidRw",
+    "value": 120,
+    "value-enum": null
+  },
+  {
+    "key": "capTimeDefault",
+    "value": 180,
+    "value-enum": null
+  },
+  {
+    "key": "lv",
+    "value": "[30]",
+    "value-enum": null
+  },
+  {
+    "key": "capByLv",
+    "value": "[120]",
+    "value-enum": null
+  },
+  {
+    "key": "interQuitMidgame",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "useMulticall",
+    "value": 0,
+    "value-enum": null
+  }
+]

@@ -1,0 +1,23 @@
+[
+  {
+    "Id": "burger",
+    "Num Required Levels": 25,
+    "Num Grid ROW": 5,
+    "Num Grid COL": 2,
+    "VisibleRows": 3
+  },
+  {
+    "Id": "coffee",
+    "Num Required Levels": 25,
+    "Num Grid ROW": 5,
+    "Num Grid COL": 2,
+    "VisibleRows": 3
+  },
+  {
+    "Id": "sushi",
+    "Num Required Levels": 25,
+    "Num Grid ROW": 5,
+    "Num Grid COL": 2,
+    "VisibleRows": 3
+  }
+]

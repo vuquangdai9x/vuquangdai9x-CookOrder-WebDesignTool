@@ -1,0 +1,52 @@
+{
+  "_doc": "Per-table import hints for import-sheet.py. Keys are Google Sheets *table names* (not sheet titles). Formula-only columns are dropped automatically; list one under keep_columns to keep it.",
+  "exclude_tables": [],
+  "forward_fill": {
+    "DataTracking": [
+      "Category",
+      "Event"
+    ]
+  },
+  "drop_columns": {
+    "ItemValue": [],
+    "IAPShop": [],
+    "HomeBuilding": [
+      "Column 9"
+    ],
+    "Customers": [
+      "Icon"
+    ],
+    "Weather": [
+      "Img"
+    ],
+    "DifficultyTag": [
+      "Img"
+    ]
+  },
+  "table_notes": {
+    "Maps_metadata": "Map order and size. Num Levels is derived from LevelData (not exported); Num Required Levels = levels to clear before the next map unlocks.",
+    "HeartConfig": "Meta lives (energy). cooldown is seconds; refillCost is Gem (hard currency).",
+    "InGameHeartConfig": "Save Me continues ('in-game hearts'). lostReasonFlags bitmask: bit0 time-out, bit1 wrong order, bit2 burned. saveMeCost is Gem, saveMeAdd = hearts granted per purchase.",
+    "RewardConfig": "Level-win reward by DifficultyTag (Normal/Hard/Super Hard). bonusMuls are % multipliers for the rewarded-ad bonus; bonus is used when the array is empty. lvShowBonusAds = first level the bonus-ad offer shows.",
+    "MechanicFeatures": "Feature flags. dirtyStack is the per-cell dirty stack cap.",
+    "ServeSlots": "Serve-slot window (min..max). delayTriggerSaveMe in seconds after the loss.",
+    "ProgressScenario": "Player is sent to the Home (restaurant) scene at firstLvOutHome and every intervalOutHome levels after.",
+    "SpeedUpFeature": "x`speed` cooking boost: freeMinutes free, activateMinutes per activation, price in Gem or a rewarded ad.",
+    "RemoveAds": "Remove-ads offer. lvFirstShow 999 = effectively disabled.",
+    "Emotion": "Customer mood from remaining patience: Threshold is the minimum fraction of wait time left; Price Remain is the payout fraction; Coin Spawn is soft coins dropped on serve.",
+    "ItemValue": "Gem price of every sellable/rewardable item and its USD value (1 Gem = $0.001). saveme_1..4 are the 1st/2nd/3rd/4th+ Save Me purchase in one level -- incremental pricing.",
+    "IAPShop": "IAP catalog: price in USD and what the pack grants. The sheet's margin math (Total Value / Gain / Sale) and the concat `data` string are derived and not exported.",
+    "Reward7Days": "Daily login rewards -- empty in the sheet, feature not authored yet.",
+    "JourneyMilestone": "Level-milestone rewards. soft = Coin, hard = Gem.",
+    "Booster": "Booster definitions. Enable 0 = cut from the game. Price is looked up from ItemValue (derived, not exported here).",
+    "SaveMe": "Save Me variants by loss reason. Prices live in ItemValue saveme_1..4 (1st/2nd/3rd/4th+ purchase in one level); the sheet's Price column is a lookup and is not exported.",
+    "HomeBuilding": "Restaurant decoration parts per map, priced in Coin (soft). Map 3 rows are placeholders (no ids/titles yet).",
+    "Customers": "Named customer cast. Type Normal / Shipper (staff) / Boss. FileID is a Google Drive image id.",
+    "DataTracking": "Analytics event contract (GA4 + AppsFlyer). Category/Event are forward-filled from the sheet's merged layout.",
+    "LevelData": "Per-level design rows (MapLevelProgress). Large; level design is out of scope for pipeline work -- query with --where Map=1 rather than dumping it.",
+    "GraphLookupData": "Id-table index per map (ingredient/group/composite/tool/dirty). Mostly empty price/speed/stack overrides.",
+    "ads_network_config": "Ad mediation per format: value indexes AdsMediation (0 None, 1 Max, 2 Admob).",
+    "ads_inter_config": "Interstitial rules: passLvRq = first level interstitials show; capTime* in seconds."
+  },
+  "keep_columns": {}
+}

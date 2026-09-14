@@ -1,0 +1,38 @@
+[
+  {
+    "ID": "saveme_out_slot",
+    "Title": "SaveMe - Out Of Slot",
+    "Column 12": null,
+    "Details": "Save Me khi đầy slot trên grid.\n- Bỏ hết các đồ trên grid vào 1 túi, đặt tại slot trên cùng bên phải. Đồ sống auto chuyển thành các đồ chín tương ứng.\n- Các đồ bẩn thì để nguyên (config on/off)\n- Khi matching, duyệt đồ trong túi trước khi duyệt đến đồ trên grid",
+    "Enable": 1,
+    "Lv Unlock": 0,
+    "Free": 1,
+    "MaxAds": 99,
+    "Data List": null,
+    "Data Value List": null
+  },
+  {
+    "ID": "saveme_out_time",
+    "Title": "SaveMe - Out Of Time",
+    "Column 12": null,
+    "Details": "Save Me khi khách vip hết time chờ.\n- Hồi lại 100% time, đếm lại từ đầu",
+    "Enable": 1,
+    "Lv Unlock": 0,
+    "Free": 1,
+    "MaxAds": 99,
+    "Data List": null,
+    "Data Value List": null
+  },
+  {
+    "ID": "saveme_out_move",
+    "Title": "SaveMe - Out Of Move",
+    "Column 12": null,
+    "Details": null,
+    "Enable": 1,
+    "Lv Unlock": 0,
+    "Free": 1,
+    "MaxAds": 99,
+    "Data List": null,
+    "Data Value List": null
+  }
+]

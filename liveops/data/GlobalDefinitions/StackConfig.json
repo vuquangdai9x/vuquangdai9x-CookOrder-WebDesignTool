@@ -1,0 +1,10 @@
+[
+  {
+    "Key": "numSlots",
+    "Value": 5
+  },
+  {
+    "Key": "waitTimeScale",
+    "Value": 3
+  }
+]

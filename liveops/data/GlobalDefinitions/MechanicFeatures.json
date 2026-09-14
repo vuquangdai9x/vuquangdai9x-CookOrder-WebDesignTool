@@ -1,0 +1,26 @@
+[
+  {
+    "Feature": "mergeTop",
+    "Mode": 1
+  },
+  {
+    "Feature": "upgradeTool",
+    "Mode": 1
+  },
+  {
+    "Feature": "dirtyPlate",
+    "Mode": 1
+  },
+  {
+    "Feature": "autoStack",
+    "Mode": 1
+  },
+  {
+    "Feature": "dirtyStack",
+    "Mode": 5
+  },
+  {
+    "Feature": "rawIng",
+    "Mode": 0
+  }
+]

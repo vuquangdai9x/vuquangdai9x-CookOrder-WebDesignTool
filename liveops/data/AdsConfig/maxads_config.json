@@ -1,0 +1,42 @@
+[
+  {
+    "key": "multiRv",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "multiInt",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "preloadBaseInt",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "preloadBaseRv",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "timeoutMultiRv",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "timeoutBaseRv",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "timeoutMultiInt",
+    "value": 0,
+    "value-enum": null
+  },
+  {
+    "key": "timeoutBaseInt",
+    "value": 0,
+    "value-enum": null
+  }
+]

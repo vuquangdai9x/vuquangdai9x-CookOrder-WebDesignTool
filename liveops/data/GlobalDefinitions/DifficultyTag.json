@@ -1,0 +1,20 @@
+[
+  {
+    "Type": "Normal",
+    "Reward Win": 20,
+    "Icon File ID": null,
+    "Emoji": null
+  },
+  {
+    "Type": "Hard",
+    "Reward Win": 60,
+    "Icon File ID": "1U57XTD4Ujyw3oFlkpzffvGHKLWmAUsWf",
+    "Emoji": "🌶️"
+  },
+  {
+    "Type": "Super Hard",
+    "Reward Win": 100,
+    "Icon File ID": "11FFLCyKfSc0K3oSnaOlD-AKGtH86NgDy",
+    "Emoji": "🔥"
+  }
+]

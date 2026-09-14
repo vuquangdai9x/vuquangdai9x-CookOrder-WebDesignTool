@@ -77,6 +77,8 @@ export interface OccupancySample {
 
 export interface EstimateResult {
   solvable: boolean;
+  /** Logical gameplay seconds elapsed in the selected simulation attempt. */
+  gameplayDurationSeconds?: number;
   /** Present when `solvable` is false — why the solver gave up. */
   reason?: string;
   loseReason?: LoseReason | null;

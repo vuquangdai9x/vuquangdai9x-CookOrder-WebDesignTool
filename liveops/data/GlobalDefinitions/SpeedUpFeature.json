@@ -1,0 +1,22 @@
+[
+  {
+    "Key": "speed",
+    "Value": 2
+  },
+  {
+    "Key": "freeMinutes",
+    "Value": 5
+  },
+  {
+    "Key": "activateMinutes",
+    "Value": 15
+  },
+  {
+    "Key": "price",
+    "Value": 1200
+  },
+  {
+    "Key": "canUseAds",
+    "Value": 1
+  }
+]

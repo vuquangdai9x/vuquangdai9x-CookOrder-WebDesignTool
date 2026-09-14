@@ -1,0 +1,34 @@
+[
+  {
+    "key": "mediation",
+    "value": 1
+  },
+  {
+    "key": "reward",
+    "value": 2
+  },
+  {
+    "key": "inters",
+    "value": 2
+  },
+  {
+    "key": "mrec",
+    "value": 0
+  },
+  {
+    "key": "banner",
+    "value": 2
+  },
+  {
+    "key": "appOpen",
+    "value": 0
+  },
+  {
+    "key": "appSwitch",
+    "value": 0
+  },
+  {
+    "key": "maxUseBackfill",
+    "value": 0
+  }
+]

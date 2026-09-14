@@ -1,0 +1,17 @@
+[
+  {
+    "Value": "AdsRemoved"
+  },
+  {
+    "Value": "Blocked"
+  },
+  {
+    "Value": "ConfigDisabled"
+  },
+  {
+    "Value": "LoadFailed"
+  },
+  {
+    "Value": "ExternalFailed"
+  }
+]

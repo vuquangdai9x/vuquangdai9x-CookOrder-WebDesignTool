@@ -1,0 +1,353 @@
+[
+  {
+    "Map": 1,
+    "Part Index": 0,
+    "Part Id": "base",
+    "Price": 0,
+    "Title": "-",
+    "Desc": "Every empire starts somewhere. This one starts with a grill and a dream.",
+    "Note": "nâng cấp base sẽ làm thay đổi cả khung nhà hàng"
+  },
+  {
+    "Map": 1,
+    "Part Index": 1,
+    "Part Id": "base_lv2",
+    "Price": 12500,
+    "Title": "Bigger House",
+    "Desc": "More room, more buns. The house that beef built.",
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 5,
+    "Part Id": "canopy",
+    "Price": 1000,
+    "Title": "Canopy",
+    "Desc": null,
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 2,
+    "Part Id": "logo",
+    "Price": 1750,
+    "Title": "Logo Board",
+    "Desc": "Put your name on it. Shameless, but it works.",
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 6,
+    "Part Id": "sign",
+    "Price": 500,
+    "Title": "Hanging Sign",
+    "Desc": "It hangs around all day pointing at customers. Very dedicated.",
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 7,
+    "Part Id": "sign_pole",
+    "Price": 2500,
+    "Title": "Pole Sign",
+    "Desc": null,
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 10,
+    "Part Id": "pot",
+    "Price": 750,
+    "Title": "Plant Pot",
+    "Desc": "One potted plant. Instantly forty percent more charming.",
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 3,
+    "Part Id": "vine",
+    "Price": 2500,
+    "Title": "Vines",
+    "Desc": "Greenery on the roof - finally something here that is actually a plant.",
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 4,
+    "Part Id": "roof_burger",
+    "Price": 5000,
+    "Title": "Giant Burger",
+    "Desc": "A burger far too big to eat. Perfect for staring at.",
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 8,
+    "Part Id": "light",
+    "Price": 3750,
+    "Title": "Lights",
+    "Desc": "String lights, so the late shift looks completely intentional.",
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 9,
+    "Part Id": "board_small",
+    "Price": 2000,
+    "Title": "Small Menu Board",
+    "Desc": "A small board for big decisions. Mostly about cheese.",
+    "Note": null
+  },
+  {
+    "Map": 1,
+    "Part Index": 11,
+    "Part Id": "board_tall",
+    "Price": 3500,
+    "Title": "Tall Menu Board",
+    "Desc": "Readable from across the street. Subtlety is not on the menu.",
+    "Note": null
+  },
+  {
+    "Map": 2,
+    "Part Index": 0,
+    "Part Id": "base",
+    "Price": 0,
+    "Title": "-",
+    "Desc": "The hole start to something sweet. Just flour, water, and a lot of ambition.",
+    "Note": "nâng cấp base sẽ làm thay đổi cả khung nhà hàng"
+  },
+  {
+    "Map": 2,
+    "Part Index": 1,
+    "Part Id": "base_lv2",
+    "Price": 15000,
+    "Title": "Sweet Expansion",
+    "Desc": "More glaze, more space. We're raising the dough to raise the roof.",
+    "Note": ""
+  },
+  {
+    "Map": 2,
+    "Part Index": 4,
+    "Part Id": "stools",
+    "Price": 1750,
+    "Title": "Cozy Stools",
+    "Desc": "The perfect height for dangling your legs while eating a dozen sprinkles.",
+    "Note": ""
+  },
+  {
+    "Map": 2,
+    "Part Index": 5,
+    "Part Id": "menu",
+    "Price": 1000,
+    "Title": "Flavor Board",
+    "Desc": "A list of everything we sell. Mostly donuts. Okay, exclusively donuts.",
+    "Note": ""
+  },
+  {
+    "Map": 2,
+    "Part Index": 2,
+    "Part Id": "roof_donut",
+    "Price": 2500,
+    "Title": "Giant Donut",
+    "Desc": "A rooftop donut so big, even the birds get a sugar rush just looking at it.",
+    "Note": ""
+  },
+  {
+    "Map": 2,
+    "Part Index": 3,
+    "Part Id": "logo",
+    "Price": 1000,
+    "Title": "Storefront Sign",
+    "Desc": "Let the world know where the frosting is. Glazed and proud.",
+    "Note": ""
+  },
+  {
+    "Map": 2,
+    "Part Index": 9,
+    "Part Id": "roof_donut_decor",
+    "Price": 5000,
+    "Title": "Donut Toppings",
+    "Desc": "Extra sprinkles for the rooftop masterpiece. Glaze is not enough.",
+    "Note": ""
+  },
+  {
+    "Map": 2,
+    "Part Index": 6,
+    "Part Id": "pots",
+    "Price": 2500,
+    "Title": "Decorative Pots",
+    "Desc": "Adding some structure to the sugar. These pots mean business.",
+    "Note": ""
+  },
+  {
+    "Map": 2,
+    "Part Index": 7,
+    "Part Id": "plants",
+    "Price": 2500,
+    "Title": "Pastry Plants",
+    "Desc": "Real greenery to balance the artificial glaze. Nature's own sprinkles.",
+    "Note": ""
+  },
+  {
+    "Map": 2,
+    "Part Index": 8,
+    "Part Id": "balloons",
+    "Price": 2250,
+    "Title": "Party Balloons",
+    "Desc": "Because every donut deserves a celebration. Floating sugar vibes.",
+    "Note": ""
+  },
+  {
+    "Map": 2,
+    "Part Index": 9,
+    "Part Id": "table_decor",
+    "Price": 1750,
+    "Title": "Decor on Table",
+    "Desc": "Extra sprinkles for the rooftop masterpiece. Glaze is not enough.",
+    "Note": null
+  },
+  {
+    "Map": 2,
+    "Part Index": 10,
+    "Part Id": "chairs",
+    "Price": 3250,
+    "Title": "Comfy Chairs",
+    "Desc": "Sit back, relax, and let the sugar coma take over slowly.",
+    "Note": ""
+  },
+  {
+    "Map": 3,
+    "Part Index": 0,
+    "Part Id": null,
+    "Price": 0,
+    "Title": "-",
+    "Desc": null,
+    "Note": "nâng cấp base sẽ làm thay đổi cả khung nhà hàng"
+  },
+  {
+    "Map": 3,
+    "Part Index": 1,
+    "Part Id": null,
+    "Price": 1000,
+    "Title": null,
+    "Desc": null,
+    "Note": "xe bán sushi dạo"
+  },
+  {
+    "Map": 3,
+    "Part Index": 2,
+    "Part Id": null,
+    "Price": 2000,
+    "Title": null,
+    "Desc": null,
+    "Note": "tiệm sushi"
+  },
+  {
+    "Map": 3,
+    "Part Index": 3,
+    "Part Id": null,
+    "Price": 3500,
+    "Title": null,
+    "Desc": null,
+    "Note": "nhà hàng sushi"
+  },
+  {
+    "Map": 3,
+    "Part Index": 0,
+    "Part Id": null,
+    "Price": 100,
+    "Title": null,
+    "Desc": null,
+    "Note": "decor trên tường, vd biển hiệu, cửa sổ..."
+  },
+  {
+    "Map": 3,
+    "Part Index": 1,
+    "Part Id": null,
+    "Price": 150,
+    "Title": null,
+    "Desc": null,
+    "Note": null
+  },
+  {
+    "Map": 3,
+    "Part Index": 0,
+    "Part Id": null,
+    "Price": 100,
+    "Title": null,
+    "Desc": null,
+    "Note": "mái nhà, ống khói..."
+  },
+  {
+    "Map": 3,
+    "Part Index": 1,
+    "Part Id": null,
+    "Price": 150,
+    "Title": null,
+    "Desc": null,
+    "Note": null
+  },
+  {
+    "Map": 3,
+    "Part Index": 2,
+    "Part Id": null,
+    "Price": 250,
+    "Title": null,
+    "Desc": null,
+    "Note": null
+  },
+  {
+    "Map": 3,
+    "Part Index": 0,
+    "Part Id": null,
+    "Price": 100,
+    "Title": null,
+    "Desc": null,
+    "Note": "đèn đóm, bàn ghế ngoài trời"
+  },
+  {
+    "Map": 3,
+    "Part Index": 1,
+    "Part Id": null,
+    "Price": 150,
+    "Title": null,
+    "Desc": null,
+    "Note": null
+  },
+  {
+    "Map": 3,
+    "Part Index": 0,
+    "Part Id": null,
+    "Price": 100,
+    "Title": null,
+    "Desc": null,
+    "Note": "biển hiệu, cây cảnh..."
+  },
+  {
+    "Map": 3,
+    "Part Index": 1,
+    "Part Id": null,
+    "Price": 150,
+    "Title": null,
+    "Desc": null,
+    "Note": null
+  },
+  {
+    "Map": 3,
+    "Part Index": 2,
+    "Part Id": null,
+    "Price": 250,
+    "Title": null,
+    "Desc": null,
+    "Note": null
+  },
+  {
+    "Map": 3,
+    "Part Index": 3,
+    "Part Id": null,
+    "Price": 350,
+    "Title": null,
+    "Desc": null,
+    "Note": null
+  }
+]

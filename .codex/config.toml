@@ -1,0 +1,7 @@
+[mcp_servers.cookorder-level-authoring]
+command = "npm.cmd"
+args = ["run", "mcp"]
+cwd = "D:/daivq/ProjectCookOrder-WebGameLevelDesignTool"
+startup_timeout_sec = 20
+tool_timeout_sec = 120
+

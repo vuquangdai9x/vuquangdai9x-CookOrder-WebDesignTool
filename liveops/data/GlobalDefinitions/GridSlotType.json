@@ -1,0 +1,37 @@
+[
+  {
+    "Id": "Normal",
+    "Encode": 0,
+    "Emoji": null,
+    "Icon File ID": null,
+    "Details": null
+  },
+  {
+    "Id": "Blocked",
+    "Encode": 1,
+    "Emoji": "❌",
+    "Icon File ID": null,
+    "Details": "Khoá hoàn toàn, không sử dụng được trong màn chơii"
+  },
+  {
+    "Id": "OrderLock",
+    "Encode": 2,
+    "Emoji": "💬",
+    "Icon File ID": null,
+    "Details": "Khoá cho đến khi xong X order"
+  },
+  {
+    "Id": "IngredientLock",
+    "Encode": 3,
+    "Emoji": "🥕",
+    "Icon File ID": null,
+    "Details": "Khoá cho đến khi sử dụng xong X nguyên liệu"
+  },
+  {
+    "Id": "ColorLock",
+    "Encode": 4,
+    "Emoji": "🎨",
+    "Icon File ID": null,
+    "Details": "Khoá theo màu. Các nguyên liệu sẽ chứa chìa khoá, cần phục vụ X nguyên liệu chứa khoá đúng màu để mở."
+  }
+]

@@ -1,0 +1,766 @@
+{
+  "source": "https://docs.google.com/spreadsheets/d/1BIosxNjfnueck5VubwwG6_kW8KRH_-gQU6q1WPy_UNA",
+  "sheet_id": "1BIosxNjfnueck5VubwwG6_kW8KRH_-gQU6q1WPy_UNA",
+  "imported_at": "2026-09-11T06:33:21+00:00",
+  "tables": [
+    {
+      "table": "ItemValue",
+      "sheet": "Shop-LiveOps",
+      "range": "A4:E19",
+      "file": "Shop-LiveOps/ItemValue.json",
+      "rows": 15,
+      "columns": [
+        "Item",
+        "Type",
+        "Hard Currency",
+        "Value$"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": "Gem price of every sellable/rewardable item and its USD value (1 Gem = $0.001). saveme_1..4 are the 1st/2nd/3rd/4th+ Save Me purchase in one level -- incremental pricing."
+    },
+    {
+      "table": "IAPShop",
+      "sheet": "Shop-LiveOps",
+      "range": "A22:T40",
+      "file": "Shop-LiveOps/IAPShop.json",
+      "rows": 18,
+      "columns": [
+        "SKU",
+        "Title",
+        "Desc",
+        "Position",
+        "Price ($)",
+        "Sale Tag",
+        "Type",
+        "Rewards Hard Currency",
+        "booster_ingredient_pick",
+        "booster_clean_dirty",
+        "booster_shift_up_row",
+        "booster_auto_cook",
+        "booster_refill_wait_time",
+        "Reward Unlimited Heart (minute)",
+        "Value$"
+      ],
+      "derived_columns_dropped": [
+        "Gain Value",
+        "Index",
+        "Sale Value",
+        "Total Value Hard Currency",
+        "data"
+      ],
+      "note": "IAP catalog: price in USD and what the pack grants. The sheet's margin math (Total Value / Gain / Sale) and the concat `data` string are derived and not exported."
+    },
+    {
+      "table": "Reward7Days",
+      "sheet": "Shop-LiveOps",
+      "range": "A43:E49",
+      "file": "Shop-LiveOps/Reward7Days.json",
+      "rows": 0,
+      "columns": [],
+      "derived_columns_dropped": [],
+      "note": "Daily login rewards -- empty in the sheet, feature not authored yet."
+    },
+    {
+      "table": "JourneyMilestone",
+      "sheet": "JourneyConfig",
+      "range": "A1:H15",
+      "file": "JourneyConfig/JourneyMilestone.json",
+      "rows": 14,
+      "columns": [
+        "Level",
+        "Reward 1",
+        "Amout 1",
+        "Reward 2",
+        "Amout 2",
+        "Reward 3",
+        "Amout 3"
+      ],
+      "derived_columns_dropped": [
+        "concat-data"
+      ],
+      "note": "Level-milestone rewards. soft = Coin, hard = Gem."
+    },
+    {
+      "table": "Maps_metadata",
+      "sheet": "GlobalDefinitions",
+      "range": "A3:H6",
+      "file": "GlobalDefinitions/Maps_metadata.json",
+      "rows": 3,
+      "columns": [
+        "Id",
+        "Num Required Levels",
+        "Num Grid ROW",
+        "Num Grid COL",
+        "VisibleRows"
+      ],
+      "derived_columns_dropped": [
+        "Index",
+        "Num Levels",
+        "concat-data"
+      ],
+      "note": "Map order and size. Num Levels is derived from LevelData (not exported); Num Required Levels = levels to clear before the next map unlocks."
+    },
+    {
+      "table": "Weather",
+      "sheet": "GlobalDefinitions",
+      "range": "D10:H15",
+      "file": "GlobalDefinitions/Weather.json",
+      "rows": 5,
+      "columns": [
+        "ID",
+        "Status",
+        "Icon File ID",
+        "Emoji"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "Emotion",
+      "sheet": "GlobalDefinitions",
+      "range": "K10:P14",
+      "file": "GlobalDefinitions/Emotion.json",
+      "rows": 4,
+      "columns": [
+        "ID",
+        "Int",
+        "Emo",
+        "Threshold ( ≥ X% WaitTime)",
+        "Price Remain (%)",
+        "Coin Spawn"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Customer mood from remaining patience: Threshold is the minimum fraction of wait time left; Price Remain is the payout fraction; Coin Spawn is soft coins dropped on serve."
+    },
+    {
+      "table": "IngredientSlotStatus",
+      "sheet": "GlobalDefinitions",
+      "range": "K17:O21",
+      "file": "GlobalDefinitions/IngredientSlotStatus.json",
+      "rows": 4,
+      "columns": [
+        "Id",
+        "Encode",
+        "Emoji",
+        "Icon File ID",
+        "Details"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "DifficultyTag",
+      "sheet": "GlobalDefinitions",
+      "range": "D19:H22",
+      "file": "GlobalDefinitions/DifficultyTag.json",
+      "rows": 3,
+      "columns": [
+        "Type",
+        "Reward Win",
+        "Icon File ID",
+        "Emoji"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "HeartConfig",
+      "sheet": "GlobalDefinitions",
+      "range": "A20:B23",
+      "file": "GlobalDefinitions/HeartConfig.json",
+      "rows": 3,
+      "columns": [
+        "Key",
+        "Value"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Meta lives (energy). cooldown is seconds; refillCost is Gem (hard currency)."
+    },
+    {
+      "table": "CustomerType",
+      "sheet": "GlobalDefinitions",
+      "range": "D25:F28",
+      "file": "GlobalDefinitions/CustomerType.json",
+      "rows": 3,
+      "columns": [
+        "Id",
+        "Type",
+        "Emoji"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "StackConfig",
+      "sheet": "GlobalDefinitions",
+      "range": "A26:B28",
+      "file": "GlobalDefinitions/StackConfig.json",
+      "rows": 2,
+      "columns": [
+        "Key",
+        "Value"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "GridSlotType",
+      "sheet": "GlobalDefinitions",
+      "range": "K26:O31",
+      "file": "GlobalDefinitions/GridSlotType.json",
+      "rows": 5,
+      "columns": [
+        "Id",
+        "Encode",
+        "Emoji",
+        "Icon File ID",
+        "Details"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "RecipePieceType",
+      "sheet": "GlobalDefinitions",
+      "range": "D31:G35",
+      "file": "GlobalDefinitions/RecipePieceType.json",
+      "rows": 4,
+      "columns": [
+        "Id",
+        "Type",
+        "Emoji",
+        "Note"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "LockColor",
+      "sheet": "GlobalDefinitions",
+      "range": "K35:M41",
+      "file": "GlobalDefinitions/LockColor.json",
+      "rows": 6,
+      "columns": [
+        "Index",
+        "Name",
+        "Color"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "InGameHeartConfig",
+      "sheet": "GlobalDefinitions",
+      "range": "A36:B42",
+      "file": "GlobalDefinitions/InGameHeartConfig.json",
+      "rows": 6,
+      "columns": [
+        "Key",
+        "Value"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Save Me continues ('in-game hearts'). lostReasonFlags bitmask: bit0 time-out, bit1 wrong order, bit2 burned. saveMeCost is Gem, saveMeAdd = hearts granted per purchase."
+    },
+    {
+      "table": "RewardConfig",
+      "sheet": "GlobalDefinitions",
+      "range": "A45:B49",
+      "file": "GlobalDefinitions/RewardConfig.json",
+      "rows": 4,
+      "columns": [
+        "Key",
+        "Value"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Level-win reward by DifficultyTag (Normal/Hard/Super Hard). bonusMuls are % multipliers for the rewarded-ad bonus; bonus is used when the array is empty. lvShowBonusAds = first level the bonus-ad offer shows."
+    },
+    {
+      "table": "MechanicFeatures",
+      "sheet": "GlobalDefinitions",
+      "range": "A52:B58",
+      "file": "GlobalDefinitions/MechanicFeatures.json",
+      "rows": 6,
+      "columns": [
+        "Feature",
+        "Mode"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Feature flags. dirtyStack is the per-cell dirty stack cap."
+    },
+    {
+      "table": "ServeSlots",
+      "sheet": "GlobalDefinitions",
+      "range": "A64:B67",
+      "file": "GlobalDefinitions/ServeSlots.json",
+      "rows": 3,
+      "columns": [
+        "Key",
+        "Value"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Serve-slot window (min..max). delayTriggerSaveMe in seconds after the loss."
+    },
+    {
+      "table": "ProgressScenario",
+      "sheet": "GlobalDefinitions",
+      "range": "A70:B72",
+      "file": "GlobalDefinitions/ProgressScenario.json",
+      "rows": 2,
+      "columns": [
+        "Key",
+        "Value"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Player is sent to the Home (restaurant) scene at firstLvOutHome and every intervalOutHome levels after."
+    },
+    {
+      "table": "SpeedUpFeature",
+      "sheet": "GlobalDefinitions",
+      "range": "A75:B80",
+      "file": "GlobalDefinitions/SpeedUpFeature.json",
+      "rows": 5,
+      "columns": [
+        "Key",
+        "Value"
+      ],
+      "derived_columns_dropped": [],
+      "note": "x`speed` cooking boost: freeMinutes free, activateMinutes per activation, price in Gem or a rewarded ad."
+    },
+    {
+      "table": "RemoveAds",
+      "sheet": "GlobalDefinitions",
+      "range": "A83:B87",
+      "file": "GlobalDefinitions/RemoveAds.json",
+      "rows": 4,
+      "columns": [
+        "Key",
+        "Value"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Remove-ads offer. lvFirstShow 999 = effectively disabled."
+    },
+    {
+      "table": "ads_network_config",
+      "sheet": "AdsConfig",
+      "range": "A3:C11",
+      "file": "AdsConfig/ads_network_config.json",
+      "rows": 8,
+      "columns": [
+        "key",
+        "value"
+      ],
+      "derived_columns_dropped": [
+        "value-enum"
+      ],
+      "note": "Ad mediation per format: value indexes AdsMediation (0 None, 1 Max, 2 Admob)."
+    },
+    {
+      "table": "AdsMediation",
+      "sheet": "AdsConfig",
+      "range": "E3:F6",
+      "file": "AdsConfig/AdsMediation.json",
+      "rows": 3,
+      "columns": [
+        "Value"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "AdsPlatform",
+      "sheet": "AdsConfig",
+      "range": "H3:I6",
+      "file": "AdsConfig/AdsPlatform.json",
+      "rows": 3,
+      "columns": [
+        "Value"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "AdsType",
+      "sheet": "AdsConfig",
+      "range": "K3:L8",
+      "file": "AdsConfig/AdsType.json",
+      "rows": 5,
+      "columns": [
+        "Value"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "AOAAdsPosition",
+      "sheet": "AdsConfig",
+      "range": "N3:O7",
+      "file": "AdsConfig/AOAAdsPosition.json",
+      "rows": 4,
+      "columns": [
+        "Value"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "AdsPosition",
+      "sheet": "AdsConfig",
+      "range": "Q3:R12",
+      "file": "AdsConfig/AdsPosition.json",
+      "rows": 9,
+      "columns": [
+        "Value"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "BannerPosition",
+      "sheet": "AdsConfig",
+      "range": "T3:U6",
+      "file": "AdsConfig/BannerPosition.json",
+      "rows": 3,
+      "columns": [
+        "Value"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "MrecPosition",
+      "sheet": "AdsConfig",
+      "range": "W3:X13",
+      "file": "AdsConfig/MrecPosition.json",
+      "rows": 10,
+      "columns": [
+        "Value"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "AOAFailedReason",
+      "sheet": "AdsConfig",
+      "range": "Z3:AA8",
+      "file": "AdsConfig/AOAFailedReason.json",
+      "rows": 5,
+      "columns": [
+        "Value"
+      ],
+      "derived_columns_dropped": [
+        "Index"
+      ],
+      "note": null
+    },
+    {
+      "table": "ads_inter_config",
+      "sheet": "AdsConfig",
+      "range": "A14:C23",
+      "file": "AdsConfig/ads_inter_config.json",
+      "rows": 9,
+      "columns": [
+        "key",
+        "value",
+        "value-enum"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Interstitial rules: passLvRq = first level interstitials show; capTime* in seconds."
+    },
+    {
+      "table": "ads_banner_config",
+      "sheet": "AdsConfig",
+      "range": "A26:B27",
+      "file": "AdsConfig/ads_banner_config.json",
+      "rows": 1,
+      "columns": [
+        "key",
+        "value"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "ads_reward_config",
+      "sheet": "AdsConfig",
+      "range": "A31:B32",
+      "file": "AdsConfig/ads_reward_config.json",
+      "rows": 1,
+      "columns": [
+        "key",
+        "value"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "ads_mrec_config",
+      "sheet": "AdsConfig",
+      "range": "A36:B37",
+      "file": "AdsConfig/ads_mrec_config.json",
+      "rows": 1,
+      "columns": [
+        "key",
+        "value"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "admob_config",
+      "sheet": "AdsConfig",
+      "range": "A41:C56",
+      "file": "AdsConfig/admob_config.json",
+      "rows": 15,
+      "columns": [
+        "key",
+        "value",
+        "value-enum"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "maxads_config",
+      "sheet": "AdsConfig",
+      "range": "A60:C68",
+      "file": "AdsConfig/maxads_config.json",
+      "rows": 8,
+      "columns": [
+        "key",
+        "value",
+        "value-enum"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "consent_config",
+      "sheet": "AdsConfig",
+      "range": "A72:C74",
+      "file": "AdsConfig/consent_config.json",
+      "rows": 2,
+      "columns": [
+        "key",
+        "value",
+        "value-enum"
+      ],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "iaa_bucket_config",
+      "sheet": "AdsConfig",
+      "range": "A78:B79",
+      "file": "AdsConfig/iaa_bucket_config.json",
+      "rows": 0,
+      "columns": [],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "iap_bucket_config",
+      "sheet": "AdsConfig",
+      "range": "A83:B84",
+      "file": "AdsConfig/iap_bucket_config.json",
+      "rows": 0,
+      "columns": [],
+      "derived_columns_dropped": [],
+      "note": null
+    },
+    {
+      "table": "LevelData",
+      "sheet": "MapLevelProgress",
+      "range": "A3:AN108",
+      "file": "MapLevelProgress/LevelData.json",
+      "rows": 105,
+      "columns": [
+        "Map",
+        "Level",
+        "Ingredient Weights",
+        "Customer Dishes Sequence",
+        "Complexity Curve",
+        "Shuffle Curve",
+        "Random Seed",
+        "Obstacles",
+        "Weather",
+        "Tag",
+        "Num Customers",
+        "Num Dishes",
+        "Num Ingredients",
+        "New Recipe Ids",
+        "Customers",
+        "Grid",
+        "Queues",
+        "Customers-compressed",
+        "Queues-compressed",
+        "Total Coin",
+        "Column 37",
+        "E-WinRate",
+        "T-TimePlay",
+        "T-WinRate",
+        "R-TimePlay",
+        "R-WinRate"
+      ],
+      "derived_columns_dropped": [
+        "E-TimePlay",
+        "Gameplay Data",
+        "Grid-compressed",
+        "ID",
+        "Item Types",
+        "Metadata",
+        "⌛Timer Customer",
+        "❄️Ice Block Cell",
+        "❔Hidden Slots",
+        "🔗Linked Slots",
+        "🗝️Lock & Key",
+        "🚫Blocked Cell",
+        "🧊Frozen Slots",
+        "🧰Combine Slots"
+      ],
+      "note": "Per-level design rows (MapLevelProgress). Large; level design is out of scope for pipeline work -- query with --where Map=1 rather than dumping it."
+    },
+    {
+      "table": "GraphLookupData",
+      "sheet": "GraphLookupData",
+      "range": "A3:F25",
+      "file": "GraphLookupData/GraphLookupData.json",
+      "rows": 22,
+      "columns": [
+        "Map",
+        "Category",
+        "Index Data",
+        "Price",
+        "Speed Mul",
+        "Max Stack"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Id-table index per map (ingredient/group/composite/tool/dirty). Mostly empty price/speed/stack overrides."
+    },
+    {
+      "table": "HomeBuilding",
+      "sheet": "HomeBuilding",
+      "range": "A4:I43",
+      "file": "HomeBuilding/HomeBuilding.json",
+      "rows": 39,
+      "columns": [
+        "Map",
+        "Part Index",
+        "Part Id",
+        "Price",
+        "Title",
+        "Desc",
+        "Note"
+      ],
+      "derived_columns_dropped": [
+        "concat-data"
+      ],
+      "note": "Restaurant decoration parts per map, priced in Coin (soft). Map 3 rows are placeholders (no ids/titles yet)."
+    },
+    {
+      "table": "Customers",
+      "sheet": "Customers",
+      "range": "A3:H24",
+      "file": "Customers/Customers.json",
+      "rows": 21,
+      "columns": [
+        "Index",
+        "Id",
+        "Name",
+        "Desc",
+        "Type",
+        "Base Map",
+        "FileID"
+      ],
+      "derived_columns_dropped": [
+        "MapIndex"
+      ],
+      "note": "Named customer cast. Type Normal / Shipper (staff) / Boss. FileID is a Google Drive image id."
+    },
+    {
+      "table": "DataTracking",
+      "sheet": "Data_Tracking",
+      "range": "A3:E160",
+      "file": "Data_Tracking/DataTracking.json",
+      "rows": 157,
+      "columns": [
+        "Category",
+        "Event",
+        "Param",
+        "Type",
+        "Note"
+      ],
+      "derived_columns_dropped": [],
+      "note": "Analytics event contract (GA4 + AppsFlyer). Category/Event are forward-filled from the sheet's merged layout."
+    },
+    {
+      "table": "Booster",
+      "sheet": "Booster_config",
+      "range": "A2:M7",
+      "file": "Booster_config/Booster.json",
+      "rows": 5,
+      "columns": [
+        "ID",
+        "Title",
+        "Desc",
+        "Note",
+        "Enable",
+        "Lv Unlock",
+        "Free",
+        "MaxAds",
+        "Data List",
+        "Data Value List"
+      ],
+      "derived_columns_dropped": [
+        "Price",
+        "Value$",
+        "concat-data"
+      ],
+      "note": "Booster definitions. Enable 0 = cut from the game. Price is looked up from ItemValue (derived, not exported here)."
+    },
+    {
+      "table": "SaveMe",
+      "sheet": "Booster_config",
+      "range": "A10:M13",
+      "file": "Booster_config/SaveMe.json",
+      "rows": 3,
+      "columns": [
+        "ID",
+        "Title",
+        "Column 12",
+        "Details",
+        "Enable",
+        "Lv Unlock",
+        "Free",
+        "MaxAds",
+        "Data List",
+        "Data Value List"
+      ],
+      "derived_columns_dropped": [
+        "Price",
+        "Value$",
+        "concat-data"
+      ],
+      "note": "Save Me variants by loss reason. Prices live in ItemValue saveme_1..4 (1st/2nd/3rd/4th+ purchase in one level); the sheet's Price column is a lookup and is not exported."
+    }
+  ]
+}

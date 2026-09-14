@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/mcp/**/*.ts", "src/core/**/*.ts", "src/data/**/*.ts", "src/ui/design/**/*.ts", "src/ui/nodedesign/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

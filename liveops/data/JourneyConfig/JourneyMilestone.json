@@ -1,0 +1,128 @@
+[
+  {
+    "Level": 5,
+    "Reward 1": "soft",
+    "Amout 1": 100,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 10,
+    "Reward 1": "soft",
+    "Amout 1": 100,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 15,
+    "Reward 1": "soft",
+    "Amout 1": 150,
+    "Reward 2": "hard",
+    "Amout 2": 50,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 20,
+    "Reward 1": "soft",
+    "Amout 1": 150,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 25,
+    "Reward 1": "soft",
+    "Amout 1": 150,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 30,
+    "Reward 1": "soft",
+    "Amout 1": 150,
+    "Reward 2": "hard",
+    "Amout 2": 50,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 35,
+    "Reward 1": "soft",
+    "Amout 1": 200,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 45,
+    "Reward 1": "soft",
+    "Amout 1": 200,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 50,
+    "Reward 1": "soft",
+    "Amout 1": 200,
+    "Reward 2": "hard",
+    "Amout 2": 50,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 55,
+    "Reward 1": "soft",
+    "Amout 1": 200,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 60,
+    "Reward 1": "soft",
+    "Amout 1": 200,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 65,
+    "Reward 1": "soft",
+    "Amout 1": 200,
+    "Reward 2": "hard",
+    "Amout 2": 50,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 70,
+    "Reward 1": "soft",
+    "Amout 1": 200,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  },
+  {
+    "Level": 75,
+    "Reward 1": "soft",
+    "Amout 1": 200,
+    "Reward 2": null,
+    "Amout 2": null,
+    "Reward 3": null,
+    "Amout 3": null
+  }
+]

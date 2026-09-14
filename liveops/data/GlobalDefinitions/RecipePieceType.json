@@ -1,0 +1,26 @@
+[
+  {
+    "Id": 0,
+    "Type": "Base",
+    "Emoji": null,
+    "Note": null
+  },
+  {
+    "Id": 1,
+    "Type": "Mid",
+    "Emoji": null,
+    "Note": null
+  },
+  {
+    "Id": 2,
+    "Type": "Top",
+    "Emoji": null,
+    "Note": null
+  },
+  {
+    "Id": 3,
+    "Type": "Decor",
+    "Emoji": null,
+    "Note": null
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "Key": "rwWinByDifficulty",
+    "Value": "[20,60,100]"
+  },
+  {
+    "Key": "lvShowBonusAds",
+    "Value": 3
+  },
+  {
+    "Key": "bonusMuls",
+    "Value": "[120,150,200]"
+  },
+  {
+    "Key": "bonus",
+    "Value": 200
+  }
+]

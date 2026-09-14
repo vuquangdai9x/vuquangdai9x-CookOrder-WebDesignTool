@@ -1,0 +1,342 @@
+{
+  "level": {
+    "id": 1,
+    "name": "Burger & Soda Pair-Up",
+    "weather": "Normal",
+    "levelTag": "Fair",
+    "featureUnlock": "",
+    "shuffleDistance": 0,
+    "serveableSlots": 2,
+    "outOfSlotPolicy": "block-pick"
+  },
+  "customers": [
+    {
+      "id": "customer-1",
+      "typeId": 0,
+      "waitTime": 0,
+      "weatherEff": 0,
+      "dishes": [
+        {
+          "id": "dish-1",
+          "composite": "burger",
+          "root": {
+            "kind": "composite",
+            "id": 0,
+            "members": [
+              {
+                "kind": "ingredient",
+                "id": 17
+              },
+              {
+                "kind": "group",
+                "id": 0,
+                "members": [
+                  {
+                    "kind": "ingredient",
+                    "id": 18
+                  },
+                  {
+                    "kind": "ingredient",
+                    "id": 19
+                  },
+                  {
+                    "kind": "ingredient",
+                    "id": 20
+                  }
+                ]
+              }
+            ]
+          },
+          "effects": []
+        }
+      ],
+      "customerIndex": 0
+    },
+    {
+      "id": "customer-2",
+      "typeId": 0,
+      "waitTime": 0,
+      "weatherEff": 0,
+      "dishes": [
+        {
+          "id": "dish-2",
+          "composite": "soda",
+          "root": {
+            "kind": "composite",
+            "id": 1,
+            "members": [
+              {
+                "kind": "ingredient",
+                "id": 24
+              },
+              {
+                "kind": "ingredient",
+                "id": 8
+              }
+            ]
+          },
+          "effects": []
+        }
+      ],
+      "customerIndex": 1
+    },
+    {
+      "id": "customer-3",
+      "typeId": 0,
+      "waitTime": 0,
+      "weatherEff": 0,
+      "dishes": [
+        {
+          "id": "dish-3",
+          "composite": "burger",
+          "root": {
+            "kind": "composite",
+            "id": 0,
+            "members": [
+              {
+                "kind": "ingredient",
+                "id": 17
+              },
+              {
+                "kind": "group",
+                "id": 0,
+                "members": [
+                  {
+                    "kind": "ingredient",
+                    "id": 18
+                  },
+                  {
+                    "kind": "ingredient",
+                    "id": 19
+                  },
+                  {
+                    "kind": "ingredient",
+                    "id": 20
+                  }
+                ]
+              }
+            ]
+          },
+          "effects": []
+        }
+      ],
+      "customerIndex": 2
+    },
+    {
+      "id": "customer-4",
+      "typeId": 0,
+      "waitTime": 0,
+      "weatherEff": 0,
+      "dishes": [
+        {
+          "id": "dish-4",
+          "composite": "soda",
+          "root": {
+            "kind": "composite",
+            "id": 1,
+            "members": [
+              {
+                "kind": "ingredient",
+                "id": 24
+              },
+              {
+                "kind": "ingredient",
+                "id": 8
+              }
+            ]
+          },
+          "effects": []
+        }
+      ],
+      "customerIndex": 3
+    }
+  ],
+  "lanes": [
+    {
+      "id": "lane-1",
+      "slots": [
+        {
+          "id": "slot-1",
+          "ingredientId": 0,
+          "ingredient": "bun",
+          "effects": [],
+          "provisional": false
+        },
+        {
+          "id": "slot-3",
+          "ingredientId": 1,
+          "ingredient": "patty",
+          "effects": [],
+          "provisional": false
+        },
+        {
+          "id": "slot-5",
+          "ingredientId": 7,
+          "ingredient": "cup",
+          "effects": [],
+          "provisional": false
+        }
+      ]
+    },
+    {
+      "id": "lane-2",
+      "slots": [
+        {
+          "id": "slot-6",
+          "ingredientId": 0,
+          "ingredient": "bun",
+          "effects": [],
+          "provisional": false
+        },
+        {
+          "id": "slot-8",
+          "ingredientId": 1,
+          "ingredient": "patty",
+          "effects": [],
+          "provisional": false
+        },
+        {
+          "id": "slot-10",
+          "ingredientId": 7,
+          "ingredient": "cup",
+          "effects": [],
+          "provisional": false
+        }
+      ]
+    },
+    {
+      "id": "lane-3",
+      "slots": [
+        {
+          "id": "slot-12",
+          "ingredientId": 8,
+          "ingredient": "ice",
+          "effects": [],
+          "provisional": false
+        },
+        {
+          "id": "slot-14",
+          "ingredientId": 2,
+          "ingredient": "tomato",
+          "effects": [],
+          "provisional": false
+        },
+        {
+          "id": "slot-15",
+          "ingredientId": 3,
+          "ingredient": "lettuce",
+          "effects": [],
+          "provisional": false
+        }
+      ]
+    },
+    {
+      "id": "lane-4",
+      "slots": [
+        {
+          "id": "slot-17",
+          "ingredientId": 8,
+          "ingredient": "ice",
+          "effects": [],
+          "provisional": false
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "group-1",
+      "kind": "combined",
+      "slotIds": [
+        "slot-1",
+        "slot-6"
+      ]
+    },
+    {
+      "id": "group-3",
+      "kind": "combined",
+      "slotIds": [
+        "slot-3",
+        "slot-8"
+      ]
+    },
+    {
+      "id": "group-5",
+      "kind": "combined",
+      "slotIds": [
+        "slot-5",
+        "slot-10"
+      ]
+    },
+    {
+      "id": "group-7",
+      "kind": "combined",
+      "slotIds": [
+        "slot-12",
+        "slot-17"
+      ]
+    }
+  ],
+  "grid": [
+    {
+      "id": "grid-1",
+      "x": 0,
+      "y": 0,
+      "effects": []
+    },
+    {
+      "id": "grid-2",
+      "x": 1,
+      "y": 0,
+      "effects": []
+    },
+    {
+      "id": "grid-3",
+      "x": 2,
+      "y": 0,
+      "effects": []
+    },
+    {
+      "id": "grid-4",
+      "x": 3,
+      "y": 0,
+      "effects": []
+    },
+    {
+      "id": "grid-5",
+      "x": 4,
+      "y": 0,
+      "effects": []
+    },
+    {
+      "id": "grid-6",
+      "x": 0,
+      "y": 1,
+      "effects": []
+    },
+    {
+      "id": "grid-7",
+      "x": 1,
+      "y": 1,
+      "effects": []
+    },
+    {
+      "id": "grid-8",
+      "x": 2,
+      "y": 1,
+      "effects": []
+    },
+    {
+      "id": "grid-9",
+      "x": 3,
+      "y": 1,
+      "effects": []
+    },
+    {
+      "id": "grid-10",
+      "x": 4,
+      "y": 1,
+      "effects": []
+    }
+  ]
+}

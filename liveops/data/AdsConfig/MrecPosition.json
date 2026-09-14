@@ -1,0 +1,32 @@
+[
+  {
+    "Value": "None"
+  },
+  {
+    "Value": "HomeLvDetail"
+  },
+  {
+    "Value": "HomeSetting"
+  },
+  {
+    "Value": "MoreLive"
+  },
+  {
+    "Value": "DailyReward"
+  },
+  {
+    "Value": "PauseGame"
+  },
+  {
+    "Value": "SaveMe"
+  },
+  {
+    "Value": "EndGame"
+  },
+  {
+    "Value": "PopupBooster"
+  },
+  {
+    "Value": "ConfirmQuit"
+  }
+]

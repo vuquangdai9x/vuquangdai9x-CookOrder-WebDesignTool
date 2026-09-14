@@ -1,0 +1,17 @@
+[
+  {
+    "Id": 0,
+    "Type": "Normal",
+    "Emoji": "🐱"
+  },
+  {
+    "Id": 1,
+    "Type": "Shipper",
+    "Emoji": "🚴‍♂️"
+  },
+  {
+    "Id": 2,
+    "Type": "Boss",
+    "Emoji": "🐯"
+  }
+]

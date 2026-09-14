@@ -1,0 +1,191 @@
+[
+  {
+    "Index": 0,
+    "Id": "dog_boy",
+    "Name": "Benny Bark",
+    "Desc": "A loyal little diner who treats every burger like a tail-wagging treasure.",
+    "Type": "Normal",
+    "Base Map": "burger",
+    "FileID": "15enalhSxyu97FWpa8azr06UrdnQzaAxB"
+  },
+  {
+    "Index": 1,
+    "Id": "cat_chill",
+    "Name": "Coolcat Clyde",
+    "Desc": "Too cool to hurry and always orders with a perfectly timed purr.",
+    "Type": "Normal",
+    "Base Map": "burger",
+    "FileID": "1-i_cPPiPoOt071wDSGyqOWdaPQYheTdl"
+  },
+  {
+    "Index": 2,
+    "Id": "bear_cute",
+    "Name": "Honey Hug Bear",
+    "Desc": "Sweet as honey and twice as cuddly when the fries arrive.",
+    "Type": "Normal",
+    "Base Map": "burger",
+    "FileID": "1F0Do-D0BQjv6jAUH7_iXm2AN6BIQvM3B"
+  },
+  {
+    "Index": 3,
+    "Id": "rabbit_cute",
+    "Name": "Bunbun Bella",
+    "Desc": "Bounces in hungry and leaves with crumbs on both cheeks.",
+    "Type": "Normal",
+    "Base Map": "burger",
+    "FileID": "1PHXhJJd1O-ymCGsmWdVXwqV2PUv4qZVc"
+  },
+  {
+    "Index": 4,
+    "Id": "cat_cute",
+    "Name": "Kitty Cupcake",
+    "Desc": "Tiny paws big appetite and absolutely no shame about extra cheese.",
+    "Type": "Normal",
+    "Base Map": "burger",
+    "FileID": "1U99PGtsrZzJ7na8y2wfODZTjks-9mFPO"
+  },
+  {
+    "Index": 5,
+    "Id": "rat_shipper",
+    "Name": "Red Rat Courier",
+    "Desc": "The fastest red-tailed courier in town unless someone drops a fry.",
+    "Type": "Shipper",
+    "Base Map": "burger",
+    "FileID": "1rEF7SI9hqE7FpmOMrxpfQV45gjiBEbZA"
+  },
+  {
+    "Index": 6,
+    "Id": "pig_boss",
+    "Name": "Boss Hogsworth",
+    "Desc": "Runs the lunch rush like a boardroom and demands premium pickles.",
+    "Type": "Boss",
+    "Base Map": "burger",
+    "FileID": "1SdSwdru1hDuFmqYys216EK1Y46kJNKan"
+  },
+  {
+    "Index": 7,
+    "Id": "beaver_logger",
+    "Name": "Brewster Beaver",
+    "Desc": "Can spot a strong brew faster than a falling timber.",
+    "Type": "Normal",
+    "Base Map": "coffee",
+    "FileID": "1RIcnFQY7-IMfI5QzFf15WN3MST1tkSbX"
+  },
+  {
+    "Index": 8,
+    "Id": "cow_rebel",
+    "Name": "Mocha Moo Rebel",
+    "Desc": "Breaks cafe rules drinks bold roasts and never says moo softly.",
+    "Type": "Normal",
+    "Base Map": "coffee",
+    "FileID": "1Pto4VM2n7HPApVyzfDR9waOHzAtjHkTg"
+  },
+  {
+    "Index": 9,
+    "Id": "squirrel_girl",
+    "Name": "Hazel Squirrel",
+    "Desc": "Carries emergency acorns and judges every latte by its foam.",
+    "Type": "Normal",
+    "Base Map": "coffee",
+    "FileID": "1czd-rmVvnCXR7eZ00L4DPR6wILPObISM"
+  },
+  {
+    "Index": 10,
+    "Id": "tanuki_boy",
+    "Name": "Tobi Tanuki",
+    "Desc": "A cheerful trickster who somehow pays with leaves and perfect change.",
+    "Type": "Normal",
+    "Base Map": "coffee",
+    "FileID": "19D-MX8WATP_MI3QFo8zW6DjRQtVGTlBz"
+  },
+  {
+    "Index": 11,
+    "Id": "skunk_socialite",
+    "Name": "Scent-sational Skunk",
+    "Desc": "Arrives fashionably scented and turns every coffee break into a gala.",
+    "Type": "Normal",
+    "Base Map": "coffee",
+    "FileID": "1V2gGw9rCR-eKLwnFO_NzD5OjnvGsOnlS"
+  },
+  {
+    "Index": 12,
+    "Id": "bird_shipper",
+    "Name": "Greenwing Bird Courier",
+    "Desc": "Delivers coffee at wing speed while keeping every feather spotless.",
+    "Type": "Shipper",
+    "Base Map": "coffee",
+    "FileID": "1MWHrBcQ9paL-IK6zGRENkX96U6-Z8gvT"
+  },
+  {
+    "Index": 13,
+    "Id": "bison_baron",
+    "Name": "Baron Bison",
+    "Desc": "A polished cafe boss who considers foam art serious business.",
+    "Type": "Boss",
+    "Base Map": "coffee",
+    "FileID": "1uCqtpxYPUa5mKxUclIKCguUORDVSdUGy"
+  },
+  {
+    "Index": 14,
+    "Id": "eagle_police",
+    "Name": "Chief Eagle",
+    "Desc": "Keeps the cafe orderly with eagle eyes and a badge-shaped cookie.",
+    "Type": "Boss",
+    "Base Map": "coffee",
+    "FileID": "1ulKmqK-20dtBXHUXITef7ZZE8lWLTsIA"
+  },
+  {
+    "Index": 15,
+    "Id": "fox_lady",
+    "Name": "Kitsune Ojou",
+    "Desc": "A graceful kitsune guest who orders sushi with theatrical elegance.",
+    "Type": "Normal",
+    "Base Map": "sushi",
+    "FileID": "1rQ-i8l5E7ne6mv6PRQaePJDtCVTW3dZQ"
+  },
+  {
+    "Index": 16,
+    "Id": "koala_seifuku",
+    "Name": "Koala Senpai",
+    "Desc": "Studies the menu diligently but still trades lunch for eucalyptus.",
+    "Type": "Normal",
+    "Base Map": "sushi",
+    "FileID": "1hgUG3VhIPENZeBVZAPiEwDiCVdR-Ivsy"
+  },
+  {
+    "Index": 17,
+    "Id": "goat_emo",
+    "Name": "Aoi Yagi",
+    "Desc": "This blue goat loves matcha and practices cheerful table manners.",
+    "Type": "Normal",
+    "Base Map": "sushi",
+    "FileID": "1sqBzV-M_td_WEtmG9-B8jYwVzvkR5I9c"
+  },
+  {
+    "Index": 18,
+    "Id": "lion_boy",
+    "Name": "Shishi-kun",
+    "Desc": "A brave little shishi who challenges every sushi roll to a duel.",
+    "Type": "Normal",
+    "Base Map": "sushi",
+    "FileID": "1P9d3nLCt0_DXl-ujAfVAZLQZIegpT-Yy"
+  },
+  {
+    "Index": 19,
+    "Id": "wolf_yakuza",
+    "Name": "Ookami Oyabun",
+    "Desc": "The wolf oyabun speaks softly and controls the sushi counter with one stare.",
+    "Type": "Boss",
+    "Base Map": "sushi",
+    "FileID": "1zGLAMmTrzPfFfjsxI-yr2flmm_AWyLuH"
+  },
+  {
+    "Index": 20,
+    "Id": "shiba_sumo",
+    "Name": "Shiba Yokozuna",
+    "Desc": "A shiba yokozuna who treats every sushi platter like a championship bout.",
+    "Type": "Boss",
+    "Base Map": "sushi",
+    "FileID": "1Bxp3-k2xihMZypCQK5qb3JVHZvr21lQa"
+  }
+]

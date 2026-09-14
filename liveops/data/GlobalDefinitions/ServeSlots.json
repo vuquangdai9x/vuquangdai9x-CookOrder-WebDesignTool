@@ -1,0 +1,14 @@
+[
+  {
+    "Key": "max",
+    "Value": 5
+  },
+  {
+    "Key": "min",
+    "Value": 4
+  },
+  {
+    "Key": "delayTriggerSaveMe",
+    "Value": 5
+  }
+]

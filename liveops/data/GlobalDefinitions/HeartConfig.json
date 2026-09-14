@@ -1,0 +1,14 @@
+[
+  {
+    "Key": "max",
+    "Value": 5
+  },
+  {
+    "Key": "cooldown",
+    "Value": 1800
+  },
+  {
+    "Key": "refillCost",
+    "Value": 800
+  }
+]

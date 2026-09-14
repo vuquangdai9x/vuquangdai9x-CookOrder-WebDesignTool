@@ -1,0 +1,32 @@
+[
+  {
+    "ID": "Normal",
+    "Status": "None",
+    "Icon File ID": "1cQ91h8UbXhcQVr2op5vKjJ6EhR0pRLtN",
+    "Emoji": "☁"
+  },
+  {
+    "ID": "Rainy",
+    "Status": "Wet",
+    "Icon File ID": "15U0Zra50n8bGVX6vEVemMJpO8bvMyb5f",
+    "Emoji": "🌧"
+  },
+  {
+    "ID": "Sunny",
+    "Status": "Hot",
+    "Icon File ID": "1Qegb7IaPj3H7Fh0P2eTXe0IlxfuvfWA_",
+    "Emoji": "☀"
+  },
+  {
+    "ID": "Freeze",
+    "Status": "Cold",
+    "Icon File ID": "17poWeOsdOfRZp3097tTQ7PBin6wVDASe",
+    "Emoji": "🌨"
+  },
+  {
+    "ID": "Stormy",
+    "Status": "Blowing",
+    "Icon File ID": "1FiyeTH9XK9mB7dV33IPGsEsPIZUy7YZo",
+    "Emoji": "⛈"
+  }
+]

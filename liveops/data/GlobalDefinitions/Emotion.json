@@ -1,0 +1,34 @@
+[
+  {
+    "ID": "Leave",
+    "Int": 0,
+    "Emo": "❌",
+    "Threshold ( ≥ X% WaitTime)": 0,
+    "Price Remain (%)": 0,
+    "Coin Spawn": 0
+  },
+  {
+    "ID": "Angry",
+    "Int": 1,
+    "Emo": "😡",
+    "Threshold ( ≥ X% WaitTime)": 0.01,
+    "Price Remain (%)": 0.5,
+    "Coin Spawn": 0
+  },
+  {
+    "ID": "Normal",
+    "Int": 2,
+    "Emo": "😑",
+    "Threshold ( ≥ X% WaitTime)": 0.25,
+    "Price Remain (%)": 0.5,
+    "Coin Spawn": 2
+  },
+  {
+    "ID": "Happy",
+    "Int": 3,
+    "Emo": "😍",
+    "Threshold ( ≥ X% WaitTime)": 0.5,
+    "Price Remain (%)": 1,
+    "Coin Spawn": 5
+  }
+]

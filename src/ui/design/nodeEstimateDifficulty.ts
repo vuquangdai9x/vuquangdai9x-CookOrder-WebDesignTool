@@ -948,6 +948,7 @@ function estimateNodeDifficultyAttempt(
 
   return {
     solvable: sim.status === "won",
+    gameplayDurationSeconds: sim.time,
     reason,
     loseReason: sim.loseReason,
     totalPicks: counter,

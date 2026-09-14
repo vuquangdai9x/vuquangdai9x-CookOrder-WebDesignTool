@@ -1,0 +1,30 @@
+[
+  {
+    "Id": "None",
+    "Encode": 0,
+    "Emoji": null,
+    "Icon File ID": null,
+    "Details": null
+  },
+  {
+    "Id": "Freeze",
+    "Encode": 1,
+    "Emoji": "🧊",
+    "Icon File ID": null,
+    "Details": null
+  },
+  {
+    "Id": "Hidden",
+    "Encode": 2,
+    "Emoji": "❔",
+    "Icon File ID": null,
+    "Details": null
+  },
+  {
+    "Id": "HoldingKey",
+    "Encode": 3,
+    "Emoji": "🔑",
+    "Icon File ID": null,
+    "Details": null
+  }
+]
