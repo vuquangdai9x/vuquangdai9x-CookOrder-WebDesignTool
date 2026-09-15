@@ -3390,6 +3390,32 @@ td input {
   margin-top: 0.75rem;
 }
 
+/* Compact Queue is intentionally a small sibling of the generator dialogs:
+   three decisions, each with enough context to make the merge predictable. */
+.compact-queue-panel {
+  max-width: 32rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.2rem 1.2rem;
+  box-shadow: 0 18px 60px var(--shadow);
+}
+
+.compact-queue-field {
+  gap: 0.3rem;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.compact-queue-field select {
+  width: 100%;
+}
+
+.compact-queue-hint {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .ingredient-toggle-actions {
   display: flex;
   gap: 0.4rem;

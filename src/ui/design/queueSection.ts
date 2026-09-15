@@ -55,6 +55,8 @@ import type { RawDemand } from "../../data/recipeDemand.ts";
 import type { ShuffleRangeSpec } from "./queueGenerate.ts";
 import { Section } from "./section.ts";
 import { openStringConversionDialog } from "./stringConversionDialog.ts";
+import { compactQueueDraft } from "./queueCompact.ts";
+import { openQueueCompactDialog } from "./queueCompactDialog.ts";
 
 const MIN_COLUMNS = 1;
 const MAX_COLUMNS = 5;
@@ -315,6 +317,16 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
         sec.draft.queues.push(tagNew([]));
         sec.commit("Add queue");
       }, { class: "add-queue-btn", title: `Append a new queue (max ${MAX_COLUMNS})` }),
+      button("Compact", () => openQueueCompactDialog({
+        onCompact: (options) => {
+          const result = compactQueueDraft(sec.draft, options, { stackRange: deps.stackRange });
+          if (result.removed === 0) return;
+          ui.selection.clear();
+          sec.commit(`Compact queue (${result.mergedBags} bags)`, 0, result.removed);
+        },
+      }), {
+        title: "Merge matching ingredient slots into fewer bags",
+      }),
       button("✨ Auto Generate", () => startQueueAutoGenerate(sec, deps), {
         title: "Fill every lane from the customer orders' ingredient demand",
       }),
