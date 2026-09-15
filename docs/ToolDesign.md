@@ -110,6 +110,8 @@ Purpose: build the ordered sequence of ingredients a player pulls from during a 
   = queue index, row = depth (0 = front) — with short lanes padded by filler cells so every column
   lines up row-for-row. That grid is what gives a combined/linked group a meaningful (x,y)
   coordinate (see below).
+  - A numbered **Line** ruler stays on the left edge and uses the same zoomed row height as the
+    ingredient tiles, so recommendations can point to an exact Queue X, line Y location.
   - Drag a lane's header to reorder lanes (`Sortable`, `handle: ".lane-head"`).
   - Drag tiles within/between lanes to reorder or move ingredients (per-lane `Sortable`, shared
     drag group so items cross lanes).
@@ -169,6 +171,16 @@ Purpose: build the ordered sequence of ingredients a player pulls from during a 
     other statuses show a small icon (+ optional param text) top-left. (Play mode additionally
     shows a live "picks left to break the ice" badge and a landing-particle burst on thaw — Design
     mode has no running sim, so it just shows the static frozen state.)
+- **Validate Deadlock** audits queue structure only: frozen slots and intertwined linked-slot
+  groups. Multi-input tool occupancy is excluded because raw ingredients can park on the grid.
+  After the run, the panel shows only its conclusion: sampled stuck percentage, reason
+  distribution, severity/fairness evaluation, and recommended Queue X, line Y edits. Solver
+  strategies, state counts, and timing are intentionally hidden. The audit retains up to 10
+  picking traces with structurally distinct stuck-slot position hashes (up to 50 for **Run full
+  check**); **View stuck scenarios** opens their exact stopped queue states and lets the designer
+  switch between cases. Scenario tiles retain the Design view's amount and effect visuals
+  (Freeze, Hidden, HoldingKey and other statuses), combined-block tint/rails, and linked-slot
+  tint/ropes.
   - Change-tracking outline, per tile: **green** if it's new since the last save, **yellow** if
     it's the same tile with a different effect. A tile has no removable children of its own, so
     it never shows red — but the **lane** it used to sit in does, if that tile left it (deleted,

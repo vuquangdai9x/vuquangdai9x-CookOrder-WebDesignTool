@@ -1261,6 +1261,45 @@ footer {
   --tile-zoom: 1;
 }
 
+.queue-lanes-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+}
+
+/* Design-only row ruler. Its header matches the lane frame/header offset, then
+   every numbered cell follows the exact zoomed tile height and row gap. */
+.queue-line-ruler {
+  flex: 0 0 1.6rem;
+  color: var(--muted);
+  user-select: none;
+}
+
+.queue-line-ruler-head {
+  height: calc(1px + 0.4rem + 1rem + 0.35rem);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.2rem;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.queue-line-number {
+  height: calc(var(--tile) * var(--tile-zoom));
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.25rem;
+  border-right: 1px solid var(--line);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-line-number:not(:last-child) { margin-bottom: 0.25rem; }
+
 .queue-lane {
   background: var(--panel-2);
   border: 1px solid var(--line);
@@ -5022,6 +5061,12 @@ td input {
 
 .queue-thaw-ratio { font-weight: 700; }
 
+.queue-thaw-conclusion {
+  margin-top: 0.3rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
 .queue-thaw-strategy.ok { color: var(--ok); }
 .queue-thaw-strategy.bad { color: var(--bad); }
 
@@ -5042,6 +5087,96 @@ td input {
 
 .queue-thaw-actions {
   margin-top: 0.4rem;
+}
+
+.deadlock-case-dialog {
+  width: min(92vw, 920px);
+  max-height: 78vh;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.deadlock-case-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.deadlock-case-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.6rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.deadlock-case-summary strong { color: var(--bad); }
+
+.deadlock-case-board {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  position: relative;
+  z-index: 0;
+}
+
+/* Scenario inspection prioritizes diagnosing the lock: unlike the editable
+   queue, its ropes and rails sit over the slots so the stopped relationship is
+   never hidden by ingredient artwork. Scoped here so Design remains unchanged. */
+.deadlock-case-board .queue-link-overlay {
+  z-index: 3;
+}
+
+.deadlock-case-lane {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.deadlock-case-lane > strong {
+  height: 1.2rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.deadlock-case-cell {
+  position: relative;
+  width: var(--tile);
+  height: var(--tile);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  cursor: default;
+}
+
+.deadlock-case-cell img { width: 76%; height: 76%; object-fit: contain; }
+.deadlock-case-cell.empty { opacity: 0.2; }
+.deadlock-case-cell.line { width: 1.7rem; border-color: transparent; background: transparent; color: var(--muted); }
+.deadlock-case-lane.ruler { position: sticky; left: 0; z-index: 1; background: var(--panel-2); }
+
+.deadlock-case-sequence {
+  margin-top: 0.75rem;
+  line-height: 1.55;
+}
+
+.deadlock-case-sequence > div {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
 }
 
 /* Tool/preservation-slot half of the deadlock audit (design/toolDeadlockCheck.ts). */

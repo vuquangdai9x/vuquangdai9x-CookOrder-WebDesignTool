@@ -39,12 +39,10 @@ import { appendLine, createOverlay, railColor, railSegments } from "../queueGrou
 import type { Point } from "../queueGroupVisuals.ts";
 import { changeClass, cidOf, leafStatus, tagAllNew, tagNew } from "./changeTracking.ts";
 import { checkQueueThaw } from "./queueThawCheck.ts";
-import type { ThawReport } from "./queueThawCheck.ts";
+import type { DeadlockCase, ThawReport } from "./queueThawCheck.ts";
 import type { ThawWorkerRequest } from "./queueThawWorker.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
 import type { NodeLevelConfig } from "../../core/nodeSim.ts";
-import { checkToolDeadlock } from "./toolDeadlockCheck.ts";
-import type { ToolDeadlockReport } from "./toolDeadlockCheck.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
 import { openAutoGenerateQueueDialog } from "./autoGenerateQueueDialog.ts";
 import type { BagFillMode, GeneratedQueueSlot } from "../nodedesign/nodeQueueGenerate.ts";
@@ -95,10 +93,8 @@ export interface QueueSectionDeps {
    */
   recipeDemand?(): Map<Id, RawDemand>;
   /**
-   * The live level in graph form, for the tool/slot half of the deadlock audit
-   * (toolDeadlockCheck.ts) — that one drives the real simulation, so it needs
-   * the customers and the grid too, not just these lanes. Omitted by hosts that
-   * cannot supply one; the audit then checks the queue's ice only.
+   * Preserved hook for the legacy tool/grid deadlock simulator. The current
+   * Design audit intentionally checks picking order only and does not call it.
    */
   deadlockLevel?(): { ix: GraphIndex; level: NodeLevelConfig } | null;
   /** Legacy Design only: converts the live queue string to the active graph's current ids. */
@@ -144,14 +140,14 @@ interface QueueUiState {
    */
   showPickup: boolean;
   /**
-   * Last ice-deadlock audit (queueThawCheck.ts) and the queue string it ran
+   * Last queue-structure deadlock audit (queueThawCheck.ts) and the queue string it ran
    * against. The audit is a button rather than an on-every-edit check because
    * an exhaustive walk of a big frozen queue costs far too much to run on every
    * keystroke. Keeping the signature lets the panel say "these results are for
    * an older queue" while STILL flagging the slots it blamed — the flags stay
    * until the designer re-runs it.
    */
-  thaw: { report: ThawReport; signature: string; tools: ToolDeadlockReport | null } | null;
+  thaw: { report: ThawReport; signature: string } | null;
   /** A full (uncapped) audit is running in the worker — see runFullThawCheck. */
   thawRunning: boolean;
 }
@@ -334,11 +330,9 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
         // on "Validating…" and the audit never run.
         setTimeout(() => {
           const groups = toCoordGroups(sec.draft);
-          const supplied = deps.deadlockLevel?.() ?? null;
           ui.thaw = {
             report: checkQueueThaw(sec.draft.queues, groups),
             signature: serializeQueues(sec.draft.queues, groups),
-            tools: supplied ? checkToolDeadlock(supplied.ix, supplied.level) : null,
           };
           btn.textContent = label;
           btn.disabled = false;
@@ -346,7 +340,7 @@ export function createQueueSection(deps: QueueSectionDeps): Section<QueueDraft> 
         }, 0);
       }, {
         class: "validate-ice-btn",
-        title: "Check for dead ends: frozen slots that can never thaw, and tool/preservation slots that can never free up",
+        title: "Check queue pick paths for ice and intertwined linked-slot deadlocks",
       }),
     ],
     menuItems: (draft) => [
@@ -411,13 +405,12 @@ function renderBody(
   body.append(shuffleCurveBar(section, deps));
   body.append(recipeFoldout(section, deps, ui, draft));
   body.append(toolbar(section, deps, ui));
-  // Results of the last Validate Ice run, if any. Flagged slots survive edits
+  // Results of the last Validate Deadlock run, if any. Flagged slots survive edits
   // on purpose — they stay red until the audit is run again.
   const audit = ui.thaw;
   if (audit) {
     const stale = audit.signature !== serializeQueues(draft.queues, toCoordGroups(draft));
     const panel = thawPanel(audit.report, stale);
-    if (audit.tools) panel.append(toolPanel(audit.tools));
     // Only a truncated walk leaves a question open — offer to finish it.
     if (audit.report.budgetHit && !ui.thawRunning) {
       panel.append(
@@ -439,6 +432,8 @@ function renderBody(
   }
 
   const lanes = el("div", { class: `queue-lanes${ui.removeMode ? " remove-mode" : ""}` });
+  const lanesShell = el("div", { class: "queue-lanes-shell" });
+  lanesShell.style.setProperty("--tile-zoom", String(ui.zoom));
   lanes.style.setProperty("--tile-zoom", String(ui.zoom));
 
   // Read fresh on every render so it tracks the latest Estimate Difficulty
@@ -474,7 +469,14 @@ function renderBody(
     },
   });
 
-  body.append(lanes);
+  const ruler = el("div", { class: "queue-line-ruler", "aria-label": "Queue line numbers" }, [
+    el("div", { class: "queue-line-ruler-head" }, ["Line"]),
+  ]);
+  for (let line = 1; line <= maxRows; line++) {
+    ruler.append(el("div", { class: "queue-line-number" }, [String(line)]));
+  }
+  lanesShell.append(ruler, lanes);
+  body.append(lanesShell);
   renderGroupOverlay(lanes, draft);
 
   const addBtn = section.element.querySelector<HTMLButtonElement>(".add-queue-btn");
@@ -490,6 +492,7 @@ function renderBody(
       if (!e.ctrlKey) return;
       e.preventDefault();
       ui.zoom = clampZoom(ui.zoom + (e.deltaY < 0 ? 0.1 : -0.1));
+      lanesShell.style.setProperty("--tile-zoom", String(ui.zoom));
       lanes.style.setProperty("--tile-zoom", String(ui.zoom));
     },
     { passive: false },
@@ -683,7 +686,7 @@ function laneEl(
 
 const EMPTY_CULPRITS: Set<string> = new Set();
 
-/** Results of the last Validate Ice run — see queueThawCheck.ts for the three passes. */
+/** Results of the last queue-structure audit — see queueThawCheck.ts. */
 /**
  * Runs the audit with no time cap, off the main thread. The exhaustive pass on
  * a big frozen queue is over a million states and tens of seconds — worth
@@ -696,12 +699,17 @@ function runFullThawCheck(section: Section<QueueDraft>, ui: QueueUiState): void 
   const request: ThawWorkerRequest = {
     queues: structuredClone(section.draft.queues),
     groups,
-    opts: { maxStates: 20_000_000, timeBudgetMs: Number.POSITIVE_INFINITY, randomRuns: 2000, sampleBudgetMs: 4000 },
+    opts: {
+      maxStates: 20_000_000,
+      timeBudgetMs: Number.POSITIVE_INFINITY,
+      randomRuns: 2000,
+      sampleBudgetMs: 4000,
+      maxCases: 50,
+    },
   };
   const signature = serializeQueues(section.draft.queues, groups);
-  const tools = ui.thaw?.tools ?? null;
   const finish = (report: ThawReport) => {
-    ui.thaw = { report, signature, tools };
+    ui.thaw = { report, signature };
     ui.thawRunning = false;
     section.render();
   };
@@ -732,112 +740,209 @@ function runFullThawCheck(section: Section<QueueDraft>, ui: QueueUiState): void 
   worker.postMessage(request);
 }
 
-/**
- * The tool/slot half of the audit — see toolDeadlockCheck.ts. Tool jams are
- * called out separately from grid-space jams: a tool that can never free a slot
- * is an authoring bug, while a board that fills up is a difficulty problem.
- */
-function toolPanel(report: ToolDeadlockReport): HTMLElement {
-  const total = report.runs.length + report.randomRuns;
-  const jammed = report.runs.filter((r) => !r.ok).length + report.randomBlocked;
-  const wrap = el("div", { class: `queue-thaw-tools ${report.clean ? "safe" : report.toolBlocked > 0 ? "deadlock" : "risky"}` }, [
-    el("div", { class: "queue-thaw-head" }, [
-      report.clean
-        ? `✓ Tools & slots: no run jammed (${total} playthroughs).`
-        : `${report.toolBlocked > 0 ? "⚠" : "▲"} Tools & slots: ${jammed}/${total} playthroughs jammed — ${report.toolBlocked} on a tool or preservation slot, ${report.gridBlocked} on grid space.`,
-    ]),
-  ]);
-  if (report.clean) return wrap;
-
-  wrap.append(
-    el(
-      "div",
-      { class: "queue-thaw-strategies" },
-      report.runs.map((run) =>
-        el("span", { class: `queue-thaw-strategy ${run.ok ? "ok" : "bad"}`, title: run.reasons.join("\n") || "finished" }, [
-          `${run.ok ? "✓" : "✗"} ${run.name}`,
-        ]),
-      ),
-    ),
-  );
-  wrap.append(
-    el(
-      "div",
-      { class: "queue-thaw-reasons" },
-      report.reasonCounts.slice(0, 6).map((entry) =>
-        el("div", { class: `queue-thaw-reason ${entry.kind}` }, [`${entry.reason} — ${entry.count} run(s)`]),
-      ),
-    ),
-  );
-  if (report.toolSnapshot.length) {
-    wrap.append(
-      el("div", { class: "queue-thaw-foot" }, [
-        "At the jam: " +
-          report.toolSnapshot
-            .map((t) => `${t.tool} [${t.slots.join(", ")}]${t.preservation ? ` (+${t.preservation} preserve)` : ""}`)
-            .join(" · "),
-      ]),
-    );
-  }
-  return wrap;
-}
-
 function thawPanel(report: ThawReport, stale: boolean): HTMLElement {
-  const mark = report.verdict === "safe" ? "✓ " : report.verdict === "deadlock" ? "⚠ " : report.verdict === "risky" ? "▲ " : "? ";
-  const head = el("div", { class: "queue-thaw-head" }, [mark, report.message]);
+  const stuckPct = report.randomRuns ? Math.round((report.randomStuck / report.randomRuns) * 100) : 0;
+  const critical = report.verdict === "unknown"
+    ? { label: "Inconclusive", text: "The search limit was reached; run the full check before shipping." }
+    : stuckPct === 0
+      ? { label: "Safe", text: "No sampled pick path became stuck." }
+      : stuckPct <= 5
+        ? { label: "Low risk", text: "A small lock percentage can be acceptable, but the affected pattern should remain readable to players." }
+        : stuckPct <= 20
+          ? { label: "Risky", text: "A noticeable share of normal pick paths lock; players may feel the outcome is unfair." }
+          : { label: "Critical", text: "Many pick paths lock. Rework the queue before shipping this level." };
+  const mark = stuckPct === 0 ? "✓" : stuckPct <= 5 ? "▲" : "⚠";
+  const head = el("div", { class: "queue-thaw-head" }, [
+    `${mark} ${stuckPct}% stuck (${report.randomStuck}/${report.randomRuns} sampled paths) — ${critical.label}`,
+  ]);
   const panel = el("div", { class: `queue-thaw ${report.verdict}${stale ? " stale" : ""}` }, [head]);
-
-  if (report.trivial) return panel;
 
   if (stale) {
     panel.append(
       el("div", { class: "queue-thaw-stale" }, [
-        "Queue changed since this ran — flagged slots are from the older check. Run Validate Ice again.",
+        "Queue changed since this ran — this conclusion is stale. Run Validate Deadlock again.",
       ]),
     );
   }
-
-  // The headline number the designer asked for: of all the ways play can go,
-  // how many jam. Random orders are the honest denominator; the exhaustive
-  // state counts sit beside them.
-  const jamPct = report.randomRuns ? Math.round((report.randomStuck / report.randomRuns) * 100) : 0;
   panel.append(
-    el("div", { class: "queue-thaw-stats" }, [
-      el("span", { class: "queue-thaw-ratio", title: "Random pick orders played to the end that ended with nothing legal to pick" }, [
-        `deadlock / pick paths: ${report.randomStuck} / ${report.randomRuns} (${jamPct}%)`,
-      ]),
-      el("span", { title: "Reachable board states that end the queue, versus states with nothing legal left" }, [
-        `states: ${report.successStates} finish · ${report.deadEndStates} dead end`,
-      ]),
-      el("span", { title: "Fewest legal picks available at any reachable moment — 1 means the player has no choice there" }, [
-        `tightness: ${report.tightness}`,
-      ]),
-      el("span", { title: "Frozen slots with only one lane beside them that can ever break the ice" }, [
-        `single-source ice: ${report.singleSourceFrozen.length}`,
+    el("div", { class: "queue-thaw-conclusion" }, [
+      el("div", {}, [`Evaluation: ${critical.text}`]),
+      el("div", { class: "queue-thaw-reasons" }, [
+        el("strong", {}, ["Reason distribution"]),
+        ...(report.reasonCounts.length
+          ? report.reasonCounts.map((entry) => {
+              const share = report.randomStuck ? Math.round((entry.count / report.randomStuck) * 100) : 0;
+              return el("div", {}, [`${entry.reason}: ${entry.count} stuck run(s) (${share}%)`]);
+            })
+          : [el("div", {}, ["No deadlock reason found."])]),
       ]),
     ]),
   );
-
-  if (report.strategies.length) {
-    panel.append(
-      el(
-        "div",
-        { class: "queue-thaw-strategies" },
-        report.strategies.map((s) =>
-          el("span", { class: `queue-thaw-strategy ${s.ok ? "ok" : "bad"}`, title: `${s.name}: ${s.ok ? "finished" : "stuck"} after ${s.picks} pick(s)` }, [
-            `${s.ok ? "✓" : "✗"} ${s.name}`,
-          ]),
-        ),
-      ),
-    );
-  }
-
-  panel.append(
-    el("div", { class: "queue-thaw-foot" }, [
-      `${report.statesExplored} state(s) in ${report.elapsedMs.toFixed(0)}ms${report.budgetHit ? " — search truncated, not exhaustive" : ""}`,
-    ]),
-  );
+  const targets = report.reasonCounts.flatMap((entry) => entry.cells).filter(
+    (cell, index, all) => all.findIndex((other) => other.x === cell.x && other.y === cell.y) === index,
+  ).slice(0, 3);
+  if (targets.length) panel.append(el("div", { class: "queue-thaw-actions" }, [
+    el("strong", {}, ["Recommended action"]),
+    ...targets.map(({ x, y }) => el("div", {}, [`Change, move, unfreeze, or unlink the ingredient in Queue ${x + 1}, line ${y + 1}.`])),
+  ]));
+  if (report.deadlockCases.length) panel.append(el("div", { class: "queue-thaw-actions" }, [
+    button(`View ${report.deadlockCases.length} stuck scenario${report.deadlockCases.length === 1 ? "" : "s"}`, () => {
+      openDeadlockCasesDialog(report.deadlockCases);
+    }, { title: "Inspect the retained picking sequence and exact queue state for each structurally different dead end" }),
+  ]));
   return panel;
+}
+
+/** Modal viewer for the distinct stopped layouts retained by the queue audit. */
+type DeadlockCaseCell = NonNullable<DeadlockCase["state"][number][number]>;
+
+function deadlockCaseTile(cell: DeadlockCaseCell, groupKind: QueueGroupKind | undefined): HTMLElement {
+  const item = cell.item;
+  const key = item.effects.find((effect) => effect.effectId === EFFECT_HOLDING_KEY);
+  const hidden = item.effects.some((effect) => effect.effectId === EFFECT_HIDDEN);
+  const tile = el("div", {
+    class: [
+      "queue-tile",
+      "deadlock-case-cell",
+      cell.freeze > 0 ? "frozen" : "",
+      item.kind === "sweeper" ? "sweeper" : "",
+      hidden ? "hidden-slot" : "",
+      groupKind ? `group-${groupKind}` : "",
+    ].filter(Boolean).join(" "),
+    title: `Authored at Queue ${cell.sourceX + 1}, line ${cell.sourceY + 1}`,
+  }, [item.kind === "sweeper"
+    ? el("span", { class: "tile-main" }, ["🧹"])
+    : el("span", { class: "tile-main" }, [ingredientIconEl(item.id, 96)])]);
+
+  const cornerEffects = item.effects.filter((effect) =>
+    effect.effectId !== EFFECT_HOLDING_KEY &&
+    effect.effectId !== EFFECT_HIDDEN &&
+    effect.effectId !== EFFECT_FREEZE,
+  );
+  if (cell.freeze > 0) {
+    tile.append(
+      el("span", { class: "tile-corner" }, [statusIconEl(EFFECT_FREEZE, 48)]),
+      el("span", { class: "tile-freeze-count", title: `${cell.freeze} side pick(s) still needed` }, [String(cell.freeze)]),
+    );
+  } else if (cornerEffects.length) {
+    const effect = cornerEffects[0];
+    tile.append(el("span", { class: "tile-corner" }, [
+      statusIconEl(effect.effectId, 48),
+      ...(effect.params.length ? [el("small", {}, [String(effect.params[0])])] : []),
+    ]));
+  }
+  if (hidden) tile.append(el("span", { class: "tile-hidden", title: "Hidden" }, [statusIconEl(EFFECT_HIDDEN, 48)]));
+  if (key) {
+    const badge = el("span", { class: "tile-key" }, [statusIconEl(EFFECT_HOLDING_KEY, 48)]);
+    badge.style.background = KEY_COLORS[key.params[0] ?? 0]?.hex ?? "transparent";
+    badge.title = `Holds a ${KEY_COLORS[key.params[0] ?? 0]?.name ?? ""} key`;
+    tile.append(badge);
+  }
+  const amount = queueItemAmount(item);
+  if (amount > 1) tile.append(el("span", { class: "tile-amount", title: `Amount ${amount}` }, [`×${amount}`]));
+  return tile;
+}
+
+function renderDeadlockCaseGroupOverlay(board: HTMLElement, scenario: DeadlockCase): void {
+  const members = new Map<number, { tile: HTMLElement; x: number; y: number }[]>();
+  board.querySelectorAll<HTMLElement>(".deadlock-case-cell[data-case-group]").forEach((tile) => {
+    const group = Number(tile.dataset.caseGroup);
+    const x = Number(tile.dataset.caseX);
+    const y = Number(tile.dataset.caseY);
+    if (!members.has(group)) members.set(group, []);
+    members.get(group)!.push({ tile, x, y });
+  });
+  if (!members.size) return;
+  const host = board.getBoundingClientRect();
+  const svg = createOverlay(host);
+  const center = (tile: HTMLElement): Point => {
+    const rect = tile.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2 - host.left, y: rect.top + rect.height / 2 - host.top };
+  };
+  for (const [group, cells] of members) {
+    if (scenario.groupKinds[group] === "linked") {
+      const ordered = cells.sort((a, b) => a.x - b.x);
+      for (let i = 0; i < ordered.length - 1; i++) {
+        appendLine(svg, center(ordered[i].tile), center(ordered[i + 1].tile), "queue-link-rope");
+      }
+      continue;
+    }
+    const at = new Map(cells.map((cell) => [`${cell.x}:${cell.y}`, cell]));
+    for (const cell of cells) {
+      for (const neighbour of [at.get(`${cell.x + 1}:${cell.y}`), at.get(`${cell.x}:${cell.y + 1}`)]) {
+        if (!neighbour) continue;
+        for (const [a, b] of railSegments(center(cell.tile), center(neighbour.tile))) {
+          appendLine(svg, a, b, "queue-combine-rail", railColor(group));
+        }
+      }
+    }
+  }
+  board.prepend(svg);
+}
+
+function openDeadlockCasesDialog(cases: DeadlockCase[]): void {
+  let selected = 0;
+  const close = () => overlay.remove();
+  const tabs = el("div", { class: "deadlock-case-tabs" });
+  const content = el("div", { class: "deadlock-case-content" });
+
+  const render = () => {
+    tabs.replaceChildren(...cases.map((_, index) => button(`Scenario ${index + 1}`, () => {
+      selected = index;
+      render();
+    }, { class: index === selected ? "primary" : "" })));
+
+    const scenario = cases[selected];
+    const height = scenario.state.reduce((max, column) => Math.max(max, column.length), 0);
+    const ruler = el("div", { class: "deadlock-case-lane ruler" }, [
+      el("strong", {}, ["Line"]),
+      ...Array.from({ length: height }, (_, y) => el("div", { class: "deadlock-case-cell line" }, [String(y + 1)])),
+    ]);
+    const board = el("div", { class: "deadlock-case-board" }, [ruler]);
+    scenario.state.forEach((column, x) => {
+      const lane = el("div", { class: "deadlock-case-lane" }, [el("strong", {}, [`Queue ${x + 1}`])]);
+      for (let y = 0; y < height; y++) {
+        const cell = column[y];
+        if (!cell) {
+          lane.append(el("div", { class: "deadlock-case-cell empty" }));
+          continue;
+        }
+        const tile = deadlockCaseTile(cell, cell.group === -1 ? undefined : scenario.groupKinds[cell.group]);
+        tile.dataset.caseX = String(x);
+        tile.dataset.caseY = String(y);
+        if (cell.group !== -1) tile.dataset.caseGroup = String(cell.group);
+        lane.append(tile);
+      }
+      board.append(lane);
+    });
+    const sequence = scenario.picks.length
+      ? scenario.picks.map((pick, index) =>
+          `${index + 1}. ${pick.map(({ x, y }) => `Q${x + 1} L${y + 1}`).join(" + ")}`,
+        ).join("  →  ")
+      : "No legal first pick.";
+    content.replaceChildren(
+      el("div", { class: "deadlock-case-summary" }, [
+        el("strong", {}, [scenario.reasons.join(" + ")]),
+        el("span", {}, [`Distinct stuck-slot hash: ${scenario.hash}`]),
+      ]),
+      board,
+      el("div", { class: "deadlock-case-sequence" }, [el("strong", {}, ["Picking sequence"]), el("div", {}, [sequence])]),
+    );
+    renderDeadlockCaseGroupOverlay(board, scenario);
+  };
+
+  const overlay = el("div", { class: "overlay-panel" }, [
+    el("div", { class: "definitions-head" }, [
+      el("h2", {}, ["Deadlock picking scenarios"]),
+      button("✕ Close", close),
+    ]),
+    el("div", { class: "deadlock-case-dialog" }, [tabs, content]),
+  ]);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+  document.body.append(overlay);
+  render();
 }
 
 function tileEl(

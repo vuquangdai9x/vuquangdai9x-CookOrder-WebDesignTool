@@ -40,6 +40,17 @@ export interface StrategyResult {
   picks: number;
 }
 
+export interface DeadlockCase {
+  /** Canonical set of authored slot positions left stuck; used for deduplication. */
+  hash: string;
+  /** Pick actions in order. A grouped pick contains every authored slot it removed. */
+  picks: { x: number; y: number }[][];
+  reasons: string[];
+  /** Exact compacted queue state at the dead end, retaining source item data for the viewer. */
+  state: ({ sourceX: number; sourceY: number; freeze: number; group: number; item: QueueItem } | null)[][];
+  groupKinds: QueueGroupKind[];
+}
+
 export interface ThawReport {
   verdict: ThawVerdict;
   /** One line, ready to show as the panel's headline. */
@@ -71,6 +82,10 @@ export interface ThawReport {
   randomRuns: number;
   /** How many of those ended stuck — the "share of unplanned play that jams" number. */
   randomStuck: number;
+  /** Why sampled stuck runs stopped, with one representative authored cell set. */
+  reasonCounts: { reason: string; count: number; cells: { x: number; y: number }[] }[];
+  /** Representative, structurally distinct dead ends (10 normally, 50 for a full check). */
+  deadlockCases: DeadlockCase[];
 
   // ---- C: metrics ----
   /** Fewest legal picks available at any reachable state; 1 means a forced move. */
@@ -345,6 +360,34 @@ function stuckCells(grid: Grid): { x: number; y: number; freeze: number }[] {
   return out.sort((a, b) => a.x - b.x || a.y - b.y);
 }
 
+/** Classifies a stopped queue in author-facing terms, not solver internals. */
+function deadlockReasons(
+  grid: Grid,
+  kinds: QueueGroupKind[],
+): { reason: string; cells: { x: number; y: number }[] }[] {
+  const ice: { x: number; y: number }[] = [];
+  const linked = new Map<number, { x: number; y: number }[]>();
+  for (let x = 0; x < grid.length; x++) {
+    const front = grid[x]?.[0];
+    if (!front) continue;
+    if (front.freeze > 0) ice.push({ x: front.ox, y: front.oy });
+    if (front.group !== -1 && kinds[front.group] === "linked") {
+      const members = cellsOfGroup(grid, front.group);
+      if (members.some((cell) => cell.y !== 0) && !linked.has(front.group)) {
+        linked.set(front.group, members.map(({ x: mx, y: my }) => {
+          const cell = grid[mx][my]!;
+          return { x: cell.ox, y: cell.oy };
+        }));
+      }
+    }
+  }
+  const out: { reason: string; cells: { x: number; y: number }[] }[] = [];
+  if (ice.length) out.push({ reason: "Ice blocked", cells: ice });
+  if (linked.size) out.push({ reason: "Intertwined linked slots", cells: [...linked.values()].flat() });
+  if (!out.length) out.push({ reason: "Other queue lock", cells: stuckCells(grid).map(({ x, y }) => ({ x, y })) });
+  return out;
+}
+
 /**
  * How much ice a pick would actually break: the frozen cells sitting beside
  * the very cells it removes, at those same rows. Counting ANY ice in the
@@ -406,21 +449,26 @@ function playOut(
   start: Grid,
   kinds: QueueGroupKind[],
   choose: Policy,
-): { ok: boolean; picks: number; grid: Grid } {
+): { ok: boolean; picks: number; grid: Grid; sequence: { x: number; y: number }[][] } {
   const grid = cloneGrid(start);
   let picks = 0;
+  const sequence: { x: number; y: number }[][] = [];
   // Counted down rather than rescanned: a playthrough is the audit's inner
   // loop and remainingCells() over the whole board every step dominated it.
   let left = remainingCells(grid);
   for (let guard = 0; left > 0 && guard < 10000; guard++) {
     const options = legalPicks(grid, kinds);
-    if (options.length === 0) return { ok: false, picks, grid };
+    if (options.length === 0) return { ok: false, picks, grid, sequence };
     const chosen = options[Math.min(options.length - 1, Math.max(0, choose(options, grid)))];
+    sequence.push(chosen.cells.map(({ x, y }) => {
+      const cell = grid[x][y]!;
+      return { x: cell.ox, y: cell.oy };
+    }));
     left -= chosen.cells.length;
     applyPick(grid, kinds, chosen.cells);
     picks++;
   }
-  return { ok: left === 0, picks, grid };
+  return { ok: left === 0, picks, grid, sequence };
 }
 
 function seededRng(seed: number): () => number {
@@ -438,12 +486,12 @@ export interface ThawCheckOptions {
   timeBudgetMs?: number;
   randomRuns?: number;
   sampleBudgetMs?: number;
+  /** Maximum structurally distinct dead-end traces retained for the UI. */
+  maxCases?: number;
 }
 
 /**
- * Audits a queue for Freeze deadlocks. A queue with no Freeze anywhere is
- * answered without any work — every lane front is always pickable, so no order
- * can get stuck.
+ * Audits a queue for structural deadlocks caused by Freeze and linked groups.
  */
 export function checkQueueThaw(
   queues: QueueItem[][],
@@ -468,13 +516,17 @@ export function checkQueueThaw(
     strategies: [],
     randomRuns: 0,
     randomStuck: 0,
+    reasonCounts: [],
+    deadlockCases: [],
     tightness: 0,
     singleSourceFrozen: [],
     trivial: true,
     elapsedMs: 0,
   });
 
-  if (!queues.some((lane) => lane.some((item) => freezeOf(item) > 0))) return empty();
+  const hasFreeze = queues.some((lane) => lane.some((item) => freezeOf(item) > 0));
+  const hasLinked = groups.some((group) => group.kind === "linked");
+  if (!hasFreeze && !hasLinked) return empty();
 
   const { grid: start, kinds } = buildGrid(queues, groups);
   advance(start, kinds); // settle authored misalignment, exactly as the sim does on load
@@ -492,6 +544,31 @@ export function checkQueueThaw(
   let bestDeadEnd: Grid | null = null;
   let bestDeadEndLeft = Infinity;
   let aborted = false;
+  const maxCases = Math.max(0, Math.floor(opts.maxCases ?? 10));
+  const deadlockCases: DeadlockCase[] = [];
+  const caseHashes = new Set<string>();
+  const recordCase = (run: { ok: boolean; grid: Grid; sequence: { x: number; y: number }[][] }): void => {
+    if (run.ok || deadlockCases.length >= maxCases) return;
+    const stuck = stuckCells(run.grid);
+    // Authored positions are the practical identity: two different pick paths
+    // that strand the same slots require the same authoring fix.
+    const hash = stuck.map(({ x, y }) => `${x}:${y}`).sort().join("|");
+    if (caseHashes.has(hash)) return;
+    caseHashes.add(hash);
+    deadlockCases.push({
+      hash,
+      picks: run.sequence,
+      reasons: deadlockReasons(run.grid, kinds).map((entry) => entry.reason),
+      state: run.grid.map((column) => column.map((cell) => cell ? {
+        sourceX: cell.ox,
+        sourceY: cell.oy,
+        freeze: cell.freeze,
+        group: cell.group,
+        item: structuredClone(queues[cell.ox][cell.oy]),
+      } : null)),
+      groupKinds: kinds.slice(),
+    });
+  };
 
   const cols = start.length;
   const height = start[0]?.length ?? 0;
@@ -553,11 +630,13 @@ export function checkQueueThaw(
   const strategies: StrategyResult[] = POLICIES.map((policy) => {
     const run = playOut(start, kinds, policy.pick);
     if (!run.ok && !bestDeadEnd) bestDeadEnd = run.grid;
+    recordCase(run);
     return { name: policy.name, ok: run.ok, picks: run.picks };
   });
 
   let randomStuck = 0;
   let randomRuns = 0;
+  const sampledReasons = new Map<string, { count: number; cells: { x: number; y: number }[] }>();
   const sampleStarted = performance.now();
   for (let seed = 1; seed <= wantedRuns; seed++) {
     if (randomRuns >= MIN_RANDOM_RUNS && performance.now() - sampleStarted > sampleBudget) break;
@@ -567,6 +646,12 @@ export function checkQueueThaw(
     if (!run.ok) {
       randomStuck++;
       if (!bestDeadEnd) bestDeadEnd = run.grid;
+      for (const diagnosis of deadlockReasons(run.grid, kinds)) {
+        const current = sampledReasons.get(diagnosis.reason);
+        if (current) current.count++;
+        else sampledReasons.set(diagnosis.reason, { count: 1, cells: diagnosis.cells });
+      }
+      recordCase(run);
     }
   }
 
@@ -598,6 +683,10 @@ export function checkQueueThaw(
     strategies,
     randomRuns,
     randomStuck,
+    reasonCounts: [...sampledReasons]
+      .map(([reason, value]) => ({ reason, ...value }))
+      .sort((a, b) => b.count - a.count),
+    deadlockCases,
     tightness: Number.isFinite(tightness) ? tightness : 0,
     singleSourceFrozen,
     trivial: false,

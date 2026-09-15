@@ -51,6 +51,35 @@ describe("node Design supplies its own generator", () => {
   });
 });
 
+describe("Design queue guidance", () => {
+  it("renders a numbered line ruler beside the queue lanes", () => {
+    expect(queueSectionSrc).toContain("queue-line-ruler");
+    expect(queueSectionSrc).toContain("queue-line-number");
+  });
+
+  it("validates queue structure without treating multi-input tools as locks", () => {
+    expect(queueSectionSrc).toContain("checkQueueThaw(");
+    expect(queueSectionSrc).not.toContain("checkToolDeadlock(");
+    // Preserve the old simulator's live-level seam for a future separate audit.
+    expect(nodeDesignSrc).toContain("deadlockLevel:");
+  });
+
+  it("keeps more distinct scenarios for the full check", () => {
+    expect(queueSectionSrc).toContain("maxCases: 50");
+    expect(queueSectionSrc).toContain("openDeadlockCasesDialog(report.deadlockCases)");
+  });
+
+  it("reuses Design effect badges and group overlays in the scenario viewer", () => {
+    expect(queueSectionSrc).toContain("deadlockCaseTile(");
+    expect(queueSectionSrc).toContain("tile-freeze-count");
+    expect(queueSectionSrc).toContain("tile-hidden");
+    expect(queueSectionSrc).toContain("tile-key");
+    expect(queueSectionSrc).toContain("renderDeadlockCaseGroupOverlay(");
+    expect(queueSectionSrc).toContain("queue-link-rope");
+    expect(queueSectionSrc).toContain("queue-combine-rail");
+  });
+});
+
 // The second entry point used to be a chained call into the queue section's own
 // Auto Generate. It is now the whole-level pipeline, which builds the queue
 // itself so it can verify the customers and their queue TOGETHER — a level is

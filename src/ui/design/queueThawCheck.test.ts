@@ -104,6 +104,40 @@ describe("checkQueueThaw", () => {
     expect(checkQueueThaw(queues, linked).verdict).not.toBe("deadlock");
   });
 
+  it("detects intertwined linked slots even when the queue has no ice", () => {
+    // A fronts B in queue 1 while B fronts A in queue 2. Neither linked group
+    // can reach the front together, so there is no legal first pick.
+    const queues = [[plain(1), plain(2)], [plain(2), plain(1)]];
+    const linked = [
+      { kind: "linked" as const, cells: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+      { kind: "linked" as const, cells: [{ x: 1, y: 0 }, { x: 0, y: 1 }] },
+    ];
+    const report = checkQueueThaw(queues, linked, { randomRuns: 20 });
+    expect(report.verdict).toBe("deadlock");
+    expect(report.randomStuck).toBe(20);
+    expect(report.reasonCounts).toEqual([
+      expect.objectContaining({ reason: "Intertwined linked slots", count: 20 }),
+    ]);
+    // Twenty identical failed runs collapse to one practical scenario because
+    // they leave the same authored slots stuck.
+    expect(report.deadlockCases).toHaveLength(1);
+    expect(report.deadlockCases[0].hash).toBe("0:0|0:1|1:0|1:1");
+    expect(report.deadlockCases[0].picks).toEqual([]);
+    expect(report.deadlockCases[0].groupKinds).toEqual(["linked", "linked"]);
+    expect(report.deadlockCases[0].state[0][0]).toMatchObject({ group: 0 });
+  });
+
+  it("reports sampled ice-lock distribution with authored coordinates", () => {
+    const report = checkQueueThaw([[plain(), frozen(1)]], [], { randomRuns: 20 });
+    expect(report.reasonCounts).toEqual([
+      { reason: "Ice blocked", count: 20, cells: [{ x: 0, y: 1 }] },
+    ]);
+    expect(report.deadlockCases).toHaveLength(1);
+    expect(report.deadlockCases[0].hash).toBe("0:1");
+    expect(report.deadlockCases[0].picks).toEqual([[{ x: 0, y: 0 }]]);
+    expect(report.deadlockCases[0].state[0][0]).toMatchObject({ sourceX: 0, sourceY: 1, freeze: 1 });
+  });
+
   it("picks a combined block as one, from its front cell, even with members behind", () => {
     // The block spans (0,0)+(0,1) and clears in a single pick. Only its row-0
     // cell sits beside lane 2's frozen front, so the pair still delivers just

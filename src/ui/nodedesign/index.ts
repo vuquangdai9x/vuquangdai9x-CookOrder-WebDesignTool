@@ -165,9 +165,9 @@ export class NodeDesignView {
         }),
       recipeDemand: () =>
         nodeDemandByRaw(this.projected.ix, orderIdIndex(this.projected.ix), this.customers.draft),
-      // The tool/slot half of the deadlock audit runs the real simulation, so
-      // it needs the whole level — built from the LIVE drafts, exactly as
-      // runEstimate does, not from the last-saved strings.
+      // Retained for the legacy tool/grid deadlock checker. The current Design
+      // button is picking-order-only, but this keeps the integration available
+      // if the legacy analysis is exposed separately in the future.
       deadlockLevel: () => ({ ix: this.projected.ix, level: this.liveLevel() }),
       stackRange: (id) => {
         const name = orderIdIndex(this.projected.ix).byId.ingredient.get(id);
