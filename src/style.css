@@ -2100,7 +2100,7 @@ td input {
 
 /*
  * Stretches full width (unlike the portrait play zone below it) but stays
- * visually small: compact padding/font, and the map/level/speed/policy group
+ * visually small: compact padding/font, and the map/level/speed/behavior group
  * folds away behind a toggle, leaving just that toggle + the live HUD.
  */
 .play-toolbar {
@@ -2773,7 +2773,7 @@ td input {
   }
 }
 
-.policy-picker {
+.behavior-picker {
   max-width: 11rem;
 }
 

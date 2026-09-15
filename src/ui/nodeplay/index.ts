@@ -55,7 +55,7 @@ import {
 import type { NodeCustomerState, NodeQueueCell } from "../../core/nodeSim.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import type { GraphIndex, ProcessStep } from "../../core/nodeIndex.ts";
-import type { OutOfSlotPolicy, QueueGroupKind, QueueItem } from "../../core/types.ts";
+import type { PackingMode, QueueGroupKind, QueueItem, ToolProcessBehavior } from "../../core/types.ts";
 import { queueItemAmount } from "../../core/parser.ts";
 import { nodeAsMapDef } from "../../data/nodeGraphToMapDef.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
@@ -66,7 +66,12 @@ import { customersStructureKey, middleStructureKey, queuesStructureKey } from ".
 import { renderGroupOverlay } from "./groupOverlay.ts";
 import { replayScoreStepIndex } from "./replayScoreStep.ts";
 import { recipeGuideRows } from "./recipeGuide.ts";
-import { playOutOfSlotPolicy, setPlayOutOfSlotPolicy } from "./preferences.ts";
+import {
+  playPackingMode,
+  playToolProcessBehavior,
+  setPlayPackingMode,
+  setPlayToolProcessBehavior,
+} from "./preferences.ts";
 import { centerOf, EffectsLayer } from "../effectsLayer.ts";
 import type { Point } from "../effectsLayer.ts";
 import type { NodeFlight } from "../../core/nodeSim.ts";
@@ -89,6 +94,8 @@ const SPEEDS = [
 ];
 
 const TICK_MS = 100;
+/** 1.5 frames at 60 Hz: enough separation to read an unpacked amount as a group. */
+const QUEUE_FLIGHT_STAGGER_MS = 24;
 
 interface ReplayState {
   steps: EstimateReplayStep[];
@@ -172,6 +179,8 @@ export class NodePlayView {
   // off, so nothing moves in the model until the animation lands — which is
   // exactly what makes the movement readable rather than a teleport.
   private fx = new EffectsLayer();
+  /** Invalidates animation callbacks belonging to a level state that was restarted. */
+  private runRevision = 0;
   /** Flight ids already being animated, so a frame never launches one twice. */
   private animating = new Set<number>();
   /**
@@ -257,7 +266,9 @@ export class NodePlayView {
   }
 
   destroy(): void {
+    this.runRevision++;
     this.stopClock();
+    this.fx.destroy();
     if (this.replayKeyHandler) window.removeEventListener("keydown", this.replayKeyHandler);
   }
 
@@ -301,7 +312,10 @@ export class NodePlayView {
   // ---------- lifecycle ----------
 
   private restart(): void {
+    this.runRevision++;
     this.stopClock();
+    this.fx.clear();
+    this.plateDeliveries.clear();
     if (!this.level) {
       this.root.replaceChildren(el("p", {}, ["This graph has no levels yet."]));
       return;
@@ -313,7 +327,9 @@ export class NodePlayView {
       instantFlights: false,
       detectDeadlockLoss: true,
       continueAfterCustomerTimeout: this.replay !== null,
-      outOfSlotPolicy: playOutOfSlotPolicy(),
+      outOfSlotPolicy: "park-on-grid",
+      packingMode: playPackingMode(),
+      toolProcessBehavior: playToolProcessBehavior(),
     });
     this.animating.clear();
     this.pendingPickOrigins = [];
@@ -500,6 +516,9 @@ export class NodePlayView {
    * in step.
    */
   private dispatchFlights(): void {
+    const runRevision = this.runRevision;
+    const fx = this.fx;
+    let queueFlightIndex = 0;
     // A snapshot, not a live view: completeFlight() splices sim.flights, and
     // iterating the array being spliced skips whichever flight shifts into the
     // just-visited slot — which would then linger unresolved into a later tick.
@@ -536,6 +555,11 @@ export class NodePlayView {
       const payload = el("div", { class: `fx-item${flight.ing < 0 ? " dirty" : ""}` }, [
         this.flightIcon(flight),
       ]);
+      const startsAtQueue =
+        flight.fromCustomer === undefined &&
+        flight.fromCell === undefined &&
+        flight.fromTool === undefined;
+      const delayMs = startsAtQueue ? queueFlightIndex++ * QUEUE_FLIGHT_STAGGER_MS : 0;
 
       // Serving is visually staged: ingredient flights land on the dish's
       // container in the serving row. The simulator still fills the exact
@@ -571,9 +595,20 @@ export class NodePlayView {
       }
 
       const durationMs = 420 / Math.max(1, this.speedFactor);
-      void this.settled(this.fx.fly(payload, from, to, { durationMs }), durationMs + 400)
-        .then(() => this.onFlightLanded(flight, to, targetPlate))
+      const animate = async () => {
+        if (delayMs > 0) {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+        }
+        if (runRevision !== this.runRevision) return;
+        await fx.fly(payload, from, to, { durationMs });
+      };
+      void this.settled(animate(), delayMs + durationMs + 400)
+        .then(() => {
+          if (runRevision !== this.runRevision) return;
+          return this.onFlightLanded(flight, to, targetPlate);
+        })
         .then(async () => {
+          if (runRevision !== this.runRevision) return;
           this.sim.completeFlight(flight.id);
 
           // The final ingredient has now merged into the dish container. Fly
@@ -890,23 +925,37 @@ export class NodePlayView {
       );
     }
 
-    const policy = el("select", { class: "policy-picker" }) as HTMLSelectElement;
+    const packingMode = el("select", { class: "behavior-picker" }) as HTMLSelectElement;
     for (const [value, label] of [
-      ["block-pick", "Block the pick"],
-      ["park-on-grid", "Park raw on the grid"],
+      ["packing-raw", "Packing raw"],
+      ["unpacked-raw", "Unpacked raw"],
     ] as const) {
       const opt = el("option", { value }, [label]);
-      if (playOutOfSlotPolicy() === value) (opt as HTMLOptionElement).selected = true;
-      policy.append(opt);
+      if (playPackingMode() === value) (opt as HTMLOptionElement).selected = true;
+      packingMode.append(opt);
     }
-    policy.addEventListener("change", () => {
-      const selected = policy.value as OutOfSlotPolicy;
-      setPlayOutOfSlotPolicy(selected);
-      this.sim.setOutOfSlotPolicy(selected);
-      this.syncPage();
+    packingMode.addEventListener("change", () => {
+      const selected = packingMode.value as PackingMode;
+      setPlayPackingMode(selected);
+      this.restart();
     });
 
-    // Map/level/speed/policy are "config" and fold away; the HUD is live game
+    const toolProcess = el("select", { class: "behavior-picker" }) as HTMLSelectElement;
+    for (const [value, label] of [
+      ["auto", "Auto"],
+      ["wait-order", "Wait-order"],
+    ] as const) {
+      const opt = el("option", { value }, [label]);
+      if (playToolProcessBehavior() === value) (opt as HTMLOptionElement).selected = true;
+      toolProcess.append(opt);
+    }
+    toolProcess.addEventListener("change", () => {
+      const selected = toolProcess.value as ToolProcessBehavior;
+      setPlayToolProcessBehavior(selected);
+      this.restart();
+    });
+
+    // Map/level/speed/behavior are "config" and fold away; the HUD is live game
     // state, not config, so it stays visible either way.
     this.configGroupEl = el("div", { class: "toolbar-config" }, [
       el("label", { class: "field small" }, ["Map", mapPicker]),
@@ -917,7 +966,8 @@ export class NodePlayView {
         this.refreshToolbar();
       }, { id: "btn-pause" }),
       button("⟲ Restart", () => this.restart()),
-      el("label", { class: "field small" }, ["When tool is full", policy]),
+      el("label", { class: "field small" }, ["Packing mode behavior", packingMode]),
+      el("label", { class: "field small" }, ["Tool process behavior", toolProcess]),
       button("Show Recipe", () => {
         this.showRecipe = !this.showRecipe;
         if (!this.showRecipe) this.hoveredRecipeIngredient = null;
@@ -933,7 +983,7 @@ export class NodePlayView {
     this.foldBtn = button(this.toolbarFolded ? "▸ Config" : "▾ Config", () => {
       this.toolbarFolded = !this.toolbarFolded;
       this.applyFoldState();
-    }, { class: "fold-toggle", title: "Show/hide level, speed and tool-full settings" });
+    }, { class: "fold-toggle", title: "Show/hide level, speed and behavior settings" });
 
     const bar = el("div", { class: "play-toolbar" }, [
       this.foldBtn,
@@ -1046,12 +1096,32 @@ export class NodePlayView {
     if (els.slider.value !== String(state.index)) els.slider.value = String(state.index);
   }
 
+  /**
+   * Captures one origin per queue flight before the picked tiles disappear.
+   * An unpacked amount emits N flights from one tile, so its centre is repeated
+   * N times; grouped picks retain one distinct centre per member and piece.
+   */
+  private pickOrigins(cells: { x: number; y: number }[]): Point[] {
+    const origins: Point[] = [];
+    for (const cell of cells) {
+      const node = this.page.querySelector(
+        `.queue-tile[data-qx="${cell.x}"][data-qy="${cell.y}"]`,
+      );
+      if (!node) continue;
+      const origin = centerOf(node);
+      const queueCell = this.sim.queueGrid[cell.x]?.[cell.y];
+      const copies =
+        this.sim.packingMode === "unpacked-raw" && queueCell
+          ? queueItemAmount(queueCell.item)
+          : 1;
+      for (let i = 0; i < copies; i++) origins.push({ ...origin });
+    }
+    return origins;
+  }
+
   /** Capture the same on-screen origins a real click uses before removing queue tiles. */
   private capturePickOrigins(lane: number): void {
-    this.pendingPickOrigins = this.sim.pickTargets(lane)
-      .map((cell) => this.page.querySelector(`.queue-tile[data-qx="${cell.x}"][data-qy="${cell.y}"]`))
-      .filter((node): node is Element => node !== null)
-      .map(centerOf);
+    this.pendingPickOrigins = this.pickOrigins(this.sim.pickTargets(lane));
   }
 
   /** Animate one recorded solver pick and all resulting cooking/transfers at ×5. */
@@ -1150,7 +1220,9 @@ export class NodePlayView {
     this.sim = new NodeSimulation(this.ix, toNodeLevelConfig(this.level), {
       instantFlights: false,
       continueAfterCustomerTimeout: true,
-      outOfSlotPolicy: playOutOfSlotPolicy(),
+      outOfSlotPolicy: "park-on-grid",
+      packingMode: playPackingMode(),
+      toolProcessBehavior: playToolProcessBehavior(),
     });
     let reached = 0;
     for (; reached < target; reached++) {
@@ -1729,10 +1801,7 @@ export class NodePlayView {
     if (this.replay) return;
     this.setRecipeHover(null);
     const cells = viaBooster ? this.sim.pickTargetsAt(x, y) : this.sim.pickTargets(x);
-    this.pendingPickOrigins = cells
-      .map((c) => this.page.querySelector(`.queue-tile[data-qx="${c.x}"][data-qy="${c.y}"]`))
-      .filter((node): node is Element => node !== null)
-      .map(centerOf);
+    this.pendingPickOrigins = this.pickOrigins(cells);
 
     const ok = viaBooster ? this.sim.pickAt(x, y) : this.sim.pick(x);
     if (!ok) {

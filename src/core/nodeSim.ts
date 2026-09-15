@@ -52,9 +52,11 @@ import type {
   GridCellConfig,
   Id,
   OutOfSlotPolicy,
+  PackingMode,
   QueueGroup,
   QueueGroupKind,
   QueueItem,
+  ToolProcessBehavior,
 } from "./types.ts";
 import type { GraphIndex, ProcessStep, ToolSlotLayout } from "./nodeIndex.ts";
 import { flatSlot, inputPoint, reachesAny } from "./nodeIndex.ts";
@@ -242,7 +244,13 @@ type Dispatch =
   /** A bag of 2+ pieces landing whole on one grid cell. */
   | { kind: "bag"; cell: number; count: number }
   /** One reusable ingredient whose queue amount becomes its serve count. */
-  | { kind: "multiple-usage"; cell: number; count: number };
+  | { kind: "multiple-usage"; cell: number; count: number }
+  /** Individually landed pieces from one queue amount; never a bag/reusable stack. */
+  | { kind: "unpacked"; pieces: IngredientDispatch[] };
+
+type IngredientDispatch =
+  | { kind: "tool"; tool: number; slot: number; step?: ProcessStep }
+  | { kind: "grid"; cell: number; raw: boolean };
 
 export interface NodeFlight {
   id: number;
@@ -274,6 +282,10 @@ export interface NodeSimOptions {
   /** Fires when queues run dry with orders outstanding. Default: lose. */
   onOutOfIngredient?(sim: NodeSimulation): void;
   outOfSlotPolicy?: OutOfSlotPolicy;
+  /** Queue amounts land as one bag/reusable object by default, or as individual pieces. */
+  packingMode?: PackingMode;
+  /** Graph-auto steps run eagerly by default; wait-order demand-gates every process step. */
+  toolProcessBehavior?: ToolProcessBehavior;
   /** When true (the default) flights land the moment they are created. */
   instantFlights?: boolean;
   /**
@@ -336,6 +348,8 @@ export class NodeSimulation {
   gridJams = 0;
 
   outOfSlotPolicy: OutOfSlotPolicy;
+  packingMode: PackingMode;
+  toolProcessBehavior: ToolProcessBehavior;
   readonly instantFlights: boolean;
   readonly pickPolicy: "any" | "wanted-only";
 
@@ -371,6 +385,8 @@ export class NodeSimulation {
     this.ids = orderIdIndex(ix);
     this.options = options;
     this.outOfSlotPolicy = options.outOfSlotPolicy ?? "block-pick";
+    this.packingMode = options.packingMode ?? "packing-raw";
+    this.toolProcessBehavior = options.toolProcessBehavior ?? "auto";
     this.instantFlights = options.instantFlights ?? true;
     this.pickPolicy = options.pickPolicy ?? "any";
     this.groupKinds = (level.queueGroups ?? []).map((g) => g.kind);
@@ -483,6 +499,14 @@ export class NodeSimulation {
 
   setOutOfSlotPolicy(policy: OutOfSlotPolicy): void {
     this.outOfSlotPolicy = policy;
+  }
+
+  setPackingMode(mode: PackingMode): void {
+    this.packingMode = mode;
+  }
+
+  setToolProcessBehavior(behavior: ToolProcessBehavior): void {
+    this.toolProcessBehavior = behavior;
   }
 
   /** Display name of a dense ingredient index, for logs and the view. */
@@ -1563,11 +1587,11 @@ export class NodeSimulation {
         return { ok: false, reason: `${this.ingredientName(cell.ing)} can't complete any waiting order` };
       }
 
-      // An amount slot always lands whole on one grid cell. Ordinary bags
-      // drain separate pieces through reclaimBagItems(); multipleUsage slots
-      // land as one cooked object with that many reusable serves.
+      // Packing mode keeps the historical one-cell representation. Ordinary
+      // bags drain through reclaimBagItems(); multipleUsage amounts become one
+      // cooked object carrying reusable serves.
       const amount = queueItemAmount(cell.item);
-      if (amount > 1) {
+      if (amount > 1 && this.packingMode === "packing-raw") {
         const free = this.reserveCell();
         if (free === -1) {
           rollback();
@@ -1582,8 +1606,64 @@ export class NodeSimulation {
         continue;
       }
 
+      // Unpacked mode expands an amount atomically. At most one piece takes a
+      // currently available tool route directly; every other piece reserves
+      // its own grid cell. If all pieces cannot land, the whole queue pick is
+      // refused and every provisional reservation is rolled back.
+      if (amount > 1) {
+        const pieces: IngredientDispatch[] = [];
+        const allSteps = this.ix.stepsForInput[cell.ing] ?? [];
+        const eligible = allSteps.filter((step) => this.processMayStart(step));
+        const preservationAllowed =
+          this.toolProcessBehavior === "auto" || eligible.length > 0;
+        let routed = false;
+
+        if (preservationAllowed) {
+          const preservationTools = this.ix.preservationToolsForInput[cell.ing] ?? [];
+          if (preservationTools.length > 0) {
+            const destination = this.preservationDestination(cell.ing);
+            if (destination) {
+              this.reserveSlot(destination.tool, destination.slot);
+              reservedSlots.push(destination);
+              const step = allSteps.find((candidate) => candidate.tool === destination.tool);
+              pieces.push({ kind: "tool", ...destination, step });
+              routed = true;
+            }
+          }
+        }
+
+        if (!routed) {
+          for (const step of eligible) {
+            const slot = this.freeSlotFor(step.tool, cell.ing, inputPoint(step, cell.ing));
+            if (slot === -1) continue;
+            this.reserveSlot(step.tool, slot);
+            reservedSlots.push({ tool: step.tool, slot });
+            pieces.push({ kind: "tool", tool: step.tool, slot, step });
+            routed = true;
+            break;
+          }
+        }
+
+        const raw = allSteps.length > 0;
+        for (let piece = routed ? 1 : 0; piece < amount; piece++) {
+          const free = this.reserveCell();
+          if (free === -1) {
+            rollback();
+            return { ok: false, reason: `Not enough tool or grid slots for all ${amount} items` };
+          }
+          reservedCells.push(free);
+          pieces.push({ kind: "grid", cell: free, raw });
+        }
+        plan.push({ kind: "unpacked", pieces });
+        continue;
+      }
+
+      const allSteps = this.ix.stepsForInput[cell.ing] ?? [];
+      const eligible = allSteps.filter((step) => this.processMayStart(step));
       const preservationTools = this.ix.preservationToolsForInput[cell.ing] ?? [];
-      if (preservationTools.length > 0) {
+      const preservationAllowed =
+        this.toolProcessBehavior === "auto" || eligible.length > 0;
+      if (preservationAllowed && preservationTools.length > 0) {
         const destination = this.preservationDestination(cell.ing);
         if (!destination) {
           const tool = this.tools[preservationTools[0]];
@@ -1595,15 +1675,13 @@ export class NodeSimulation {
         }
         this.reserveSlot(destination.tool, destination.slot);
         reservedSlots.push(destination);
-        const step = (this.ix.stepsForInput[cell.ing] ?? []).find(
+        const step = allSteps.find(
           (candidate) => candidate.tool === destination.tool,
         );
         plan.push({ kind: "tool", ...destination, step });
         continue;
       }
 
-      const allSteps = this.ix.stepsForInput[cell.ing] ?? [];
-      const eligible = allSteps.filter((step) => this.processMayStart(step));
       if (allSteps.length === 0) {
         // No tool needed — it only has to fit on the grid.
         const free = this.reserveCell();
@@ -1673,6 +1751,10 @@ export class NodeSimulation {
     this.ctx.picksMade++;
     this.ctx.picksByIngredient[cell.item.id] = (this.ctx.picksByIngredient[cell.item.id] ?? 0) + 1;
     this.log("pick", `Picked ${this.ingredientName(cell.ing)}`);
+    if (d.kind === "unpacked") {
+      for (const piece of d.pieces) this.dispatchIngredient(cell.ing, piece);
+      return;
+    }
     if (d.kind === "tool") {
       this.launch({ kind: "queue-to-tool", ing: cell.ing, toTool: { tool: d.tool, slot: d.slot }, step: d.step });
       return;
@@ -1698,6 +1780,23 @@ export class NodeSimulation {
       return;
     }
     this.launch({ kind: "queue-to-grid", ing: cell.ing, toCell: d.cell, raw: true });
+  }
+
+  /** Launches one ordinary (non-bag, non-reusable-stack) queue pickup piece. */
+  private dispatchIngredient(ing: number, d: IngredientDispatch): void {
+    if (d.kind === "tool") {
+      this.launch({ kind: "queue-to-tool", ing, toTool: { tool: d.tool, slot: d.slot }, step: d.step });
+      return;
+    }
+    if (!d.raw) {
+      const target = this.findServeTarget(ing);
+      if (target) {
+        this.releaseCell(d.cell);
+        this.launch({ kind: "queue-to-customer", ing, toCustomer: target });
+        return;
+      }
+    }
+    this.launch({ kind: "queue-to-grid", ing, toCell: d.cell, raw: d.raw });
   }
 
   // ---------- queue gravity ----------
@@ -2070,6 +2169,7 @@ export class NodeSimulation {
       const content = this.grid[cell];
       if ((content.kind !== "raw" && content.kind !== "cooked") || this.reservedCells.has(cell)) continue;
       if (content.kind === "raw" && (this.ix.preservationToolsForInput[content.ing]?.length ?? 0) > 0) {
+        if (this.toolProcessBehavior === "wait-order" && !this.routingStep(content.ing)) continue;
         const destination = this.preservationDestination(content.ing);
         if (!destination) continue;
         const step = (this.ix.stepsForInput[content.ing] ?? []).find(
@@ -2107,6 +2207,7 @@ export class NodeSimulation {
       if (content.kind !== "backpack" || this.reservedCells.has(cell)) continue;
       for (const ing of content.items) {
         if ((this.ix.preservationToolsForInput[ing]?.length ?? 0) > 0) {
+          if (this.toolProcessBehavior === "wait-order" && !this.routingStep(ing)) continue;
           const destination = this.preservationDestination(ing);
           if (!destination) continue;
           const step = (this.ix.stepsForInput[ing] ?? []).find(
@@ -2152,6 +2253,7 @@ export class NodeSimulation {
       if (content.kind !== "bag" || this.reservedCells.has(cell)) continue;
       const ing = content.ing;
       if ((this.ix.preservationToolsForInput[ing]?.length ?? 0) > 0) {
+        if (this.toolProcessBehavior === "wait-order" && !this.routingStep(ing)) continue;
         const destination = this.preservationDestination(ing);
         if (!destination) continue;
         const step = (this.ix.stepsForInput[ing] ?? []).find((candidate) => candidate.tool === destination.tool);
@@ -2431,20 +2533,32 @@ export class NodeSimulation {
 
   // ---------- demand ----------
 
-  /** Bitset of every ingredient some active dish still needs. */
+  /**
+   * Bitset of genuinely open order slots. A serve flight already names and
+   * claims one exact slot, so that slot must not authorize another Wait-order
+   * process while its matching ingredient is still flying to the customer.
+   */
   private demandBits(): Uint8Array {
     const bits = new Uint8Array(Math.ceil(this.ix.ingName.length / 8));
     for (const customer of this.active) {
-      for (const dish of customer.dishes) {
-        for (const ing of dish.remaining) bits[ing >> 3] |= 1 << (ing & 7);
+      for (let dishIndex = 0; dishIndex < customer.dishes.length; dishIndex++) {
+        const dish = customer.dishes[dishIndex];
+        for (let slot = 0; slot < dish.order.slots.length; slot++) {
+          if (dish.filled[slot] || this.slotClaimed(customer.index, dishIndex, slot)) continue;
+          const ing = dish.order.slots[slot].ing;
+          bits[ing >> 3] |= 1 << (ing & 7);
+        }
       }
     }
     return bits;
   }
 
-  /** A manual process starts only while an active customer needs its output path. */
+  /** Applies the selected graph-auto versus genuinely-open-order process gate. */
   private processMayStart(step: ProcessStep): boolean {
-    return step.auto || reachesAny(this.ix, step.out, this.demandBits());
+    return (
+      (this.toolProcessBehavior === "auto" && step.auto) ||
+      reachesAny(this.ix, step.out, this.demandBits())
+    );
   }
 
   /** First graph-ordered process for `ing` that is currently permitted to start. */

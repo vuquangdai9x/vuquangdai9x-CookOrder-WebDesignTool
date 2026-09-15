@@ -287,6 +287,12 @@ export interface CustomerConfig {
 /** What happens when every tool slot for a picked ingredient is busy. */
 export type OutOfSlotPolicy = "block-pick" | "park-on-grid";
 
+/** How queue amounts are represented after a Play-mode pickup. */
+export type PackingMode = "packing-raw" | "unpacked-raw";
+
+/** Whether graph-auto processes may start before their output is ordered. */
+export type ToolProcessBehavior = "auto" | "wait-order";
+
 export interface LevelConfig {
   id: Id;
   name: string;

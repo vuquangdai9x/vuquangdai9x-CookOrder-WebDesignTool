@@ -18,4 +18,15 @@ Use only when the brief authorizes a grid effect, queue effect, recovery mechani
 
 Use when the brief describes difficulty or emotion but not structure. Build a small ordinary skeleton, measure it, and tune ordinary controls. If the target remains unreachable, propose obstacles and wait for approval.
 
-Switch when repeated validation worsens the same constraint, supply repairs keep breaking structure, the structure makes valid demand unwinnable, or authorized mechanics cannot reach the requested difficulty. Record the new route and evidence.
+## Amount planning within every route
+
+Amount planning is a layer, not a separate strategy. Apply it after enough demand exists to attach
+each physical piece or reusable serve to a customer wave. An amount-heavy brief may make queue
+layout dominant, but it does not justify merging distant demand into an early dormant bag. Compare
+conservative, balanced, and aggressive partitions against the same seeds when the Level Lab
+proposal/evaluation tools are available.
+
+Switch when repeated evaluation worsens the same confirmed constraint, supply repairs keep breaking
+structure, amount packing creates persistent occupancy pressure, the structure makes valid demand
+unwinnable, or authorized mechanics cannot reach the requested difficulty. Record the new route,
+candidate/checkpoint, seed set, and evidence.

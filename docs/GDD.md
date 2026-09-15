@@ -44,10 +44,11 @@ Two neighboring queue items can be grouped so they behave as more than independe
 - Each map defines its **cooking tools** (`cooking-tools.json`). A tool has an integer id, name, **number of slots**, a **cooking time**, and a list of **recipes** mapping one raw ingredient to what comes out and **how many pieces** (e.g. the Cutting Board turns 1 tomato into 2 tomato slices).
 - Picking an ingredient sends it to the tool that has a recipe for it. **An ingredient with no recipe in any tool needs no processing** and goes straight to the grid (Map 1: Ice, Chili Bowl, Cheese Sauce).
 - A recipe may be a **chain**: `chainTools` lists further tool ids the ingredient hops through, in order, after the first one, before its final output is produced (e.g. Map 1's Potato: Cutting Board, then Fryer, then 2 pieces). Each hop still takes that tool's own `cookingTime`; if the next tool in the chain has no free slot, the item just waits at its current tool and retries every tick until one opens up — it never spills onto the grid mid-chain.
-- A tool processes as many ingredients at once as it has slots. **When every slot is busy**, Play mode follows its toolbar preference:
-  - **Park raw on the grid** (default) — the raw ingredient goes to the grid and waits; the moment a slot opens, parked raws are checked **first** and moved into the tool ahead of any new pick.
-  - **Block the pick** — the queue tile cannot be picked until a slot frees.
-  The selected preference remains active when switching maps or levels.
+- A tool processes as many ingredients at once as it has slots. **When every slot is busy**, the raw ingredient always parks on the grid and waits; the moment a slot opens, parked raws are checked **first** and moved into the tool ahead of any new pick.
+- Play's **Packing mode behavior** controls queue amounts. **Packing raw** keeps an ordinary amount in one draining bag and a `multipleUsage` amount in one reusable object. **Unpacked raw** expands the amount into separate one-use items: at most one enters a free tool immediately, each remainder needs its own grid cell, and the whole pick is blocked unless every item has a landing.
+- Play's **Tool process behavior** controls demand gating. **Auto** lets graph-auto recipes run whenever possible while manual recipes still wait for demand. **Wait-order** makes every recipe wait until an active customer order needs its output path; unmatched singles park on the grid and unmatched packed amounts stay in their bag.
+  An order slot already claimed by a matching serve flight no longer counts as process demand.
+  Both behavior selections remain active when switching maps or levels and after a browser refresh. Changing either selection reloads the current level.
 - **A tool with no ingredient in the current level's queues is greyed out** in Play mode's tool bar (not clickable-relevant, purely informational) — see [ToolDesign.md](ToolDesign.md).
 - **Speed** is a single option group: **×1 / ×2 / ×3 / Skip**. Skip resolves everything instantly with no animation.
 
@@ -57,7 +58,7 @@ Map 1 tools: **Griddle** (2 slots, 3s — patty → cooked patty, egg → fried 
 
 Every hand-off is a **flight**: the item is shown travelling from one place to the next, and **the next logic step only runs when it lands**. Arriving in a tool slot is what starts cooking; arriving on the grid is what triggers order matching; arriving at a customer is what fills the dish. The flights are queue→tool, queue→grid, tool→grid, tool→tool (a chained recipe's mid-hop, §2.2), grid→tool (a parked raw being reclaimed), grid→customer, and backpack→customer (Save Me, §2.7).
 
-**Skip-the-grid direct serving**: before a freshly finished tool output (or a no-tool-needed queue pick) lands on the grid, the sim checks whether an active customer's dish already wants it right now (their base requirement met, not already covered by another in-flight serve). If so, it flies **straight to that customer** (`tool-to-customer` / `queue-to-customer`) instead of landing on the grid. A `multipleUsage: true` queue slot with amount above 1 lands first as one reusable object so later serves are not discarded.
+**Skip-the-grid direct serving**: before a freshly finished tool output (or a no-tool-needed queue pick) lands on the grid, the sim checks whether an active customer's dish already wants it right now (their base requirement met, not already covered by another in-flight serve). If so, it flies **straight to that customer** (`tool-to-customer` / `queue-to-customer`) instead of landing on the grid. In Packing raw mode, a `multipleUsage: true` queue slot with amount above 1 lands first as one reusable object so later serves are not discarded.
 
 ### 2.3 Output grid
 

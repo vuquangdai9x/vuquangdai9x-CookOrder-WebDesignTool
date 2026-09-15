@@ -307,14 +307,23 @@ tool.
   e.g. a placeholder tool like Flour, or a tool whose ingredients this particular level just
   doesn't use) renders **greyed out** (dimmed + desaturated), with the tooltip noting why; it's
   purely informational, tools were never clickable to begin with.
-  - A `multipleUsage: true` ingredient interprets its queue-slot amount as reusable serves on one
-    landed ingredient and shows the remaining `×N` badge. Other ingredients interpret amount as
-    separate physical pieces in a draining bag.
-- **When a tool is full**, a dropdown in the toolbar picks the behaviour: *Block the pick* (the
-  queue tile is disabled with a reason tooltip) or *Park raw on the grid* (the raw ingredient
-  waits on the grid, dimmed, and is pulled into the tool ahead of new picks the moment a slot
-  frees). Play mode starts with *Park raw on the grid* selected; a user's changed selection is a
-  Play preference and remains selected when switching maps or levels.
+  - **Packing mode behavior** is a Play preference. *Packing raw* keeps the current amount rules:
+    a `multipleUsage: true` ingredient becomes one landed ingredient with an `×N` reusable-serve
+    badge, while other amounts become separate physical pieces in one draining bag. *Unpacked
+    raw* expands every queue amount into individual items: at most one immediately enters a free
+    tool slot and every remainder reserves its own grid cell. `multipleUsage` items also expand
+    this way and each landed item has one use. The whole pick is blocked unless every item can
+    reserve a tool or grid landing.
+  - **Tool process behavior** is a second Play preference. *Auto* preserves graph behavior: an
+    `auto` process starts whenever possible, while a manual process waits for demand. *Wait-order*
+    demand-gates every process, including graph-auto steps, against a genuinely unclaimed order
+    slot; a slot already matched by a serve flight does not authorize duplicate processing. An
+    unmatched single raw parks on the grid and an unmatched packed amount remains in its bag.
+    Both dropdowns persist through a browser refresh. Changing either one reloads the current
+    level so no state from the previous behavior mode is retained.
+- **When a tool is full**, raw ingredients always park on the grid and are pulled into the tool
+  ahead of new picks the moment a slot frees. This is the sole Play-mode behavior now; the former
+  Block/Park selector is no longer shown.
 - **Movement**: every hand-off animates as a floating item flying between the two places —
   queue→tool slot, queue→grid, tool→grid, tool→tool (a chained recipe's mid-hop, e.g. Potato:
   Cutting Board → Fryer), grid→tool (reclaiming a parked raw), grid→serving row, queue→serving row and
@@ -322,6 +331,8 @@ tool.
   waiting — see [GDD.md](GDD.md) §2.2.1), and backpack→serving row (Save Me, below). The animation is
   the gate: cooking starts when the ingredient *arrives* in the slot, matching runs when an item
   *arrives* on the grid, and a dish fills when the piece *arrives* in its serving container.
+  Every item expanded by Unpacked raw starts at the centre of its one consumed queue slot; the
+  group launches with a roughly 1–2-frame stagger so the individual pieces remain readable.
 - **Completion feedback**: when a dish is filled, its assembled container flies from the Serving
   row to the customer and fires a burst from their card. Only then may the customer row refresh,
   so a departing customer and a promoted preview never visually overlap. Customers currently in

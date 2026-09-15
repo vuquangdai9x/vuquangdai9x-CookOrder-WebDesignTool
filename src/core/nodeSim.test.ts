@@ -179,6 +179,44 @@ describe("core loop", () => {
     expect(s.grid.some((cell) => cell.kind === "raw" && cell.ing === pattyRaw)).toBe(false);
   });
 
+  it("Wait-order parks an auto-process input until its output path is ordered", () => {
+    const s = sim(
+      {
+        queueString: "1,0",
+        customerString: "0;0;0;{c0:17}|0;0;0;{c0:17.{g0:18}}",
+        serveableSlots: 1,
+      },
+      { toolProcessBehavior: "wait-order", outOfSlotPolicy: "park-on-grid" },
+    );
+
+    expect(s.pick(0)).toBe(true);
+    expect(s.tools[tool("griddle")].slots.every((slot) => slot.item === null)).toBe(true);
+    expect(s.grid.some((cell) => cell.kind === "raw" && cell.ing === ing("patty"))).toBe(true);
+
+    expect(s.pick(0)).toBe(true);
+    s.tick(s.nextCompletionIn()!);
+    expect(s.tools[tool("griddle")].slots.some((slot) => slot.item?.ing === ing("patty"))).toBe(true);
+    expect(s.grid.some((cell) => cell.kind === "raw" && cell.ing === ing("patty"))).toBe(false);
+  });
+
+  it("Wait-order does not process another raw for an order slot already claimed by a serve flight", () => {
+    const s = sim(
+      { queueString: "13", customerString: "0;0;0;{c2:{g1:29}}" },
+      {
+        instantFlights: false,
+        toolProcessBehavior: "wait-order",
+        outOfSlotPolicy: "park-on-grid",
+      },
+    );
+    s.grid[0] = { kind: "cooked", ing: ing("potato-fried") };
+    s.tick(0);
+    expect(s.flights.map((flight) => flight.kind)).toEqual(["grid-to-customer"]);
+
+    expect(s.pick(0)).toBe(true);
+    expect(s.tools[tool("cutting-board")].slots.every((slot) => slot.item === null)).toBe(true);
+    expect(s.flights.some((flight) => flight.kind === "queue-to-grid" && flight.ing === ing("potato"))).toBe(true);
+  });
+
   it("picks, cooks, serves and wins", () => {
     const s = sim({ queueString: "0,1", customerString: "0;0;0;{c0:17.{g0:18}}" });
     expect(s.active).toHaveLength(1);
@@ -548,6 +586,70 @@ describe("bags — a queue slot holding several pieces", () => {
     expect(s.autoCompleteDish()).toBe(true); // cup from the queue, ice from the bag
     expect(s.grid.filter((c) => c.kind === "bag")).toEqual([{ kind: "bag", ing: ing("ice"), count: 1 }]);
     expect(s.status).toBe("won");
+  });
+
+  it("keeps a packed amount in its bag while Wait-order has no matching order", () => {
+    const s = sim(
+      {
+        queueString: "1:3,0",
+        customerString: "0;0;0;{c0:17}|0;0;0;{c0:17.{g0:18}}",
+        serveableSlots: 1,
+      },
+      { toolProcessBehavior: "wait-order", outOfSlotPolicy: "park-on-grid" },
+    );
+
+    expect(s.pick(0)).toBe(true);
+    expect(s.grid.filter((cell) => cell.kind === "bag")).toEqual([
+      { kind: "bag", ing: ing("patty"), count: 3 },
+    ]);
+    expect(s.tools[tool("griddle")].slots.every((slot) => slot.item === null)).toBe(true);
+  });
+});
+
+describe("unpacked raw amounts", () => {
+  it("sends one piece to a free tool and lands every remainder in its own cell", () => {
+    const s = sim(
+      { queueString: "1:3", customerString: "0;0;0;{c0:17.{g0:18.18.18}}" },
+      { packingMode: "unpacked-raw", outOfSlotPolicy: "park-on-grid" },
+    );
+
+    expect(s.pick(0)).toBe(true);
+    expect(s.tools[tool("griddle")].slots[0].item?.ing).toBe(ing("patty"));
+    expect(s.grid.filter((cell) => cell.kind === "raw" && cell.ing === ing("patty"))).toHaveLength(2);
+    expect(s.grid.some((cell) => cell.kind === "bag")).toBe(false);
+  });
+
+  it("blocks the whole pick unless all individual pieces can land", () => {
+    const s = sim(
+      {
+        queueString: "1:3",
+        gridString: blockedGrid(1),
+        customerString: "0;0;0;{c0:17.{g0:18.18.18}}",
+      },
+      { packingMode: "unpacked-raw", outOfSlotPolicy: "park-on-grid" },
+    );
+
+    expect(s.canPick(0)).toEqual({
+      ok: false,
+      reason: "Not enough tool or grid slots for all 3 items",
+    });
+    expect(s.frontCell(0)?.item.amount).toBe(3);
+    expect(s.tools[tool("griddle")].slots[0].item).toBeNull();
+  });
+
+  it("expands multipleUsage amounts into separate one-use cells", () => {
+    const s = sim(
+      { queueString: "16:3", customerString: "0;0;0;{c1:24}" },
+      { packingMode: "unpacked-raw", outOfSlotPolicy: "park-on-grid" },
+    );
+
+    expect(s.pick(0)).toBe(true);
+    expect(s.grid.filter((cell) => cell.kind === "cooked" && cell.ing === ing("cheese-sauce"))).toEqual([
+      { kind: "cooked", ing: ing("cheese-sauce") },
+      { kind: "cooked", ing: ing("cheese-sauce") },
+      { kind: "cooked", ing: ing("cheese-sauce") },
+    ]);
+    expect(s.grid.some((cell) => cell.kind === "bag")).toBe(false);
   });
 });
 

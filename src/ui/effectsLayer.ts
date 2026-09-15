@@ -27,6 +27,14 @@ export class EffectsLayer {
     this.root.remove();
   }
 
+  /** Cancels and removes transient effects while keeping this layer reusable. */
+  clear(): void {
+    for (const child of this.root.children) {
+      for (const animation of child.getAnimations()) animation.cancel();
+    }
+    this.root.replaceChildren();
+  }
+
   /**
    * Flies `content` from one point to another and resolves when it lands.
    * With `instant`, it resolves on the next microtask so skip mode doesn't
