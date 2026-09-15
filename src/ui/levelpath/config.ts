@@ -12,6 +12,7 @@ import { STAT_VISUALIZE_OPTIONS, wrapHue } from "./metricColor.ts";
 import type { ColumnGradient, StatVisualize } from "./metricColor.ts";
 import { DEFAULT_BOUNDS, normalizeBounds } from "./generateLevel.ts";
 import type { GenerateBounds } from "./generateLevel.ts";
+import type { BagFillMode } from "../nodedesign/nodeQueueGenerate.ts";
 
 const STORAGE_KEY = "cookorder-levelpath-view";
 
@@ -39,6 +40,8 @@ export interface LevelPathConfig {
   baseHue: number;
   /** How big a freshly generated level may be — see generateLevel.ts. */
   bounds: GenerateBounds;
+  /** Default for levels that have not recorded their own Auto Generate bag mode. */
+  bagFill: BagFillMode;
   /** Map ids whose foldout is open. */
   openMaps: string[];
 }
@@ -57,6 +60,7 @@ export function defaultConfig(): LevelPathConfig {
     gradients: {},
     baseHue: Math.floor(Math.random() * 360),
     bounds: { ...DEFAULT_BOUNDS },
+    bagFill: "random",
     openMaps: [],
   };
 }
@@ -128,6 +132,9 @@ export function loadConfig(): LevelPathConfig {
       // Stored bounds can be self-contradictory if they were mid-edit at the
       // last write; the generator must never see that.
       config.bounds = normalizeBounds(config.bounds);
+    }
+    if (stored.bagFill === "min" || stored.bagFill === "random" || stored.bagFill === "max") {
+      config.bagFill = stored.bagFill;
     }
     if (Array.isArray(stored.openMaps)) {
       config.openMaps = stored.openMaps.filter((id): id is string => typeof id === "string");
@@ -216,6 +223,21 @@ export function createConfigPanel(deps: ConfigPanelDeps): HTMLElement {
     deps.onScaleChange();
   });
 
+  const bagFillSelect = el("select", {}) as HTMLSelectElement;
+  for (const option of [
+    { value: "min", label: "Minimum" },
+    { value: "random", label: "Random" },
+    { value: "max", label: "Maximum" },
+  ] as const) {
+    const node = el("option", { value: option.value }, [option.label]) as HTMLOptionElement;
+    node.selected = config.bagFill === option.value;
+    bagFillSelect.append(node);
+  }
+  bagFillSelect.addEventListener("change", () => {
+    config.bagFill = bagFillSelect.value as BagFillMode;
+    deps.onCommit();
+  });
+
   return el("div", { class: "lp-config" }, [
     el("div", { class: "toggle-group" }, [
       toggle("Show info", "Show or collapse the info columns", config.showInfo, (next) =>
@@ -235,6 +257,14 @@ export function createConfigPanel(deps: ConfigPanelDeps): HTMLElement {
       ),
     ]),
     el("label", { class: "field small" }, ["Statistic Visualize", visualizeSelect]),
+    el(
+      "label",
+      {
+        class: "field small",
+        title: "Default for levels with no recorded bag mode. Minimum turns bags off when leaf stackMin is 1.",
+      },
+      ["Bag fill", bagFillSelect],
+    ),
     scaleField(
       "Column width",
       "Multiplies every column's width. Drag left/right to scrub.",

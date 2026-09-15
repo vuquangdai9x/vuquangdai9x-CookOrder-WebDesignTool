@@ -6,12 +6,14 @@ import { nodeAsMapDef } from "../../data/nodeGraphToMapDef.ts";
 import type { NodeGraphMap } from "../../data/nodeGraphTypes.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { parseGrid, parseQueues } from "../../core/parser.ts";
+import { supplyByRaw } from "../../data/recipeDemand.ts";
+import { nodeDemandByRaw } from "../nodedesign/nodeQueueGenerate.ts";
 import { parseNodeCustomers, serializeDish } from "../../core/nodeParser.ts";
 import { parseDishCountSequence } from "../design/autoGenerate.ts";
 import { BUILT_IN_CURVE_PRESETS } from "../design/curveEditor.ts";
 import { getCustomerCatalog, setCustomerCatalog } from "../../data/customerCatalog.ts";
 import { parseObstacles } from "./obstacles.ts";
-import { validateLevel } from "./validateLevel.ts";
+import { bagsOutsideStackRange, validateLevel } from "./validateLevel.ts";
 
 /** A graph with nothing in it — no seed can produce a playable level from this. */
 function emptyCtx(): GenerateContext {
@@ -243,8 +245,22 @@ describe("generateLevel", () => {
     expect(level.customerDishesSequence).toBeTruthy();
     expect(level.complexityCurve).toBeTruthy();
     expect(level.shuffleCurve).toBeTruthy();
+    expect(level.bagFill).toBe("random");
     expect(parseNodeCustomers(level.customerString).length).toBeGreaterThan(0);
     expect(parseQueues(level.queueString).some((lane) => lane.length > 0)).toBe(true);
+  });
+
+  it("serializes bag amounts without changing recipe-piece supply", () => {
+    const level = blank({ bagFill: "max", randomSeed: 4242 });
+    expect(generateLevel(level, ctx).ok).toBe(true);
+
+    const queues = parseQueues(level.queueString);
+    const supply = supplyByRaw(queues);
+    const demand = nodeDemandByRaw(ix, ids, parseNodeCustomers(level.customerString));
+    for (const [rawId, info] of demand) {
+      expect((supply.get(rawId) ?? 0) * info.amount).toBe(info.need);
+    }
+    expect(bagsOutsideStackRange(queues, ix)).toEqual([]);
   });
 
   it("is reproducible: the same pinned seed rebuilds byte-identical strings", () => {

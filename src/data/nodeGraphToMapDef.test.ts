@@ -33,8 +33,7 @@ describe("the projection carries what the Design sections read", () => {
     expect(projected.map.cookedIngredients.some((c) => c.id === dataId("ice"))).toBe(true);
   });
 
-  it("keeps usageNum and limitPerDish", () => {
-    expect(cooked("cheese-sauce").usageNum).toBe(3);
+  it("keeps limitPerDish", () => {
     expect(cooked("bun-sliced").limit).toBe(1);
     expect(cooked("patty-cooked").limit).toBeUndefined();
   });

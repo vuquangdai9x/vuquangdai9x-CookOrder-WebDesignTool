@@ -139,16 +139,16 @@ reference only, per the same blocked-import reasoning as Phase 6.
     flight kind; a full chain hop waits at its current tool if the next one is busy.
   - **Multi-option `baseId`** (`Id | Id[]`) — a topping can require *any one* of several bases
     already in the dish, not just a single fixed one.
-  - **Multi-use cooked ingredients** (`usageNum`) — a grid instance can be served several times
-    before it's consumed, with a uses-left badge in Play mode instead of clearing after one serve.
+  - **Reusable cooked ingredients** (`multipleUsage`) — a queue amount becomes the serve count of
+    one landed grid instance, with a uses-left badge in Play mode until its final serve.
   - **Skip-the-grid direct serving** — a freshly finished tool output or no-tool-needed queue pick
     flies straight to an already-waiting customer (`tool-to-customer` / `queue-to-customer`),
-    bypassing the grid entirely, unless the ingredient is multi-use (which always lands on the
-    grid so its extra uses aren't wasted on one serve).
+    bypassing the grid entirely, except a `multipleUsage` slot with amount above 1 lands first so
+    its reusable serves are not lost.
   - **Play mode**: tools with no ingredient in the current level's queues render greyed out.
 - See [GDD.md](GDD.md) §2.2/§2.2.1/§2.4/§2.6 and [ToolDesign.md](ToolDesign.md) for the
-  gameplay/UI-facing writeups, and `sim.test.ts`'s "chained tool recipes" / "multi-option base
-  ingredient requirement" / "multi-use cooked ingredients" describe blocks for the engine tests.
+  gameplay/UI-facing writeups, and the simulator's chained-recipe, base-requirement and
+  `multipleUsage` test blocks for engine coverage.
 
 ## Verification
 

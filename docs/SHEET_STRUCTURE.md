@@ -71,9 +71,9 @@ engine equivalent — see [GDD.md](GDD.md) §2.2 and §2.4 for the gameplay rule
 - **Chained (multi-step) recipes**: the raw-ingredients table's `Tool-Required` column can list more
   than one tool id, comma-separated (e.g. Potato: `2,3` = Cutting Board, then Fryer, before its
   2-piece output). This is `ToolRecipe.chainTools` in the data model.
-- **Multi-use cooked ingredients**: the cooked-ingredients table's `UsageNum` column, when > 1,
-  means a single instance can be served that many times before it's consumed (e.g. Cheese Sauce,
-  `UsageNum: 3`, shared across three dishes before it's used up). This is `CookedIngredientDef.usageNum`.
+- **Reusable ingredients**: graph ingredients use `multipleUsage: true` when a queue-slot amount
+  should become one landed ingredient's reusable serve count. Ordinary ingredients interpret the
+  same amount as separate physical pieces in a draining bag. The old `UsageNum` field is removed.
 - The same table's `RequiredBase` column can list **several** ids (e.g. `9,10,11,12`), meaning the
   ingredient can serve once **any one** of them is already in the dish — not all of them. This is
   `CookedIngredientDef.baseId: Id | Id[]`.

@@ -58,6 +58,44 @@ describe("LevelAuthoringService", () => {
     expect((validation.findings as Array<{ code: string }>).some((finding) => finding.code === "PROVISIONAL_SUPPLY")).toBe(true);
   });
 
+  it("counts bag pieces and exposes the slot-menu amount, split, and merge operations", async () => {
+    const { sessionId, context } = await start("Build an ordinary level around a bagged queue.");
+    const laneResult = await service.addQueueLane(sessionId, 0);
+    const lane = (await service.getSession(sessionId)).draft.lanes[0];
+    const pickupable = (context.graph as {
+      pickupables: Array<{ name: string; stackRange: { min: number; max: number }; multipleUsage: boolean }>;
+    }).pickupables[0];
+    expect(pickupable.stackRange.min).toBeGreaterThanOrEqual(1);
+    const reusable = (context.graph as {
+      pickupables: Array<{ name: string; multipleUsage: boolean }>;
+    }).pickupables.find((item) => item.name === "cheese-sauce");
+    expect(reusable?.multipleUsage).toBe(true);
+
+    const added = await service.addQueueIngredient(sessionId, laneResult.revision, {
+      laneId: lane.id,
+      position: 0,
+      ingredient: pickupable.name,
+      amount: 5,
+    });
+    const supply = await service.getSupplyDemand(sessionId);
+    const row = (supply.ingredients as Array<{ ingredient: string; pickupHave: number }>).find(
+      (item) => item.ingredient === pickupable.name,
+    );
+    expect(row?.pickupHave).toBe(5);
+
+    const slot = (await service.getSession(sessionId)).draft.lanes[0].slots[0];
+    const resized = await service.setQueueSlotAmount(sessionId, added.revision, slot.id, 6);
+    const split = await service.splitQueueSlot(sessionId, resized.revision, slot.id, 2);
+    let slots = (await service.getSession(sessionId)).draft.lanes[0].slots;
+    expect(slots.map((item) => item.amount ?? 1)).toEqual([2, 4]);
+
+    await service.mergeQueueSlots(sessionId, split.revision, slots.map((item) => item.id));
+    slots = (await service.getSession(sessionId)).draft.lanes[0].slots;
+    expect(slots).toHaveLength(1);
+    expect(slots[0].id).toBe(slot.id);
+    expect(slots[0].amount).toBe(6);
+  });
+
   it("constructs dish demand manually and reconciles it with explicit queue pickups", async () => {
     const { sessionId, context } = await start("Create an ordinary recipe-focused level.");
     const orderable = (context.graph as { orderables: Array<{ name: string }> }).orderables[0];

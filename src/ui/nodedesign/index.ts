@@ -154,13 +154,14 @@ export class NodeDesignView {
       // it would queue ground coffee and never a cup. Supplying this covers
       // the section's own Auto Generate button. (The whole-level pipeline in
       // levelpath/generateLevel.ts calls the same generator directly.)
-      generateLanes: (laneCount, shuffleRange) =>
+      generateLanes: (laneCount, shuffleRange, bagFill) =>
         generateNodeQueueLanes({
           ix: this.projected.ix,
           ids: orderIdIndex(this.projected.ix),
           customers: this.customers.draft,
           laneCount,
           shuffleRange,
+          bagFill,
         }),
       recipeDemand: () =>
         nodeDemandByRaw(this.projected.ix, orderIdIndex(this.projected.ix), this.customers.draft),

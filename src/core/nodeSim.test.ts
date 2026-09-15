@@ -514,7 +514,7 @@ describe("bags — a queue slot holding several pieces", () => {
 
   it("refuses a bag when the grid has no free cell, while a single pickup still goes straight to its tool", () => {
     const s = sim({ queueString: "1:2%1", gridString: blockedGrid(0), customerString: "0;0;0;{c0:17.{g0:18}}" });
-    expect(s.canPick(0)).toEqual({ ok: false, reason: "No free grid cell for a bag" });
+    expect(s.canPick(0)).toEqual({ ok: false, reason: "No free grid cell for this amount slot" });
     expect(s.pick(1)).toBe(true);
     expect(s.tools[tool("griddle")].slots[0].item?.ing).toBe(ing("patty"));
   });
@@ -667,18 +667,16 @@ describe("slot gates", () => {
   });
 });
 
-describe("multi-use ingredients", () => {
-  it("lands a usageNum ingredient on the grid and spends one use per serve", () => {
-    // cheese-sauce has usageNum 3, so it must NOT direct-serve: the other two
-    // uses would be thrown away.
-    const s = sim({ queueString: "13,16", customerString: "0;0;0;{c2:{g1:29}.{g2:16}}" });
-    s.pick(0); // potato -> 2 fries, one serves the base slot
+describe("multipleUsage ingredients", () => {
+  it("uses the queue amount as reusable serves on one landed ingredient", () => {
+    const s = sim({ queueString: "13,16:2", customerString: "0;0;0;{c2:{g1:29}.{g2:16}}" });
+    s.pick(0); // potato supplies the required base
     s.tick(3);
-    s.pick(0); // cheese sauce needs no tool
+    s.pick(0); // cheese-sauce amount 2 lands as one object with two serves
     s.runToEnd();
     expect(s.status).toBe("won");
-    const sauce = s.grid.find((c) => c.kind === "cooked" && c.ing === ing("cheese-sauce"));
-    expect(sauce).toEqual({ kind: "cooked", ing: ing("cheese-sauce"), usesLeft: 2 });
+    const sauce = s.grid.find((cell) => cell.kind === "cooked" && cell.ing === ing("cheese-sauce"));
+    expect(sauce).toEqual({ kind: "cooked", ing: ing("cheese-sauce"), usesLeft: 1 });
   });
 });
 

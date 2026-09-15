@@ -227,7 +227,6 @@
         "name": "ice",
         "displayName": "Ice",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "code": "ice",
         "emoji": "🧊",
@@ -239,7 +238,7 @@
         "name": "chili-bowl",
         "displayName": "Chili Bowl",
         "pickupable": true,
-        "usageNum": 2,
+        "multipleUsage": true,
         "price": 0,
         "code": "chili_bowl",
         "emoji": "🌶️",
@@ -251,7 +250,7 @@
         "name": "cheese-sauce",
         "displayName": "Cheese Sauce",
         "pickupable": true,
-        "usageNum": 2,
+        "multipleUsage": true,
         "price": 0,
         "code": "cheese_sauce",
         "emoji": "🧀",
@@ -262,7 +261,6 @@
       {
         "name": "bun-sliced",
         "displayName": "Sliced Bun",
-        "usageNum": 1,
         "emoji": "🍞",
         "localImage": "Map1-burger/ingredients/bun-sliced.png",
         "price": 10,
@@ -272,7 +270,6 @@
       {
         "name": "patty-cooked",
         "displayName": "Cooked Patty",
-        "usageNum": 1,
         "emoji": "🥩",
         "localImage": "Map1-burger/ingredients/patty-cooked.png",
         "price": 5,
@@ -282,7 +279,6 @@
       {
         "name": "tomato-sliced",
         "displayName": "Tomato Slice",
-        "usageNum": 1,
         "emoji": "🍅",
         "localImage": "Map1-burger/ingredients/tomato-sliced.png",
         "price": 5,
@@ -292,7 +288,6 @@
       {
         "name": "lettuce-sliced",
         "displayName": "Lettuce Cut",
-        "usageNum": 1,
         "emoji": "🥬",
         "localImage": "Map1-burger/ingredients/lettuce_sliced.png",
         "price": 5,
@@ -302,7 +297,6 @@
       {
         "name": "onion-sliced",
         "displayName": "Onion Slice",
-        "usageNum": 1,
         "emoji": "🧅",
         "localImage": "Map1-burger/ingredients/onion-sliced.png",
         "price": 5,
@@ -312,7 +306,6 @@
       {
         "name": "cheese-sliced",
         "displayName": "Cheese Slice",
-        "usageNum": 1,
         "emoji": "🧀",
         "localImage": "Map1-burger/ingredients/cheese_sliced.png",
         "price": 5,
@@ -322,7 +315,6 @@
       {
         "name": "egg-cooked",
         "displayName": "Fried Egg",
-        "usageNum": 1,
         "emoji": "🍳",
         "localImage": "Map1-burger/ingredients/egg_cooked.png",
         "price": 5,
@@ -332,7 +324,6 @@
       {
         "name": "soda-cup",
         "displayName": "Soda Cup",
-        "usageNum": 1,
         "emoji": "🥤",
         "localImage": "Map1-burger/ingredients/cup_soda.png",
         "price": 10,
@@ -342,7 +333,6 @@
       {
         "name": "chicken-breast-fried",
         "displayName": "Fried Breast",
-        "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chicken_breast_fried.png",
         "price": 5,
@@ -352,7 +342,6 @@
       {
         "name": "chicken-wing-fried",
         "displayName": "Fried Wing",
-        "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chick_wing_fried.png",
         "price": 5,
@@ -362,7 +351,6 @@
       {
         "name": "chicken-thigh-fried",
         "displayName": "Fried Thigh",
-        "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chick_thigh_fried.png",
         "price": 5,
@@ -372,7 +360,6 @@
       {
         "name": "chicken-nugget-fried",
         "displayName": "Fried Nugget",
-        "usageNum": 1,
         "emoji": "🍗",
         "localImage": "Map1-burger/ingredients/chick_nugget_fried.png",
         "price": 5,
@@ -382,7 +369,6 @@
       {
         "name": "potato-fried",
         "displayName": "Fried Potato",
-        "usageNum": 1,
         "emoji": "🍟",
         "localImage": "Map1-burger/ingredients/potato_fried.png",
         "price": 5,
@@ -392,7 +378,6 @@
       {
         "name": "chive-sliced",
         "displayName": "Chive Sliced",
-        "usageNum": 1,
         "emoji": "🌿",
         "localImage": "Map1-burger/ingredients/chive_sliced.png",
         "price": 0,
@@ -435,7 +420,6 @@
         "name": "potato_sliced",
         "displayName": "Sliced Potato",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "localImage": "Map1-burger/ingredients/potato-coated.png",
         "stackMin": 1,

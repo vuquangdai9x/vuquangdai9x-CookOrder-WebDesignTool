@@ -13,7 +13,7 @@
 //    lane (column) — items only ever jitter forward/back a few slots, never
 //    across lanes.
 
-import type { CookedIngredientDef, CookingToolDef, CustomerConfig, Id } from "../../core/types.ts";
+import type { CookingToolDef, CustomerConfig, Id } from "../../core/types.ts";
 import { evaluateCurve } from "./curveEditor.ts";
 import type { CurveState } from "./curveEditor.ts";
 
@@ -28,12 +28,6 @@ export interface GenerateQueueOptions {
   customers: CustomerConfig[];
   tools: CookingToolDef[];
   laneCount: number;
-  /**
-   * Needed for `usageNum`: how many dish slots one landed piece fills. Optional
-   * so an older caller still compiles, but omitting it over-queues every
-   * multi-use ingredient.
-   */
-  cookedIngredients?: CookedIngredientDef[];
   /** Limited-displacement shuffle applied within each lane after the row shuffle. `{kind:"fixed",value:0}` = skip. */
   shuffleRange: ShuffleRangeSpec;
   /** Injectable for deterministic tests; defaults to Math.random. */
@@ -41,31 +35,19 @@ export interface GenerateQueueOptions {
 }
 
 /**
- * Raw id + how many DISH SLOTS one pickup of it ultimately covers.
- *
- * Two multipliers, and missing either over-queues:
- *
- *   amount   — pieces one pickup yields at the tool (1 tomato -> 2 slices).
- *   usageNum — slots ONE landed piece then fills before it is spent. A cheese
- *              sauce with usageNum 3 serves three dishes from a single pickup.
- *
- * So one pickup covers `amount * usageNum` slots. Counting only `amount` is
- * what left a level over-supplied with multi-use items (cheese sauce, chili
- * bowl) that no customer ever consumed.
+ * Raw id + how many physical pieces one pickup ultimately produces.
  */
 function rawForCooked(
   tools: CookingToolDef[],
-  cooked: CookedIngredientDef[],
   cookedId: Id,
 ): { rawId: Id; covers: number } {
-  const uses = Math.max(1, cooked.find((c) => c.id === cookedId)?.usageNum ?? 1);
   for (const tool of tools) {
     for (const recipe of tool.recipes) {
-      if (recipe.out === cookedId) return { rawId: recipe.in, covers: recipe.amount * uses };
+      if (recipe.out === cookedId) return { rawId: recipe.in, covers: recipe.amount };
     }
   }
   // No recipe: the raw IS its cooked form, so one pickup is one piece.
-  return { rawId: cookedId, covers: uses };
+  return { rawId: cookedId, covers: 1 };
 }
 
 /**
@@ -79,7 +61,6 @@ function rawForCooked(
 export function trueOrderRawSequence(
   customers: CustomerConfig[],
   tools: CookingToolDef[],
-  cooked: CookedIngredientDef[] = [],
 ): Id[] {
   // Slots still covered by an already-queued pickup, keyed by raw id. Tracked
   // per COOKED id as well, because two cooked outputs can share a raw and only
@@ -89,7 +70,7 @@ export function trueOrderRawSequence(
   for (const customer of customers) {
     for (const dish of customer.dishes) {
       for (const cookedId of dish.cookedIds) {
-        const { rawId, covers } = rawForCooked(tools, cooked, cookedId);
+        const { rawId, covers } = rawForCooked(tools, cookedId);
         const key = `${rawId}:${cookedId}`;
         const left = remaining.get(key) ?? 0;
         if (left > 0) {
@@ -149,7 +130,7 @@ export function curveDisplacementShuffle<T>(lane: T[], curve: CurveState, rand: 
 export function generateQueueLanes(opts: GenerateQueueOptions): Id[][] {
   const rand = opts.random ?? Math.random;
   const laneCount = Math.max(1, opts.laneCount);
-  const sequence = trueOrderRawSequence(opts.customers, opts.tools, opts.cookedIngredients ?? []);
+  const sequence = trueOrderRawSequence(opts.customers, opts.tools);
 
   const lanes: Id[][] = Array.from({ length: laneCount }, () => []);
   sequence.forEach((rawId, i) => lanes[i % laneCount].push(rawId));

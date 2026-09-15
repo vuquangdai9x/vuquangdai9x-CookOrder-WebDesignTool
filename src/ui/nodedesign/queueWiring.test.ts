@@ -36,7 +36,7 @@ describe("node Design supplies its own generator", () => {
   it("passes generateLanes in the queue deps", () => {
     // In queueDeps, not the customer section's — a wrong-object placement
     // typechecks against neither, but this pins the intent.
-    expect(nodeDesignSrc).toMatch(/generateLanes:\s*\(laneCount, shuffleRange\)/);
+    expect(nodeDesignSrc).toMatch(/generateLanes:\s*\(laneCount, shuffleRange, bagFill\)/);
     expect(nodeDesignSrc).toContain("generateNodeQueueLanes({");
   });
 

@@ -1,0 +1,17 @@
+{
+  "_note": "Second-pass bag migration for Graph-2-Coffee. These pickupable ingredients formerly used usageNum=2. After the process-output migration runs, an old level whose matching slots are all amount 1 gets amount 2 on every matching slot.",
+  "multipliers": {
+    "3": 2,
+    "4": 2,
+    "5": 2,
+    "6": 2,
+    "10": 2
+  },
+  "names": {
+    "3": "glaze-choco",
+    "4": "glaze-strawberry",
+    "5": "glaze-vanilla",
+    "6": "glaze-blue",
+    "10": "milk"
+  }
+}

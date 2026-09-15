@@ -201,7 +201,6 @@
         "name": "popcorn-kernels",
         "displayName": "Popcorn Kernels",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🌽"
       },
@@ -209,7 +208,6 @@
         "name": "sea-salt",
         "displayName": "Sea Salt",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🧂"
       },
@@ -217,7 +215,6 @@
         "name": "chocolate-drizzle",
         "displayName": "Chocolate Drizzle",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍫"
       },
@@ -225,7 +222,6 @@
         "name": "vanilla-glaze",
         "displayName": "Vanilla Glaze",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⚪"
       },
@@ -233,7 +229,6 @@
         "name": "matcha-powder",
         "displayName": "Matcha Powder",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍵"
       },
@@ -241,7 +236,6 @@
         "name": "strawberry-dust",
         "displayName": "Strawberry Dust",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍓"
       },
@@ -249,7 +243,6 @@
         "name": "rainbow-sprinkles",
         "displayName": "Rainbow Sprinkles",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🌈"
       },
@@ -257,7 +250,6 @@
         "name": "hotdog-bun",
         "displayName": "Hotdog Bun",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥖"
       },
@@ -265,7 +257,6 @@
         "name": "beef-sausage",
         "displayName": "Beef Sausage",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🌭"
       },
@@ -273,7 +264,6 @@
         "name": "ketchup-packet",
         "displayName": "Ketchup Packet",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🔴"
       },
@@ -281,7 +271,6 @@
         "name": "mustard-packet",
         "displayName": "Mustard Packet",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟡"
       },
@@ -289,7 +278,6 @@
         "name": "pickle-relish",
         "displayName": "Pickle Relish",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥒"
       },
@@ -297,7 +285,6 @@
         "name": "chicken-tender",
         "displayName": "Chicken Tender",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🐔"
       },
@@ -305,7 +292,6 @@
         "name": "chicken-wing",
         "displayName": "Chicken Wing",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍗"
       },
@@ -313,7 +299,6 @@
         "name": "potato",
         "displayName": "Potato",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥔"
       },
@@ -321,7 +306,6 @@
         "name": "spicy-sauce",
         "displayName": "Spicy Sauce",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🌶️"
       },
@@ -329,7 +313,6 @@
         "name": "cheese-sauce",
         "displayName": "Cheese Sauce",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🧀"
       },
@@ -337,7 +320,6 @@
         "name": "barbecue-sauce",
         "displayName": "Barbecue Sauce",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟤"
       },
@@ -345,7 +327,6 @@
         "name": "soda-cup",
         "displayName": "Soda Cup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥤"
       },
@@ -353,7 +334,6 @@
         "name": "ice-cubes",
         "displayName": "Ice Cubes",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🧊"
       },
@@ -361,7 +341,6 @@
         "name": "black-tea-leaves",
         "displayName": "Black Tea Leaves",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍂"
       },
@@ -369,7 +348,6 @@
         "name": "peach-syrup",
         "displayName": "Peach Syrup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍑"
       },
@@ -377,7 +355,6 @@
         "name": "lemon-syrup",
         "displayName": "Lemon Syrup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍋"
       },
@@ -385,7 +362,6 @@
         "name": "berry-syrup",
         "displayName": "Berry Syrup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🫐"
       },
@@ -393,7 +369,6 @@
         "name": "mango-syrup",
         "displayName": "Mango Syrup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥭"
       },
@@ -401,7 +376,6 @@
         "name": "popped-popcorn",
         "displayName": "Popped Popcorn",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍿"
       },
@@ -409,7 +383,6 @@
         "name": "grilled-sausage",
         "displayName": "Grilled Sausage",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "♨️"
       },
@@ -417,7 +390,6 @@
         "name": "breaded-chicken-tender",
         "displayName": "Breaded Chicken Tender",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟨"
       },
@@ -425,7 +397,6 @@
         "name": "breaded-chicken-wing",
         "displayName": "Breaded Chicken Wing",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟧"
       },
@@ -433,7 +404,6 @@
         "name": "fried-chicken-tender",
         "displayName": "Fried Chicken Tender",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍖"
       },
@@ -441,7 +411,6 @@
         "name": "fried-chicken-wing",
         "displayName": "Fried Chicken Wing",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍗"
       },
@@ -449,7 +418,6 @@
         "name": "fried-potato",
         "displayName": "Fried Potato",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍟"
       },
@@ -457,7 +425,6 @@
         "name": "coca-cup",
         "displayName": "Coca Cup",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥤"
       },
@@ -465,7 +432,6 @@
         "name": "brewed-black-tea",
         "displayName": "Brewed Black Tea",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🫖"
       }

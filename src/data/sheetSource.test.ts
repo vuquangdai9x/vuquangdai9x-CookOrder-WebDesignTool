@@ -19,6 +19,7 @@ describe("CSV export (level data only — no map/ingredient/tool definitions)", 
     const lines = csv.split("\r\n");
     expect(lines).toHaveLength(burgerLevels.levels.length + 1);
     expect(lines[0]).toContain("QueueString");
+    expect(lines[0]).toContain("BagFill");
     expect(lines[0]).not.toContain("GridWidth");
     // A level with grid effects (commas + "#") survives the round trip through CSV quoting.
     const levelWithEffect = burgerLevels.levels.find((l) => l.gridString.includes("#"));
@@ -74,6 +75,11 @@ describe("CSV import", () => {
     const [level] = importLevelsCsv(csv);
     expect(level.outOfSlotPolicy).toBe("park-on-grid");
     expect(level.boosterCharges).toEqual([3, 3, 2, 3]);
+  });
+
+  it("round-trips the persisted bag-fill generator mode", () => {
+    const source = { levels: [{ ...burgerLevels.levels[0], bagFill: "max" as const }] };
+    expect(importLevelsCsv(levelsCsv(source))[0].bagFill).toBe("max");
   });
 
   it("accepts a CSV with no header row", () => {

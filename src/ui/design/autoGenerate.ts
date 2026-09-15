@@ -97,13 +97,6 @@ function topUpPieceAlignment(
   for (const tool of map.tools) {
     for (const recipe of tool.recipes) yieldByCooked.set(recipe.out, recipe.amount);
   }
-  for (const ingredient of map.cookedIngredients) {
-    yieldByCooked.set(
-      ingredient.id,
-      Math.max(1, yieldByCooked.get(ingredient.id) ?? 1) * Math.max(1, ingredient.usageNum ?? 1),
-    );
-  }
-
   const totals = new Map<Id, number>();
   for (const c of customers) {
     for (const d of c.dishes) {

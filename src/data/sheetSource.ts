@@ -217,6 +217,7 @@ const LEVELS_CSV_HEADER = [
   "OutOfSlotPolicy", "BoosterCharges",
   "IngredientWeights", "CustomerDishesSequence", "ComplexityCurve", "ShuffleCurve", "DesignNote",
   "RandomSeed", "ObstacleData",
+  "BagFill",
 ];
 
 /** Level data only: metadata, customer, grid and queue strings — no map/ingredient/tool definitions. */
@@ -227,7 +228,7 @@ export function levelsCsv(map: Pick<MapData, "levels">): string {
     l.outOfSlotPolicy ?? "", (l.boosterCharges ?? []).join("|"),
     l.ingredientWeights ?? "", l.customerDishesSequence ?? "", l.complexityCurve ?? "",
     l.shuffleCurve ?? "", l.designNote ?? "",
-    l.randomSeed ?? "", l.obstacleData ?? "",
+    l.randomSeed ?? "", l.obstacleData ?? "", l.bagFill ?? "",
   ]);
   return toCsv([LEVELS_CSV_HEADER, ...rows]);
 }
@@ -256,7 +257,7 @@ export function importLevelsCsv(text: string): LevelData[] {
       serveableSlots, queueString, gridString, customerString,
       outOfSlotPolicy, boosterCharges,
       ingredientWeights, customerDishesSequence, complexityCurve, shuffleCurve, designNote,
-      randomSeed, obstacleData,
+      randomSeed, obstacleData, bagFill,
     ] = r;
     if (!id || Number.isNaN(Number(id))) {
       throw new Error(`Row ${i + 1}: invalid Level_ID "${id ?? ""}"`);
@@ -291,6 +292,7 @@ export function importLevelsCsv(text: string): LevelData[] {
       level.randomSeed = Math.trunc(Number(randomSeed));
     }
     if (obstacleData) level.obstacleData = obstacleData;
+    if (bagFill === "min" || bagFill === "random" || bagFill === "max") level.bagFill = bagFill;
     return level;
   });
 }

@@ -152,7 +152,6 @@
         "name": "matcha-powder",
         "displayName": "Matcha Powder",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍵"
       },
@@ -160,7 +159,6 @@
         "name": "milk-sauce",
         "displayName": "Milk Sauce",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⚪"
       },
@@ -168,7 +166,6 @@
         "name": "strawberry-sauce",
         "displayName": "Strawberry Sauce",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍓"
       },
@@ -176,7 +173,6 @@
         "name": "chocolate-sauce",
         "displayName": "Chocolate Sauce",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍫"
       },
@@ -184,7 +180,6 @@
         "name": "whipped-cream",
         "displayName": "Whipped Cream",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍦"
       },
@@ -192,7 +187,6 @@
         "name": "sweet-red-bean",
         "displayName": "Sweet Red Bean",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🫘"
       },
@@ -200,7 +194,6 @@
         "name": "tapioca-pearls",
         "displayName": "Tapioca Pearls",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⚫"
       },
@@ -208,7 +201,6 @@
         "name": "mochi-cubes",
         "displayName": "Mochi Cubes",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⬜"
       },
@@ -216,7 +208,6 @@
         "name": "honey-drizzle",
         "displayName": "Honey Drizzle",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍯"
       },
@@ -224,7 +215,6 @@
         "name": "glutinous-rice-flour",
         "displayName": "Glutinous Rice Flour",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍚"
       },
@@ -232,7 +222,6 @@
         "name": "strawberry-filling",
         "displayName": "Strawberry Filling",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🔺"
       },
@@ -240,7 +229,6 @@
         "name": "chocolate-filling",
         "displayName": "Chocolate Filling",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟫"
       },
@@ -248,7 +236,6 @@
         "name": "cream-cheese",
         "displayName": "Cream Cheese",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🧀"
       },
@@ -256,7 +243,6 @@
         "name": "strawberry-slice",
         "displayName": "Strawberry Slice",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "❤️"
       },
@@ -264,7 +250,6 @@
         "name": "chocolate-curl",
         "displayName": "Chocolate Curl",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "➰"
       },
@@ -272,7 +257,6 @@
         "name": "white-chocolate-star",
         "displayName": "White Chocolate Star",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⭐"
       },
@@ -280,7 +264,6 @@
         "name": "cherry",
         "displayName": "Cherry",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍒"
       },
@@ -288,7 +271,6 @@
         "name": "iced-whisked-matcha",
         "displayName": "Iced Whisked Matcha",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🧊"
       },
@@ -296,7 +278,6 @@
         "name": "mochi-wrapper",
         "displayName": "Mochi Wrapper",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⚪"
       },
@@ -304,7 +285,6 @@
         "name": "cheesecake-batter",
         "displayName": "Cheesecake Batter",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥛"
       },
@@ -312,7 +292,6 @@
         "name": "baked-cheesecake",
         "displayName": "Baked Cheesecake",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍰"
       }

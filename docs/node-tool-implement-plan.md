@@ -40,7 +40,7 @@ Five vertex kinds, five edge kinds. The edge *kind* carries the semantics.
 
 | Kind | Colour | Carries |
 |---|---|---|
-| **ingredient** | green | `pickupable` (queue leaf), `servable` (may fill a dish slot), `usageNum`, `limitPerDish`, `numSlices`, `price`, `code`, artwork |
+| **ingredient** | green | `pickupable` (queue leaf), `servable` (may fill a dish slot), `multipleUsage`, `limitPerDish`, `numSlices`, `price`, `code`, artwork |
 | **tool** | orange | `numSlots` (simultaneous capacity), `cookingTime`, `upgradeCosts`, artwork |
 | **group** | blue | `groupType: SINGLE \| MULTIPLE`, `maxQuantity` |
 | **composite** | gold | `orderable` (graph root) |
@@ -216,7 +216,7 @@ Phases 1–2 stand alone if 3–5 slip: they give a typed schema and a mechanica
 | `ToolRecipe {in, out, amount, chainTools?}` | `process` edge `{inputs[], amount, chainTools?}` | Runtime inputs are single-valued. `chainTools` survives 1:1, but multi-input recipes have no runtime representation. |
 | `CookedIngredientDef.baseId` | `base` / `topping` edges | Runtime `baseId` is a flat serve-time precondition on a cooked-id list. The graph nests composites arbitrarily deep; the runtime cannot express depth > 1. |
 | Integer ids | Names | The `runtime*Id` fields on every vertex exist precisely to make this recoverable later. |
-| `usageNum`, `limit`, `numSlices`, `price`, `code` | carried on the ingredient vertex | Compatible — already modelled. |
+| `multipleUsage`, `limit`, `numSlices`, `price`, `code` | carried on the ingredient vertex | `multipleUsage` makes queue amount the reusable serve count of one landed object; other fields remain direct metadata. |
 | `DirtyObjectDef.sourceCookedId` | `leavesDirty` edge | Compatible, and cleaner: keyed by composite rather than name-matched against a cooked ingredient's display name. |
 
 Attempting the compiler alongside the editor is what sank an earlier iteration of this idea. Phase 1 ships a standalone authoring + validation tool; the compiler is revisited once the graph data is proven and the depth->1 question has an agreed answer.

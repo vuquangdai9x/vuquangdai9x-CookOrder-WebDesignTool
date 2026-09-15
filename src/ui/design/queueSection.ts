@@ -47,6 +47,7 @@ import { checkToolDeadlock } from "./toolDeadlockCheck.ts";
 import type { ToolDeadlockReport } from "./toolDeadlockCheck.ts";
 import type { ChangeStatus } from "./changeTracking.ts";
 import { openAutoGenerateQueueDialog } from "./autoGenerateQueueDialog.ts";
+import type { BagFillMode, GeneratedQueueSlot } from "../nodedesign/nodeQueueGenerate.ts";
 import { defaultCurve, openCurveDialog, parseCurve, serializeCurve } from "./curveEditor.ts";
 import { customerColor } from "./customerColors.ts";
 import type { EstimateResult } from "./estimateDifficulty.ts";
@@ -87,7 +88,7 @@ export interface QueueSectionDeps {
    * dialog, the draft plumbing — so the generator is the one part that has to
    * be swappable rather than forked.
    */
-  generateLanes?(laneCount: number, shuffleRange: ShuffleRangeSpec): Id[][];
+  generateLanes?(laneCount: number, shuffleRange: ShuffleRangeSpec, bagFill: BagFillMode): GeneratedQueueSlot[][];
   /**
    * Replaces legacy single-input recipe demand. The node editor supplies a
    * graph-aware walk so Recipe Pieces includes every input of a process.
@@ -1444,12 +1445,12 @@ function tileMenu(
   return items;
 }
 
-// ---------- bag amount / split / merge ----------
+// ---------- slot amount / split / merge ----------
 
 /**
- * The bag rows of a slot's right-click menu: an amount box (drag sideways to
+ * The amount rows of a slot's right-click menu: an amount box (drag sideways to
  * scrub), a split slider, and — with 2+ same-ingredient slots selected — a
- * merge. Sweepers get none of this; a sweeper is never a bag.
+ * merge. Sweepers get none of this; a sweeper never carries an amount.
  */
 function bagMenuItems(
   section: Section<QueueDraft>,
@@ -1500,10 +1501,10 @@ function bagMenuItems(
     ]),
   });
 
-  // --- Split: the slider is how many pieces STAY; the rest become a new
+  // --- Split: the slider is how many amount units STAY; the rest become a new
   // plain slot right after this one in the same lane (no effects, no group).
   items.push({
-    label: `Split bag${amount < 2 ? " (needs 2+)" : ""}`,
+    label: `Split amount${amount < 2 ? " (needs 2+)" : ""}`,
     disabled: amount < 2,
     expand: (close) => {
       let keep = Math.max(1, Math.floor(amount / 2));
@@ -1526,7 +1527,7 @@ function bagMenuItems(
           const rest: QueueItem = { kind: "ingredient", id: item.id, effects: [] };
           setItemAmount(rest, amount - keep);
           lane.splice(itemIndex + 1, 0, tagNew(rest));
-          section.commit("Split bag", 1);
+          section.commit("Split amount", 1);
           close();
         }),
       ]);
@@ -1545,7 +1546,7 @@ function bagMenuItems(
     const total = ordered.reduce((n, it) => n + queueItemAmount(it), 0);
     items.push({
       label: sameIngredient
-        ? `Merge ${ordered.length} slots into one bag of ${total}`
+        ? `Merge ${ordered.length} slots into one amount of ${total}`
         : "Merge slots (select the same ingredient)",
       disabled: !sameIngredient,
       onSelect: () => {
@@ -1651,8 +1652,8 @@ export function startQueueAutoGenerate(
   const draft = section.draft;
   openAutoGenerateQueueDialog({
     level: deps.level,
-    onGenerate: (shuffleRange) => {
-      runAutoGenerate(section, deps, draft, shuffleRange);
+    onGenerate: (shuffleRange, bagFill) => {
+      runAutoGenerate(section, deps, draft, shuffleRange, bagFill);
       deps.onSaved(); // curve mode also wrote deps.level.shuffleCurve — flag the app-level change
     },
   });
@@ -1663,23 +1664,34 @@ function runAutoGenerate(
   deps: QueueSectionDeps,
   draft: QueueDraft,
   shuffleRange: ShuffleRangeSpec,
+  bagFill: BagFillMode,
 ): void {
   const laneCount = Math.max(1, draft.queues.length);
   const lanes = deps.generateLanes
-    ? deps.generateLanes(laneCount, shuffleRange)
+    ? deps.generateLanes(laneCount, shuffleRange, bagFill)
     : generateQueueLanes({
         customers: deps.currentCustomers(),
         tools: deps.map.tools,
-        // usageNum lives here: a multi-use item needs fewer pickups than it has
-        // dish slots, and leaving this out over-supplies the level.
-        cookedIngredients: deps.map.cookedIngredients,
         laneCount,
         shuffleRange,
       });
 
   const before = draft.queues.reduce((n, q) => n + q.length, 0);
   const after = lanes.reduce((n, l) => n + l.length, 0);
-  draft.queues = lanes.map((lane) => tagNew(lane.map((id) => tagNew({ kind: "ingredient", id, effects: [] }))));
+  draft.queues = lanes.map((lane) =>
+    tagNew(
+      lane.map((slot) => {
+        const id = typeof slot === "number" ? slot : slot.id;
+        const amount = typeof slot === "number" ? 1 : slot.amount;
+        return tagNew({
+          kind: "ingredient" as const,
+          id,
+          effects: [],
+          ...(amount > 1 ? { amount } : {}),
+        });
+      }),
+    ),
+  );
   draft.groups = []; // authored groups don't survive a full regeneration
   const label = shuffleRange.kind === "fixed" ? `shuffle range ${shuffleRange.value}` : "curve shuffle";
   section.commit(`Auto-generate queue (${label})`, after, before);
@@ -1718,20 +1730,14 @@ function recipeFoldout(
   const rawYield = rawYieldAmounts(deps.map);
   const supply = supplyByRaw(draft.queues);
 
-  // Have/need in USE units, not physical pickup count — need is a straight
-  // count of order occurrences; have is pickups × yield × usageNum (how many
-  // times the queued pieces can actually be served). For a normal (usageNum
-  // 1) ingredient this still hides the same real mismatch a raw pickup count
-  // alone would (3 slices needed vs. 2 pickups yielding 4 both "round up" to
-  // the same pickup count) — a usageNum ingredient additionally surfaces a
-  // landed piece's leftover capacity instead of rounding it away.
+  // Have/need in physical piece units. Queue bags contribute their amount and
+  // custom multi-output recipes contribute their process yield.
   const rawIds = new Set([...demand.keys(), ...supply.keys()]);
   const pieceCounts = new Map<number, { have: number; need: number }>();
   for (const rawId of rawIds) {
     const info = demand.get(rawId);
     const amount = info?.amount ?? rawYield.get(rawId) ?? 1;
-    const usageNum = info?.usageNum ?? 1;
-    pieceCounts.set(rawId, { have: (supply.get(rawId) ?? 0) * amount * usageNum, need: info?.need ?? 0 });
+    pieceCounts.set(rawId, { have: (supply.get(rawId) ?? 0) * amount, need: info?.need ?? 0 });
   }
 
   // Keys held by queue items vs. ColorLock demand on the grid.

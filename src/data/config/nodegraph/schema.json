@@ -179,25 +179,24 @@
           "description": "Comes off the ingredient queue. Marks this vertex as a graph leaf — a traceback terminates here."
         },
         {
-          "name": "usageNum",
-          "type": "int",
-          "default": 1,
-          "min": 1,
-          "description": "How many dish slots ONE landed piece can fill before it is consumed. >1 is a shared sauce (chili bowl 2, cheese sauce 3). Note >1 also disables the skip-the-grid direct-serve path in the runtime."
+          "name": "multipleUsage",
+          "type": "bool",
+          "default": false,
+          "description": "When true, a queue slot's amount becomes the landed ingredient's reusable serve count instead of separate physical pieces in a draining bag."
         },
         {
           "name": "stackMin",
           "type": "int",
           "default": 1,
           "min": 1,
-          "description": "Smallest bag a queue slot of this ingredient holds when Auto Generate builds a queue (pieces per slot). 1 = plain single slots. Must not exceed stackMax."
+          "description": "Smallest queue-slot amount Auto Generate uses. For multipleUsage this is reusable serves; otherwise physical pieces. Must not exceed stackMax."
         },
         {
           "name": "stackMax",
           "type": "int",
           "default": 1,
           "min": 1,
-          "description": "Largest bag Auto Generate may put in one queue slot of this ingredient. A hand-authored amount outside stackMin..stackMax is only a level warning."
+          "description": "Largest queue-slot amount Auto Generate uses. For multipleUsage this is reusable serves; otherwise physical pieces. A hand-authored amount outside the range is only a level warning."
         },
         {
           "name": "price",
@@ -638,7 +637,7 @@
     {
       "id": "INV-STACK-RANGE",
       "severity": "error",
-      "description": "An ingredient's stackMin/stackMax bag range satisfies 1 <= stackMin <= stackMax."
+      "description": "An ingredient's stackMin/stackMax queue-amount range satisfies 1 <= stackMin <= stackMax."
     },
     {
       "id": "INV-GROUP-NONEMPTY",

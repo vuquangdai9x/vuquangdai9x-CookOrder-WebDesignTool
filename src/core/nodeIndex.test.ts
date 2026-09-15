@@ -188,10 +188,10 @@ describe("assembly", () => {
 });
 
 describe("per-ingredient scalars", () => {
-  it("hoists usageNum out of a linear scan", () => {
-    expect(ix.usageNum[ing("chili-bowl")]).toBe(2);
-    expect(ix.usageNum[ing("cheese-sauce")]).toBe(3);
-    expect(ix.usageNum[ing("patty-cooked")]).toBe(1);
+  it("hoists the multipleUsage behavior flag", () => {
+    expect(ix.multipleUsage[ing("chili-bowl")]).toBe(1);
+    expect(ix.multipleUsage[ing("cheese-sauce")]).toBe(1);
+    expect(ix.multipleUsage[ing("patty-cooked")]).toBe(0);
   });
 
   it("hoists servable and pickupable", () => {

@@ -40,10 +40,6 @@ export function middleStructureKey(sim: NodeSimulation): string {
     .map((cell, i) => {
       const lock = sim.cellLockLabel(i);
       if (lock) return `L${lock}`;
-      // usesLeft must be part of the key: a multi-use ingredient (e.g. a
-      // shared sauce) keeps the same ingredient index across a serve that
-      // only decrements its remaining uses — without a key change here, the
-      // grid tier never rebuilds to show the new count.
       if (cell.kind === "cooked") {
         return `c${cell.ing}${cell.usesLeft !== undefined ? `x${cell.usesLeft}` : ""}`;
       }

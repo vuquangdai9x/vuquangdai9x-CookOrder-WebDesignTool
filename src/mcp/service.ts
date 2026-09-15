@@ -493,8 +493,9 @@ export class LevelAuthoringService {
       if (name === undefined || dataId === undefined || actualDense === undefined || !ix.pickupable[actualDense]) throw new Error(`"${input.ingredient}" is not a pickupable graph ingredient.`);
       const resolvedName = name;
       const count = Math.max(1, Math.min(100, Math.floor(input.count ?? 1))); const added = [];
-      // `count` = how many SLOTS to add; `amount` = pieces in each (a bag).
-      const amount = Math.max(1, Math.min(100, Math.floor(input.amount ?? 1)));
+      // `count` = slots to add; `amount` = physical pieces or reusable serves,
+      // depending on the ingredient's multipleUsage graph flag.
+      const amount = Math.max(1, Math.floor(input.amount ?? 1));
       for (let offset = 0; offset < count; offset++) {
         const slot: DraftQueueSlot = { id: this.nextId(session, "slot"), ingredientId: dataId, ingredient: resolvedName, effects: [], provisional: Boolean(input.provisional), ...(amount > 1 ? { amount } : {}) };
         lane.slots.splice(Math.max(0, Math.min(input.position + offset, lane.slots.length)), 0, slot); added.push(slot);
@@ -517,9 +518,59 @@ export class LevelAuthoringService {
   async setQueueSlotAmount(sessionId: string, expectedRevision: number, slotId: string, amount: number): Promise<MutationResult> {
     return this.mutate(sessionId, expectedRevision, "set_queue_slot_amount", { slotId, amount }, (session) => {
       const slot = this.slot(session, slotId);
-      const n = Math.max(1, Math.min(100, Math.floor(amount)));
+      const n = Math.max(1, Math.floor(amount));
       if (n > 1) slot.amount = n; else delete slot.amount;
       return [slot];
+    });
+  }
+
+  /** Splits one bag in place; the original keeps effects/groups and the remainder is a plain ungrouped slot. */
+  async splitQueueSlot(sessionId: string, expectedRevision: number, slotId: string, keepAmount: number): Promise<MutationResult> {
+    return this.mutate(sessionId, expectedRevision, "split_queue_slot", { slotId, keepAmount }, (session) => {
+      for (const lane of session.draft.lanes) {
+        const at = lane.slots.findIndex((slot) => slot.id === slotId);
+        if (at < 0) continue;
+        const slot = lane.slots[at];
+        const total = Math.max(1, Math.floor(slot.amount ?? 1));
+        const keep = Math.floor(keepAmount);
+        if (total < 2) throw new Error(`Queue slot "${slotId}" is not a bag.`);
+        if (keep < 1 || keep >= total) throw new Error(`keep_amount must be between 1 and ${total - 1}.`);
+        if (keep > 1) slot.amount = keep; else delete slot.amount;
+        const remainder = total - keep;
+        const rest: DraftQueueSlot = {
+          id: this.nextId(session, "slot"),
+          ingredientId: slot.ingredientId,
+          ingredient: slot.ingredient,
+          effects: [],
+          provisional: slot.provisional,
+          ...(remainder > 1 ? { amount: remainder } : {}),
+        };
+        lane.slots.splice(at + 1, 0, rest);
+        return [slot, rest];
+      }
+      throw new Error(`Unknown queue slot "${slotId}".`);
+    });
+  }
+
+  /** Merges same-ingredient slots into the first id, matching the queue tile menu. */
+  async mergeQueueSlots(sessionId: string, expectedRevision: number, slotIds: string[]): Promise<MutationResult> {
+    return this.mutate(sessionId, expectedRevision, "merge_queue_slots", { slotIds }, (session) => {
+      const unique = [...new Set(slotIds)];
+      if (unique.length < 2) throw new Error("Merging bags requires at least two different queue slots.");
+      const slots = unique.map((id) => this.slot(session, id));
+      const first = slots[0];
+      if (slots.some((slot) => slot.ingredientId !== first.ingredientId)) {
+        throw new Error("Only slots containing the same ingredient can be merged.");
+      }
+      first.amount = slots.reduce((sum, slot) => sum + Math.max(1, Math.floor(slot.amount ?? 1)), 0);
+      const removedIds = new Set(unique.slice(1));
+      for (const lane of session.draft.lanes) {
+        lane.slots = lane.slots.filter((slot) => !removedIds.has(slot.id));
+      }
+      session.draft.groups = session.draft.groups.filter(
+        (group) => !group.slotIds.some((id) => removedIds.has(id)),
+      );
+      return [first, ...slots.slice(1)];
     });
   }
 
@@ -752,10 +803,14 @@ export class LevelAuthoringService {
   private supplyDemand(session: SessionRecord, resources: AuthoringResources): JsonRecord {
     const ix = buildIndex(resources.doc); const ids = buildIdIndex(resources.doc.idTable); const customers = toNodeCustomers(session.draft, resources);
     const demand = nodeDemandByRaw(ix, ids, customers); const have = new Map<number, number>();
-    for (const lane of session.draft.lanes) for (const slot of lane.slots) have.set(slot.ingredientId, (have.get(slot.ingredientId) ?? 0) + 1);
+    for (const lane of session.draft.lanes) {
+      for (const slot of lane.slots) {
+        have.set(slot.ingredientId, (have.get(slot.ingredientId) ?? 0) + Math.max(1, Math.floor(slot.amount ?? 1)));
+      }
+    }
     const allIds = new Set([...demand.keys(), ...have.keys()]);
     const ingredients = [...allIds].sort((a, b) => a - b).map((dataId) => {
-      const raw = demand.get(dataId); const needUnits = raw?.need ?? 0; const usablePerPickup = Math.max(1, raw?.amount ?? 1) * Math.max(1, raw?.usageNum ?? 1);
+      const raw = demand.get(dataId); const needUnits = raw?.need ?? 0; const usablePerPickup = Math.max(1, raw?.amount ?? 1);
       const pickupNeed = Math.ceil(needUnits / usablePerPickup); const pickupHave = have.get(dataId) ?? 0; const name = ids.byId.ingredient.get(dataId) ?? `ingredient-${dataId}`;
       const dense = ix.ingByName.get(name); const customersProducingDemand: unknown[] = [];
       session.draft.customers.forEach((customer, customerIndex) => customer.dishes.forEach((dish) => {
@@ -767,7 +822,7 @@ export class LevelAuthoringService {
       const haveUsableUnits = pickupHave * usablePerPickup;
       return {
         ingredient: name, dataId, rawPickupRequired: pickupNeed, toolChain: chain,
-        yield: raw?.amount ?? 1, reusableUseMultiplier: raw?.usageNum ?? 1,
+        yield: raw?.amount ?? 1,
         have: haveUsableUnits, need: needUnits,
         surplus: Math.max(0, haveUsableUnits - needUnits), missing: Math.max(0, needUnits - haveUsableUnits),
         pickupHave, pickupNeed,
@@ -807,7 +862,7 @@ export class LevelAuthoringService {
       const ingredients = new Set(coords.map((coord) => this.slot(session, coord.slotId).ingredient));
       if (ingredients.size > 1) findings.push({ severity: "warning", code: "GROUP_MIXED_INGREDIENTS", message: `${group.id} contains different ingredients.`, objectIds: [group.id] });
     });
-    const supply = this.supplyDemand(session, resources); for (const missing of supply.missing as Array<{ ingredient: string; howMany: number }>) findings.push({ severity: "error", code: "MISSING_SUPPLY", message: `Missing ${missing.howMany} pickup(s) of ${missing.ingredient}.`, repair: `Add ${missing.howMany} pickup(s) of ${missing.ingredient}.` });
+    const supply = this.supplyDemand(session, resources); for (const missing of supply.missing as Array<{ ingredient: string; howMany: number }>) findings.push({ severity: "error", code: "MISSING_SUPPLY", message: `Missing ${missing.howMany} piece(s) of ${missing.ingredient}.`, repair: `Add ${missing.howMany} piece(s), either as slots or within bags, of ${missing.ingredient}.` });
     for (const balance of supply.keyBalance as Array<{ colorId: number; have: number; need: number }>) if (balance.have < balance.need) findings.push({ severity: "error", code: "MISSING_KEYS", message: `Color ${balance.colorId} needs ${balance.need} keys but only ${balance.have} are supplied.`, repair: "Add matching HoldingKey ingredients earlier or reduce ColorLock key demand." });
     if (session.draft.lanes.flatMap((lane) => lane.slots).some((slot) => slot.provisional)) findings.push({ severity: "warning", code: "PROVISIONAL_SUPPLY", message: "Some queue ingredients are still marked provisional.", repair: "Reconcile them against demand and clear the provisional marker before finalization." });
     return findings;

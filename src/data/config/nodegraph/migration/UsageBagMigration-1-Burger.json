@@ -1,0 +1,11 @@
+{
+  "_note": "Second-pass bag migration for Graph-1-Burger. These pickupable ingredients formerly used usageNum=2. After the process-output migration runs, an old level whose matching slots are all amount 1 gets amount 2 on every matching slot.",
+  "multipliers": {
+    "14": 2,
+    "16": 2
+  },
+  "names": {
+    "14": "chili-bowl",
+    "16": "cheese-sauce"
+  }
+}

@@ -6,7 +6,7 @@
 // than the projection costs.
 //
 // What survives is exactly what those sections read: names, icons, ids,
-// `limit`, `usageNum`, a `baseId` DISPLAY HINT, recipe `amount` (as the whole
+// `limit`, a `baseId` DISPLAY HINT, recipe `amount` (as the whole
 // chain's yield, so the "recipe pieces" counters stay truthful), and the grid
 // dimensions. What does not survive — chainTools, intermediates, slot trees,
 // the composite structure — is exactly what the Design sections never consult.
@@ -80,7 +80,6 @@ export function nodeAsMapDef(doc: NodeGraphMap, ix: GraphIndex = buildIndex(doc)
     if (ix.servable[dense]) {
       cookedIngredients.push({
         ...shared,
-        ...(vertex.usageNum && vertex.usageNum > 1 ? { usageNum: vertex.usageNum } : {}),
         ...(limitHintFor(ix, dense) ?? {}),
         ...(baseHintFor(ix, dense, dataIdOf) ?? {}),
       });

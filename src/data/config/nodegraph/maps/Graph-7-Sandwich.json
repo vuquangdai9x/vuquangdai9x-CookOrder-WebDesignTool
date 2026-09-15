@@ -202,7 +202,6 @@
         "name": "sandwich-bread",
         "displayName": "Sandwich Bread",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍞"
       },
@@ -210,7 +209,6 @@
         "name": "chicken-breast",
         "displayName": "Chicken Breast",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🐔"
       },
@@ -218,7 +216,6 @@
         "name": "bacon-strip",
         "displayName": "Bacon Strip",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥓"
       },
@@ -226,7 +223,6 @@
         "name": "hard-boiled-egg",
         "displayName": "Hard-Boiled Egg",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥚"
       },
@@ -234,7 +230,6 @@
         "name": "tomato-slice",
         "displayName": "Tomato Slice",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍅"
       },
@@ -242,7 +237,6 @@
         "name": "lettuce-leaf",
         "displayName": "Lettuce Leaf",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥬"
       },
@@ -250,7 +244,6 @@
         "name": "cheddar-slice",
         "displayName": "Cheddar Slice",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🧀"
       },
@@ -258,7 +251,6 @@
         "name": "mayonnaise",
         "displayName": "Mayonnaise",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⚪"
       },
@@ -266,7 +258,6 @@
         "name": "cucumber-slice",
         "displayName": "Cucumber Slice",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥒"
       },
@@ -274,7 +265,6 @@
         "name": "carrot-ribbon",
         "displayName": "Carrot Ribbon",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥕"
       },
@@ -282,7 +272,6 @@
         "name": "red-onion-ring",
         "displayName": "Red Onion Ring",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟣"
       },
@@ -290,7 +279,6 @@
         "name": "sweet-corn",
         "displayName": "Sweet Corn",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🌽"
       },
@@ -298,7 +286,6 @@
         "name": "croutons",
         "displayName": "Croutons",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟫"
       },
@@ -306,7 +293,6 @@
         "name": "vinaigrette",
         "displayName": "Vinaigrette",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🫙"
       },
@@ -314,7 +300,6 @@
         "name": "potato",
         "displayName": "Potato",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥔"
       },
@@ -322,7 +307,6 @@
         "name": "sea-salt",
         "displayName": "Sea Salt",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🧂"
       },
@@ -330,7 +314,6 @@
         "name": "ketchup",
         "displayName": "Ketchup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🔴"
       },
@@ -338,7 +321,6 @@
         "name": "cheese-sauce",
         "displayName": "Cheese Sauce",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟡"
       },
@@ -346,7 +328,6 @@
         "name": "soda-cup",
         "displayName": "Soda Cup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥤"
       },
@@ -354,7 +335,6 @@
         "name": "ice-cubes",
         "displayName": "Ice Cubes",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🧊"
       },
@@ -362,7 +342,6 @@
         "name": "orange",
         "displayName": "Orange",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍊"
       },
@@ -370,7 +349,6 @@
         "name": "apple",
         "displayName": "Apple",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍎"
       },
@@ -378,7 +356,6 @@
         "name": "watermelon",
         "displayName": "Watermelon",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍉"
       },
@@ -386,7 +363,6 @@
         "name": "pineapple",
         "displayName": "Pineapple",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍍"
       },
@@ -394,7 +370,6 @@
         "name": "mango",
         "displayName": "Mango",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥭"
       },
@@ -402,7 +377,6 @@
         "name": "toasted-sandwich-bread",
         "displayName": "Toasted Sandwich Bread",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥪"
       },
@@ -410,7 +384,6 @@
         "name": "grilled-chicken",
         "displayName": "Grilled Chicken",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍗"
       },
@@ -418,7 +391,6 @@
         "name": "crispy-bacon",
         "displayName": "Crispy Bacon",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥓"
       },
@@ -426,7 +398,6 @@
         "name": "fried-potato",
         "displayName": "Fried Potato",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍟"
       },
@@ -434,7 +405,6 @@
         "name": "coca-cup",
         "displayName": "Coca Cup",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥤"
       },
@@ -442,7 +412,6 @@
         "name": "orange-juice",
         "displayName": "Orange Juice",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟠"
       },
@@ -450,7 +419,6 @@
         "name": "apple-juice",
         "displayName": "Apple Juice",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟢"
       },
@@ -458,7 +426,6 @@
         "name": "watermelon-juice",
         "displayName": "Watermelon Juice",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🩷"
       },
@@ -466,7 +433,6 @@
         "name": "pineapple-juice",
         "displayName": "Pineapple Juice",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟡"
       },
@@ -474,7 +440,6 @@
         "name": "mango-juice",
         "displayName": "Mango Juice",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟨"
       }

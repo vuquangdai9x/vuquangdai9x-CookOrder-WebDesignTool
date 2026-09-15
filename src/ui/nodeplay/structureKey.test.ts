@@ -126,17 +126,8 @@ describe("node play view structure key", () => {
     expect(middleStructureKey(s)).not.toBe(inFlight);
   });
 
-  it("changes when a multi-use cooked ingredient's remaining count decrements", () => {
-    // chili-bowl is usageNum 2 in burger.json: one landed piece serves two
-    // slots before the cell empties. The key must change on the second serve
-    // even though the SAME ingredient stays in the SAME cell — only its
-    // usesLeft differs, which is exactly the case the legacy regression test
-    // for this bug covers.
+  it("changes when a multipleUsage ingredient's reusable count decrements", () => {
     const s = sim({ queueString: "0", customerString: "0;0;0;{c0:17}" });
-    // Land it on the grid directly via the public grid array — the sim's own
-    // pick/serve choreography for a shared multi-use topping needs two
-    // customers and a base gate; this isolates the key's sensitivity to
-    // usesLeft without that ceremony.
     s.grid[0] = { kind: "cooked", ing: ing("chili-bowl"), usesLeft: 2 };
     const beforeServe = middleStructureKey(s);
     s.grid[0] = { kind: "cooked", ing: ing("chili-bowl"), usesLeft: 1 };

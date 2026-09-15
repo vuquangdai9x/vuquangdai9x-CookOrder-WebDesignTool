@@ -57,7 +57,7 @@ Map 1 tools: **Griddle** (2 slots, 3s — patty → cooked patty, egg → fried 
 
 Every hand-off is a **flight**: the item is shown travelling from one place to the next, and **the next logic step only runs when it lands**. Arriving in a tool slot is what starts cooking; arriving on the grid is what triggers order matching; arriving at a customer is what fills the dish. The flights are queue→tool, queue→grid, tool→grid, tool→tool (a chained recipe's mid-hop, §2.2), grid→tool (a parked raw being reclaimed), grid→customer, and backpack→customer (Save Me, §2.7).
 
-**Skip-the-grid direct serving**: before a freshly finished tool output (or a no-tool-needed queue pick) lands on the grid, the sim checks whether an active customer's dish already wants it right now (their base requirement met, not already covered by another in-flight serve). If so, it flies **straight to that customer** (`tool-to-customer` / `queue-to-customer`) instead of landing on the grid at all. A **multi-use** ingredient (`usageNum > 1`, see §2.4) always lands on the grid instead, so the rest of its uses aren't thrown away on a single direct serve.
+**Skip-the-grid direct serving**: before a freshly finished tool output (or a no-tool-needed queue pick) lands on the grid, the sim checks whether an active customer's dish already wants it right now (their base requirement met, not already covered by another in-flight serve). If so, it flies **straight to that customer** (`tool-to-customer` / `queue-to-customer`) instead of landing on the grid. A `multipleUsage: true` queue slot with amount above 1 lands first as one reusable object so later serves are not discarded.
 
 ### 2.3 Output grid
 
@@ -73,7 +73,7 @@ Every hand-off is a **flight**: the item is shown travelling from one place to t
 - Each customer orders **one or more dishes**; each dish is an **ad-hoc list of cooked ingredient ids** (dishes are not predefined entities — the order string fully defines them). Dishes may carry effects.
 - **Serving is automatic**: whenever a needed cooked ingredient is present on the grid, the system moves it into a visual container in the **Serving row** between customers and grid. The row shows at most five dish containers. Ingredients merge there in graph dependency order (base before gated toppings); when a dish is complete, its single container flies to the customer. This staging is visual only: inventory, timing, completion and win/loss remain the simulation's existing slot-level rules. Priority between concurrent customers is first-come-first-served (earlier customer slot fills first).
 - Some cooked ingredients require a **base** already in the same dish before they can be served (a stacking rule): Map 1's burger toppings (Cooked Patty, Tomato Slice, Lettuce Cut, Cheese Slice, Fried Egg) need the Sliced Bun there first, and Ice needs the Soda Cup there first. `baseId` can also list **several** ids, in which case the requirement is met by **any one** of them (e.g. Chili Bowl/Cheese Sauce/Chive need any one of the four fried chicken/potato bases already in the dish, not all four). This is per-dish, not per-customer — each dish must independently have its base served before its dependents follow. A dish that orders a dependent without also ordering (at least one of) its base(s) can never complete, so designers must always pair them in the order string. See `baseId` in §4.
-- Some cooked ingredients are **multi-use** (`usageNum` in §4, e.g. a shared sauce): a single instance on the grid can be served that many times before it's consumed, showing a remaining-uses badge in Play mode instead of disappearing after the first serve.
+- Ingredients marked `multipleUsage: true` treat queue-slot amount as reusable serves on one landed object, with a remaining-uses badge. For every other ingredient, amount means separate physical pieces in a bag that drains one at a time.
 - When all dishes of a customer are complete, the customer **pays and leaves**, freeing the slot.
 - Some (rare) customers have a **time limit**; failing it is a per-level designer decision (default: customer leaves unserved — configurable behavior, see events §6).
 
@@ -130,7 +130,7 @@ All element definitions live in **tables** (Google Sheets-backed; table UI in th
 | Table | Columns (minimum) |
 |---|---|
 | Raw ingredients (per map) | id, name, code, price, numSlices, icon fileId |
-| Cooked ingredients (per map) | id, name, icon fileId, `baseId` (optional — another cooked ingredient id, or any one of several, required in the dish first, see §2.4), `usageNum` (optional, > 1 = can be served that many times before it's consumed, see §2.4) |
+| Cooked ingredients (per map) | id, name, icon fileId, `baseId` (optional — another cooked ingredient id, or any one of several, required in the dish first, see §2.4), graph `multipleUsage` flag (queue amount is reusable serves rather than separate bag pieces) |
 | Cooking tools (per map) | id, name, numSlots, cookingTime, recipes (in → out × amount, each optionally carrying `chainTools` — further tool ids to hop through first, see §2.2) |
 | Dirty objects (per map, optional) | id, name, icon fileId, `sourceCookedId` (which cooked ingredient's presence in a dish spawns this type, see §2.5) |
 | Effect/status definitions (global) | id, name, icon, description, param definitions `<name, data-type>` |

@@ -84,6 +84,10 @@ Determines input rates and spatial congestion using the Level’s queue paramete
     *   **Recipe Complexity $REC(t)$:** The average number of manual steps/cooking transformations per order at time $t$.[1]
     *   **Tool Congestion $TC(t)$:** The density of occupied slots in cooking tools (Map 1: Griddle, Coca Machine, Cutting Board, Fryer), directly scaling grid parking $P_{parked}(t)$ when the parking toggle is enabled.[1]
     *   **Queue Obstruction Frequency $F_{queue}(t)$:** The density of `Freezed` or `Locked` states on active queues to disrupt player routing.[1]
+    *   **Bag Fill:** Auto Generate may group consecutive physical pickup pieces into one queue
+        slot using each pickupable's `stackMin–stackMax`. A bag still occupies one grid cell
+        while draining, so fewer queue slots can mean greater short-term grid pressure; validate
+        against grid overflow and deadlock after changing this mode.
 
 ### Layer 4: Physical Compilation
 Bi-directionally compiles Layer 1, 2, and 3 profiles into GDD-compliant, syntax-exact configuration strings for the game engine.[1]

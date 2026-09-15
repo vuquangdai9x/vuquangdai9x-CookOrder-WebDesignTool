@@ -127,6 +127,8 @@ export class RepositoryAdapter {
       dataId: ids.byNode.ingredient.get(item.name),
       terminalOutput: ix.ingName[ix.terminalOutput[ix.ingByName.get(item.name) ?? -1]],
       yield: ix.terminalYield[ix.ingByName.get(item.name) ?? -1] ?? 1,
+      stackRange: ix.stackRange[ix.ingByName.get(item.name) ?? -1] ?? { min: 1, max: 1 },
+      multipleUsage: Boolean(item.multipleUsage),
     }));
     const orderables = doc.vertices.composite.filter((item) => item.orderable).map((item) => {
       const dense = ix.compositeByName.get(item.name) ?? -1;
@@ -189,6 +191,10 @@ export class RepositoryAdapter {
         combinedGroupsMoveAsOneFourConnectedShape: true,
         linkedGroupsRequireEveryMemberAtFront: true,
         gravityAppliesAfterPicks: true,
+        ordinaryBagAmountIsPhysicalPieces: true,
+        multipleUsageAmountIsReusableServeCount: true,
+        bagOccupiesOneQueueSlotAndOneGridCellWhileDraining: true,
+        generatedBagTargetsStayWithinPickupableStackRange: true,
       },
       keyColors: resources.keyColors,
       weather: resources.weather,

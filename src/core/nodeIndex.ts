@@ -176,7 +176,7 @@ export interface GraphIndex {
   dirtyOf: number[];
 
   // --- per-ingredient scalars, hoisted out of .find() ---
-  usageNum: Int32Array;
+  multipleUsage: Uint8Array;
   servable: Uint8Array;
   pickupable: Uint8Array;
   /** Auto Generate bag range per ingredient — `stackMin`/`stackMax`, both defaulting to 1. */
@@ -234,12 +234,12 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
   }
 
   const n = ingName.length;
-  const usageNum = new Int32Array(n);
+  const multipleUsage = new Uint8Array(n);
   const servable = new Uint8Array(n);
   const pickupable = new Uint8Array(n);
   const stackRange: { min: number; max: number }[] = [];
   doc.vertices.ingredient.forEach((v, i) => {
-    usageNum[i] = v.usageNum ?? 1;
+    multipleUsage[i] = v.multipleUsage ? 1 : 0;
     pickupable[i] = v.pickupable ? 1 : 0;
     const min = Math.max(1, v.stackMin ?? 1);
     stackRange[i] = { min, max: Math.max(min, v.stackMax ?? 1) };
@@ -432,7 +432,7 @@ export function buildIndex(doc: NodeGraphMap): GraphIndex {
     slotOf,
     placesOf,
     dirtyOf,
-    usageNum,
+    multipleUsage,
     servable,
     pickupable,
     stackRange,

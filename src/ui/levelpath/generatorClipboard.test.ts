@@ -76,6 +76,7 @@ describe("copying a whole level", () => {
     customerDishesSequence: "1;2",
     complexityCurve: "{a}",
     shuffleCurve: "{b}",
+    bagFill: "max",
     obstacleData: "boss=1",
     randomSeed: 4242,
   });
@@ -84,12 +85,13 @@ describe("copying a whole level", () => {
     copyAll(source);
     const target = level({ name: "dst" });
     expect(pasteAll(target).sort()).toEqual(
-      ["complexity", "dishes", "obstacles", "shuffle", "weights"].sort(),
+      ["bags", "complexity", "dishes", "obstacles", "shuffle", "weights"].sort(),
     );
     expect(target.ingredientWeights).toBe("3:100");
     expect(target.customerDishesSequence).toBe("1;2");
     expect(target.complexityCurve).toBe("{a}");
     expect(target.shuffleCurve).toBe("{b}");
+    expect(target.bagFill).toBe("max");
     expect(target.obstacleData).toBe("boss=1");
   });
 

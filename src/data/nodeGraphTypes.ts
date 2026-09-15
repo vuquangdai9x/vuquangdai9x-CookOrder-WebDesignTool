@@ -119,11 +119,11 @@ export interface IngredientVertex {
   displayName: string;
   /** Comes off the queue — a graph leaf, where a traceback terminates. */
   pickupable?: boolean;
-  /** Dish slots ONE landed piece can fill before it's consumed. >1 also disables direct-serve. */
-  usageNum?: number;
-  /** Smallest bag (pieces per queue slot) Auto Generate uses for this ingredient. Default 1. */
+  /** Queue-slot amount is this landed ingredient's reusable serve count, not a bag of separate pieces. */
+  multipleUsage?: boolean;
+  /** Smallest queue-slot amount Auto Generate uses. Default 1. */
   stackMin?: number;
-  /** Largest bag Auto Generate may put in one queue slot. Default 1; must be >= stackMin. */
+  /** Largest queue-slot amount Auto Generate may use. Default 1; must be >= stackMin. */
   stackMax?: number;
   price?: number;
   code?: string;

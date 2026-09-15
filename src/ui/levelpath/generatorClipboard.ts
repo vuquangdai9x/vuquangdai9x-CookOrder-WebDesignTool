@@ -15,13 +15,14 @@
 import type { LevelData } from "../../data/mapLoader.ts";
 
 /** The generator inputs a level carries, minus the seed. */
-export type GeneratorField = "weights" | "dishes" | "complexity" | "shuffle" | "obstacles";
+export type GeneratorField = "weights" | "dishes" | "complexity" | "shuffle" | "bags" | "obstacles";
 
 export const GENERATOR_FIELDS: GeneratorField[] = [
   "weights",
   "dishes",
   "complexity",
   "shuffle",
+  "bags",
   "obstacles",
 ];
 
@@ -30,6 +31,7 @@ export const FIELD_LABEL: Record<GeneratorField, string> = {
   dishes: "Dish sequence",
   complexity: "Complexity curve",
   shuffle: "Shuffle curve",
+  bags: "Bag fill",
   obstacles: "Obstacles",
 };
 
@@ -64,6 +66,13 @@ export const LEVEL_FIELD: Record<
     set: (level, value) => {
       if (value === undefined) delete level.shuffleCurve;
       else level.shuffleCurve = value;
+    },
+  },
+  bags: {
+    get: (level) => level.bagFill,
+    set: (level, value) => {
+      if (value === "min" || value === "random" || value === "max") level.bagFill = value;
+      else delete level.bagFill;
     },
   },
   obstacles: {

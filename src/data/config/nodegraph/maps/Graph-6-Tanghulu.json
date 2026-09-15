@@ -179,7 +179,6 @@
         "name": "strawberry",
         "displayName": "Strawberry",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍓"
       },
@@ -187,7 +186,6 @@
         "name": "green-grapes",
         "displayName": "Green Grapes",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟢"
       },
@@ -195,7 +193,6 @@
         "name": "mandarin-segment",
         "displayName": "Mandarin Segment",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍊"
       },
@@ -203,7 +200,6 @@
         "name": "apple-wedge",
         "displayName": "Apple Wedge",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍎"
       },
@@ -211,7 +207,6 @@
         "name": "kiwi-slice",
         "displayName": "Kiwi Slice",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥝"
       },
@@ -219,7 +214,6 @@
         "name": "blueberry",
         "displayName": "Blueberry",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🫐"
       },
@@ -227,7 +221,6 @@
         "name": "pineapple-chunk",
         "displayName": "Pineapple Chunk",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍍"
       },
@@ -235,7 +228,6 @@
         "name": "white-sugar",
         "displayName": "White Sugar",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⬜"
       },
@@ -243,7 +235,6 @@
         "name": "honey-syrup",
         "displayName": "Honey Syrup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍯"
       },
@@ -251,7 +242,6 @@
         "name": "strawberry-candy-mix",
         "displayName": "Strawberry Candy Mix",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🔻"
       },
@@ -259,7 +249,6 @@
         "name": "vanilla-marshmallow",
         "displayName": "Vanilla Marshmallow",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⚪"
       },
@@ -267,7 +256,6 @@
         "name": "strawberry-marshmallow",
         "displayName": "Strawberry Marshmallow",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🩷"
       },
@@ -275,7 +263,6 @@
         "name": "chocolate-marshmallow",
         "displayName": "Chocolate Marshmallow",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟤"
       },
@@ -283,7 +270,6 @@
         "name": "chocolate-drizzle",
         "displayName": "Chocolate Drizzle",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍫"
       },
@@ -291,7 +277,6 @@
         "name": "caramel-drizzle",
         "displayName": "Caramel Drizzle",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟫"
       },
@@ -299,7 +284,6 @@
         "name": "black-tea-leaves",
         "displayName": "Black Tea Leaves",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍂"
       },
@@ -307,7 +291,6 @@
         "name": "green-tea-leaves",
         "displayName": "Green Tea Leaves",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🌿"
       },
@@ -315,7 +298,6 @@
         "name": "milk-creamer",
         "displayName": "Milk Creamer",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥛"
       },
@@ -323,7 +305,6 @@
         "name": "mango-syrup",
         "displayName": "Mango Syrup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥭"
       },
@@ -331,7 +312,6 @@
         "name": "peach-syrup",
         "displayName": "Peach Syrup",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍑"
       },
@@ -339,7 +319,6 @@
         "name": "tapioca-pearls",
         "displayName": "Tapioca Pearls",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⚫"
       },
@@ -347,7 +326,6 @@
         "name": "grass-jelly",
         "displayName": "Grass Jelly",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟩"
       },
@@ -355,7 +333,6 @@
         "name": "lychee-jelly",
         "displayName": "Lychee Jelly",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "💎"
       },
@@ -363,7 +340,6 @@
         "name": "sweet-red-bean",
         "displayName": "Sweet Red Bean",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🫘"
       },
@@ -371,7 +347,6 @@
         "name": "egg-pudding",
         "displayName": "Egg Pudding",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟨"
       },
@@ -379,7 +354,6 @@
         "name": "skewered-strawberry",
         "displayName": "Skewered Strawberry",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍓"
       },
@@ -387,7 +361,6 @@
         "name": "skewered-green-grapes",
         "displayName": "Skewered Green Grapes",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟢"
       },
@@ -395,7 +368,6 @@
         "name": "skewered-mandarin",
         "displayName": "Skewered Mandarin",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍊"
       },
@@ -403,7 +375,6 @@
         "name": "skewered-apple",
         "displayName": "Skewered Apple",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍎"
       },
@@ -411,7 +382,6 @@
         "name": "skewered-kiwi",
         "displayName": "Skewered Kiwi",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥝"
       },
@@ -419,7 +389,6 @@
         "name": "skewered-blueberry",
         "displayName": "Skewered Blueberry",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🫐"
       },
@@ -427,7 +396,6 @@
         "name": "skewered-pineapple",
         "displayName": "Skewered Pineapple",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍍"
       },
@@ -435,7 +403,6 @@
         "name": "clear-sugar-glaze",
         "displayName": "Clear Sugar Glaze",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "💧"
       },
@@ -443,7 +410,6 @@
         "name": "golden-honey-glaze",
         "displayName": "Golden Honey Glaze",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟡"
       },
@@ -451,7 +417,6 @@
         "name": "pink-strawberry-glaze",
         "displayName": "Pink Strawberry Glaze",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🩷"
       },
@@ -459,7 +424,6 @@
         "name": "toasted-vanilla-marshmallow",
         "displayName": "Toasted Vanilla Marshmallow",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🤍"
       },
@@ -467,7 +431,6 @@
         "name": "toasted-strawberry-marshmallow",
         "displayName": "Toasted Strawberry Marshmallow",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "❤️"
       },
@@ -475,7 +438,6 @@
         "name": "toasted-chocolate-marshmallow",
         "displayName": "Toasted Chocolate Marshmallow",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🤎"
       },
@@ -483,7 +445,6 @@
         "name": "brewed-black-tea",
         "displayName": "Brewed Black Tea",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🫖"
       },
@@ -491,7 +452,6 @@
         "name": "brewed-green-tea",
         "displayName": "Brewed Green Tea",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍵"
       }

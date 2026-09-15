@@ -30,7 +30,8 @@ describe("CookOrder MCP stdio contract", () => {
     const names = new Set(result.tools.map((tool) => tool.name));
     [
       "read_authoring_context", "start_level_session", "add_customer", "add_dish_piece",
-      "add_queue_ingredient", "set_grid_cell_effect", "get_supply_demand", "validate_level",
+      "add_queue_ingredient", "set_queue_slot_amount", "split_queue_slot", "merge_queue_slots",
+      "set_grid_cell_effect", "get_supply_demand", "validate_level",
       "estimate_difficulty", "playtest_instant", "finalize_level", "undo",
     ].forEach((name) => expect(names.has(name), name).toBe(true));
     expect(names.has("generate_level")).toBe(false);

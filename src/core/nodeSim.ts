@@ -13,7 +13,7 @@
 //   ------------------------------------------|-------------------------------
 //   raw ids and cooked ids, mirrored by hand   | ONE dense ingredient index
 //   findToolRecipe() scanning every tool       | ix.recipeForInput[ing]
-//   map.cookedIngredients.find(...) per serve  | ix.usageNum[ing], ix.servable[ing]
+//   map.cookedIngredients.find(...) per serve  | ix.servable[ing]
 //   baseId: Id | Id[], re-scanned per serve    | a per-slot gate, resolved once
 //                                             |   when the order is bound
 //   dirtyTypesFor() scanning sourceCookedId    | ix.dirtyOf[order.orderable]
@@ -139,7 +139,7 @@ export interface NodeToolState {
 
 export type NodeCellContent =
   | { kind: "empty" }
-  /** A finished ingredient waiting to be served. `usesLeft` only for usageNum > 1. */
+  /** A finished ingredient; usesLeft is present for a multipleUsage queue amount. */
   | { kind: "cooked"; ing: number; usesLeft?: number }
   /** A pickup parked because its tool was full (park-on-grid policy). */
   | { kind: "raw"; ing: number }
@@ -240,7 +240,9 @@ type Dispatch =
   | { kind: "tool"; tool: number; slot: number; step?: ProcessStep }
   | { kind: "grid"; cell: number; raw: boolean }
   /** A bag of 2+ pieces landing whole on one grid cell. */
-  | { kind: "bag"; cell: number; count: number };
+  | { kind: "bag"; cell: number; count: number }
+  /** One reusable ingredient whose queue amount becomes its serve count. */
+  | { kind: "multiple-usage"; cell: number; count: number };
 
 export interface NodeFlight {
   id: number;
@@ -258,6 +260,8 @@ export interface NodeFlight {
   raw?: boolean;
   /** queue-to-grid only: the landing cell becomes a bag of this many pieces. */
   bagCount?: number;
+  /** queue-to-grid only: the landing cooked ingredient has this many reusable serves. */
+  usageCount?: number;
   /** customer-to-grid / dirty-to-staff only: dense dirty index, or DIRTY_DISH_ID. */
   dirtyId?: number;
   /** tool-to-tool only, chainTools spelling: the chain state to install at the destination. */
@@ -616,17 +620,19 @@ export class NodeSimulation {
       case "queue-to-grid": {
         const cell = flight.toCell!;
         this.releaseCell(cell);
-        this.grid[cell] = flight.bagCount !== undefined
+        this.grid[cell] = flight.usageCount !== undefined
+          ? { kind: "cooked", ing: flight.ing, usesLeft: flight.usageCount }
+          : flight.bagCount !== undefined
           ? { kind: "bag", ing: flight.ing, count: flight.bagCount }
           : flight.raw
             ? { kind: "raw", ing: flight.ing }
-            : { kind: "cooked", ing: flight.ing, usesLeft: this.initialUsesLeft(flight.ing) };
+            : { kind: "cooked", ing: flight.ing };
         break;
       }
       case "tool-to-grid": {
         const cell = flight.toCell!;
         this.releaseCell(cell);
-        this.grid[cell] = { kind: "cooked", ing: flight.ing, usesLeft: this.initialUsesLeft(flight.ing) };
+        this.grid[cell] = { kind: "cooked", ing: flight.ing };
         this.log("cooked", `${this.ingredientName(flight.ing)} ready`);
         break;
       }
@@ -1021,9 +1027,8 @@ export class NodeSimulation {
       }
       if (cell.kind !== "cooked" && cell.kind !== "bag") continue; // dirty objects and existing backpacks stay put
       const uses = cell.kind === "bag" ? cell.count : (cell.usesLeft ?? 1);
-      // Keep a multi-use object whole: the backpack represents each remaining
-      // use as one entry, and partially sweeping it would leave no guaranteed
-      // free cell for the bag on a completely full board.
+      // Keep a bag or reusable object whole: partially sweeping it would leave
+      // no guaranteed free cell for the remainder on a completely full board.
       if (uses > capacity - items.length) continue;
       for (let n = 0; n < uses; n++) items.push(cell.ing);
       this.grid[i] = { kind: "empty" };
@@ -1361,12 +1366,7 @@ export class NodeSimulation {
     this.reservedCells.delete(cell);
   }
 
-  private initialUsesLeft(ing: number): number | undefined {
-    const n = this.ix.usageNum[ing];
-    return n && n > 1 ? n : undefined;
-  }
-
-  /** Serves one use of a cooked grid cell — decrements usesLeft, or clears the cell. */
+  /** Serves one use of a cooked cell, clearing it after its final use. */
   private consumeCookedCell(cell: number): void {
     const content = this.grid[cell];
     if (content.kind === "cooked" && content.usesLeft && content.usesLeft > 1) {
@@ -1563,19 +1563,22 @@ export class NodeSimulation {
         return { ok: false, reason: `${this.ingredientName(cell.ing)} can't complete any waiting order` };
       }
 
-      // A bag (2+ pieces) always lands whole on one grid cell and drains from
-      // there — reclaimBagItems() routes its top piece exactly as a fresh
-      // single pick would. Parking is inherent to the mechanic, so the
-      // out-of-slot policy does not apply; only grid space can refuse it.
+      // An amount slot always lands whole on one grid cell. Ordinary bags
+      // drain separate pieces through reclaimBagItems(); multipleUsage slots
+      // land as one cooked object with that many reusable serves.
       const amount = queueItemAmount(cell.item);
       if (amount > 1) {
         const free = this.reserveCell();
         if (free === -1) {
           rollback();
-          return { ok: false, reason: "No free grid cell for a bag" };
+          return { ok: false, reason: "No free grid cell for this amount slot" };
         }
         reservedCells.push(free);
-        plan.push({ kind: "bag", cell: free, count: amount });
+        plan.push(
+          this.ix.multipleUsage[cell.ing]
+            ? { kind: "multiple-usage", cell: free, count: amount }
+            : { kind: "bag", cell: free, count: amount },
+        );
         continue;
       }
 
@@ -1676,6 +1679,10 @@ export class NodeSimulation {
     }
     if (d.kind === "bag") {
       this.launch({ kind: "queue-to-grid", ing: cell.ing, toCell: d.cell, raw: true, bagCount: d.count });
+      return;
+    }
+    if (d.kind === "multiple-usage") {
+      this.launch({ kind: "queue-to-grid", ing: cell.ing, toCell: d.cell, usageCount: d.count });
       return;
     }
     if (!d.raw) {
@@ -1997,14 +2004,8 @@ export class NodeSimulation {
     );
   }
 
-  /**
-   * Finds a customer/dish/slot that wants `ing` right now and isn't already
-   * claimed — used to skip landing an item on the grid when someone's waiting.
-   * A multi-use ingredient (usageNum > 1) always lands instead, so its remaining
-   * uses aren't thrown away on one direct serve.
-   */
+  /** Finds a waiting unclaimed dish slot so one physical piece can direct-serve. */
   private findServeTarget(ing: number): { index: number; dish: number; slot: number } | null {
-    if (this.ix.usageNum[ing] > 1) return null;
     for (const customer of this.active) {
       for (let dishIndex = 0; dishIndex < customer.dishes.length; dishIndex++) {
         const dish = customer.dishes[dishIndex];

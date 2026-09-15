@@ -52,6 +52,7 @@ import type { EstimateResult } from "../design/estimateDifficulty.ts";
 import type { EstimateScenario } from "../design/estimateScenario.ts";
 import { generateNodeCustomers } from "../nodedesign/nodeGenerate.ts";
 import { generateNodeQueueLanes } from "../nodedesign/nodeQueueGenerate.ts";
+import type { BagFillMode } from "../nodedesign/nodeQueueGenerate.ts";
 import {
   assignSpecialAvatars,
   assignWaitTimes,
@@ -386,6 +387,7 @@ interface BuildConfig {
   complexity: CurveState;
   laneCount: number;
   shuffleCurve: CurveState;
+  bagFill: BagFillMode;
   obstacles: ObstacleConfig;
   /** Size guardrails, for the post-build dish-total check. */
   bounds?: GenerateBounds;
@@ -517,12 +519,20 @@ function buildCandidate(
     customers,
     laneCount: config.laneCount,
     shuffleRange: { kind: "curve", curve: config.shuffleCurve },
+    bagFill: config.bagFill,
     random: rand,
   });
 
   const customerString = serializeNodeCustomers(customers);
   const plainQueue = serializeQueues(
-    lanes.map((lane) => lane.map((id) => ({ kind: "ingredient" as const, id, effects: [] }))),
+    lanes.map((lane) =>
+      lane.map((slot) => ({
+        kind: "ingredient" as const,
+        id: slot.id,
+        effects: [],
+        ...(slot.amount > 1 ? { amount: slot.amount } : {}),
+      })),
+    ),
     [],
   );
   const decorated = placeQueueObstacles({
@@ -656,6 +666,9 @@ export function resolveConfig(
       ? parseCurve(level.shuffleCurve, linearShuffleCurve(DEFAULT_SHUFFLE_MAX_Y))
       : linearShuffleCurve(DEFAULT_SHUFFLE_MAX_Y);
 
+  const bagFill: BagFillMode =
+    level.bagFill === "min" || level.bagFill === "max" ? level.bagFill : "random";
+
   // An AUTHORED budget is a design decision and is kept exactly as written. A
   // level with none gets one rolled to its own size — see rollObstacles for the
   // rule, which scales off this level's own customer and dish counts.
@@ -671,7 +684,7 @@ export function resolveConfig(
         rand,
       );
 
-  return { weights, dishCounts, complexity, laneCount, baseShuffle, obstacles };
+  return { weights, dishCounts, complexity, laneCount, baseShuffle, bagFill, obstacles };
 }
 
 /**
@@ -715,7 +728,7 @@ export function generateLevel(
     // paste into the field to reproduce the failure.
     if (seedRound > 0) seed = (seed + 1) >>> 0;
     seedsTried++;
-    const { weights, dishCounts, complexity, laneCount, baseShuffle, obstacles } = resolveConfig(
+    const { weights, dishCounts, complexity, laneCount, baseShuffle, bagFill, obstacles } = resolveConfig(
       level,
       ctx,
       seed,
@@ -743,6 +756,7 @@ export function generateLevel(
           complexity,
           laneCount,
           shuffleCurve,
+          bagFill,
           obstacles,
           ...(opts.bounds ? { bounds: opts.bounds } : {}),
           ...(opts.skipDeadlock !== undefined ? { skipDeadlock: opts.skipDeadlock } : {}),
@@ -778,6 +792,7 @@ export function generateLevel(
       level.customerDishesSequence = serializeDishCountSequence(dishCounts);
       level.complexityCurve = serializeCurve(complexity);
       level.shuffleCurve = serializeCurve(shuffleCurve);
+      level.bagFill = bagFill;
       // A ROLLED budget is written back like every other rolled input, so the
       // level reproduces and the designer can see — and edit — what the
       // generator chose for them. An authored one round-trips unchanged.

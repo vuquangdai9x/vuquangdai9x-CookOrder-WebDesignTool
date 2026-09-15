@@ -28,8 +28,23 @@ export interface NodeQueueOptions {
   customers: NodeCustomerConfig[];
   laneCount: number;
   shuffleRange: ShuffleRangeSpec;
+  /** How Auto Generate chooses a target size inside each ingredient's stack range. */
+  bagFill?: BagFillMode;
   /** Injectable for deterministic tests; defaults to Math.random. */
   random?: () => number;
+}
+
+export type BagFillMode = "min" | "random" | "max";
+
+/** One generated queue slot. `amount` is physical pieces, not recipe uses. */
+export interface GeneratedQueueSlot {
+  id: number;
+  amount: number;
+}
+
+interface DenseBag {
+  leaf: number;
+  amount: number;
 }
 
 /**
@@ -65,13 +80,11 @@ function orderedItems(ix: GraphIndex, ids: IdIndex, customers: NodeCustomerConfi
  * its own leaf, so a cup that is itself pickupable stops there while ground
  * coffee keeps going back to the bean.
  *
- * `covers` is the legacy pair of multipliers, kept per leaf:
- *   amount   — pieces one pickup yields at the tool (1 tomato -> 2 slices)
- *   usageNum — dish slots one landed piece then fills
- * Missing either over-queues, which is the bug this file's ancestor had.
+ * `covers` is the process-output multiplier kept per leaf: pieces one pickup
+ * yields at the tool (1 tomato -> 2 slices). Shipped graphs are 1-out; this
+ * remains for custom graphs.
  */
 function leavesFor(ix: GraphIndex, ing: number): { leaf: number; covers: number }[] {
-  const uses = Math.max(1, ix.usageNum[ing] ?? 1);
   const out: { leaf: number; covers: number }[] = [];
 
   const walk = (node: number, yieldSoFar: number, seen: Set<number>): void => {
@@ -80,7 +93,7 @@ function leavesFor(ix: GraphIndex, ing: number): { leaf: number; covers: number 
     if (seen.has(node)) return;
     const step = ix.producerOf[node];
     if (!step || ix.pickupable[node]) {
-      out.push({ leaf: node, covers: Math.max(1, yieldSoFar) * uses });
+      out.push({ leaf: node, covers: Math.max(1, yieldSoFar) });
       return;
     }
     const next = new Set(seen).add(node);
@@ -117,7 +130,7 @@ export function nodeDemandByRaw(
         // conservative rather than hiding a shortage.
         existing.amount = Math.min(existing.amount, Math.max(1, covers));
       } else {
-        demand.set(dataId, { need: 1, amount: Math.max(1, covers), usageNum: 1 });
+        demand.set(dataId, { need: 1, amount: Math.max(1, covers) });
       }
     }
   }
@@ -156,23 +169,96 @@ export function nodePickupSequence(
 }
 
 /**
- * Deal the sequence across lanes and jitter it, returning DATA ids.
+ * Collapse consecutive pickup pieces into bags before they are dealt or
+ * shuffled. A random target is chosen per bag, so a seeded generator remains
+ * deterministic while still producing varied stack sizes.
+ *
+ * A final tail below stackMin is folded into the preceding bag whenever it
+ * still fits under stackMax. If it cannot fit, the tail remains a legal small
+ * leftover slot, as required by the authoring rule.
+ */
+export function groupIntoBags(
+  sequence: number[],
+  ix: GraphIndex,
+  random: () => number = Math.random,
+  mode: BagFillMode = "random",
+): DenseBag[] {
+  const bags: DenseBag[] = [];
+  let at = 0;
+
+  while (at < sequence.length) {
+    const leaf = sequence[at];
+    let end = at + 1;
+    while (end < sequence.length && sequence[end] === leaf) end++;
+
+    const available = end - at;
+    const range = ix.stackRange[leaf] ?? { min: 1, max: 1 };
+    const min = Math.max(1, Math.floor(range.min) || 1);
+    const max = Math.max(min, Math.floor(range.max) || min);
+    const run: DenseBag[] = [];
+    let remaining = available;
+
+    while (remaining > 0) {
+      const target =
+        mode === "min"
+          ? min
+          : mode === "max"
+            ? max
+            : min + Math.floor(Math.min(0.9999999999999999, Math.max(0, random())) * (max - min + 1));
+      const amount = Math.min(remaining, target);
+      run.push({ leaf, amount });
+      remaining -= amount;
+    }
+
+    const tail = run.at(-1);
+    const previous = run.at(-2);
+    if (tail && previous && tail.amount < min) {
+      if (previous.amount + tail.amount <= max) {
+        previous.amount += tail.amount;
+        run.pop();
+      } else {
+        const needed = min - tail.amount;
+        if (previous.amount - needed >= min) {
+          previous.amount -= needed;
+          tail.amount += needed;
+        } else if (tail.amount > 1) {
+          // No legal rebalance exists for this remainder. Plain one-piece
+          // slots are the legal leftover representation and do not produce an
+          // out-of-range bag warning.
+          run.splice(run.length - 1, 1, ...Array.from({ length: tail.amount }, () => ({ leaf, amount: 1 })));
+        }
+      }
+    } else if (tail && tail.amount > 1 && tail.amount < min) {
+      run.splice(run.length - 1, 1, ...Array.from({ length: tail.amount }, () => ({ leaf, amount: 1 })));
+    }
+
+    bags.push(...run);
+    at = end;
+  }
+
+  return bags;
+}
+
+/**
+ * Group the sequence into bags, deal those slots across lanes, then jitter
+ * whole slots. Returns DATA ids plus physical piece amounts.
  *
  * Round-robin rather than contiguous blocks: dealing lane by lane would put
  * every early customer's ingredients in lane 0, so the player would drain one
  * column while the others sat untouched.
  */
-export function generateNodeQueueLanes(opts: NodeQueueOptions): number[][] {
+export function generateNodeQueueLanes(opts: NodeQueueOptions): GeneratedQueueSlot[][] {
   const rand = opts.random ?? Math.random;
   const laneCount = Math.max(1, opts.laneCount);
-  const lanes: number[][] = Array.from({ length: laneCount }, () => []);
+  const lanes: GeneratedQueueSlot[][] = Array.from({ length: laneCount }, () => []);
 
   const sequence = nodePickupSequence(opts.ix, opts.ids, opts.customers);
-  sequence.forEach((ing, at) => {
-    const dataId = opts.ids.byNode.ingredient.get(opts.ix.ingName[ing]);
+  const bags = groupIntoBags(sequence, opts.ix, rand, opts.bagFill ?? "random");
+  bags.forEach((bag, at) => {
+    const dataId = opts.ids.byNode.ingredient.get(opts.ix.ingName[bag.leaf]);
     // An ingredient with no id cannot appear in a queue string at all; dropping
     // it is right, and WARN-UNTABLED-NODE already names it in Map Process.
-    if (dataId !== undefined) lanes[at % laneCount].push(dataId);
+    if (dataId !== undefined) lanes[at % laneCount].push({ id: dataId, amount: bag.amount });
   });
 
   for (const lane of lanes) {

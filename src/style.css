@@ -1148,14 +1148,14 @@ footer {
   padding: 0 3px;
 }
 
-/* Multi-use cooked ingredient (usageNum > 1) — remaining uses, top-right. */
+/* Reusable multipleUsage ingredient — serves left, top-right. */
 .cell-badge.uses-left {
   bottom: auto;
   top: 2px;
 }
 
 /* A parked bag — pieces left, bottom-right, in the bag colour so it never
-   reads as a multi-use badge. */
+   reads as a reusable-uses badge. */
 .cell-badge.bag-count {
   color: #3b2400;
   background: #ffd66b;
@@ -4219,8 +4219,7 @@ td input {
   object-fit: contain;
 }
 
-.np-orderable,
-.np-usage {
+.np-orderable {
   position: absolute;
   top: -9px;
   left: -9px;
@@ -4230,16 +4229,6 @@ td input {
   border-radius: 50%;
   background: var(--panel-2);
   border: 1px solid var(--accent);
-}
-
-/* usageNum > 1: how many dish slots one landed piece fills. */
-.np-usage {
-  min-width: 17px;
-  text-align: center;
-  font-size: 0.66rem;
-  font-weight: 700;
-  padding: 3px 2px;
-  color: var(--accent);
 }
 
 .np-rows {

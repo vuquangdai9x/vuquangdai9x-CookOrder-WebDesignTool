@@ -75,12 +75,6 @@ export interface CookedIngredientDef {
    */
   baseId?: Id | Id[];
   /**
-   * How many times a single instance of this ingredient can be served before
-   * it's consumed (e.g. a sauce that tops several dishes). Absent/1 = normal
-   * single-use.
-   */
-  usageNum?: number;
-  /**
    * Max copies of this ingredient one dish's order can call for (e.g. a bun
    * or a soda cup only ever appears once; a patty can repeat). Absent/0 = no
    * limit. Enforced by the Design mode dish editor when adding ingredients.

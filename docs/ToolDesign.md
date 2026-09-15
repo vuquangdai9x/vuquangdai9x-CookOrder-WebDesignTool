@@ -145,22 +145,23 @@ Purpose: build the ordered sequence of ingredients a player pulls from during a 
     in the top-right corner, which coexists with Freeze's top-left badge and HoldingKey's
     bottom-right one. The `?` mask only happens in Play mode. Note this is unrelated to the
     Combine/Link grouping actions above.
-  - **Bags** — a slot can hold several pieces of its ingredient (queue string `<id>:<amount>`;
-    see `CookingGraph.Unity/GAMEPLAY_RULES.md` §4.1/§10.2 for how a bag plays):
+  - **Amounts** — a slot can carry an amount (queue string `<id>:<amount>`). For an ordinary
+    ingredient it is a bag of physical pieces; for `multipleUsage: true` it is one reusable
+    landed ingredient with that many serves:
     - **Amount** — a number box; type a value, or press and drag left/right to scrub it
       (`ui/scrubInput.ts`). With several tiles selected it applies to every selected ingredient
       slot. `1` makes the slot plain again. The row also shows the ingredient's graph
       `stackMin–stackMax` range when the host supplies one.
-    - **Split bag** (2+ only) — a slider from 1 to amount−1 = how many pieces **stay**; the Split
+    - **Split amount** (2+ only) — a slider from 1 to amount−1 = how many units **stay**; the Split
       button inserts a new plain slot (no effects, not in the original's group) with the remainder
       right after the tile in the same lane.
     - **Merge N slots** — with 2+ tiles of the **same ingredient** selected: amounts sum into the
       first-selected tile, which keeps its effects and grouping; the others are removed and any
       combined/linked group they belonged to is broken. Disabled (with a hint) for mixed
       selections or sweepers.
-    - A bag shows a `×N` badge top-right (2+ only); it turns orange when N falls outside the
-      ingredient's stack range. Recipe Pieces counts every piece of every bag and flags bags
-      outside the range.
+    - An amount slot shows a `×N` badge top-right (2+ only); it turns orange when N falls outside
+      the ingredient's stack range. Recipe Pieces counts either physical pieces or reusable serves
+      as supply units and flags amounts outside the range.
   - **Remove**.
   - Hover also shows a small "X" remove button as a shortcut for the same action.
   - Visual encodes: a **frozen** tile (remaining thaw count > 0) gets an icy CSS filter and a
@@ -179,8 +180,13 @@ Purpose: build the ordered sequence of ingredients a player pulls from during a 
 - **Quick Add Pool**: slide-up bottom drawer showing every available ingredient thumbnail;
   clicking one appends it to the active lane.
 - **Auto-Generate Queue** (kebab menu, green/highlighted): confirms it will overwrite all lanes,
-  runs the recipe-piece generator client-side against the orders' required piece counts, then
-  round-robins the result evenly across the existing lane count so lane lengths stay balanced.
+  runs the recipe-piece generator client-side against the orders' required piece counts, groups
+  consecutive copies of each pickupable into bags, then round-robins whole bag slots evenly
+  across the existing lane count. The dialog's **Bag Fill** control chooses the target inside
+  each ingredient's graph `stackMin–stackMax`: Minimum, Random (default, driven by the saved
+  seed), or Maximum. A final remainder is rebalanced into the preceding bag when possible and
+  otherwise stays as legal plain one-piece slots. Shuffle happens after grouping, so a bag moves
+  as one slot and generated amounts never trigger the out-of-range badge.
 - **Shuffle Queue**: prompts for a max shuffle distance, jitters each lane's item order locally
   (does not cross lanes).
 - **Zoom controls** (+/- buttons or Ctrl+scroll) resize tiles 50%–250%.
@@ -190,6 +196,19 @@ Purpose: build the ordered sequence of ingredients a player pulls from during a 
   requirements). Two independent warning badges: "Queue can't complete the level" (pieces or
   keys short) and "Key colors don't match the grid's lock amounts" (softer, shown only when
   completable but key counts are off). These recompute live as the designer edits.
+- The graph-native **Auto Generate Level** dialog exposes the same Bag Fill choice. Level Path's
+  config bar supplies the default for levels that have not recorded one; each successful level
+  generation persists the selected mode alongside its seed and curves. Bags reduce queue-slot
+  count but increase grid pressure because every picked bag reserves one grid cell while it
+  drains, so the normal estimate/deadlock seed search verifies the final bagged queue.
+- Level Path's **Migrate bags** action uses two ordered, independent passes for Maps 1 and 2.
+  Pass 1 moves former multi-output process multipliers onto queue slots. Pass 2 then moves the
+  former multi-use counts onto a separate dictionary of matching pickupable slots. Those graph
+  ingredients now carry `multipleUsage: true`, so the migrated amount becomes the reusable serve
+  count of one landed ingredient. A level
+  qualifies for pass 2 only when it contains a matching ingredient and every matching slot is
+  still amount 1; unrelated pass-1 bags do not affect that check. Mixed/already-migrated matching
+  amounts skip the entire second pass, preventing a partial or doubled migration.
 - **Save Order**: same local, synchronous commit pattern as the other two sections (see Shared
   shell) — clears unsaved flags on both the live queue and the matching undo-history snapshot (so
   an immediate undo doesn't resurrect the "unsaved" look on already-saved items). A separate
@@ -276,9 +295,9 @@ tool.
   e.g. a placeholder tool like Flour, or a tool whose ingredients this particular level just
   doesn't use) renders **greyed out** (dimmed + desaturated), with the tooltip noting why; it's
   purely informational, tools were never clickable to begin with.
-  - A **cooked ingredient** on the grid that's **multi-use** (`usageNum > 1` — a shared sauce that
-    can serve several dishes before it's used up) shows a small `×N` "uses left" badge top-right
-    on its cell, decrementing each time it's served instead of disappearing after the first.
+  - A `multipleUsage: true` ingredient interprets its queue-slot amount as reusable serves on one
+    landed ingredient and shows the remaining `×N` badge. Other ingredients interpret amount as
+    separate physical pieces in a draining bag.
 - **When a tool is full**, a dropdown in the toolbar picks the behaviour: *Block the pick* (the
   queue tile is disabled with a reason tooltip) or *Park raw on the grid* (the raw ingredient
   waits on the grid, dimmed, and is pulled into the tool ahead of new picks the moment a slot

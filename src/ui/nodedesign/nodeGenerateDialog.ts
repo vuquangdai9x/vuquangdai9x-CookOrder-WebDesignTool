@@ -46,6 +46,7 @@ import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
 import type { IdIndex } from "../../data/nodeIdTable.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
+import type { BagFillMode } from "./nodeQueueGenerate.ts";
 
 export interface NodeGenerateDeps {
   ix: GraphIndex;
@@ -141,6 +142,21 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
     gridCells: deps.ix.doc.map.gridWidth * deps.ix.doc.map.gridHeight,
   });
 
+  let bagFill: BagFillMode = deps.level.bagFill ?? loadConfig().bagFill;
+  const bagFillSelect = el("select", {}) as HTMLSelectElement;
+  for (const option of [
+    { value: "min", label: "Minimum" },
+    { value: "random", label: "Random (default)" },
+    { value: "max", label: "Maximum" },
+  ] as const) {
+    const node = el("option", { value: option.value }, [option.label]) as HTMLOptionElement;
+    node.selected = option.value === bagFill;
+    bagFillSelect.append(node);
+  }
+  bagFillSelect.addEventListener("change", () => {
+    bagFill = bagFillSelect.value as BagFillMode;
+  });
+
   const seedInput = el("input", {
     type: "number",
     min: "0",
@@ -182,6 +198,15 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
       }),
     ]),
     section("Obstacles", [obstacles.element]),
+    section("Queue Bags", [
+      el("label", { class: "field" }, [
+        "Fill within each ingredient's stack range",
+        bagFillSelect,
+      ]),
+      el("p", { class: "muted" }, [
+        "Minimum produces single slots when stackMin is 1; Random varies each bag; Maximum makes the fullest bags.",
+      ]),
+    ]),
     section("Random Seed", [el("label", { class: "field" }, ["Seed (blank = pick one)", seedInput])]),
     el("p", { class: "muted" }, [
       "Each dish picks an orderable first, then fills its slots — so every generated dish is " +
@@ -228,6 +253,7 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
       deps.level.complexityCurve = serializeCurve(curveState);
     }
     deps.level.obstacleData = serializeObstacles(obstacles.config);
+    deps.level.bagFill = bagFill;
     const seed = seedInput.value.trim();
     if (seed === "") delete deps.level.randomSeed;
     else deps.level.randomSeed = Math.max(0, Math.trunc(Number(seed) || 0)) >>> 0;

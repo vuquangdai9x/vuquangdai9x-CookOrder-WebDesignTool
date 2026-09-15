@@ -65,8 +65,12 @@ import {
   NODE_DOCS,
   saveNodeProject,
 } from "../../data/nodeProject.ts";
-import { bagMigrationLookup, migrateQueueString } from "../../data/bagMigration.ts";
-import type { BagMigrationLookup } from "../../data/bagMigration.ts";
+import {
+  bagMigrationLookup,
+  migrateQueueStringPasses,
+  usageBagMigrationLookup,
+} from "../../data/bagMigration.ts";
+import type { BagMigrationLookup, UsageBagMigrationLookup } from "../../data/bagMigration.ts";
 import type { NodeProjectState } from "../../data/nodeProject.ts";
 import { buildColumns, widthVar } from "./columns.ts";
 import type { ColumnDef } from "./columns.ts";
@@ -546,22 +550,29 @@ export class LevelPathView {
       this.deleteMap(entry);
     }, { class: "small-btn danger" });
 
-    const lookup = bagMigrationLookup(NODE_DOCS.find((d) => d.id === entry.docId)?.index ?? -1);
-    // Count levels the migration would actually change — an old string with no
-    // slot in the lookup stays old forever and must not keep the button lit.
-    const oldLevels = lookup
-      ? entry.project.levels.filter((level) => migrateQueueString(level.queueString, lookup) !== level.queueString).length
-      : 0;
+    const mapIndex = NODE_DOCS.find((d) => d.id === entry.docId)?.index ?? -1;
+    const processLookup = bagMigrationLookup(mapIndex);
+    const usageLookup = usageBagMigrationLookup(mapIndex);
+    // Count levels changed by either pass. The second pass sees the result of
+    // the process-output pass, but uses its own amount-1 old-level check.
+    const oldLevels = entry.project.levels.filter(
+      (level) => migrateQueueStringPasses(level.queueString, processLookup, usageLookup) !== level.queueString,
+    ).length;
+    const hasLookup = processLookup !== null || usageLookup !== null;
     return el("div", { class: "lp-map-actions" }, [
-      button(`🎒 Migrate bags${oldLevels ? ` (${oldLevels})` : ""}`, () => this.migrateBags(entry, lookup!), {
-        class: "small-btn",
-        ...(!lookup || oldLevels === 0 ? { disabled: "" } : {}),
-        title: !lookup
-          ? "No bag-migration lookup shipped for this map"
-          : oldLevels === 0
-            ? "Every level already carries bag amounts"
-            : `Rewrite ${oldLevels} old queue string(s): stamp the former process multiplier (e.g. tomato x2) onto each matching slot as a bag amount`,
-      }),
+      button(
+        `🎒 Migrate bags${oldLevels ? ` (${oldLevels})` : ""}`,
+        () => this.migrateBags(entry, processLookup, usageLookup),
+        {
+          class: "small-btn",
+          ...(!hasLookup || oldLevels === 0 ? { disabled: "" } : {}),
+          title: !hasLookup
+            ? "No bag-migration lookup shipped for this map"
+            : oldLevels === 0
+              ? "Every level already carries bag amounts"
+              : `Rewrite ${oldLevels} old queue string(s): migrate former process-output amounts first, then former usage amounts as a separate pass`,
+        },
+      ),
       button("✨ Batch generate", () => this.promptBatchGenerate(entry), {
         class: "small-btn",
         title: "Generate a range of levels, creating any that do not exist yet",
@@ -575,28 +586,37 @@ export class LevelPathView {
   }
 
   /**
-   * Old strings -> bags, for every level of one map. An old string is one with
-   * no `:amount` on any slot; each slot whose id is in the map's lookup gets
-   * the former process multiplier as its bag amount, so the queue supplies
-   * exactly the pieces it did before the processes became 1-in/1-out.
+   * Old strings -> bags, for every level of one map. Pass one migrates former
+   * multi-output processes. Pass two then migrates the separate set of former
+   * former multi-use ingredients, but only when every matching slot is still amount 1.
    */
-  private migrateBags(entry: MapEntry, lookup: BagMigrationLookup): void {
+  private migrateBags(
+    entry: MapEntry,
+    processLookup: BagMigrationLookup | null,
+    usageLookup: UsageBagMigrationLookup | null,
+  ): void {
     const targets = entry.project.levels.filter(
-      (level) => migrateQueueString(level.queueString, lookup) !== level.queueString,
+      (level) => migrateQueueStringPasses(level.queueString, processLookup, usageLookup) !== level.queueString,
     );
     if (targets.length === 0) return;
-    const names = Object.values(lookup.names ?? {}).join(", ") || Object.keys(lookup.multipliers).join(", ");
+    const processNames = processLookup
+      ? Object.values(processLookup.names ?? {}).join(", ") || Object.keys(processLookup.multipliers).join(", ")
+      : "none";
+    const usageNames = usageLookup
+      ? Object.values(usageLookup.names ?? {}).join(", ") || Object.keys(usageLookup.multipliers).join(", ")
+      : "none";
     if (!confirm(
       `Migrate ${targets.length} level(s) of "${entry.title}" to bag amounts?
 
 ` +
-      `Slots holding ${names} get their former yield as an amount; everything else is untouched. ` +
-      `Levels that already carry an amount are skipped.`,
+      `Pass 1 — former process outputs: ${processNames}.\n` +
+      `Pass 2 — former usage counts: ${usageNames}.\n\n` +
+      `The passes run independently in that order. Pass 2 skips a level if any matching slot already has an amount above 1.`,
     )) return;
 
     let changed = 0;
     for (const level of targets) {
-      const next = migrateQueueString(level.queueString, lookup);
+      const next = migrateQueueStringPasses(level.queueString, processLookup, usageLookup);
       level.queueString = next;
       level.queuesCompressed = undefined;
       entry.status.delete(level.id); // a validate result for the old string no longer applies
@@ -605,7 +625,7 @@ export class LevelPathView {
     }
     this.persist(entry);
     this.renderMap(entry);
-    alert(`Migrated ${changed} level(s) to bag amounts.`);
+    alert(`Migrated ${changed} level(s) to bag amounts in two ordered passes.`);
   }
 
   private deleteMap(entry: MapEntry): void {
@@ -709,6 +729,7 @@ ${names}${more}`)) {
       delete level.customerDishesSequence;
       delete level.complexityCurve;
       delete level.shuffleCurve;
+      delete level.bagFill;
       delete level.obstacleData;
       delete level.randomSeed;
       touched.add(entry);
@@ -1685,6 +1706,10 @@ ${names}${more}`)) {
     for (const { entry, level } of targets) {
       showBlockingOverlay(`Generating ${++done}/${targets.length} — ${level.name}`);
       await breathe();
+
+      // A level records this after its first generate. Until then the Level
+      // Path config bar supplies the project-wide default.
+      if (level.bagFill === undefined) level.bagFill = this.config.bagFill;
 
       const result = generateLevel(
         level,

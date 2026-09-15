@@ -243,19 +243,18 @@ function adaptiveWeightTracker(initial: Map<number, number>): {
 /** Pickup capacities needed by one occurrence of an ordered ingredient. */
 function productionCovers(ix: GraphIndex, ordered: number): number[] {
   const out: number[] = [];
-  const usage = Math.max(1, ix.usageNum[ordered] ?? 1);
   const walk = (ing: number, amount: number, seen: Set<number>): void => {
     if (seen.has(ing)) return;
     const step = ix.producerOf[ing];
     if (!step || ix.pickupable[ing]) {
-      out.push(Math.max(1, amount) * usage);
+      out.push(Math.max(1, amount));
       return;
     }
     const next = new Set(seen).add(ing);
     for (const input of step.inputs) walk(input.ing, amount * Math.max(1, step.amount), next);
   };
   walk(ordered, 1, new Set());
-  return out.length > 0 ? out : [usage];
+  return out.length > 0 ? out : [1];
 }
 
 function alignmentAddition(ix: GraphIndex, ing: number, count: number): number {

@@ -429,6 +429,18 @@ describe("placeQueueObstacles", () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it("attaches effects to bag slots without losing their amounts", () => {
+    const result = placeQueueObstacles({
+      queueString: queueOf(3, 4).replaceAll("0", "0:3"),
+      config: config({ hidden: 2, frozen: 1 }),
+      lockColors: [2],
+      rand: seededRng(12),
+    });
+    const items = parseQueues(result.queueString).flat();
+    expect(items.every((item) => item.amount === 3)).toBe(true);
+    expect(items.filter((item) => item.effects.length > 0).length).toBeGreaterThanOrEqual(4);
+  });
+
   it("reports rather than silently dropping what did not fit", () => {
     const result = placeQueueObstacles({
       queueString: queueOf(2, 2),

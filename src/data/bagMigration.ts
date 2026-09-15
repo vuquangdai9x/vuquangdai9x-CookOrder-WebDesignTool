@@ -11,10 +11,21 @@
 // config/nodegraph/migration/BagMigration-<index>-<name>.json, joined to a
 // graph by INDEX exactly like LevelData-*.csv (nodeProject.ts).
 
-import { parseQueueGroups, parseQueues, serializeQueues } from "../core/parser.ts";
+import { parseQueueGroups, parseQueues, queueItemAmount, serializeQueues } from "../core/parser.ts";
 
 export interface BagMigrationLookup {
   /** Key = ingredient DATA id (idTable position), value = former output multiplier. */
+  multipliers: Record<string, number>;
+  names?: Record<string, string>;
+}
+
+/**
+ * Second-pass lookup for the retired ingredient `usageNum` multiplier.
+ * Kept separate from BagMigrationLookup because these passes have different
+ * old-level detection and must run in order without blending their data.
+ */
+export interface UsageBagMigrationLookup {
+  /** Key = pickupable ingredient DATA id, value = its former usageNum. */
   multipliers: Record<string, number>;
   names?: Record<string, string>;
 }
@@ -28,6 +39,16 @@ export function bagMigrationLookup(mapIndex: number): BagMigrationLookup | null 
   for (const [path, mod] of Object.entries(LOOKUP_FILES)) {
     const file = path.slice(path.lastIndexOf("/") + 1);
     const match = /^BagMigration-(\d+)-.+\.json$/i.exec(file);
+    if (match && Number(match[1]) === mapIndex) return mod.default;
+  }
+  return null;
+}
+
+/** The second-pass usageNum lookup shipped for a map index, if any. */
+export function usageBagMigrationLookup(mapIndex: number): UsageBagMigrationLookup | null {
+  for (const [path, mod] of Object.entries(LOOKUP_FILES)) {
+    const file = path.slice(path.lastIndexOf("/") + 1);
+    const match = /^UsageBagMigration-(\d+)-.+\.json$/i.exec(file);
     if (match && Number(match[1]) === mapIndex) return mod.default;
   }
   return null;
@@ -66,4 +87,57 @@ export function migrateQueueString(queueString: string, lookup: BagMigrationLook
     }
   }
   return changed === 0 ? queueString : serializeQueues(queues, parseQueueGroups(queueString));
+}
+
+/**
+ * A level is old for pass two when it contains at least one lookup ingredient
+ * and every occurrence of every matching ingredient is still a plain amount-1
+ * slot. Amounts on unrelated ingredients (including pass-one bags) do not
+ * affect this decision.
+ */
+export function isOldUsageQueueString(queueString: string, lookup: UsageBagMigrationLookup): boolean {
+  let matches = 0;
+  for (const lane of parseQueues(queueString)) {
+    for (const item of lane) {
+      if (item.kind !== "ingredient" || lookup.multipliers[String(item.id)] === undefined) continue;
+      matches++;
+      if (queueItemAmount(item) !== 1) return false;
+    }
+  }
+  return matches > 0;
+}
+
+/**
+ * Second pass: move the former usageNum multiplier onto matching queue slots.
+ * This intentionally runs after migrateQueueString and ignores amounts added
+ * by that first, process-output migration.
+ */
+export function migrateUsageQueueString(
+  queueString: string,
+  lookup: UsageBagMigrationLookup,
+): string {
+  if (!isOldUsageQueueString(queueString, lookup)) return queueString;
+  const queues = parseQueues(queueString);
+  let changed = 0;
+  for (const lane of queues) {
+    for (const item of lane) {
+      if (item.kind !== "ingredient") continue;
+      const multiplier = lookup.multipliers[String(item.id)];
+      if (multiplier !== undefined && multiplier > 1) {
+        item.amount = Math.floor(multiplier);
+        changed++;
+      }
+    }
+  }
+  return changed === 0 ? queueString : serializeQueues(queues, parseQueueGroups(queueString));
+}
+
+/** Run the two independent migrations in their required order. */
+export function migrateQueueStringPasses(
+  queueString: string,
+  processLookup: BagMigrationLookup | null,
+  usageLookup: UsageBagMigrationLookup | null,
+): string {
+  const afterProcess = processLookup ? migrateQueueString(queueString, processLookup) : queueString;
+  return usageLookup ? migrateUsageQueueString(afterProcess, usageLookup) : afterProcess;
 }

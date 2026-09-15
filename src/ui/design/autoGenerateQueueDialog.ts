@@ -11,10 +11,11 @@ import { button, el } from "../dom.ts";
 import { createCurveWithPresets, defaultCurve, parseCurve, serializeCurve } from "./curveEditor.ts";
 import type { CurveState } from "./curveEditor.ts";
 import type { ShuffleRangeSpec } from "./queueGenerate.ts";
+import type { BagFillMode } from "../nodedesign/nodeQueueGenerate.ts";
 
 export interface AutoGenerateQueueDeps {
   level: LevelData;
-  onGenerate(spec: ShuffleRangeSpec): void;
+  onGenerate(spec: ShuffleRangeSpec, bagFill: BagFillMode): void;
 }
 
 /**
@@ -31,6 +32,7 @@ export function openAutoGenerateQueueDialog(deps: AutoGenerateQueueDeps): void {
 
   let mode: "fixed" | "curve" = "fixed";
   let fixedValue = 0;
+  let bagFill: BagFillMode = deps.level.bagFill ?? "random";
   let curveState = deps.level.shuffleCurve
     ? parseCurve(deps.level.shuffleCurve, cachedCurve ?? defaultCurve(0, 5))
     : cachedCurve
@@ -70,10 +72,29 @@ export function openAutoGenerateQueueDialog(deps: AutoGenerateQueueDeps): void {
   curveBtn = button("Curve", () => setMode("curve"), { class: "small-btn" }) as HTMLButtonElement;
   modeBody.replaceChildren(fixedField);
 
+  const bagFillSelect = el("select", {}) as HTMLSelectElement;
+  for (const option of [
+    { value: "min", label: "Minimum" },
+    { value: "random", label: "Random (default)" },
+    { value: "max", label: "Maximum" },
+  ] as const) {
+    const node = el("option", { value: option.value }, [option.label]) as HTMLOptionElement;
+    node.selected = option.value === bagFill;
+    bagFillSelect.append(node);
+  }
+  bagFillSelect.addEventListener("change", () => {
+    bagFill = bagFillSelect.value as BagFillMode;
+  });
+
   const panel = el("div", { class: "auto-generate-panel" }, [
     el("h3", {}, ["Shuffle Mode"]),
     el("div", { class: "toggle-group" }, [fixedBtn, curveBtn]),
     modeBody,
+    el("h3", {}, ["Bag Fill"]),
+    el("label", { class: "field" }, [
+      "Choose bag sizes inside each ingredient's stack range",
+      bagFillSelect,
+    ]),
     el("div", { class: "auto-generate-actions" }, [
       button("Cancel", close),
       button(
@@ -82,7 +103,8 @@ export function openAutoGenerateQueueDialog(deps: AutoGenerateQueueDeps): void {
           const spec: ShuffleRangeSpec =
             mode === "fixed" ? { kind: "fixed", value: fixedValue } : { kind: "curve", curve: curveState };
           if (mode === "curve") deps.level.shuffleCurve = serializeCurve(curveState);
-          deps.onGenerate(spec);
+          deps.level.bagFill = bagFill;
+          deps.onGenerate(spec, bagFill);
           close();
         },
         { class: "primary" },

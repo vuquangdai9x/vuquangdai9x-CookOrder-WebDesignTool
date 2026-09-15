@@ -40,6 +40,8 @@ export interface LevelData {
   complexityCurve?: string;
   /** Same record for the Queue section's Auto Generate curve-mode shuffle distance — JSON-encoded CurveState. */
   shuffleCurve?: string;
+  /** Auto Generate bag target within each ingredient's stack range. Defaults to random. */
+  bagFill?: "min" | "random" | "max";
   /** Free-text design note from the level data snapshot's "Design Note" column — design-time only, not consumed by Play/sim. */
   designNote?: string;
   /**

@@ -842,7 +842,7 @@ export class MapProcessView {
     const selected = this.selected.has(selKey({ kind, name }));
     const primary = this.selection?.kind === kind && this.selection.name === name;
     const vertex = this.doc.vertices[kind].find((v) => v.name === name) as
-      | { name: string; displayName?: string; orderable?: boolean; usageNum?: number }
+      | { name: string; displayName?: string; orderable?: boolean }
       | undefined;
 
     const node = el("div", {
@@ -876,23 +876,6 @@ export class MapProcessView {
     if (kind === "composite" && vertex?.orderable) {
       node.append(
         el("span", { class: "np-orderable", title: "Orderable \u2014 a customer may order this" }, ["\ud83c\udf74"]),
-      );
-    }
-
-    // usageNum > 1 means ONE landed piece fills several dish slots \u2014 it changes
-    // how much a pickup is worth and disables direct-serve, so it belongs on the
-    // node rather than three clicks away in the inspector. 1 is the default and
-    // would be noise on every node.
-    if (kind === "ingredient" && (vertex?.usageNum ?? 1) > 1) {
-      node.append(
-        el(
-          "span",
-          {
-            class: "np-usage",
-            title: `Fills ${vertex?.usageNum} dish slots per landed piece`,
-          },
-          [String(vertex?.usageNum)],
-        ),
       );
     }
 

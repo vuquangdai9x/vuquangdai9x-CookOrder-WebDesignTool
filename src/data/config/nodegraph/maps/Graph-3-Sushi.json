@@ -76,7 +76,6 @@
         "name": "rice",
         "displayName": "rice",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍚",
         "localImage": "Map3-sushi/ingredients/rice.png"
@@ -85,7 +84,6 @@
         "name": "water",
         "displayName": "water",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "💧"
       },
@@ -93,7 +91,6 @@
         "name": "rice-cooked",
         "displayName": "rice-cooked",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍚",
         "localImage": "Map3-sushi/ingredients/rice-cooked.png"
@@ -102,7 +99,6 @@
         "name": "teacup-empty",
         "displayName": "teacup-empty",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍵",
         "localImage": "Map3-sushi/ingredients/teacup-empty.png"
@@ -111,7 +107,6 @@
         "name": "teacup",
         "displayName": "teacup",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍵",
         "localImage": "Map3-sushi/ingredients/teacup.png"
@@ -120,7 +115,6 @@
         "name": "wasabi",
         "displayName": "wasabi",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🌿",
         "localImage": "Map3-sushi/ingredients/wasabi.png"
@@ -129,7 +123,6 @@
         "name": "wasabi-flour",
         "displayName": "wasabi-flour",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟢",
         "localImage": "Map3-sushi/ingredients/wasabi-flour.png"
@@ -138,7 +131,6 @@
         "name": "fish-salmon-sliced",
         "displayName": "fish-salmon-sliced",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍣",
         "localImage": "Map3-sushi/ingredients/fish-salmon-sliced.png"
@@ -147,7 +139,6 @@
         "name": "fish-salmon",
         "displayName": "fish-salmon",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🐟",
         "localImage": "Map3-sushi/ingredients/fish-salmon.png"
@@ -156,7 +147,6 @@
         "name": "fish-tuna",
         "displayName": "fish-tuna",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🐟",
         "localImage": "Map3-sushi/ingredients/fish-tuna.png"
@@ -165,7 +155,6 @@
         "name": "fish-tuna-sliced",
         "displayName": "fish-tuna-sliced",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍣",
         "localImage": "Map3-sushi/ingredients/fish-tuna-sliced.png"
@@ -174,7 +163,6 @@
         "name": "fish-roe-orange",
         "displayName": "fish-roe-orange",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟠",
         "localImage": "Map3-sushi/ingredients/fish-roe-orange.png"
@@ -183,7 +171,6 @@
         "name": "fish-roe-black",
         "displayName": "fish-roe-black",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "⚫",
         "localImage": "Map3-sushi/ingredients/fish-roe-black.png"
@@ -192,7 +179,6 @@
         "name": "fish-roe-green",
         "displayName": "fish-roe-green",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🟢",
         "localImage": "Map3-sushi/ingredients/fish-roegreen.png"
@@ -201,7 +187,6 @@
         "name": "seaweed",
         "displayName": "seaweed",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🌿",
         "localImage": "Map3-sushi/ingredients/seaweed.png"
@@ -210,7 +195,6 @@
         "name": "avocado",
         "displayName": "avocado",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥑",
         "localImage": "Map3-sushi/ingredients/avocado.png"
@@ -219,7 +203,6 @@
         "name": "avocado-sliced",
         "displayName": "avocado-sliced",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥑",
         "localImage": "Map3-sushi/ingredients/avocado-sliced.png"
@@ -228,7 +211,6 @@
         "name": "lemon",
         "displayName": "lemon",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍋",
         "localImage": "Map3-sushi/ingredients/lemon.png"
@@ -237,7 +219,6 @@
         "name": "lemon-sliced",
         "displayName": "lemon-sliced",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍋",
         "localImage": "Map3-sushi/ingredients/lemon-sliced.png"
@@ -246,7 +227,6 @@
         "name": "wakame-seasame",
         "displayName": "wakame-seasame",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥗"
       },
@@ -254,7 +234,6 @@
         "name": "shrimp-boiled",
         "displayName": "shrimp-boiled",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍤",
         "localImage": "Map3-sushi/ingredients/shrimp-boiled.png"
@@ -263,7 +242,6 @@
         "name": "fish-hirame",
         "displayName": "fish-hirame",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🐟",
         "localImage": "Map3-sushi/ingredients/fish-hirame.png"
@@ -272,7 +250,6 @@
         "name": "fish-mackerel",
         "displayName": "fish-mackerel",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🐟",
         "localImage": "Map3-sushi/ingredients/fish-mackerel.png"
@@ -281,7 +258,6 @@
         "name": "fish-hirame-sliced",
         "displayName": "fish-hirame-sliced",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍣",
         "localImage": "Map3-sushi/ingredients/fish-hirame-sliced.png"
@@ -290,7 +266,6 @@
         "name": "fish-mackerel-sliced",
         "displayName": "fish-mackerel-sliced",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍣",
         "localImage": "Map3-sushi/ingredients/fish-mackerel-sliced.png"
@@ -299,7 +274,6 @@
         "name": "sauce-mayo",
         "displayName": "sauce-mayo",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🥫",
         "localImage": "Map3-sushi/ingredients/sauce-mayo.png"
@@ -308,7 +282,6 @@
         "name": "octopus-boiled",
         "displayName": "octopus-boiled",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🐙",
         "localImage": "Map3-sushi/ingredients/octopus-boiled.png"
@@ -317,7 +290,6 @@
         "name": "shrimp-sliced",
         "displayName": "shrimp-sliced",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍤",
         "localImage": "Map3-sushi/ingredients/shrimp-sliced.png"
@@ -326,7 +298,6 @@
         "name": "octopus-sliced",
         "displayName": "octopus-sliced",
         "pickupable": false,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🍣",
         "localImage": "Map3-sushi/ingredients/octopus-sliced.png"
@@ -335,7 +306,6 @@
         "name": "shrimp",
         "displayName": "shrimp",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🦐",
         "localImage": "Map3-sushi/ingredients/shrimp.png"
@@ -344,7 +314,6 @@
         "name": "octopus",
         "displayName": "octopus",
         "pickupable": true,
-        "usageNum": 1,
         "price": 0,
         "emoji": "🐙",
         "localImage": "Map3-sushi/ingredients/octopus.png"
