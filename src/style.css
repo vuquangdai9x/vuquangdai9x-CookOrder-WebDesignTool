@@ -223,6 +223,7 @@ header h1 {
 .mode-tabs {
   display: flex;
   gap: 0.25rem;
+  flex-wrap: wrap;
 }
 
 .data-actions {
@@ -2775,6 +2776,256 @@ td input {
 
 .behavior-picker {
   max-width: 11rem;
+}
+
+/* ---------- Agent Design ---------- */
+
+.agent-design-page {
+  width: min(72rem, 100%);
+  margin: 0 auto;
+}
+
+.agent-design-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.agent-design-heading h2,
+.agent-design-heading p,
+.agent-level-title h3 {
+  margin: 0;
+}
+
+.agent-design-heading p {
+  margin-top: 0.25rem;
+}
+
+.agent-design-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.agent-profile {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.agent-profile > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+  background: var(--panel-2);
+}
+
+.agent-profile > summary::marker {
+  color: var(--accent);
+}
+
+.agent-profile-name {
+  font-weight: 700;
+}
+
+.agent-profile-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.agent-profile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.75rem;
+}
+
+.agent-profile-body > p {
+  margin: 0 0 0.15rem;
+}
+
+.agent-level-card {
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-sunken);
+}
+
+.agent-level-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.agent-level-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.agent-level-title h3 {
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+}
+
+.agent-level-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.agent-level-meta span {
+  padding: 0.12rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+}
+
+.agent-prompt-foldout {
+  margin-top: 0.6rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.agent-prompt-foldout > summary {
+  cursor: pointer;
+}
+
+.agent-prompt-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+
+.agent-level-instruction {
+  min-width: 0;
+  flex: 1;
+  max-height: 14rem;
+  margin: 0;
+  padding: 0.65rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: 0.78rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.agent-empty {
+  padding: 1rem;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.agent-playtest-host {
+  min-width: 0;
+}
+
+.agent-playtest-title {
+  overflow: hidden;
+  max-width: min(28rem, 45vw);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  header {
+    gap: 0.45rem;
+    padding: 0.4rem 0.5rem;
+  }
+
+  header h1 {
+    width: 100%;
+  }
+
+  .mode-tabs {
+    flex: 1 1 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 0.15rem;
+  }
+
+  .mode-tabs button {
+    flex: 0 0 auto;
+    padding: 0.25rem 0.45rem;
+    font-size: 0.76rem;
+  }
+
+  .data-actions {
+    margin-left: 0;
+  }
+
+  .data-origin {
+    display: none;
+  }
+
+  .agent-design-heading,
+  .agent-level-summary,
+  .agent-prompt-body {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .agent-play-btn {
+    width: 100%;
+    min-height: 2.6rem;
+  }
+
+  main.agent-playtest-main {
+    padding: 0.35rem;
+  }
+
+  .agent-playtest-toolbar {
+    gap: 0.35rem;
+    top: 5.4rem;
+  }
+
+  .agent-playtest-title {
+    order: -1;
+    width: 100%;
+    max-width: none;
+  }
+
+  .agent-playtest-toolbar .spacer {
+    display: none;
+  }
+
+  .agent-playtest-toolbar .hud {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.35rem;
+  }
+
+  .agent-playtest-host .play-page {
+    width: 100%;
+    --slot-size: clamp(2.2rem, 12vw, 3rem);
+  }
+
+  .agent-playtest-host .play-section {
+    padding: 0.4rem;
+  }
+
+  .agent-playtest-host .customer-cards.play,
+  .agent-playtest-host .tools,
+  .agent-playtest-host .middle-split {
+    gap: 0.25rem;
+  }
+
+  .agent-playtest-host .tool {
+    padding: 0.2rem;
+  }
 }
 
 .overlay {

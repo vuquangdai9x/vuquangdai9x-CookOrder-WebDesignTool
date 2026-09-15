@@ -8,6 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "mcp": "vite-node src/mcp/server.ts",
     "mcp:typecheck": "tsc -p tsconfig.mcp.json --noEmit",
+    "agent-level:append": "vite-node src/mcp/publishAgentLevel.ts",
+    "agent-level:publish": "vite-node src/mcp/publishAgentLevel.ts --commit --push --remote github.com --branch master",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

@@ -8,6 +8,7 @@ import type { EffectInstance, QueueGroup, QueueItem } from "../core/types.ts";
 import { buildIdIndex } from "../data/nodeIdTable.ts";
 import { validateNodeGraph } from "../data/nodeGraphValidate.ts";
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
+import type { LevelData } from "../data/mapLoader.ts";
 import { estimateNodeDifficulty } from "../ui/design/nodeEstimateDifficulty.ts";
 import { checkQueueThaw } from "../ui/design/queueThawCheck.ts";
 import { checkToolDeadlock } from "../ui/design/toolDeadlockCheck.ts";
@@ -173,6 +174,11 @@ function serializeDraft(draft: SessionDraft, resources: AuthoringResources): { q
     gridString: serializeGrid(level.grid),
     customerString: serializeNodeCustomers(level.customers),
   };
+}
+
+/** Browser-ready level data for a validated MCP draft. Publishing code shares this exact serializer. */
+export function sessionDraftToLevelData(draft: SessionDraft, resources: AuthoringResources): LevelData {
+  return { ...draft.level, ...serializeDraft(draft, resources) };
 }
 
 function retokenRequirements(requirements: RefinedLevelRequirements): RefinedLevelRequirements {
@@ -1680,7 +1686,19 @@ export class LevelAuthoringService {
     if (!fundamental) return { finalized: false, revision: session.revision, validation, estimate, playtest, reason: "Fundamental validity requirements were not met; no valid CSV was finalized." };
     const thresholdMisses = (estimate.thresholdResults as Array<{ pass: boolean }>).filter((item) => !item.pass);
     const checkpoint = await this.checkpointLevel(sessionId, thresholdMisses.length ? "closest" : "valid");
-    return { finalized: true, label: thresholdMisses.length ? "closest" : "valid", deviations: thresholdMisses, checkpoint, validation, estimate, playtest };
+    const label = thresholdMisses.length ? "closest" : "valid";
+    const finalizedSession = ensureCandidateState(await this.store.load(sessionId));
+    const finalizedCandidate = finalizedSession.candidates?.[finalizedSession.activeCandidateId ?? ""];
+    finalizedSession.finalization = {
+      candidateId: finalizedCandidate?.id ?? "candidate-main",
+      revision: finalizedSession.revision,
+      label,
+      at: now(),
+      ...(evaluation ? { evaluationId: evaluation.id } : {}),
+    };
+    if (finalizedCandidate) finalizedCandidate.status = "finalized";
+    await this.store.save(finalizedSession);
+    return { finalized: true, label, deviations: thresholdMisses, checkpoint, validation, estimate, playtest };
   }
 
   async restoreRevision(sessionId: string, expectedRevision: number, revision: number): Promise<MutationResult> {
@@ -1706,7 +1724,11 @@ export class LevelAuthoringService {
     const invalidatedEvaluation = invalidatedEvidence.length ? session.evaluations?.[invalidatedEvidence[0]] : undefined;
     const beforeSupply = this.supplyDemand(session, resources); const beforeDraft = clone(session.draft); const changedObjects = change(session, resources);
     session.revision++; session.updatedAt = now(); session.history.push({ revision: session.revision, draft: clone(session.draft), ...(session.requirements ? { requirements: clone(session.requirements) } : {}), label: action, at: session.updatedAt });
-    if (candidate) delete candidate.latestEvaluationId;
+    delete session.finalization;
+    if (candidate) {
+      delete candidate.latestEvaluationId;
+      candidate.status = "active";
+    }
     const findings = this.fastFindings(session, resources); const afterSupply = this.supplyDemand(session, resources);
     await this.store.save(session); await this.store.appendAction(session.id, { at: session.updatedAt, revision: session.revision, action, input, beforeDraft, changedObjects, findings });
     return {

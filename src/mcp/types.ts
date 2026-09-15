@@ -423,6 +423,14 @@ export interface SessionRecord {
   proposals?: Record<string, ProposalRecord>;
   experiments?: Record<string, MutationExperimentRecord>;
   searchObservations?: SearchObservationRecord[];
+  /** Current revision proven valid by finalize_level and eligible for Agent Design publishing. */
+  finalization?: {
+    candidateId: string;
+    revision: number;
+    label: "valid" | "closest";
+    at: string;
+    evaluationId?: string;
+  };
 }
 
 export interface MutationResult {

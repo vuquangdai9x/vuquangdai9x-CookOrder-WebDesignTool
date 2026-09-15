@@ -4,15 +4,19 @@ import { GLOBAL_DEFS } from "./data/configLoader.ts";
 import {
   clearAllNodeDrafts,
   defaultNodeMapId,
+  freshNodeProject,
   loadNodeProject,
+  NODE_DOCS,
   saveNodeProject,
 } from "./data/nodeProject.ts";
 import type { NodeProjectState } from "./data/nodeProject.ts";
+import type { AgentLevelEntry, AgentLevelProfile } from "./data/agentLevels.ts";
 import { MapProcessView } from "./ui/nodegraph/index.ts";
 import { LevelPathView } from "./ui/levelpath/index.ts";
 import { NodeDesignView } from "./ui/nodedesign/index.ts";
 import { NodePlayView } from "./ui/nodeplay/index.ts";
 import { NodeRemoteDataView } from "./ui/noderemote/index.ts";
+import { AgentDesignView } from "./ui/agentdesign/index.ts";
 import { nodeIconSource } from "./ui/nodegraph/iconAdapter.ts";
 import type { NodeIconSource } from "./ui/nodegraph/iconAdapter.ts";
 import { button, el } from "./ui/dom.ts";
@@ -31,7 +35,7 @@ import {
 } from "./ui/i18n.ts";
 import type { Language } from "./ui/i18n.ts";
 
-type Mode = "mapproc" | "lpath" | "ndesign" | "nplay" | "nremote";
+type Mode = "mapproc" | "lpath" | "ndesign" | "nplay" | "agentdesign" | "nremote";
 
 interface ModeDef {
   id: Mode;
@@ -43,6 +47,7 @@ const MODES: ModeDef[] = [
   { id: "lpath", label: "Level Path" },
   { id: "ndesign", label: "Design" },
   { id: "nplay", label: "Play" },
+  { id: "agentdesign", label: "Agent Design" },
   { id: "nremote", label: "Remote Data" },
 ];
 
@@ -56,6 +61,12 @@ let nodeLevelId = node.levels[0]?.id ?? 1;
 
 let mode: Mode = "nplay";
 let nodePlayView: NodePlayView | null = null;
+let agentDesignView: AgentDesignView | null = null;
+let agentPlaytest: {
+  profile: AgentLevelProfile;
+  entry: AgentLevelEntry;
+  project: NodeProjectState;
+} | null = null;
 
 /**
  * Whether each mounted view has unsaved work. Views register here on mount, so
@@ -107,18 +118,19 @@ function selectNodeMap(docId: string): void {
   void render();
 }
 
-function iconSourceFor(): NodeIconSource {
-  let source = nodeIconSources.get(node.doc);
+function iconSourceFor(project: NodeProjectState = node): NodeIconSource {
+  let source = nodeIconSources.get(project.doc);
   if (!source) {
-    source = nodeIconSource(node.doc);
-    nodeIconSources.set(node.doc, source);
+    source = nodeIconSource(project.doc);
+    nodeIconSources.set(project.doc, source);
   }
   return source;
 }
 
 async function render(): Promise<void> {
   const generation = ++renderGeneration;
-  const source = iconSourceFor();
+  const sourceProject = mode === "agentdesign" && agentPlaytest ? agentPlaytest.project : node;
+  const source = iconSourceFor(sourceProject);
 
   setIconMap(source);
   if (!preloaded.has(source)) {
@@ -133,6 +145,8 @@ async function render(): Promise<void> {
 
   nodePlayView?.destroy();
   nodePlayView = null;
+  agentDesignView?.destroy();
+  agentDesignView = null;
   dirtyProviders = [];
 
   const header = el("header", {}, [
@@ -258,6 +272,33 @@ function mount(target: Mode, main: HTMLElement): void {
       }, selectNodeMap);
       return;
     }
+    case "agentdesign": {
+      if (!agentPlaytest) {
+        agentDesignView = new AgentDesignView(main, openAgentPlaytest);
+        return;
+      }
+      main.classList.add("agent-playtest-main");
+      const host = el("div", { class: "agent-playtest-host" });
+      main.append(host);
+      nodePlayView = new NodePlayView(
+        host,
+        agentPlaytest.project,
+        agentPlaytest.entry.level.id,
+        () => {},
+        () => {},
+        undefined,
+        undefined,
+        {
+          kiosk: true,
+          title: `${agentPlaytest.profile.name} · ${agentPlaytest.entry.name}`,
+          onExit: () => {
+            agentPlaytest = null;
+            void render();
+          },
+        },
+      );
+      return;
+    }
     case "nremote": {
       new NodeRemoteDataView(
         main,
@@ -294,6 +335,18 @@ function mount(target: Mode, main: HTMLElement): void {
       );
     }
   }
+}
+
+function openAgentPlaytest(profile: AgentLevelProfile, entry: AgentLevelEntry): void {
+  if (!NODE_DOCS.some((doc) => doc.id === entry.mapId)) {
+    alert(`Agent level "${entry.name}" references unknown bundled map "${entry.mapId}".`);
+    return;
+  }
+  const project = freshNodeProject(entry.mapId);
+  project.levels = [structuredClone(entry.level)];
+  project.origin = `${profile.name} · published agent level`;
+  agentPlaytest = { profile, entry, project };
+  void render();
 }
 
 /** The Remote Data tab's "Open in Design" — the node Design mode. */
@@ -342,6 +395,7 @@ function switchMode(next: Mode): void {
   if (next !== mode && anyDirty()) {
     if (!confirm("Some sections have unsaved changes. Leave this mode anyway?")) return;
   }
+  if (mode === "agentdesign" && next !== "agentdesign") agentPlaytest = null;
   mode = next;
   void render();
 }

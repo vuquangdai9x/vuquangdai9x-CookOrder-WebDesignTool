@@ -1,3 +1,21 @@
 node_modules/
 dist/
 *.local
+
+# Local credentials and machine-specific environment values.
+.env
+.env.*
+!.env.example
+
+# Local agent/MCP authoring state. These sessions contain drafts, evaluations,
+# checkpoints, reports, and action logs; GitHub Pages never reads them.
+outputs/mcp-level-sessions/
+
+# Agent Design deploy allowlist. GitHub Pages needs only the discovery index
+# and flat profile JSON payloads; ignore prompts, reports, temporary siblings,
+# and any other accidental exports in this directory.
+public/agent-levels/*
+!public/agent-levels/index.json
+!public/agent-levels/profiles/
+public/agent-levels/profiles/*
+!public/agent-levels/profiles/*.json

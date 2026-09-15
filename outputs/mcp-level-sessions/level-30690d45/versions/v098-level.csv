@@ -1,2 +1,0 @@
-Level_ID,Name,Weather,LevelTag,FeatureUnlock,ShuffleDistance,ServeableSlots,QueueString,GridString,CustomerString,OutOfSlotPolicy,BoosterCharges
-1,Burger & Soda Pair-Up,Normal,Fair,,0,2,"0,1,7%0,1,7%8,2,3%8$0-0,1-0;0-1,1-1;0-2,1-2;2-0,3-0$",",,,,,,,,,",0;0;0;{c0:17.{g0:18.19.20}};;0|0;0;0;{c1:24.8};;1|0;0;0;{c0:17.{g0:18.19.20}};;2|0;0;0;{c1:24.8};;3,block-pick,

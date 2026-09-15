@@ -328,6 +328,14 @@ describe("LevelAuthoringService", () => {
     expect(status.status).toBe("finalized");
     const validCount = (status.members as Array<{ status: string }>).filter((member) => member.status === "valid").length;
     expect((finalized.exported as unknown[]).length).toBe(validCount);
+    for (const member of status.members as Array<{ status: string; sessionId: string }>) {
+      if (member.status !== "valid") continue;
+      const published = await service.store.load(member.sessionId);
+      expect(published.finalization).toMatchObject({
+        candidateId: published.activeCandidateId,
+        revision: published.revision,
+      });
+    }
   });
 
   it("constructs dish demand manually and reconciles it with explicit queue pickups", async () => {

@@ -67,6 +67,8 @@ import { renderGroupOverlay } from "./groupOverlay.ts";
 import { replayScoreStepIndex } from "./replayScoreStep.ts";
 import { recipeGuideRows } from "./recipeGuide.ts";
 import {
+  DEFAULT_PLAY_PACKING_MODE,
+  DEFAULT_PLAY_TOOL_PROCESS_BEHAVIOR,
   playPackingMode,
   playToolProcessBehavior,
   setPlayPackingMode,
@@ -122,6 +124,13 @@ interface ReplayToolbarEls {
   slider: HTMLInputElement;
   counter: HTMLElement;
   message: HTMLElement;
+}
+
+export interface NodePlayViewOptions {
+  /** Configuration-free public playtest presentation used by Agent Design. */
+  kiosk?: boolean;
+  title?: string;
+  onExit?: () => void;
 }
 
 /**
@@ -227,6 +236,7 @@ export class NodePlayView {
   private replayEls: ReplayToolbarEls | null = null;
   /** Estimate replays stay bound to the behavior modes that produced their steps. */
   private replayBehavior: { packingMode: PackingMode; toolProcessBehavior: ToolProcessBehavior } | null;
+  private options: NodePlayViewOptions;
 
   constructor(
     root: HTMLElement,
@@ -236,12 +246,14 @@ export class NodePlayView {
     onSelectMap: (docId: string) => void,
     replaySteps?: EstimateReplayStep[],
     replayBehavior?: { packingMode: PackingMode; toolProcessBehavior: ToolProcessBehavior },
+    options: NodePlayViewOptions = {},
   ) {
     this.root = root;
     this.project = project;
     this.onSelectLevel = onSelectLevel;
     this.onSelectMap = onSelectMap;
     this.replayBehavior = replayBehavior ?? null;
+    this.options = options;
     if (replaySteps) {
       this.replay = {
         steps: replaySteps,
@@ -332,8 +344,12 @@ export class NodePlayView {
       detectDeadlockLoss: true,
       continueAfterCustomerTimeout: this.replay !== null,
       outOfSlotPolicy: "park-on-grid",
-      packingMode: this.replayBehavior?.packingMode ?? playPackingMode(),
-      toolProcessBehavior: this.replayBehavior?.toolProcessBehavior ?? playToolProcessBehavior(),
+      packingMode: this.options.kiosk
+        ? DEFAULT_PLAY_PACKING_MODE
+        : this.replayBehavior?.packingMode ?? playPackingMode(),
+      toolProcessBehavior: this.options.kiosk
+        ? DEFAULT_PLAY_TOOL_PROCESS_BEHAVIOR
+        : this.replayBehavior?.toolProcessBehavior ?? playToolProcessBehavior(),
     });
     this.animating.clear();
     this.pendingPickOrigins = [];
@@ -371,7 +387,7 @@ export class NodePlayView {
     // them instead of sitting below.
     this.bossTintEl = el("div", { class: "boss-background-tint", "aria-hidden": "true" });
     const children = [this.weatherLayer(), this.bossTintEl, this.toolbar(), this.page, this.boostersEl];
-    if (!this.replay) {
+    if (!this.replay && !this.options.kiosk) {
       this.recipePanelEl = this.recipeGuidePanel();
       children.push(this.recipePanelEl);
     } else {
@@ -892,6 +908,7 @@ export class NodePlayView {
 
   private toolbar(): HTMLElement {
     if (this.replay) return this.replayToolbar();
+    if (this.options.kiosk) return this.kioskToolbar();
     const mapPicker = el("select", { class: "map-picker" }) as HTMLSelectElement;
     for (const map of listNodeMaps()) {
       const opt = el("option", { value: map.id }, [map.name]);
@@ -997,6 +1014,40 @@ export class NodePlayView {
     ]);
     this.applyFoldState();
     return bar;
+  }
+
+  /** Public playtest chrome: game controls only, with no map or behavior configuration. */
+  private kioskToolbar(): HTMLElement {
+    this.configGroupEl = null;
+    this.foldBtn = null;
+    const speedBar = el("div", { class: "speed-bar", role: "radiogroup", "aria-label": "Game speed" });
+    for (const option of SPEEDS) {
+      speedBar.append(button(option.label, () => {
+        this.speedId = option.id;
+        this.paused = false;
+        this.refreshToolbar();
+      }, {
+        class: this.speedId === option.id ? "active" : "",
+        "data-speed": option.id,
+        role: "radio",
+        "aria-checked": String(this.speedId === option.id),
+        title: `Run at ${option.label} speed`,
+      }));
+    }
+    return el("div", { class: "play-toolbar agent-playtest-toolbar" }, [
+      ...(this.options.onExit
+        ? [button("← Levels", this.options.onExit, { class: "agent-playtest-back" })]
+        : []),
+      el("strong", { class: "agent-playtest-title" }, [this.options.title ?? this.level.name]),
+      speedBar,
+      button(this.paused ? "▶ Resume" : "⏸ Pause", () => {
+        this.paused = !this.paused;
+        this.refreshToolbar();
+      }, { id: "btn-pause" }),
+      button("⟲ Restart", () => this.restart()),
+      el("span", { class: "spacer" }),
+      el("div", { class: "hud", id: "play-hud" }),
+    ]);
   }
 
   private applyFoldState(): void {

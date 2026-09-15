@@ -34,7 +34,7 @@ Use this checklist to find gaps; do not force the designer to answer irrelevant 
 9. **Mechanics and effects** — queue Freeze/Hidden/HoldingKey; combined/linked groups; grid blocks, order locks, ingredient slots, color locks; dish effects; timers; staff, boss, shipper; count, strength, placement, introduction timing, and explicit authorization for each.
 10. **Difficulty evidence** — target occupancy, detour/random-pick ratios, concurrency, stuck-picking rate, win rate, timeout rate, failure distribution, duration percentiles, solver strictness, and whether “closest attainable” is acceptable.
 11. **Reproducibility and search** — fixed generator seed; evaluation seed set/run count; candidate count; wall-time/iteration budget; deterministic versus varied output; comparison policy.
-12. **Delivery** — draft versus final artifact; alternatives; report depth; checkpoint naming; output location/format; whether canonical integration is separately requested.
+12. **Delivery** — draft versus final artifact; alternatives; report depth; checkpoint naming; output location/format; whether canonical integration is separately requested; whether this is an Agent Design profile for cross-device GitHub Pages playtesting; profile display name/stable slug; append-only versus commit/push/deploy; deploy branch and desired Pages URL.
 
 Mechanic authorization and delivery destination are never silently inferred. Difficulty adjectives alone do not authorize effects, groups, locks, timers, or special customers.
 
@@ -71,6 +71,7 @@ After confirmation or a permitted bypass:
 8. Checkpoint meaningful improvements. Branch candidates when two plausible directions should be compared. Record evidence when changing strategy.
 9. Repeat until constraints pass or the confirmed budget ends. Read [validation-and-repair.md](references/validation-and-repair.md).
 10. Run final validation/evaluation and finalize only a fundamentally valid candidate.
+11. When the confirmed delivery is an Agent Design profile, publish through the repository command described below; do not manually build its manifest or copy canonical strings.
 
 Read [repl-pipeline.md](references/repl-pipeline.md) for tool routing, compatibility fallbacks, candidate comparison, evaluation cadence, and batch operation.
 
@@ -87,7 +88,22 @@ Read [repl-pipeline.md](references/repl-pipeline.md) for tool routing, compatibi
 - Do not treat a solver win with any customer timeout as valid.
 - Pass the latest `expected_revision` to each mutation. On conflict, reload; never overwrite concurrent state.
 - Never overwrite committed CSVs or browser drafts. Session artifacts stay under the MCP output directory unless separately authorized.
+- Agent Design publishing is the one explicit exception to the output-directory rule: only when the confirmed delivery requests it, use the repository publisher to update `public/agent-levels/index.json` and that profile's own file. The publish command commits only those files.
+- Never stage or push `outputs/mcp-level-sessions/`; it is ignored local working state. A generated level's deploy payload is only `public/agent-levels/index.json` plus its `public/agent-levels/profiles/<profile-id>.json` file.
 - Stop at the confirmed search budget. If none was provided, stop after twenty complete validate/evaluate/playtest cycles and report the closest candidate with evidence.
+
+## Agent Design delivery
+
+Use this path when the designer asks to play generated levels from GitHub Pages or names the Agent Design tab.
+
+1. During intake, establish one human-readable profile name for the local agent-design session. Reuse a stable `--profile-id` if the display name changes. One profile may contain multiple finalized MCP level sessions and may span bundled maps.
+2. Preserve the exact refined requirement as the reprompt instruction. The publisher derives it from confirmed session requirements by default; use `--instruction-file` only when a separately reviewed prompt is the intended source.
+3. After each level finalizes, append it with `npm run agent-level:append -- --session <session-id> --profile "<profile name>" [--profile-id <slug>]`. A current revision that is not finalized is re-finalized and must pass before any public file is written.
+4. For a single level, or the last level in a batch/profile, use `npm run agent-level:publish -- --session <session-id> --profile "<profile name>" [--profile-id <slug>]` when commit and push were explicitly requested. This command updates the profile/index, commits only those two paths, verifies the checked-out branch, and pushes `master` to the repository's `github.com` remote. Do not use it when the designer asked only for local files. Override `--remote` or `--branch` only after verifying a changed deployment configuration.
+5. Check the current branch against `.github/workflows/deploy.yml`. If it is not a deployment branch, explain that the push will not reach Pages until merged; do not merge or push another branch without authority.
+6. When deployment was requested, monitor the Pages workflow to a terminal result when GitHub CLI or another authorized repository interface is available. Report the deployed URL only after success; otherwise report the pushed commit and the outstanding deployment check.
+
+For multiple levels, append the earlier sessions without committing, then publish the last session so one profile commit contains the whole set. Republishing the same MCP session revision replaces that entry; publishing a new revision preserves the prior entry as another playtest case. See [Agent Design publishing pipeline](../../../docs/AGENT_DESIGN_PIPELINE.md).
 
 ## Tool compatibility
 
@@ -103,4 +119,4 @@ Do not claim an unavailable tool ran. Missing orchestration is not permission to
 
 ## Final report
 
-Report the finalized/closest candidate, confirmed requirements, hard-pass status, target misses, amount utilization, picking-order deadlock rate, win/timeout evidence, seed/run counts, important tradeoffs, and artifact/checkpoint references. Distinguish measured facts from assumptions. If closest rather than compliant, name the smallest remaining gap and proposed next action.
+Report the finalized/closest candidate, confirmed requirements, hard-pass status, target misses, amount utilization, picking-order deadlock rate, win/timeout evidence, seed/run counts, important tradeoffs, and artifact/checkpoint references. For Agent Design delivery, also report the profile name, published level entry, generated files, commit, push/deployment status, and Pages playtest URL when verified. Distinguish measured facts from assumptions. If closest rather than compliant, name the smallest remaining gap and proposed next action.
