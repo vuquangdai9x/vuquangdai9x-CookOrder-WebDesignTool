@@ -830,32 +830,32 @@
       {
         "from": "burger-toppings",
         "to": "patty-cooked",
-        "maxQuantity": 1
+        "maxQuantity": -1
       },
       {
         "from": "burger-toppings",
         "to": "tomato-sliced",
-        "maxQuantity": 1
+        "maxQuantity": -1
       },
       {
         "from": "burger-toppings",
         "to": "lettuce-sliced",
-        "maxQuantity": 1
+        "maxQuantity": -1
       },
       {
         "from": "burger-toppings",
         "to": "onion-sliced",
-        "maxQuantity": 1
+        "maxQuantity": -1
       },
       {
         "from": "burger-toppings",
         "to": "cheese-sliced",
-        "maxQuantity": 1
+        "maxQuantity": -1
       },
       {
         "from": "burger-toppings",
         "to": "egg-cooked",
-        "maxQuantity": 1
+        "maxQuantity": -1
       },
       {
         "from": "fried-basket-bases",
@@ -1092,7 +1092,7 @@
     },
     "composite:fried-basket": {
       "x": 1584,
-      "y": -135.99999999999986
+      "y": -137.94871709999987
     },
     "dirty:dirty-chick-box": {
       "x": 1908.6037079999999,
