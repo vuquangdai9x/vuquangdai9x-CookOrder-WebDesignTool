@@ -783,16 +783,7 @@
         "maxQuantity": -1
       }
     ],
-    "leavesDirty": [
-      {
-        "from": "donut-with-topping",
-        "to": "dirty-plate"
-      },
-      {
-        "from": "cupcake-with-cream",
-        "to": "dirty-plate"
-      }
-    ]
+    "leavesDirty": []
   },
   "layout": {
     "table:pickupable": {

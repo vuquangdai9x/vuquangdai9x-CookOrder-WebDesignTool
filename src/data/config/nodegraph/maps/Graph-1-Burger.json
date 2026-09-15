@@ -894,12 +894,7 @@
         "maxQuantity": -1
       }
     ],
-    "leavesDirty": [
-      {
-        "from": "burger",
-        "to": "dirty-plate"
-      }
-    ]
+    "leavesDirty": []
   },
   "layout": {
     "ingredient:bun": {

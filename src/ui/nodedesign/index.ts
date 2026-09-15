@@ -45,7 +45,14 @@ import type { NodeLevelConfig } from "../../core/nodeSim.ts";
 import { toNodeLevelConfig } from "../../data/nodeLevel.ts";
 import { buildIndex } from "../../core/nodeIndex.ts";
 import { orderIdIndex, resolveOrder } from "../../core/nodeOrder.ts";
-import type { CustomerConfig, GlobalDefs, GridCellConfig } from "../../core/types.ts";
+import type {
+  CustomerConfig,
+  GlobalDefs,
+  GridCellConfig,
+  PackingMode,
+  ToolProcessBehavior,
+} from "../../core/types.ts";
+import { playPackingMode, playToolProcessBehavior } from "../nodeplay/preferences.ts";
 import { TAGS, WEATHER } from "../../data/configLoader.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { nodeAsMapDef } from "../../data/nodeGraphToMapDef.ts";
@@ -189,7 +196,12 @@ export class NodeDesignView {
       },
       onEstimate: () => this.runEstimate(),
       onReplayEstimate: () => {
-        if (this.estimate) openNodeEstimateReplay(this.project, this.level.id, this.estimate.replaySteps);
+        if (this.estimate) {
+          openNodeEstimateReplay(this.project, this.level.id, this.estimate.replaySteps, {
+            packingMode: this.estimate.packingMode ?? playPackingMode(),
+            toolProcessBehavior: this.estimate.toolProcessBehavior ?? playToolProcessBehavior(),
+          });
+        }
       },
       currentEstimate: () => this.estimate,
       onHoverCustomer: (index) => this.highlightCustomer(index),
@@ -262,7 +274,7 @@ export class NodeDesignView {
       this.project.docId,
       this.level.id,
       this.liveSignature(),
-      scenarioSignature(this.scenario),
+      scenarioSignature(this.scenario, this.estimateBehavior()),
     );
     if (!cached) return;
     this.estimate = cached;
@@ -462,9 +474,9 @@ export class NodeDesignView {
   private runEstimate(): void {
     openEstimateScenarioDialog({
       scenario: this.scenario,
-      onRun: (scenario) => {
+      onRun: (scenario, behavior) => {
         this.scenario = scenario;
-        this.runEstimateWith(scenario);
+        this.runEstimateWith(scenario, behavior);
       },
     });
   }
@@ -480,16 +492,19 @@ export class NodeDesignView {
   }
 
   /** Estimate with the same graph-native engine used by Play and replay. */
-  private runEstimateWith(scenario: EstimateScenario): void {
+  private runEstimateWith(
+    scenario: EstimateScenario,
+    behavior: { packingMode: PackingMode; toolProcessBehavior: ToolProcessBehavior },
+  ): void {
     const level = this.liveLevel();
     const signature = this.liveSignature();
-    const scenarioKey = scenarioSignature(scenario);
+    const scenarioKey = scenarioSignature(scenario, behavior);
     try {
       // Same level, same scenario, same answer — and Level Path may already
       // have run it. Only actually solve on a miss.
       this.estimate =
         cachedEstimate(this.project.docId, this.level.id, signature, scenarioKey) ??
-        estimateNodeDifficulty(this.projected.ix, structuredClone(level), { scenario });
+        estimateNodeDifficulty(this.projected.ix, structuredClone(level), { scenario, ...behavior });
       cacheEstimate(this.project.docId, this.level.id, signature, scenarioKey, this.estimate);
     } catch (err) {
       this.estimate = null;
@@ -501,6 +516,13 @@ export class NodeDesignView {
     this.customers.render();
     this.queues.render();
     this.refreshReplayButton();
+  }
+
+  private estimateBehavior(): { packingMode: PackingMode; toolProcessBehavior: ToolProcessBehavior } {
+    return {
+      packingMode: playPackingMode(),
+      toolProcessBehavior: playToolProcessBehavior(),
+    };
   }
 
   /**

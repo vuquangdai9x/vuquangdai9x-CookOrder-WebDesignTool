@@ -4994,6 +4994,11 @@ td input {
   opacity: 0.4;
 }
 
+.scenario-behavior-row select {
+  width: 100%;
+  max-width: none;
+}
+
 /* ---------- hover a customer card: light up what is theirs ---------- */
 /* Driven from nodedesign/index.ts's highlightCustomer, which sets
    --focus-color to that customer's own colour and tags the matching queue

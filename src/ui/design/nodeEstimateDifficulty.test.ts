@@ -43,6 +43,17 @@ describe("estimateNodeDifficulty", () => {
     return toNodeLevelConfig(data);
   };
 
+  it("records the selected Play behavior modes on the estimate replay", () => {
+    const result = estimateNodeDifficulty(ix, coffeeLevel(1), {
+      maxIterations: 1,
+      maxRetries: 0,
+      packingMode: "unpacked-raw",
+      toolProcessBehavior: "wait-order",
+    });
+    expect(result.packingMode).toBe("unpacked-raw");
+    expect(result.toolProcessBehavior).toBe("wait-order");
+  });
+
   it("retries alternate strategies across the higher Map 1 levels", () => {
     const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
     const levels = importLevelsCsv(burgerLevelsCsv)

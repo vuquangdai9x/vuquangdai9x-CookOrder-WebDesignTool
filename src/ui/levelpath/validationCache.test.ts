@@ -83,6 +83,23 @@ describe("scenarioSignature", () => {
     hidden.hiddenStatus = !hidden.hiddenStatus;
     expect(scenarioSignature(hidden)).not.toBe(base);
   });
+
+  it("changes for non-default Play behavior selections", () => {
+    const scenario = defaultScenario();
+    const base = scenarioSignature(scenario, {
+      packingMode: "packing-raw",
+      toolProcessBehavior: "auto",
+    });
+    expect(base).toBe(scenarioSignature(scenario));
+    expect(scenarioSignature(scenario, {
+      packingMode: "unpacked-raw",
+      toolProcessBehavior: "auto",
+    })).not.toBe(base);
+    expect(scenarioSignature(scenario, {
+      packingMode: "packing-raw",
+      toolProcessBehavior: "wait-order",
+    })).not.toBe(base);
+  });
 });
 
 describe("the shared cache", () => {

@@ -5,7 +5,7 @@ import { CUSTOMER_STAFF } from "../../core/effects.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
 import { NodeSimulation } from "../../core/nodeSim.ts";
 import type { NodeCustomerState, NodeLevelConfig } from "../../core/nodeSim.ts";
-import type { QueueItem } from "../../core/types.ts";
+import type { PackingMode, QueueItem, ToolProcessBehavior } from "../../core/types.ts";
 import { queueItemAmount } from "../../core/parser.ts";
 import { cidOf } from "./changeTracking.ts";
 import { resolveScenario } from "./estimateScenario.ts";
@@ -36,6 +36,11 @@ interface DemandClaim {
   multiInput: boolean;
   /** The claim is placeable right now — a base, or a slot whose gate is open. */
   ready: boolean;
+}
+
+interface EstimateBehavior {
+  packingMode: PackingMode;
+  toolProcessBehavior: ToolProcessBehavior;
 }
 
 interface DemandUnit {
@@ -121,10 +126,13 @@ function findLearnedBeamPlan(
   cfg: ResolvedScenario,
   maxIterations: number,
   workWaitStrategy: WorkWaitStrategy,
+  behavior: EstimateBehavior,
 ): number[] | null {
   type SearchNode = { sim: NodeSimulation; path: number[]; score: number };
   const initial = new NodeSimulation(ix, structuredClone(level), {
-    outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
+    outOfSlotPolicy: "park-on-grid",
+    packingMode: behavior.packingMode,
+    toolProcessBehavior: behavior.toolProcessBehavior,
     instantFlights: true,
     continueAfterCustomerTimeout: true,
     // Finished outputs wait in their tool instead of losing outright, so a
@@ -246,9 +254,12 @@ function estimateNodeDifficultyAttempt(
   failureKnowledge: EstimateFailureKnowledge = emptyFailureKnowledge(),
   adaptiveStrategies?: readonly ScoringStrategy[],
   adaptivePickInterval = 5,
+  behavior: EstimateBehavior = { packingMode: "packing-raw", toolProcessBehavior: "auto" },
 ): EstimateResult {
   const sim = new NodeSimulation(ix, level, {
-    outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
+    outOfSlotPolicy: "park-on-grid",
+    packingMode: behavior.packingMode,
+    toolProcessBehavior: behavior.toolProcessBehavior,
     instantFlights: true,
     continueAfterCustomerTimeout: true,
     // Finished outputs wait in their tool instead of losing outright, so a
@@ -1003,6 +1014,8 @@ function estimateNodeDifficultyAttempt(
     occupancyHistory,
     gridCapacity: sim.grid.length,
     replaySteps,
+    packingMode: behavior.packingMode,
+    toolProcessBehavior: behavior.toolProcessBehavior,
     pickIntervalSeconds: Math.max(0, cfg.pickIntervalSeconds),
     peakConcurrentWork,
     timedOutCustomers: [...sim.timedOutCustomerIndices].map((index) => index + 1).sort((a, b) => a - b),
@@ -1393,6 +1406,10 @@ export function estimateNodeDifficulty(
   opts: EstimateOptions = {},
 ): EstimateResult {
   const base = resolveScenario(opts.scenario);
+  const behavior: EstimateBehavior = {
+    packingMode: opts.packingMode ?? "packing-raw",
+    toolProcessBehavior: opts.toolProcessBehavior ?? "auto",
+  };
   const retryCount = Math.min(10, Math.max(0, Math.floor(opts.maxRetries ?? base.retryCount)));
   const maxIterations = opts.maxIterations ?? base.maxIterations;
   const presets = strategicPresets(base);
@@ -1441,6 +1458,7 @@ export function estimateNodeDifficulty(
         planningConfig,
         maxIterations,
         searchWaitStrategy,
+        behavior,
       );
       if (plan) {
         strategy = {
@@ -1475,6 +1493,7 @@ export function estimateNodeDifficulty(
         workWaitStrategy: "wait-all" as WorkWaitStrategy,
       })) : undefined,
       knowledge.adaptivePickInterval,
+      behavior,
     );
     attemptedStrategyNames.push(strategy.name);
     result.attemptCount = attempt + 1;

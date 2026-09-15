@@ -225,6 +225,8 @@ export class NodePlayView {
   private replay: ReplayState | null = null;
   private replayKeyHandler: ((event: KeyboardEvent) => void) | null = null;
   private replayEls: ReplayToolbarEls | null = null;
+  /** Estimate replays stay bound to the behavior modes that produced their steps. */
+  private replayBehavior: { packingMode: PackingMode; toolProcessBehavior: ToolProcessBehavior } | null;
 
   constructor(
     root: HTMLElement,
@@ -233,11 +235,13 @@ export class NodePlayView {
     onSelectLevel: (levelId: number) => void,
     onSelectMap: (docId: string) => void,
     replaySteps?: EstimateReplayStep[],
+    replayBehavior?: { packingMode: PackingMode; toolProcessBehavior: ToolProcessBehavior },
   ) {
     this.root = root;
     this.project = project;
     this.onSelectLevel = onSelectLevel;
     this.onSelectMap = onSelectMap;
+    this.replayBehavior = replayBehavior ?? null;
     if (replaySteps) {
       this.replay = {
         steps: replaySteps,
@@ -328,8 +332,8 @@ export class NodePlayView {
       detectDeadlockLoss: true,
       continueAfterCustomerTimeout: this.replay !== null,
       outOfSlotPolicy: "park-on-grid",
-      packingMode: playPackingMode(),
-      toolProcessBehavior: playToolProcessBehavior(),
+      packingMode: this.replayBehavior?.packingMode ?? playPackingMode(),
+      toolProcessBehavior: this.replayBehavior?.toolProcessBehavior ?? playToolProcessBehavior(),
     });
     this.animating.clear();
     this.pendingPickOrigins = [];
@@ -1221,8 +1225,8 @@ export class NodePlayView {
       instantFlights: false,
       continueAfterCustomerTimeout: true,
       outOfSlotPolicy: "park-on-grid",
-      packingMode: playPackingMode(),
-      toolProcessBehavior: playToolProcessBehavior(),
+      packingMode: this.replayBehavior?.packingMode ?? playPackingMode(),
+      toolProcessBehavior: this.replayBehavior?.toolProcessBehavior ?? playToolProcessBehavior(),
     });
     let reached = 0;
     for (; reached < target; reached++) {
@@ -2089,6 +2093,7 @@ export function openNodeEstimateReplay(
   project: NodeProjectState,
   levelId: number,
   steps: EstimateReplayStep[],
+  behavior?: { packingMode: PackingMode; toolProcessBehavior: ToolProcessBehavior },
 ): void {
   let view: NodePlayView | null = null;
   const close = () => {
@@ -2106,5 +2111,5 @@ export function openNodeEstimateReplay(
     host,
   ]);
   document.body.append(overlay);
-  view = new NodePlayView(host, project, levelId, () => {}, () => {}, steps);
+  view = new NodePlayView(host, project, levelId, () => {}, () => {}, steps, behavior);
 }

@@ -353,7 +353,10 @@ tool.
   next pick. Later retries use learned grid-safe, front-loaded, finish-first, chain-first, scarcity,
   and other scoring profiles in the same synchronized mode. The Scoring Scenario modal exposes
   **Retry count** from 0–10; the attempt metric's tooltip shows the exact scoring/timing order. The
-  first successful run wins, otherwise the closest failed run is reported as unsolved.
+  first successful run wins, otherwise the closest failed run is reported as unsolved. The same
+  modal also exposes **Packing mode behavior** and **Tool process behavior**, initialized from and
+  saved to the Play preferences. Every estimator attempt and fallback planner uses those modes,
+  and an estimate replay stays bound to the modes that produced it.
 - **Boosters bar**: four booster buttons (icon, name, remaining-charge badge) rendered as a
   scrollable strip **below** the three main tiers, not inside them — so it never shrinks the
   page's fixed-height layout, it's just reachable by scrolling. Shift-up Row, Clean Table, and

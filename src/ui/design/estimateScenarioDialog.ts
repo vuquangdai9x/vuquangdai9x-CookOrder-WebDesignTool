@@ -12,16 +12,30 @@ import {
   defaultScenario,
 } from "./estimateScenario.ts";
 import type { EstimateScenario, ScenarioFieldSpec } from "./estimateScenario.ts";
+import type { PackingMode, ToolProcessBehavior } from "../../core/types.ts";
+import {
+  playPackingMode,
+  playToolProcessBehavior,
+  setPlayPackingMode,
+  setPlayToolProcessBehavior,
+} from "../nodeplay/preferences.ts";
+
+export interface EstimateBehaviorSelection {
+  packingMode: PackingMode;
+  toolProcessBehavior: ToolProcessBehavior;
+}
 
 export interface EstimateScenarioDeps {
   /** Scenario to open with — usually the last one the designer ran. */
   scenario: EstimateScenario;
   /** Called with the edited scenario when the designer hits Run. */
-  onRun(scenario: EstimateScenario): void;
+  onRun(scenario: EstimateScenario, behavior: EstimateBehaviorSelection): void;
 }
 
 export function openEstimateScenarioDialog(deps: EstimateScenarioDeps): void {
   let scenario: EstimateScenario = structuredClone(deps.scenario);
+  let packingMode = playPackingMode();
+  let toolProcessBehavior = playToolProcessBehavior();
   const close = (): void => overlay.remove();
 
   const body = el("div", { class: "scenario-body" });
@@ -42,6 +56,32 @@ export function openEstimateScenarioDialog(deps: EstimateScenarioDeps): void {
 
     body.append(
       foldout("Status assumptions", true, [
+        behaviorRow(
+          "Packing mode behavior",
+          "Packing raw keeps amount stacks in bags. Unpacked raw expands every unit into a one-use grid item.",
+          [
+            ["packing-raw", "Packing raw"],
+            ["unpacked-raw", "Unpacked raw"],
+          ],
+          packingMode,
+          (value) => {
+            packingMode = value as PackingMode;
+            setPlayPackingMode(packingMode);
+          },
+        ),
+        behaviorRow(
+          "Tool process behavior",
+          "Auto processes whenever possible. Wait-order starts only when an unmatched active order specifically needs the output.",
+          [
+            ["auto", "Auto"],
+            ["wait-order", "Wait-order"],
+          ],
+          toolProcessBehavior,
+          (value) => {
+            toolProcessBehavior = value as ToolProcessBehavior;
+            setPlayToolProcessBehavior(toolProcessBehavior);
+          },
+        ),
         toggleRow(
           "Hidden slot status",
           "ON: hidden slots stay hidden to the solver. OFF: the queue is treated as fully revealed, so buried rows are scored normally.",
@@ -72,6 +112,28 @@ export function openEstimateScenarioDialog(deps: EstimateScenarioDeps): void {
     return el("div", { class: "scenario-row", title: hint }, [
       el("label", { class: "scenario-toggle" }, [box, label]),
       el("span", { class: "scenario-hint" }, [hint]),
+    ]);
+  };
+
+  const behaviorRow = (
+    label: string,
+    hint: string,
+    options: readonly (readonly [string, string])[],
+    value: string,
+    onChange: (value: string) => void,
+  ): HTMLElement => {
+    const select = el("select", { class: "behavior-picker" }) as HTMLSelectElement;
+    for (const [optionValue, optionLabel] of options) {
+      const option = el("option", { value: optionValue }, [optionLabel]) as HTMLOptionElement;
+      option.selected = optionValue === value;
+      select.append(option);
+    }
+    select.addEventListener("change", () => onChange(select.value));
+    return el("div", { class: "scenario-row scenario-behavior-row", title: hint }, [
+      el("span", { class: "scenario-toggle" }, [label]),
+      el("span", { class: "scenario-hint" }, [hint]),
+      el("span", { class: "scenario-off" }),
+      select,
     ]);
   };
 
@@ -126,7 +188,7 @@ export function openEstimateScenarioDialog(deps: EstimateScenarioDeps): void {
         "Run Estimate",
         () => {
           close();
-          deps.onRun(structuredClone(scenario));
+          deps.onRun(structuredClone(scenario), { packingMode, toolProcessBehavior });
         },
         { class: "primary" },
       ),

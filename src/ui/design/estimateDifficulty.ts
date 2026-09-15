@@ -5,6 +5,7 @@
 // solver produced it.
 
 import type { LoseReason } from "../../core/simTypes.ts";
+import type { PackingMode, ToolProcessBehavior } from "../../core/types.ts";
 import type { EstimateScenario } from "./estimateScenario.ts";
 
 /** What one queue tile turned out to be worth, once the solver got to it. */
@@ -97,6 +98,10 @@ export interface EstimateResult {
   gridCapacity: number;
   /** Solver actions used by the node Play renderer to replay this estimate. */
   replaySteps: EstimateReplayStep[];
+  /** Raw-item packing behavior used to produce this estimate and its replay. */
+  packingMode?: PackingMode;
+  /** Tool routing behavior used to produce this estimate and its replay. */
+  toolProcessBehavior?: ToolProcessBehavior;
   /** Number of scoring attempts used before this result was selected. */
   attemptCount?: number;
   /** Scoring strategy that produced this result. */
@@ -188,6 +193,10 @@ export interface EstimateOptions {
   maxRetries?: number;
   /** Scoring scenario from the pre-run modal; omitted means every default. */
   scenario?: EstimateScenario;
+  /** Matches the persisted Play-mode Packing mode selector. */
+  packingMode?: PackingMode;
+  /** Matches the persisted Play-mode Tool process selector. */
+  toolProcessBehavior?: ToolProcessBehavior;
 }
 
 /**
