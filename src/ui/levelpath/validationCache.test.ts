@@ -87,16 +87,16 @@ describe("scenarioSignature", () => {
   it("changes for non-default Play behavior selections", () => {
     const scenario = defaultScenario();
     const base = scenarioSignature(scenario, {
-      packingMode: "packing-raw",
+      packingMode: "unpacked-raw",
       toolProcessBehavior: "auto",
     });
     expect(base).toBe(scenarioSignature(scenario));
     expect(scenarioSignature(scenario, {
-      packingMode: "unpacked-raw",
+      packingMode: "packing-raw",
       toolProcessBehavior: "auto",
     })).not.toBe(base);
     expect(scenarioSignature(scenario, {
-      packingMode: "packing-raw",
+      packingMode: "unpacked-raw",
       toolProcessBehavior: "wait-order",
     })).not.toBe(base);
   });

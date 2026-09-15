@@ -28,8 +28,8 @@ Use this checklist to find gaps; do not force the designer to answer irrelevant 
 3. **Duration and tempo** — target duration or move/pick count; early/mid/late pressure shape; breathing spaces; climax/recovery; acceptable variance.
 4. **Customers and content** — customer count/range; ordinary/special roles; avatars when important; dish count; allowed/required/forbidden composites or ingredients; recipe complexity; variety/repetition limits; customer ordering/concurrency intent.
 5. **Queue structure** — lane count; depth/length; lane balance; clustering/spread; shuffle/randomness; ingredient timing; forced-choice tolerance; provisional queue-first geometry.
-6. **Amount mechanics** — whether amounts should be used; target compaction or amount-slot ratio; conservative/balanced/aggressive packing; ordinary physical bags versus `multipleUsage` reusable serves; preferred/max amounts; refill spacing; early large-bag tolerance; unused capacity policy.
-7. **Grid and serving capacity** — grid dimensions if configurable; usable/blocked capacity; serveable slots; target peak occupancy; dirty pressure; overflow tolerance; `outOfSlotPolicy`.
+6. **Amount mechanics** — whether amounts should be used; target queue-line compaction or amount-slot ratio; conservative/balanced/aggressive partitioning; preferred/max amounts; atomic destination capacity; grid-landing burst tolerance; effect/group timing; unused supply policy. Runtime behavior is fixed to Unpacked raw and is not a prompt dimension.
+7. **Grid and serving capacity** — grid dimensions if configurable; usable/blocked capacity; serveable slots; target peak occupancy; dirty pressure; overflow tolerance. Raw overflow uses park-on-grid in production.
 8. **Tools and production flow** — desired tool utilization; multi-input concurrency; chain depth; preservation behavior; work-in-flight target; ingredient processing focus or exclusions.
 9. **Mechanics and effects** — queue Freeze/Hidden/HoldingKey; combined/linked groups; grid blocks, order locks, ingredient slots, color locks; dish effects; timers; staff, boss, shipper; count, strength, placement, introduction timing, and explicit authorization for each.
 10. **Difficulty evidence** — target occupancy, detour/random-pick ratios, concurrency, stuck-picking rate, win rate, timeout rate, failure distribution, duration percentiles, solver strictness, and whether “closest attainable” is acceptable.
@@ -46,8 +46,8 @@ Before confirmation, show a compact summary like:
 Scope: Map 2, create one level, challenging progression slot.
 Experience: tense but fair; some choice; 3–4 minutes.
 Content: 8–10 ordinary customers; coffee recipes; moderate variety.
-Queue/amounts: 5 lanes; balanced packing; 40–60% compacted units; emphasize reusable milk/glaze.
-Grid/flow: default grid; peak occupancy 70–88%; multi-input work may park raw on grid.
+Queue/amounts: 5 lanes; balanced partitioning; 40–60% compacted units; amount bursts fit destinations.
+Grid/flow: default grid; peak occupancy 70–88%; raw overflow parks on grid.
 Mechanics: linked groups authorized (1–2); all other special mechanics prohibited.
 Acceptance: exact supply; full service; zero timeouts; picking deadlock <=3%; win rate >=90%.
 Search: up to 3 candidates, 20 tuning cycles, common evaluation seeds; closest allowed: no.
@@ -79,9 +79,9 @@ Read [repl-pipeline.md](references/repl-pipeline.md) for tool routing, compatibi
 - Call `get_valid_dish_pieces` before adding an unfamiliar dish piece. Respect slot capacity and base prerequisites.
 - Re-run supply/demand after customer, dish, yield, amount, or queue changes. Keep supply exact unless the confirmed requirement permits quantified excess.
 - Keep queue-first ingredients provisional until matching demand exists; clear every provisional marker before finalization.
-- For ordinary ingredients, queue amount is physical bag pieces drained one at a time. For `multipleUsage: true`, amount is reusable serves on one landed object. Both occupy one queue slot and one grid cell.
+- Production behavior is fixed to Unpacked raw + Auto with park-on-grid. Picking amount N atomically expands N independent one-use items; at most one may enter an immediately available tool and every remainder needs its own grid cell. `multipleUsage` amount also expands into usage-1 items and does not create a reusable object.
 - Keep generated amounts within `stackRange` when practical. Use amount 1 for an unavoidable remainder. Use `set_queue_slot_amount`, `split_queue_slot`, and `merge_queue_slots` for manual correction.
-- A bag can reduce queue length while increasing dormant grid pressure. Re-evaluate occupancy, refill timing, exact usage, and playability after amount edits.
+- An amount reduces authored queue lines but creates one atomic release burst. Re-evaluate available destinations, grid-landing burst, effect/group timing, occupancy, exact usage, and playability after amount edits.
 - Measure picking-order deadlock with the queue-only checker. Do not count grid state in that rate. Keep grid pressure and the legacy tool/grid diagnostic separate.
 - Start ordinary. Add a special mechanic only when confirmed requirements authorize it or after explicit approval recorded by `amend_session_requirements`. Read [obstacle-authorization.md](references/obstacle-authorization.md).
 - Do not treat a solver win with any customer timeout as valid.

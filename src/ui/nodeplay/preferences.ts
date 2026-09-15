@@ -1,6 +1,6 @@
 import type { PackingMode, ToolProcessBehavior } from "../../core/types.ts";
 
-export const DEFAULT_PLAY_PACKING_MODE: PackingMode = "packing-raw";
+export const DEFAULT_PLAY_PACKING_MODE: PackingMode = "unpacked-raw";
 export const DEFAULT_PLAY_TOOL_PROCESS_BEHAVIOR: ToolProcessBehavior = "auto";
 const STORAGE_KEY = "cookorder-play-behaviors";
 

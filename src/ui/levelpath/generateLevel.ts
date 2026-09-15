@@ -241,7 +241,7 @@ export function randomIngredientWeights(
       if (dataId !== undefined) composites.set(dataId, randInt(rand, 20, DEFAULT_INGREDIENT_WEIGHT));
     }
   }
-  return { ingredients, composites };
+  return { ingredients, composites, amountRanges: new Map() };
 }
 
 /**
@@ -438,6 +438,11 @@ function buildCandidate(
     const dense = name === undefined ? undefined : ctx.ix.compositeByName.get(name);
     if (dense !== undefined) denseComposites.set(dense, weight);
   }
+  const denseAmountRanges = new Map<number, { min: number; max: number }>();
+  for (const [dataId, range] of config.weights.amountRanges) {
+    const dense = ctx.projected.denseOf.get(dataId);
+    if (dense !== undefined) denseAmountRanges.set(dense, range);
+  }
 
   const plan = planCustomers(config.dishCounts, config.obstacles, rand);
   const sizeBounds = normalizeBounds(config.bounds);
@@ -520,6 +525,7 @@ function buildCandidate(
     laneCount: config.laneCount,
     shuffleRange: { kind: "curve", curve: config.shuffleCurve },
     bagFill: config.bagFill,
+    amountRanges: denseAmountRanges,
     random: rand,
   });
 
@@ -645,6 +651,7 @@ export function resolveConfig(
   // being thrown away wholesale.
   const weights: WeightSet = rolled ?? {
     ingredients: storedWeights.ingredients,
+    amountRanges: storedWeights.amountRanges,
     composites:
       storedWeights.composites.size > 0
         ? storedWeights.composites

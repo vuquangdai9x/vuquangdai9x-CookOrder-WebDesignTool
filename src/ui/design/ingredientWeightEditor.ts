@@ -27,9 +27,20 @@ export const DEFAULT_INGREDIENT_WEIGHT = 100;
 export interface WeightSet {
   ingredients: Map<Id, number>;
   composites: Map<Id, number>;
+  /** Optional per-ingredient queue amount override. Missing = use the graph's stackRange. */
+  amountRanges: Map<Id, IngredientAmountRange>;
 }
 
-export const emptyWeightSet = (): WeightSet => ({ ingredients: new Map(), composites: new Map() });
+export interface IngredientAmountRange {
+  min: number;
+  max: number;
+}
+
+export const emptyWeightSet = (): WeightSet => ({
+  ingredients: new Map(),
+  composites: new Map(),
+  amountRanges: new Map(),
+});
 
 /**
  * `"c0:100;c1:40;3:100;7:40"` — a `c` prefix marks a COMPOSITE id, everything
@@ -45,7 +56,7 @@ export function parseWeightSet(s: string): WeightSet {
   if (!s || !s.trim()) return set;
   for (const part of s.split(";")) {
     if (!part) continue;
-    const [rawKey, weightStr] = part.split(":");
+    const [rawKey, weightStr, minStr, maxStr] = part.split(":");
     const key = rawKey?.trim() ?? "";
     const composite = key.startsWith("c") || key.startsWith("C");
     const idText = composite ? key.slice(1) : key;
@@ -57,6 +68,15 @@ export function parseWeightSet(s: string): WeightSet {
     if (!Number.isFinite(id) || !Number.isFinite(weight)) continue;
     const clamped = Math.max(0, Math.min(100, weight));
     (composite ? set.composites : set.ingredients).set(id, clamped);
+    if (!composite && minStr !== undefined && maxStr !== undefined) {
+      const rawMin = Number(minStr);
+      const rawMax = Number(maxStr);
+      if (Number.isFinite(rawMin) && Number.isFinite(rawMax)) {
+        const min = Math.max(0, Math.min(10, Math.round(rawMin)));
+        const max = Math.max(min, Math.min(10, Math.round(rawMax)));
+        set.amountRanges.set(id, { min, max });
+      }
+    }
   }
   return set;
 }
@@ -67,7 +87,17 @@ export function serializeWeightSet(set: WeightSet): string {
     .filter(([, w]) => w > 0)
     .sort((a, b) => a[0] - b[0])
     .map(([id, w]) => `c${id}:${Math.round(w)}`);
-  return [...composites, serializeIngredientWeights(set.ingredients)].filter(Boolean).join(";");
+  const ingredients = [...set.ingredients.entries()]
+    .filter(([, w]) => w > 0)
+    .sort((a, b) => a[0] - b[0])
+    .map(([id, w]) => {
+      const range = set.amountRanges.get(id);
+      if (!range) return `${id}:${Math.round(w)}`;
+      const min = Math.max(0, Math.min(10, Math.round(range.min)));
+      const max = Math.max(min, Math.min(10, Math.round(range.max)));
+      return `${id}:${Math.round(w)}:${min}:${max}`;
+    });
+  return [...composites, ...ingredients].join(";");
 }
 
 /** "3:100;7:40" -> Map{3:100, 7:40}. Malformed entries are skipped rather than throwing — this is read-back design metadata. */
@@ -94,11 +124,18 @@ export interface IngredientWeightGrid {
   setUnreachable(ids: Set<Id>): void;
 }
 
+export interface IngredientAmountControls {
+  ranges: Map<Id, IngredientAmountRange>;
+  defaultRange(id: Id): IngredientAmountRange;
+  onChange(ranges: Map<Id, IngredientAmountRange>): void;
+}
+
 export function createIngredientWeightGrid(
   map: MapDef,
   initial: Map<Id, number>,
   onChange: (weights: Map<Id, number>) => void,
   unreachable: Set<Id> = new Set(),
+  amountControls?: IngredientAmountControls,
 ): IngredientWeightGrid {
   const weights = new Map(initial);
   const grid = el("div", { class: "weight-grid" });
@@ -118,11 +155,86 @@ export function createIngredientWeightGrid(
     const fill = el("div", { class: "weight-fill" });
     const label = el("div", { class: "weight-value" }, [String(value)]);
     const track = el("div", { class: "weight-track" }, [fill]);
-    const column = el("div", { class: `weight-col${value === 0 ? " zero" : ""}` }, [
+    const controls: (Node | string)[] = [
       label,
       track,
-      el("div", { class: "weight-icon" }, [cookedIconEl(c.id, 64)]),
-    ]);
+    ];
+
+    if (amountControls) {
+      const clampAmount = (raw: number): number => Math.max(0, Math.min(10, Math.round(raw)));
+      const configured = amountControls.ranges.get(c.id);
+      const fallback = amountControls.defaultRange(c.id);
+      let min = clampAmount(configured?.min ?? fallback.min);
+      let max = Math.max(min, clampAmount(configured?.max ?? fallback.max));
+      const enabled = el("input", { type: "checkbox" }) as HTMLInputElement;
+      enabled.checked = configured !== undefined;
+      enabled.title = "Override this ingredient's graph stack range";
+      const rangeLabel = el("div", { class: "amount-range-value" }, [`${min}-${max}`]);
+      const minInput = el("input", {
+        class: "amount-range-input min",
+        type: "range",
+        min: "0",
+        max: "10",
+        step: "1",
+        value: String(min),
+        title: "Minimum queue-slot amount",
+      }) as HTMLInputElement;
+      const maxInput = el("input", {
+        class: "amount-range-input max",
+        type: "range",
+        min: "0",
+        max: "10",
+        step: "1",
+        value: String(max),
+        title: "Maximum queue-slot amount",
+      }) as HTMLInputElement;
+
+      const syncRange = (): void => {
+        minInput.disabled = !enabled.checked;
+        maxInput.disabled = !enabled.checked;
+        rangeLabel.classList.toggle("disabled", !enabled.checked);
+        rangeLabel.textContent = `${min}-${max}`;
+        if (enabled.checked) amountControls.ranges.set(c.id, { min, max });
+        else amountControls.ranges.delete(c.id);
+        amountControls.onChange(amountControls.ranges);
+      };
+      minInput.addEventListener("input", () => {
+        min = clampAmount(Number(minInput.value));
+        if (min > max) {
+          max = min;
+          maxInput.value = String(max);
+        }
+        syncRange();
+      });
+      maxInput.addEventListener("input", () => {
+        max = clampAmount(Number(maxInput.value));
+        if (max < min) {
+          min = max;
+          minInput.value = String(min);
+        }
+        syncRange();
+      });
+      enabled.addEventListener("change", syncRange);
+      minInput.disabled = !enabled.checked;
+      maxInput.disabled = !enabled.checked;
+      rangeLabel.classList.toggle("disabled", !enabled.checked);
+
+      controls.push(
+        el("div", { class: "amount-range-control" }, [
+          rangeLabel,
+          el("div", { class: "amount-range-sliders" }, [minInput, maxInput]),
+          el("label", { class: "amount-range-toggle", title: "Use an amount range override" }, [
+            enabled,
+            "Amt",
+          ]),
+        ]),
+      );
+    }
+
+    controls.push(el("div", { class: "weight-icon" }, [cookedIconEl(c.id, 64)]));
+    const column = el("div", {
+      class: `weight-col${value === 0 ? " zero" : ""}${amountControls ? " with-amount" : ""}`,
+    }, controls);
     column.title = c.name;
     fill.style.height = `${value}%`;
 

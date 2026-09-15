@@ -252,7 +252,7 @@ describe("generateLevel", () => {
 
   it("serializes bag amounts without changing recipe-piece supply", () => {
     const level = blank({ bagFill: "max", randomSeed: 4242 });
-    expect(generateLevel(level, ctx).ok).toBe(true);
+    expect(generateLevel(level, ctx, { searchFromSeed: true }).ok).toBe(true);
 
     const queues = parseQueues(level.queueString);
     const supply = supplyByRaw(queues);

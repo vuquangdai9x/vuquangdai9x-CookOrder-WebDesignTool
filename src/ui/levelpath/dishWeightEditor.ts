@@ -111,6 +111,7 @@ export function createDishWeightEditor(deps: DishWeightEditorDeps): DishWeightEd
   const rows = orderableRows(deps.ix, deps.ids);
   const weights: WeightSet = {
     ingredients: new Map(deps.initial.ingredients),
+    amountRanges: new Map(deps.initial.amountRanges),
     // A record written before composites existed has none. Treating that as
     // "every dish type is off" would silently break every old level, so an
     // empty composite half means "all enabled".
@@ -128,6 +129,17 @@ export function createDishWeightEditor(deps: DishWeightEditorDeps): DishWeightEd
       deps.onChange?.(weights);
     },
     unreachableIngredients(rows, weights.composites),
+    {
+      ranges: weights.amountRanges,
+      defaultRange: (dataId) => {
+        const dense = deps.projected.denseOf.get(dataId);
+        return dense === undefined ? { min: 1, max: 1 } : deps.ix.stackRange[dense] ?? { min: 1, max: 1 };
+      },
+      onChange: (next) => {
+        weights.amountRanges = next;
+        deps.onChange?.(weights);
+      },
+    },
   );
 
   const refreshReach = (): void => {
@@ -194,6 +206,10 @@ export function createDishWeightEditor(deps: DishWeightEditorDeps): DishWeightEd
     ]),
     el("div", { class: "weight-grid dish-grid" }, bars.map((bar) => bar.column)),
     el("h3", {}, ["Ingredient Weights"]),
+    el("p", { class: "muted" }, [
+      "Enable Amt beside an ingredient to override its graph stack range for generated queue slots (0-10). " +
+        "Queue slots always contain at least one piece, so 0 is normalized to 1 during generation.",
+    ]),
     el("div", { class: "ingredient-toggle-actions" }, [
       button("Enable All", () => grid.setAll(DEFAULT_INGREDIENT_WEIGHT), { class: "small-btn" }),
       button("Disable All", () => grid.setAll(0), { class: "small-btn" }),

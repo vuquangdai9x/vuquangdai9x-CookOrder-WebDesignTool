@@ -254,7 +254,7 @@ function estimateNodeDifficultyAttempt(
   failureKnowledge: EstimateFailureKnowledge = emptyFailureKnowledge(),
   adaptiveStrategies?: readonly ScoringStrategy[],
   adaptivePickInterval = 5,
-  behavior: EstimateBehavior = { packingMode: "packing-raw", toolProcessBehavior: "auto" },
+  behavior: EstimateBehavior = { packingMode: "unpacked-raw", toolProcessBehavior: "auto" },
 ): EstimateResult {
   const sim = new NodeSimulation(ix, level, {
     outOfSlotPolicy: "park-on-grid",
@@ -1407,7 +1407,7 @@ export function estimateNodeDifficulty(
 ): EstimateResult {
   const base = resolveScenario(opts.scenario);
   const behavior: EstimateBehavior = {
-    packingMode: opts.packingMode ?? "packing-raw",
+    packingMode: opts.packingMode ?? "unpacked-raw",
     toolProcessBehavior: opts.toolProcessBehavior ?? "auto",
   };
   const retryCount = Math.min(10, Math.max(0, Math.floor(opts.maxRetries ?? base.retryCount)));

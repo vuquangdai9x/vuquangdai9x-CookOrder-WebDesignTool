@@ -16,15 +16,15 @@ describe("Play preferences", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("defaults to the two historical behaviors", () => {
-    expect(playPackingMode()).toBe("packing-raw");
+  it("defaults to Unpacked raw and Auto", () => {
+    expect(playPackingMode()).toBe("unpacked-raw");
     expect(playToolProcessBehavior()).toBe("auto");
   });
 
   it("retains changed behaviors for the next Play view", () => {
-    setPlayPackingMode("unpacked-raw");
+    setPlayPackingMode("packing-raw");
     setPlayToolProcessBehavior("wait-order");
-    expect(playPackingMode()).toBe("unpacked-raw");
+    expect(playPackingMode()).toBe("packing-raw");
     expect(playToolProcessBehavior()).toBe("wait-order");
   });
 
@@ -37,12 +37,12 @@ describe("Play preferences", () => {
 
     vi.resetModules();
     const firstLoad = await import("./preferences.ts");
-    firstLoad.setPlayPackingMode("unpacked-raw");
+    firstLoad.setPlayPackingMode("packing-raw");
     firstLoad.setPlayToolProcessBehavior("wait-order");
 
     vi.resetModules();
     const refreshed = await import("./preferences.ts");
-    expect(refreshed.playPackingMode()).toBe("unpacked-raw");
+    expect(refreshed.playPackingMode()).toBe("packing-raw");
     expect(refreshed.playToolProcessBehavior()).toBe("wait-order");
   });
 });

@@ -85,6 +85,7 @@ export function weightsFromDistribution(counts: Map<Id, number>): Map<Id, number
 
 export interface WeightRepair {
   weights: Map<Id, number>;
+  amountRanges: Map<Id, { min: number; max: number }>;
   /** The dish-type half, preserved as recorded — the repair has no opinion on it. */
   composites: Map<Id, number>;
   /** Ingredients the customers order that the record had switched off. */
@@ -125,6 +126,7 @@ export function repairIngredientWeights(
     // authoring decision, the customer string says nothing that contradicts
     // them, and dropping them here is how a repair silently became a delete.
     composites: stored.composites,
+    amountRanges: stored.amountRanges,
     contradicted: contradicted.sort((a, b) => a - b),
     wasEmpty,
   };
@@ -135,6 +137,7 @@ export function applyWeightRepair(level: LevelData, repair: WeightRepair): strin
   level.ingredientWeights = serializeWeightSet({
     ingredients: repair.weights,
     composites: repair.composites,
+    amountRanges: repair.amountRanges,
   });
   return repair.wasEmpty
     ? "Ingredient weights filled in from the customer string."

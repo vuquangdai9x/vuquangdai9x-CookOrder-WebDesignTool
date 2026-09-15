@@ -21,16 +21,17 @@ diagnostic as separate evidence domains.
 - Missing key: add matching key supply early enough, or reduce authorized lock demand.
 - Legacy tool/grid diagnostic: preserve it as supporting evidence; change ordering, lane distribution,
   concurrent demand, or dish complexity only when the confirmed requirements make that relevant.
-- Early grid pressure: split/move dormant amounts, move unlock progress earlier, simplify concurrent
+- Early grid pressure: split/move large amount bursts, move unlock progress earlier, simplify concurrent
   work, or restore ordinary capacity.
 
 ## Amounts
 
-- Early dormant ordinary bag: split it and move the refill nearer its later customer wave.
-- Long-lived reusable object: split reusable serves across waves unless the brief prefers persistence.
-- Low amount utilization: merge nearby same-ingredient demand within `stackRange`, then simulate.
+- Atomically blocked amount: split it or move it to a pick point with enough tool/grid destinations.
+- Early release burst: split it and move later units nearer their customer wave.
+- Low amount utilization: merge nearby same-ingredient demand within `stackRange`, then simulate the
+  expanded items; do not assume reusable-object savings for `multipleUsage`.
 - Unused amount: reduce/split the slot or correct demand/yield provenance; never hide excess in totals.
-- Amount-caused occupancy spike: prefer later refills or smaller partitions without changing supply.
+- Amount-caused occupancy spike: prefer later releases or smaller partitions without changing supply.
 
 ## Customers and difficulty
 

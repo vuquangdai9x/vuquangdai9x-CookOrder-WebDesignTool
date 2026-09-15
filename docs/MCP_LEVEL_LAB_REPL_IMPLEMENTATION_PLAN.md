@@ -19,18 +19,51 @@ working mutations or write canonical CSV/browser state.
    explicit skip. Batch generation records batch-wide assumptions instead of confirming each level.
 2. **Registered metrics.** Constraints reference a discoverable catalog with typed units,
    operators, scopes, confidence requirements, and repair families. Do not execute user expressions.
-3. **Proposal before mutation.** Generation, amount packing, mechanics, and repairs return
+3. **Proposal before mutation.** Generation, amount partitioning, mechanics, and repairs return
    inspectable proposals. Applying a proposal is one revisioned transaction.
 4. **Evidence on every iteration.** Compare candidates with the same seed set and report actual
    value, target, normalized gap, confidence, and supporting cases.
 5. **Granular actions remain first-class.** An agent can correct one dish piece, amount, queue
    position, effect, group, customer, or grid cell without regenerating the level.
-6. **Amounts are behavioral.** Ordinary amounts are physical bag pieces; `multipleUsage` amounts are
-   reusable serves. Planning must measure their different occupancy and pacing risks.
+6. **Amounts are atomic unpacked releases.** Under the production behavior baseline, a queue amount
+   expands into separate one-use items from one queue pick. Planning must measure destination
+   capacity, burst occupancy, and the timing consequences of compressing several units into one
+   queue line.
 7. **Separate failure domains.** Picking-order deadlock is queue-only. Grid pressure, timeouts,
    supply, and the preserved legacy tool/grid checker remain separate diagnoses.
 8. **Bounded search.** Search declares candidate, run, time, and iteration limits and returns the
    closest candidate with unresolved evidence when the budget ends.
+
+## Production behavior baseline
+
+The real game uses the default pair documented in
+`CHANGELOG-2026-09-15-BEHAVIOR-MODES.md`; the Level Lab must model only this pair:
+
+- Raw packing: **Unpacked raw**.
+- Tool processing: **Auto**.
+- Raw ingredients that cannot enter a tool: **Park raw on grid**.
+
+Do not expose behavior-mode selection as a requirement dimension, constraint, proposal parameter,
+search mutation, batch curve, or MCP dropdown equivalent. Do not evaluate Packing raw or
+Wait-order alternatives. Browser-saved non-default preferences are editor experiments and are not
+valid production evidence.
+
+Canonical simulation semantics for every MCP evaluation and finalization:
+
+1. Picking a queue slot with amount `N` creates `N` separate physical items.
+2. At most one expanded item may enter an immediately available tool slot; every remainder needs
+   its own grid destination.
+3. The pick is atomic: if all expanded items do not have destinations, none are dispatched.
+4. `multipleUsage` ingredients also expand into `N` separate items with usage amount 1. They do not
+   form a reusable object under the production baseline.
+5. Tool processes start automatically when their inputs are ready; they do not wait for an active
+   matching order.
+
+Create one shared `PRODUCTION_BEHAVIOR` constant and a behavior-semantics version. MCP simulation,
+estimation, candidate comparison, proposal scoring, replay evidence, and finalization must all use
+that constant. Store the version on evaluations so results become stale when semantics change.
+Existing `outOfSlotPolicy` input remains readable for compatibility, but production evaluation
+normalizes raw overflow to park-on-grid and reports a warning when a draft requests another value.
 
 ## Existing surface and compatibility
 
@@ -104,9 +137,9 @@ Register these initial metric families:
   ratio, and forced-choice ratio.
 - Queue: lane count/depth/balance, ingredient spread/clustering, linked/combined counts, effects,
   picking-order stuck rate, and reason distribution.
-- Amount: compacted-unit ratio, amount-slot ratio, average/max amount, ordinary bag pieces,
-  reusable serves, dormant lifetime, unused amount, early large amounts, and amount-attributed
-  occupancy.
+- Amount: compacted-unit ratio, amount-slot ratio, average/max amount, expanded item count,
+  destination demand per pick, direct-to-tool count, grid-landing burst, atomic destination-block
+  rate, unused supply, early large amounts, and amount-attributed occupancy.
 - Grid/capacity: dimensions, usable cells, peak/p95 occupancy, dirty peak, overflow, serve slots.
 - Customers/content: counts/roles, dish count, distinct composites, piece complexity, concurrency,
   admission width.
@@ -209,23 +242,33 @@ exact approval requirement.
 
 ## Amount-aware planning
 
-Create `src/mcp/amountPlanner.ts` using graph demand, process yields, stack ranges,
-`multipleUsage`, and exact simulation:
+Create `src/mcp/amountPlanner.ts` using graph demand, process yields, stack ranges, queue/group/effect
+geometry, current grid capacity, and the fixed production behavior:
 
 1. Expand customer demand into provenance-tagged raw pickup units.
 2. Divide demand into configurable customer waves.
-3. Generate integer partitions per ingredient using `1` and `stackMin..stackMax`.
-4. Penalize ordinary pieces whose consumers are far apart because their physical bag occupies a
-   cell until drained.
-5. Prefer `multipleUsage` aggregation within nearby waves, while penalizing an object retained far
-   beyond its first use.
-6. Preserve exact supply after process yield and expose unavoidable overproduction.
-7. Score slot compression, dormant lifetime, occupancy, early large amounts, refill spacing,
-   unused amount, and the target utilization ratio.
-8. Return conservative, balanced, and aggressive proposals with explanations.
+3. Generate integer partitions per ingredient using `1` and `stackMin..stackMax`. The partition
+   compresses authored queue lines; it does not create a runtime bag.
+4. For every candidate amount `N`, calculate its atomic destination requirement at the expected
+   pick point: at most one item may enter a tool, while all remaining items need distinct grid
+   cells.
+5. Reject or heavily penalize partitions that cannot dispatch atomically in exact simulation.
+6. Penalize an amount that releases demand much earlier than its consumer wave, creates a large
+   grid-landing burst, removes too many thaw opportunities by collapsing queue lines, or changes
+   linked/combined pickup timing in a way that violates constraints.
+7. Treat `multipleUsage` as graph metadata only for the production runtime: amount `N` still becomes
+   `N` independent usage-1 items. Do not award reusable-object occupancy savings.
+8. Preserve exact supply after process yield and expose unavoidable overproduction.
+9. Score queue-line compression, atomic pick success, burst occupancy, early release distance,
+   amount-attributed peak occupancy, effect/group timing, unused supply, and target utilization.
+10. Return conservative, balanced, and aggressive amount partitions as authoring choices only;
+    they all execute with Unpacked raw + Auto semantics.
 
-Add `analyze_amount_utilization` with per-slot provenance and repair targets. Existing
-set/split/merge amount tools remain the manual correction path.
+Add `analyze_amount_utilization` with per-slot provenance, expanded destination counts, blocked-pick
+evidence, and repair targets. Existing set/split/merge amount tools remain the manual correction
+path. Common repairs are splitting a blocked burst, moving a large amount later, moving it to a lane
+whose pick occurs with more grid capacity, or reducing concurrent releases without changing total
+supply.
 
 ## Generation primitives
 
@@ -255,6 +298,9 @@ It composes current validation/estimate/playtest logic and new statistical analy
 - Recommended mutation families, never auto-applied actions.
 
 Profiles are `fast-shape`, `tuning`, `final`, and custom. Final uses a configured high-run batch.
+Profiles vary cost and statistical confidence, never runtime behavior. Do not accept packing or
+process-mode overrides on this API. Cache identity includes the behavior-semantics version, not a
+mode selection, and replay is bound to the production baseline recorded by its evaluation.
 
 Add:
 
@@ -267,6 +313,10 @@ Add:
 - `diagnose_constraint_gaps`
 - `get_evaluation`
 - `create_evaluation_seed_set` and `list_evaluation_seed_sets`
+
+`simulate_level_batch` always constructs simulations with Unpacked raw, Auto processing, and raw
+park-on-grid. Amount-related grid blocking is capacity/atomic-dispatch evidence, not queue-only
+picking deadlock.
 
 Keep focused `validate_level`, `estimate_difficulty`, and `playtest_instant` calls. Expose the
 preserved legacy tool/grid check under a distinct diagnostic name/field; never merge its rate into
@@ -296,7 +346,8 @@ Add:
 - `finalize_level_batch(batch_id)`
 
 The batch specification covers level count, difficulty/complexity curve, mechanic introduction
-cadence, repetition limits, amount-utilization curve, validation profile, and output naming. The
+cadence, repetition limits, amount-utilization curve, validation profile, and output naming. It has
+no behavior-mode dimension; every member uses the production baseline. The
 skill states inferred assumptions once and does not pause for per-level confirmation. Missing map,
 level count, destructive destination, or mechanic authorization remains a blocker.
 
@@ -319,6 +370,7 @@ src/mcp/
   candidateService.ts
   proposalService.ts
   amountPlanner.ts
+  productionBehavior.ts
   generationService.ts
   evaluationService.ts
   mutationExperiment.ts
@@ -375,6 +427,9 @@ smallest recovery action. Never return full graph/session/evaluation history unl
 - Golden-test all current tools and session-v1 fixtures.
 - Extract draft/runtime serializers without changing behavior.
 - Capture baselines for validation, estimate, playtest, amounts, and finalization.
+- Characterize Unpacked raw + Auto dispatch, atomic blocking, park-on-grid, cache identity, and
+  replay binding. Preserve alternative-mode code/tests outside the MCP plan, but do not make those
+  modes Level Lab options.
 
 Exit: current MCP tests and golden responses pass unchanged.
 
@@ -398,7 +453,8 @@ Exit: candidates compare on identical seeds and restore independently.
 
 - Add proposal lifecycle, demand provenance, amount analysis/partitioning, and skeleton proposals.
 
-Exit: a bag-heavy brief yields explainable amount alternatives preserving exact supply, with atomic
+Exit: an amount-heavy brief yields explainable queue-compression alternatives preserving exact
+supply; every proposed amount passes atomic destination checks under Unpacked raw, with atomic
 apply/revert.
 
 ### Phase 4 — experiments and guided repair
@@ -426,7 +482,8 @@ Unit coverage:
 
 - Dimension completeness, aliases, ambiguity, confirmation/skip/batch paths, token freshness.
 - Metric typing/operators, distance, weighting, confidence.
-- Ordinary and `multipleUsage` amount partitions, yields, remainders, wave gaps.
+- Ordinary and `multipleUsage` amount partitions under Unpacked raw, yields, remainders, wave gaps,
+  per-pick destination counts, and atomic dispatch rejection.
 - Picking deadlocks independent of grid state and structural case hashes.
 - Candidate isolation, transaction rollback, evidence invalidation, session-v1 migration.
 
@@ -440,7 +497,12 @@ End-to-end scenarios:
 - Vague single-level brief requires clarification and confirmation.
 - Explicit skip begins with recorded assumptions.
 - Batch request bypasses per-level confirmation.
-- Bag-heavy Map 1 and reusable-heavy Map 2 meet amount targets without supply drift.
+- Amount-heavy Map 1 and Map 2 candidates meet queue-compression targets without supply drift or
+  assuming reusable-object behavior.
+- Every MCP evaluation ignores persisted browser dropdown choices and records the production
+  behavior-semantics version.
+- An amount pick with insufficient destinations blocks atomically; splitting it can repair the
+  candidate without changing supply.
 - Linked/Freeze picking deadlocks remain separate from grid pressure.
 - Candidate comparison shares seeds and selects the better constraint score.
 - Finalization rejects timeout wins, hard misses, provisional supply, and stale evidence.
@@ -470,8 +532,10 @@ is available, plus prompt walkthroughs for vague, skipped, and batch briefs.
   only after confirmation or an explicit bypass.
 - The agent always knows phase, blockers, largest gaps, stale evidence, and useful next actions.
 - Candidates and mutation experiments are reversible and compared with common seeds.
-- Amount plans distinguish physical bags from reusable serves and explain merges/splits.
+- Amount plans model queue compression followed by atomic expansion into independent items, explain
+  merges/splits, and never claim one-cell bag or reusable-object savings.
+- All generation, evaluation, comparison, replay evidence, and finalization use Unpacked raw + Auto
+  with park-on-grid; dropdown alternatives are outside the production Level Lab contract.
 - Picking deadlock, grid pressure, timeouts, supply, and legacy tool/grid diagnostics are separate.
 - Batch runs are deterministic, resumable, bounded, and individually validated.
 - Finalization emits only fully valid artifacts and never modifies canonical level data.
-

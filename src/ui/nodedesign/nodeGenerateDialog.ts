@@ -95,6 +95,7 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
             deps.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]),
           ),
           composites: storedWeights.composites,
+          amountRanges: storedWeights.amountRanges,
         };
 
   /**

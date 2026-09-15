@@ -1138,9 +1138,11 @@ ${names}${more}`)) {
     }
     // Rebuilds the INGREDIENT half only. The dish-type weights are a separate
     // decision the customer string has nothing to say about, so they survive.
+    const storedWeights = parseWeightSet(level.ingredientWeights ?? "");
     level.ingredientWeights = serializeWeightSet({
       ingredients: weightsFromDistribution(counts),
-      composites: parseWeightSet(level.ingredientWeights ?? "").composites,
+      composites: storedWeights.composites,
+      amountRanges: storedWeights.amountRanges,
     });
     this.persist(entry);
     this.refreshRow(entry, level);
@@ -1208,6 +1210,7 @@ ${names}${more}`)) {
                 entry.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]),
               ),
               composites: stored.composites,
+              amountRanges: stored.amountRanges,
             };
       // The weight grid resolves its icons through the global icon map, which
       // belongs to whichever map the app has open — borrow it for the map this

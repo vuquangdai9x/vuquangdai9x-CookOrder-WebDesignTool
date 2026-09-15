@@ -21,12 +21,13 @@ Use when the brief describes difficulty or emotion but not structure. Build a sm
 ## Amount planning within every route
 
 Amount planning is a layer, not a separate strategy. Apply it after enough demand exists to attach
-each physical piece or reusable serve to a customer wave. An amount-heavy brief may make queue
-layout dominant, but it does not justify merging distant demand into an early dormant bag. Compare
+each unit to a customer wave. Production uses Unpacked raw: amount N compresses queue lines but
+atomically releases N independent items, each needing a tool/grid destination. An amount-heavy brief
+may make queue layout dominant, but it does not justify releasing distant demand early. Compare
 conservative, balanced, and aggressive partitions against the same seeds when the Level Lab
 proposal/evaluation tools are available.
 
 Switch when repeated evaluation worsens the same confirmed constraint, supply repairs keep breaking
-structure, amount packing creates persistent occupancy pressure, the structure makes valid demand
+structure, amount bursts create persistent occupancy pressure, the structure makes valid demand
 unwinnable, or authorized mechanics cannot reach the requested difficulty. Record the new route,
 candidate/checkpoint, seed set, and evidence.

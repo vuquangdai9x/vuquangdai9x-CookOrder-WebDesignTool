@@ -30,6 +30,8 @@ export interface NodeQueueOptions {
   shuffleRange: ShuffleRangeSpec;
   /** How Auto Generate chooses a target size inside each ingredient's stack range. */
   bagFill?: BagFillMode;
+  /** Dense ordered-ingredient id -> enabled queue amount override. */
+  amountRanges?: Map<number, { min: number; max: number }>;
   /** Injectable for deterministic tests; defaults to Math.random. */
   random?: () => number;
 }
@@ -45,6 +47,13 @@ export interface GeneratedQueueSlot {
 interface DenseBag {
   leaf: number;
   amount: number;
+}
+
+interface DemandEvent {
+  item: number;
+  leaf: number;
+  covers: number;
+  key: string;
 }
 
 /**
@@ -106,6 +115,16 @@ function leavesFor(ix: GraphIndex, ing: number): { leaf: number; covers: number 
   return out;
 }
 
+function demandEvents(ix: GraphIndex, ids: IdIndex, customers: NodeCustomerConfig[]): DemandEvent[] {
+  const events: DemandEvent[] = [];
+  for (const item of orderedItems(ix, ids, customers)) {
+    for (const { leaf, covers } of leavesFor(ix, item)) {
+      events.push({ item, leaf, covers, key: `${leaf}:${item}` });
+    }
+  }
+  return events;
+}
+
 /**
  * Recipe Pieces demand keyed by pickupable DATA id. Unlike MapDef demand,
  * this follows every input of every producer step, so a coffee output counts
@@ -153,19 +172,65 @@ export function nodePickupSequence(
   const remaining = new Map<string, number>();
   const sequence: number[] = [];
 
-  for (const item of orderedItems(ix, ids, customers)) {
-    for (const { leaf, covers } of leavesFor(ix, item)) {
-      const key = `${leaf}:${item}`;
-      const left = remaining.get(key) ?? 0;
-      if (left > 0) {
-        remaining.set(key, left - 1);
-        continue;
-      }
-      sequence.push(leaf);
-      remaining.set(key, Math.max(0, covers - 1));
+  for (const event of demandEvents(ix, ids, customers)) {
+    const left = remaining.get(event.key) ?? 0;
+    if (left > 0) {
+      remaining.set(event.key, left - 1);
+      continue;
     }
+    sequence.push(event.leaf);
+    remaining.set(event.key, Math.max(0, event.covers - 1));
   }
   return sequence;
+}
+
+/**
+ * Creates a bag the moment an ingredient is first needed, then carries every
+ * unused piece forward to later dishes. The amount is capped by all remaining
+ * demand for that same production path, so pre-bagging never invents excess
+ * raw supply merely to reach stackMin.
+ */
+export function demandAwareBags(
+  ix: GraphIndex,
+  ids: IdIndex,
+  customers: NodeCustomerConfig[],
+  random: () => number = Math.random,
+  mode: BagFillMode = "random",
+  amountRanges: Map<number, { min: number; max: number }> = new Map(),
+): DenseBag[] {
+  const events = demandEvents(ix, ids, customers);
+  const needs = new Map<string, number>();
+  for (const event of events) needs.set(event.key, (needs.get(event.key) ?? 0) + 1);
+
+  const leftovers = new Map<string, number>();
+  const bags: DenseBag[] = [];
+  for (const event of events) {
+    const remainingNeed = needs.get(event.key) ?? 0;
+    needs.set(event.key, Math.max(0, remainingNeed - 1));
+
+    const left = leftovers.get(event.key) ?? 0;
+    if (left > 0) {
+      leftovers.set(event.key, left - 1);
+      continue;
+    }
+
+    const configured = amountRanges.get(event.item) ?? ix.stackRange[event.leaf] ?? { min: 1, max: 1 };
+    // Queue amounts are physical pieces, so zero on the 0-10 editor scale
+    // normalizes to one rather than producing an empty/non-pickable slot.
+    const min = Math.max(1, Math.min(10, Math.floor(configured.min) || 1));
+    const max = Math.max(min, Math.min(10, Math.floor(configured.max) || min));
+    const target =
+      mode === "min"
+        ? min
+        : mode === "max"
+          ? max
+          : min + Math.floor(Math.min(0.9999999999999999, Math.max(0, random())) * (max - min + 1));
+    const rawPiecesNeeded = Math.max(1, Math.ceil(remainingNeed / Math.max(1, event.covers)));
+    const amount = Math.max(1, Math.min(target, rawPiecesNeeded));
+    bags.push({ leaf: event.leaf, amount });
+    leftovers.set(event.key, Math.max(0, amount * Math.max(1, event.covers) - 1));
+  }
+  return bags;
 }
 
 /**
@@ -252,8 +317,14 @@ export function generateNodeQueueLanes(opts: NodeQueueOptions): GeneratedQueueSl
   const laneCount = Math.max(1, opts.laneCount);
   const lanes: GeneratedQueueSlot[][] = Array.from({ length: laneCount }, () => []);
 
-  const sequence = nodePickupSequence(opts.ix, opts.ids, opts.customers);
-  const bags = groupIntoBags(sequence, opts.ix, rand, opts.bagFill ?? "random");
+  const bags = demandAwareBags(
+    opts.ix,
+    opts.ids,
+    opts.customers,
+    rand,
+    opts.bagFill ?? "random",
+    opts.amountRanges,
+  );
   bags.forEach((bag, at) => {
     const dataId = opts.ids.byNode.ingredient.get(opts.ix.ingName[bag.leaf]);
     // An ingredient with no id cannot appear in a queue string at all; dropping

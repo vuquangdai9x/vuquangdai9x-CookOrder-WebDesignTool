@@ -30,7 +30,8 @@ export interface LevelData {
    * Design-time record of the last Auto Generate run's inputs (Customer
    * section) — not consumed by Play/sim, purely so a designer can inspect or
    * re-edit the recipe that produced the current customer list. Format:
-   * "<cookedId>:<weight>;..." (0-100 each), one entry per ingredient with a
+   * "<cookedId>:<weight>[:<amountMin>:<amountMax>];..." (weight 0-100,
+   * optional enabled queue amount override 0-10), one entry per ingredient with a
    * nonzero weight — see ui/design/ingredientWeightEditor.ts.
    */
   ingredientWeights?: string;

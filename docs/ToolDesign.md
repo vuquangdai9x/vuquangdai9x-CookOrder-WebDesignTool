@@ -313,7 +313,7 @@ tool.
     raw* expands every queue amount into individual items: at most one immediately enters a free
     tool slot and every remainder reserves its own grid cell. `multipleUsage` items also expand
     this way and each landed item has one use. The whole pick is blocked unless every item can
-    reserve a tool or grid landing.
+    reserve a tool or grid landing. *Unpacked raw* is the default.
   - **Tool process behavior** is a second Play preference. *Auto* preserves graph behavior: an
     `auto` process starts whenever possible, while a manual process waits for demand. *Wait-order*
     demand-gates every process, including graph-auto steps, against a genuinely unclaimed order

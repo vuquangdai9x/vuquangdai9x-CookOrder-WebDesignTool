@@ -19,6 +19,7 @@ describe("the weight-set grammar", () => {
     const set = {
       ingredients: new Map([[3, 100], [7, 40]]),
       composites: new Map([[0, 80], [1, 20]]),
+      amountRanges: new Map([[3, { min: 2, max: 5 }]]),
     };
     expect(parseWeightSet(serializeWeightSet(set))).toEqual(set);
   });
@@ -33,13 +34,21 @@ describe("the weight-set grammar", () => {
 
   it("writes composites first, so the string diffs cleanly", () => {
     expect(
-      serializeWeightSet({ ingredients: new Map([[9, 50]]), composites: new Map([[1, 30]]) }),
+      serializeWeightSet({
+        ingredients: new Map([[9, 50]]),
+        composites: new Map([[1, 30]]),
+        amountRanges: new Map(),
+      }),
     ).toBe("c1:30;9:50");
   });
 
   it("drops zeroes from both halves", () => {
     expect(
-      serializeWeightSet({ ingredients: new Map([[1, 0]]), composites: new Map([[2, 0]]) }),
+      serializeWeightSet({
+        ingredients: new Map([[1, 0]]),
+        composites: new Map([[2, 0]]),
+        amountRanges: new Map(),
+      }),
     ).toBe("");
     expect(serializeWeightSet(emptyWeightSet())).toBe("");
   });
@@ -49,6 +58,15 @@ describe("the weight-set grammar", () => {
     expect(parsed.composites.get(0)).toBe(100);
     expect(parsed.ingredients.get(1)).toBe(0);
     expect(parsed.ingredients.get(2)).toBe(70);
+  });
+
+  it("reads optional 0..10 amount overrides without changing the old grammar", () => {
+    const parsed = parseWeightSet("3:80:2:7;4:60:-4:40;5:50");
+    expect(parsed.amountRanges).toEqual(new Map([
+      [3, { min: 2, max: 7 }],
+      [4, { min: 0, max: 10 }],
+    ]));
+    expect(parsed.amountRanges.has(5)).toBe(false);
   });
 });
 

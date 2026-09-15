@@ -587,6 +587,7 @@ function levelParamsBar(
               deps.projected.map.cookedIngredients.map((c) => [c.id, DEFAULT_INGREDIENT_WEIGHT]),
             ),
             composites: stored.composites,
+            amountRanges: stored.amountRanges,
           };
     openDishWeightDialog(
       deps.level.name,

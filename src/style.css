@@ -5020,6 +5020,78 @@ td input {
   opacity: 0.4;
 }
 
+.weight-col.with-amount {
+  width: 5.4rem;
+  display: grid;
+  grid-template-columns: 2rem 2.6rem;
+  justify-content: center;
+  align-items: start;
+}
+
+.weight-col.with-amount > .weight-value,
+.weight-col.with-amount > .weight-track {
+  grid-column: 1;
+  justify-self: center;
+}
+
+.weight-col.with-amount > .weight-icon {
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+.amount-range-control {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.amount-range-value {
+  min-height: 1rem;
+  font-size: 0.65rem;
+  color: var(--accent);
+}
+
+.amount-range-value.disabled {
+  color: var(--muted);
+  opacity: 0.55;
+}
+
+.amount-range-sliders {
+  display: flex;
+  gap: 0.05rem;
+  height: 6rem;
+}
+
+.amount-range-input {
+  width: 1rem;
+  height: 6rem;
+  margin: 0;
+  padding: 0;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  accent-color: var(--accent);
+}
+
+.amount-range-input:disabled {
+  opacity: 0.3;
+}
+
+.amount-range-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  font-size: 0.58rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.amount-range-toggle input {
+  margin: 0;
+}
+
 .scenario-behavior-row select {
   width: 100%;
   max-width: none;
