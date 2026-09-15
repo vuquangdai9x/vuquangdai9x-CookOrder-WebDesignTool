@@ -3,9 +3,11 @@ import type { DishNode } from "../core/nodeParser.ts";
 import type { IdIndex } from "../data/nodeIdTable.ts";
 import { addToSlot, membersOf, unmetSlotBase } from "../ui/nodedesign/nodeDishEdit.ts";
 import { partitionAtomicUnits } from "./amountPlanner.ts";
+import { analyzeQueueTexture, type QueueTextureMetrics, type QueueTextureSlot } from "./queueTexture.ts";
 import type { DraftCustomer, ProposalAction, SessionDraft } from "./types.ts";
 
 export type QueueAmountStyle = "single-unit" | "balanced" | "compact";
+export type QueueLayoutArchetype = "staggered-braid" | "wave-echo" | "asymmetric-lanes";
 
 export interface MissingPickupDemand {
   ingredient: string;
@@ -20,6 +22,9 @@ export interface QueuePlanResult {
   warnings: string[];
   plannedLaneIds: string[];
   plannedSlotIds: string[];
+  layoutArchetype: QueueLayoutArchetype;
+  deterministicSeed: number;
+  plannedTexture: QueueTextureMetrics;
 }
 
 export interface SkeletonPlanResult {
@@ -134,11 +139,91 @@ function amountMaximum(style: QueueAmountStyle, stackRange: { min: number; max: 
   return Math.max(1, Math.min(legalMaximum, Math.floor((Math.max(1, stackRange.min) + legalMaximum) / 2)));
 }
 
+interface PlannedChunk extends QueueTextureSlot {
+  ingredientName: string;
+}
+
+function seededRandom(seed: number): () => number {
+  let state = (seed >>> 0) || 0x9e3779b9;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ value >>> 15, value | 1);
+    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function preferredLaneOrder(step: number, laneCount: number, archetype: QueueLayoutArchetype, seed: number): number[] {
+  const lanes = Array.from({ length: laneCount }, (_, index) => index);
+  if (archetype === "wave-echo" && Math.floor(step / laneCount) % 2 === 1) lanes.reverse();
+  if (archetype === "asymmetric-lanes") {
+    lanes.sort((left, right) => ((left * 1103515245 + seed) >>> 0) - ((right * 1103515245 + seed) >>> 0));
+  }
+  const rotation = archetype === "staggered-braid" ? Math.floor(step / laneCount) % laneCount : 0;
+  return [...lanes.slice(rotation), ...lanes.slice(0, rotation)];
+}
+
+function arrangeChunks(
+  existing: QueueTextureSlot[][],
+  chunks: PlannedChunk[],
+  archetype: QueueLayoutArchetype,
+  seed: number,
+): { lanes: QueueTextureSlot[][]; placements: Array<{ laneIndex: number; chunk: PlannedChunk }> } {
+  const lanes = existing.map((lane) => [...lane]);
+  const remaining = [...chunks];
+  const placements: Array<{ laneIndex: number; chunk: PlannedChunk }> = [];
+  const transitions = new Map<string, number>();
+  lanes.forEach((lane) => lane.slice(1).forEach((slot, index) => {
+    const key = `${lane[index].ingredient}>${slot.ingredient}`;
+    transitions.set(key, (transitions.get(key) ?? 0) + 1);
+  }));
+  const random = seededRandom(seed);
+  let step = 0;
+  while (remaining.length) {
+    const minimumDepth = Math.min(...lanes.map((lane) => lane.length));
+    const allowedImbalance = archetype === "asymmetric-lanes" ? 1 : 0;
+    const eligible = new Set(lanes
+      .map((lane, index) => ({ lane, index }))
+      .filter(({ lane }) => lane.length <= minimumDepth + allowedImbalance)
+      .map(({ index }) => index));
+    const laneIndex = preferredLaneOrder(step, lanes.length, archetype, seed).find((index) => eligible.has(index)) ?? 0;
+    const lane = lanes[laneIndex];
+    const depth = lane.length;
+    const previous = lane.at(-1)?.ingredient;
+    let bestIndex = 0;
+    let bestScore = Infinity;
+    for (let index = 0; index < remaining.length; index++) {
+      const chunk = remaining[index];
+      const sameAdjacent = previous === chunk.ingredient ? 1 : 0;
+      const sameDepth = lanes.reduce((count, other, otherIndex) =>
+        count + (otherIndex !== laneIndex && other[depth]?.ingredient === chunk.ingredient ? 1 : 0), 0);
+      const transitionRepeats = previous ? transitions.get(`${previous}>${chunk.ingredient}`) ?? 0 : 0;
+      const echo = archetype === "wave-echo" && lane[depth - 2]?.ingredient === chunk.ingredient ? -4 : 0;
+      const score = sameAdjacent * 100 + sameDepth * 70 + transitionRepeats * 6 + echo + random();
+      if (score < bestScore) { bestScore = score; bestIndex = index; }
+    }
+    const [chunk] = remaining.splice(bestIndex, 1);
+    if (previous) transitions.set(`${previous}>${chunk.ingredient}`, (transitions.get(`${previous}>${chunk.ingredient}`) ?? 0) + 1);
+    lane.push({ ingredient: chunk.ingredient, amount: chunk.amount });
+    placements.push({ laneIndex, chunk });
+    step++;
+  }
+  return { lanes, placements };
+}
+
 export function planQueueSupply(
   ix: GraphIndex,
   draft: SessionDraft,
   missing: MissingPickupDemand[],
-  input: { laneCount: number; amountStyle: QueueAmountStyle; startingLaneCounter: number; startingSlotCounter: number },
+  input: {
+    laneCount: number;
+    amountStyle: QueueAmountStyle;
+    startingLaneCounter: number;
+    startingSlotCounter: number;
+    deterministicSeed?: number;
+    layoutArchetype?: QueueLayoutArchetype;
+  },
 ): QueuePlanResult {
   const actions: ProposalAction[] = [];
   const warnings: string[] = [];
@@ -154,10 +239,10 @@ export function planQueueSupply(
     plannedLaneIds.push(laneId);
   }
   const usableGridCells = draft.grid.filter((cell) => !cell.effects.some((effect) => effect.effectId === 1)).length;
-  const laneDepths = new Map(draft.lanes.map((lane) => [lane.id, lane.slots.length]));
-  plannedLaneIds.forEach((laneId) => { if (!laneDepths.has(laneId)) laneDepths.set(laneId, 0); });
-  let laneCursor = 0;
-  for (const demand of missing.filter((item) => item.howMany > 0).sort((a, b) => a.dataId - b.dataId)) {
+  const deterministicSeed = Math.max(0, Math.floor(input.deterministicSeed ?? 0x51a71)) >>> 0;
+  const layoutArchetype = input.layoutArchetype ?? "staggered-braid";
+  const chunks: PlannedChunk[] = [];
+  for (const demand of missing.filter((item) => item.howMany > 0)) {
     const dense = ix.ingByName.get(demand.ingredient);
     if (dense === undefined || !ix.pickupable[dense]) {
       warnings.push(`${demand.ingredient} was skipped because it is not a pickupable graph ingredient.`);
@@ -171,21 +256,37 @@ export function planQueueSupply(
       ? Array.from({ length: demand.howMany }, () => 1)
       : partitionAtomicUnits(demand.howMany, maximum, stackRange.min);
     expectedSupplyDelta[demand.ingredient] = demand.howMany;
-    for (const amount of parts) {
-      const laneId = plannedLaneIds[laneCursor % plannedLaneIds.length];
-      laneCursor++;
+    parts.forEach((part) => chunks.push({ ingredient: String(demand.dataId), ingredientName: demand.ingredient, amount: part }));
+  }
+  const existing: QueueTextureSlot[][] = plannedLaneIds.map((laneId) => {
+    const lane = draft.lanes.find((candidate) => candidate.id === laneId);
+    return lane?.slots.map((slot) => ({ ingredient: String(slot.ingredientId), amount: Math.max(1, slot.amount ?? 1) })) ?? [];
+  });
+  const arranged = arrangeChunks(existing, chunks, layoutArchetype, deterministicSeed);
+  const laneDepths = plannedLaneIds.map((laneId) => draft.lanes.find((lane) => lane.id === laneId)?.slots.length ?? 0);
+  for (const placement of arranged.placements) {
+      const laneId = plannedLaneIds[placement.laneIndex];
+      const { chunk } = placement;
       const slotId = `slot-${++slotCounter}`;
-      const position = laneDepths.get(laneId) ?? 0;
-      laneDepths.set(laneId, position + 1);
+      const position = laneDepths[placement.laneIndex]++;
       actions.push({
         tool: "add_queue_ingredient",
-        arguments: { laneId, position, ingredient: demand.ingredient, count: 1, amount, provisional: false },
-        expectedResult: { slotIds: [slotId], expandedUnits: amount },
+        arguments: { laneId, position, ingredient: chunk.ingredientName, count: 1, amount: chunk.amount, provisional: false },
+        expectedResult: { slotIds: [slotId], expandedUnits: chunk.amount },
       });
       plannedSlotIds.push(slotId);
-    }
   }
   if (!missing.some((item) => item.howMany > 0)) warnings.push("The candidate already has exact pickup supply; no queue ingredients were proposed.");
   if (input.amountStyle !== "single-unit") warnings.push("Amount slots are bounded by stack range and empty-grid atomic capacity; evaluate exact pick-time capacity after applying.");
-  return { actions, expectedSupplyDelta, warnings, plannedLaneIds, plannedSlotIds };
+  warnings.push(`Queue layout uses the seeded ${layoutArchetype} arranger; compare texture and simulation evidence before applying.`);
+  return {
+    actions,
+    expectedSupplyDelta,
+    warnings,
+    plannedLaneIds,
+    plannedSlotIds,
+    layoutArchetype,
+    deterministicSeed,
+    plannedTexture: analyzeQueueTexture(arranged.lanes),
+  };
 }

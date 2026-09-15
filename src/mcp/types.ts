@@ -359,6 +359,7 @@ export interface LevelBatchSpec {
   dishesPerCustomer?: number;
   laneRange?: [number, number];
   amountUtilizationCurve?: Array<"single-unit" | "balanced" | "compact">;
+  queueArchetypeCurve?: Array<"staggered-braid" | "wave-echo" | "asymmetric-lanes">;
   difficultyCurve?: string[];
   validationProfile?: "fast-shape" | "tuning" | "final";
   runsPerLevel?: number;
@@ -373,6 +374,7 @@ export interface LevelBatchMember {
   dishesPerCustomer: number;
   laneCount: number;
   amountStyle: "single-unit" | "balanced" | "compact";
+  layoutArchetype: "staggered-braid" | "wave-echo" | "asymmetric-lanes";
   difficulty: string;
   sessionId: string;
   status: "planned" | "running" | "valid" | "invalid" | "error";

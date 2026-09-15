@@ -31,3 +31,12 @@ Switch when repeated evaluation worsens the same confirmed constraint, supply re
 structure, amount bursts create persistent occupancy pressure, the structure makes valid demand
 unwinnable, or authorized mechanics cannot reach the requested difficulty. Record the new route,
 candidate/checkpoint, seed set, and evidence.
+
+## Reference-guided texture within every route
+
+Study the target map's committed progression-local cohort before choosing a route. Use its amount,
+adjacency, lane-similarity, transition, repeated-pattern, and local-dominance envelope as targets,
+not as a queue to copy. For new queues, compare seeded `staggered-braid`, `wave-echo`, and
+`asymmetric-lanes` proposals against identical simulation seeds. Prefer another archetype/seed over
+large manual rearrangements when the first valid candidate is repetitive. An explicit tutorial or
+designer choice may override the learned envelope; record that exception in confirmed requirements.

@@ -5,6 +5,7 @@ import type { ElementDef } from "../core/types.ts";
 import { buildIndex } from "../core/nodeIndex.ts";
 import { buildIdIndex } from "../data/nodeIdTable.ts";
 import type { NodeGraphMap } from "../data/nodeGraphTypes.ts";
+import type { LevelData } from "../data/mapLoader.ts";
 import type { CustomerCatalogEntry } from "./types.ts";
 
 interface StatusFile { statuses: ElementDef[] }
@@ -21,6 +22,12 @@ export interface AuthoringResources {
   weather: unknown;
   contextToken: string;
   sourceFiles: string[];
+}
+
+export interface ReferenceLevelDataset {
+  levels: LevelData[];
+  sourceFile: string | null;
+  sourceHash: string | null;
 }
 
 function parseCsv(text: string): string[][] {
@@ -114,6 +121,43 @@ export class RepositoryAdapter {
       contextToken: hash.digest("hex"),
       sourceFiles: paths.map((file) => path.relative(this.root, file).replaceAll("\\", "/")),
     };
+  }
+
+  /** Load the committed sample levels paired to a graph by its numeric map index. */
+  async loadReferenceLevels(mapId: string): Promise<ReferenceLevelDataset> {
+    const resources = await this.load(mapId);
+    const files = await readdir(this.graphDir);
+    const prefix = `leveldata-${resources.mapIndex}-`;
+    const file = files.find((candidate) => candidate.toLowerCase().startsWith(prefix) && candidate.toLowerCase().endsWith(".csv"));
+    if (!file) return { levels: [], sourceFile: null, sourceHash: null };
+    const absolute = path.join(this.graphDir, file);
+    const text = await readFile(absolute, "utf8");
+    const rows = parseCsv(text).filter((row) => row.some((cell) => cell.trim()));
+    const sourceFile = path.relative(this.root, absolute).replaceAll("\\", "/");
+    const sourceHash = createHash("sha256").update(text).digest("hex");
+    if (!rows.length) return { levels: [], sourceFile, sourceHash };
+
+    const header = rows[0];
+    const columns = new Map(header.map((name, index) => [name.trim(), index]));
+    const body = columns.has("Level_ID") ? rows.slice(1) : rows;
+    const at = (row: string[], name: string, fallbackIndex: number): string => row[columns.get(name) ?? fallbackIndex] ?? "";
+    const levels = body.flatMap((row): LevelData[] => {
+      const id = Number(at(row, "Level_ID", 0));
+      if (!Number.isFinite(id)) return [];
+      return [{
+        id,
+        name: at(row, "Name", 1),
+        weather: at(row, "Weather", 2),
+        levelTag: at(row, "LevelTag", 3),
+        featureUnlock: at(row, "FeatureUnlock", 4),
+        shuffleDistance: Number(at(row, "ShuffleDistance", 5)) || 0,
+        serveableSlots: Number(at(row, "ServeableSlots", 6)) || 0,
+        queueString: at(row, "QueueString", 7),
+        gridString: at(row, "GridString", 8),
+        customerString: at(row, "CustomerString", 9),
+      }];
+    });
+    return { levels, sourceFile, sourceHash };
   }
 
   async readAuthoringContext(mapId: string): Promise<Record<string, unknown>> {

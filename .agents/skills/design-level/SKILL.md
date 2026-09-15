@@ -12,10 +12,11 @@ Use the CookOrder level-authoring MCP as the source of truth. Never construct or
 For a single interactive level, do not start a mutable authoring session until the designer has confirmed a refined requirement summary.
 
 1. If the designer has not provided a brief, ask one open-ended question for their vague goals, constraints, desired feeling, examples, and anything that must or must not appear. Do not make them fill a form up front.
-2. Identify the map and read its authoring context. Use `list_requirement_dimensions` and `refine_level_requirements` when available; otherwise use `read_authoring_context` and `interpret_level_brief` and perform the missing-dimension review conversationally.
-3. Review every dimension below. Ask only about omissions or ambiguities that could materially change the design. Group related gaps into at most three concise questions per turn and offer explicit proposed defaults. A dimension may be marked “designer has no preference.”
-4. Present one refined requirement summary containing resolved values, measurable acceptance thresholds, authorized mechanics, prohibited mechanics, assumptions, and iteration budget.
-5. Ask for explicit confirmation before starting or mutating the level. Apply corrections to the summary and show it again when they materially change it.
+2. Identify the map and read its authoring context. Before refining requirements, call `analyze_reference_levels` for the target progression position and study the committed sample cohort. Read [reference-guided-generation.md](references/reference-guided-generation.md). Do not start a mutable session without this reference pass. When fewer than three comparable samples exist, disclose the weak evidence and use an explicitly reviewed fallback.
+3. Use `list_requirement_dimensions` and `refine_level_requirements` when available; otherwise use `read_authoring_context` and `interpret_level_brief` and perform the missing-dimension review conversationally.
+4. Review every dimension below. Ask only about omissions or ambiguities that could materially change the design. Group related gaps into at most three concise questions per turn and offer explicit proposed defaults. A dimension may be marked “designer has no preference.”
+5. Present one refined requirement summary containing resolved values, the reference profile/cohort and learned queue-texture envelope, measurable acceptance thresholds, authorized mechanics, prohibited mechanics, assumptions, and iteration budget.
+6. Ask for explicit confirmation before starting or mutating the level. Apply corrections to the summary and show it again when they materially change it. Highlight any requested departure from the reference envelope, especially a single-unit queue when the cohort uses amounts.
 
 Bypass this gate when the designer explicitly says to skip requirements/refinement/confirmation. Record reasonable assumptions and proceed. For batch generation, do not run a confirmation cycle per level: normalize one batch-wide specification, state inferred assumptions once, and proceed. Still ask for a missing map, batch size/range, destructive destination, or mechanic authorization when it cannot be safely inferred.
 
@@ -27,8 +28,8 @@ Use this checklist to find gaps; do not force the designer to answer irrelevant 
 2. **Player experience** — difficulty/profile; target emotion (relaxed, tense, puzzle-like, chaotic, mastery); intended player skill/familiarity; fairness tolerance; desired choice versus forced play; novelty versus familiarity.
 3. **Duration and tempo** — target duration or move/pick count; early/mid/late pressure shape; breathing spaces; climax/recovery; acceptable variance.
 4. **Customers and content** — customer count/range; ordinary/special roles; avatars when important; dish count; allowed/required/forbidden composites or ingredients; recipe complexity; variety/repetition limits; customer ordering/concurrency intent.
-5. **Queue structure** — lane count; depth/length; lane balance; clustering/spread; shuffle/randomness; ingredient timing; forced-choice tolerance; provisional queue-first geometry.
-6. **Amount mechanics** — whether amounts should be used; target queue-line compaction or amount-slot ratio; conservative/balanced/aggressive partitioning; preferred/max amounts; atomic destination capacity; grid-landing burst tolerance; effect/group timing; unused supply policy. Runtime behavior is fixed to Unpacked raw and is not a prompt dimension.
+5. **Queue structure and texture** — lane count; depth/length; lane balance; clustering/spread; shuffle/randomness; ingredient timing; forced-choice tolerance; adjacency ceiling; identical-run cap; cross-lane mirroring; transition entropy; repeated-pattern/local-dominance ceilings; reference-style fit; originality versus the nearest sample; provisional queue-first geometry.
+6. **Amount mechanics** — target queue-line compaction or amount-slot ratio; conservative/balanced/aggressive partitioning; preferred/max amounts; atomic destination capacity; grid-landing burst tolerance; effect/group timing; unused supply policy. Default to the learned reference recommendation. Never infer `single-unit`; require an explicit tutorial/designer override. Runtime behavior is fixed to Unpacked raw and is not a prompt dimension.
 7. **Grid and serving capacity** — grid dimensions if configurable; usable/blocked capacity; serveable slots; target peak occupancy; dirty pressure; overflow tolerance. Raw overflow uses park-on-grid in production.
 8. **Tools and production flow** — desired tool utilization; multi-input concurrency; chain depth; preservation behavior; work-in-flight target; ingredient processing focus or exclusions.
 9. **Mechanics and effects** — queue Freeze/Hidden/HoldingKey; combined/linked groups; grid blocks, order locks, ingredient slots, color locks; dish effects; timers; staff, boss, shipper; count, strength, placement, introduction timing, and explicit authorization for each.
@@ -44,6 +45,7 @@ Before confirmation, show a compact summary like:
 
 ```text
 Scope: Map 2, create one level, challenging progression slot.
+Reference DNA: levels 18–28 from committed Map 2; balanced amounts; adjacency <= P75; lane mirroring <= P75; do not copy a sample sequence.
 Experience: tense but fair; some choice; 3–4 minutes.
 Content: 8–10 ordinary customers; coffee recipes; moderate variety.
 Queue/amounts: 5 lanes; balanced partitioning; 40–60% compacted units; amount bursts fit destinations.
@@ -61,12 +63,12 @@ Ask: “Does this refined requirement match what you want me to build?” Do not
 
 After confirmation or a permitted bypass:
 
-1. Read fresh graph context and retain `context_token`.
+1. Read fresh graph context and retain `context_token`. Call `analyze_reference_levels` with the target level/range and retain its reference profile, cohort, envelope, and recommended targets.
 2. Confirm/persist the refined requirement token when supported, then start the session. Otherwise start from the exact confirmed brief and retain the summary in the work log.
 3. Call `get_authoring_status` when available. Plan and record an adaptive strategy; read [authoring-strategies.md](references/authoring-strategies.md).
-4. Create a small ordinary customer/dish skeleton. Prefer `propose_level_skeleton`; inspect its customer, graph-valid dish, exact-supply queue, stable IDs, warnings, and amount partition before applying it transactionally. Use `propose_customer_plan` or `propose_dish_plan` when only one subsystem should change.
-5. Once dish demand exists, reconcile exact pickup supply. Prefer `propose_queue_plan` when available; inspect its stable lane/slot IDs, exact supply delta, amount partition, and warnings before one atomic apply. Read each pickupable’s `multipleUsage` and `stackRange`, then use amount planning/analysis and repair proposals when available.
-6. Evaluate against the constraint ledger with a reusable seed set. Diagnose the largest hard or weighted target gap rather than tuning arbitrary fields.
+4. Create a small ordinary customer/dish skeleton. For a new creative level, prefer separate `propose_customer_plan` and `propose_dish_plan` steps so queue alternatives can share one demand skeleton. Use `propose_level_skeleton` for a fast baseline, but do not accept its first queue without texture comparison.
+5. Once dish demand exists, call `propose_queue_variants` with at least two seeds across the available archetypes. Keep the ordinary amount style `balanced` unless confirmed requirements say otherwise. Inspect exact supply, amount partition, planned texture, stable IDs, and warnings. Evaluate every non-empty proposal with `evaluate_mutation_batch` on one shared seed set and apply only the best experiment. Use singular `propose_queue_plan` only for an explicitly chosen archetype or a local supply repair.
+6. Call `analyze_queue_texture` or `compare_level_to_references`. Require amount usage and texture/originality targets to pass or record an explicit confirmed exception. Then evaluate gameplay against the complete constraint ledger. Diagnose the largest hard or weighted target gap rather than tuning arbitrary fields.
 7. Form one repair hypothesis. Use `evaluate_mutation_batch` without changing the active candidate, compare alternatives with `rank_mutation_candidates` on identical seeds, then use `apply_mutation_batch` only for the best supported experiment. Use bounded `run_search_step`/`run_candidate_search` only with explicit iteration, run, experiment, and wall-time limits.
 8. Checkpoint meaningful improvements. Branch candidates when two plausible directions should be compared. Record evidence when changing strategy.
 9. Repeat until constraints pass or the confirmed budget ends. Read [validation-and-repair.md](references/validation-and-repair.md).
@@ -82,6 +84,9 @@ Read [repl-pipeline.md](references/repl-pipeline.md) for tool routing, compatibi
 - Keep queue-first ingredients provisional until matching demand exists; clear every provisional marker before finalization.
 - Production behavior is fixed to Unpacked raw + Auto with park-on-grid. Picking amount N atomically expands N independent one-use items; at most one may enter an immediately available tool and every remainder needs its own grid cell. `multipleUsage` amount also expands into usage-1 items and does not create a reusable object.
 - Keep generated amounts within `stackRange` when practical. Use amount 1 for an unavoidable remainder. Use `set_queue_slot_amount`, `split_queue_slot`, and `merge_queue_slots` for manual correction.
+- Reference learning is mandatory for committed maps. Learn ranges and motifs, never literal queue strings. Preserve the reference profile id and cohort in the confirmed requirements.
+- A valid queue is not automatically a good queue. Measure adjacency, longest run, cross-lane mirroring, transition entropy, repeated trigrams, local dominance, reference-style distance, and nearest-reference similarity before finalization.
+- Do not sort the authored queue into ingredient bands. Prefer a seeded archetype variant; when safe, turn nearby repeated demand into legal amounts or interleave it by consumer wave.
 - An amount reduces authored queue lines but creates one atomic release burst. Re-evaluate available destinations, grid-landing burst, effect/group timing, occupancy, exact usage, and playability after amount edits.
 - Measure picking-order deadlock with the queue-only checker. Do not count grid state in that rate. Keep grid pressure and the legacy tool/grid diagnostic separate.
 - Start ordinary. Add a special mechanic only when confirmed requirements authorize it or after explicit approval recorded by `amend_session_requirements`. Read [obstacle-authorization.md](references/obstacle-authorization.md).
@@ -98,8 +103,8 @@ Use this path when the designer asks to play generated levels from GitHub Pages 
 
 1. During intake, establish one human-readable profile name for the local agent-design session. Reuse a stable `--profile-id` if the display name changes. One profile may contain multiple finalized MCP level sessions and may span bundled maps.
 2. Preserve the exact refined requirement as the reprompt instruction. The publisher derives it from confirmed session requirements by default; use `--instruction-file` only when a separately reviewed prompt is the intended source.
-3. After each level finalizes, append it with `npm run agent-level:append -- --session <session-id> --profile "<profile name>" [--profile-id <slug>]`. A current revision that is not finalized is re-finalized and must pass before any public file is written.
-4. For a single level, or the last level in a batch/profile, use `npm run agent-level:publish -- --session <session-id> --profile "<profile name>" [--profile-id <slug>]` when commit and push were explicitly requested. This command updates the profile/index, commits only those two paths, verifies the checked-out branch, and pushes `master` to the repository's `github.com` remote. Do not use it when the designer asked only for local files. Override `--remote` or `--branch` only after verifying a changed deployment configuration.
+3. For a multi-level profile, append every finalized level except the last with `npm run agent-level:append -- --session <session-id> --profile "<profile name>" [--profile-id <slug>]`. A current revision that is not finalized is re-finalized and must pass before any public file is written.
+4. For a single level, or the last level in a batch/profile, use `npm run agent-level:publish -- --session <session-id> --profile "<profile name>" [--profile-id <slug>]` when commit and push were explicitly requested. Do not append the last level first; publish already performs that update. This command updates the profile/index, commits only those two paths, verifies the checked-out branch, and pushes `master` to the repository's `github.com` remote. Do not use it when the designer asked only for local files. Override `--remote` or `--branch` only after verifying a changed deployment configuration.
 5. Check the current branch against `.github/workflows/deploy.yml`. If it is not a deployment branch, explain that the push will not reach Pages until merged; do not merge or push another branch without authority.
 6. When deployment was requested, monitor the Pages workflow to a terminal result when GitHub CLI or another authorized repository interface is available. Report the deployed URL only after success; otherwise report the pushed commit and the outstanding deployment check.
 
@@ -113,10 +118,11 @@ Prefer guided Level Lab tools when exposed: requirement refinement, authoring st
 - Use revision history as candidate/checkpoint storage.
 - Use granular mutations instead of proposal application.
 - Compose `validate_draft`, `validate_level`, `estimate_difficulty`, and `playtest_instant` as one evaluation cycle.
+- If reference tools are unavailable, read the committed `LevelData-<map>.csv`, calculate the same texture measures, and state that the comparison is manual. Do not skip sample study.
 - Compare checkpoint evidence manually and restore the selected revision.
 
 Do not claim an unavailable tool ran. Missing orchestration is not permission to edit canonical strings or bypass authorization.
 
 ## Final report
 
-Report the finalized/closest candidate, confirmed requirements, hard-pass status, target misses, amount utilization, picking-order deadlock rate, win/timeout evidence, seed/run counts, important tradeoffs, and artifact/checkpoint references. For Agent Design delivery, also report the profile name, published level entry, generated files, commit, push/deployment status, and Pages playtest URL when verified. Distinguish measured facts from assumptions. If closest rather than compliant, name the smallest remaining gap and proposed next action.
+Report the finalized/closest candidate, reference profile and cohort, confirmed requirements, hard-pass status, target misses, amount utilization, queue-texture/originality metrics, selected archetype/layout seed, picking-order deadlock rate, win/timeout evidence, simulation seed/run counts, important tradeoffs, and artifact/checkpoint references. For batches, include maximum pairwise queue similarity. For Agent Design delivery, also report the profile name, published level entry, generated files, commit, push/deployment status, and Pages playtest URL when verified. Distinguish measured facts from assumptions. If closest rather than compliant, name the smallest remaining gap and proposed next action.

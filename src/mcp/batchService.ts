@@ -16,6 +16,7 @@ function curveValue(range: [number, number] | undefined, index: number, total: n
 export function planBatchMembers(batch: LevelBatchRecord): LevelBatchMember[] {
   const count = Math.max(1, Math.min(100, Math.floor(batch.spec.levelCount)));
   const amountCurve = batch.spec.amountUtilizationCurve?.length ? batch.spec.amountUtilizationCurve : ["balanced" as const];
+  const archetypeCurve = batch.spec.queueArchetypeCurve?.length ? batch.spec.queueArchetypeCurve : ["staggered-braid" as const, "wave-echo" as const, "asymmetric-lanes" as const];
   const difficultyCurve = batch.spec.difficultyCurve?.length ? batch.spec.difficultyCurve : ["standard"];
   return Array.from({ length: count }, (_, index) => ({
     index,
@@ -24,6 +25,7 @@ export function planBatchMembers(batch: LevelBatchRecord): LevelBatchMember[] {
     dishesPerCustomer: Math.max(1, Math.min(5, Math.floor(batch.spec.dishesPerCustomer ?? 1))),
     laneCount: Math.max(1, Math.min(8, curveValue(batch.spec.laneRange, index, count, 2))),
     amountStyle: amountCurve[index % amountCurve.length],
+    layoutArchetype: archetypeCurve[index % archetypeCurve.length],
     difficulty: difficultyCurve[Math.min(difficultyCurve.length - 1, Math.floor(index * difficultyCurve.length / count))],
     sessionId: `${batch.id}-l${String(index + 1).padStart(3, "0")}`.slice(0, 64),
     status: "planned",

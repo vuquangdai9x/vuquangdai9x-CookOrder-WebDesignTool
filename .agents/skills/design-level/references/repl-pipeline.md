@@ -9,12 +9,15 @@ Use the richest available MCP surface without pretending planned tools exist.
 
 | Pipeline need | Preferred Level Lab tool | Current compatibility path |
 |---|---|---|
+| Reference learning | `analyze_reference_levels` before refinement | Analyze committed `LevelData-<map>.csv` and disclose manual fallback |
 | Requirement refinement | `refine_level_requirements` | `interpret_level_brief` plus conversation |
 | Confirm requirements | `confirm_level_requirements` | Preserve the confirmed summary in the session brief |
 | Orientation | `get_authoring_status` | `get_level_session`, validation results, own ledger |
 | Candidate branch | `create_level_candidate` | `checkpoint_level` and `restore_revision` |
 | Proposal lifecycle | `propose_*`, `apply_proposal` | Plan internally, then granular mutations |
 | Exact-supply queue | `propose_queue_plan` after dish demand exists | `get_supply_demand`, then serialized lane/slot mutations |
+| Creative queue search | `propose_queue_variants`, then common-seed mutation experiments | Manually branch at least two seeded structural layouts |
+| Queue texture/reference fit | `analyze_queue_texture`, `compare_level_to_references` | Calculate amount, adjacency, run, lane-clone, transition, n-gram, and local-dominance measures |
 | Amount planning | `propose_amount_plan`, `analyze_amount_utilization` | `get_supply_demand`, graph stack ranges, destination capacity, manual amount actions |
 | Amount repair | `propose_repair_mutations` with `family: "amount"` | Split unsafe releases manually and re-analyze |
 | Common evaluation seeds | `create_evaluation_seed_set`, `list_evaluation_seed_sets` | Record and reuse explicit seeds manually |
@@ -24,14 +27,16 @@ Use the richest available MCP surface without pretending planned tools exist.
 | Candidate comparison | `compare_level_candidates` | Compare recorded checkpoint evidence |
 | Bounded search | `run_search_step` or `run_candidate_search` with explicit limits | One explicit hypothesis and tuning cycle |
 | Batch lifecycle | `start_level_batch`, `plan_level_batch`, repeated `run_level_batch_step`, status, finalize | Independently managed level sessions |
+| Batch originality | `compare_batch_novelty` before finalization | Compare pairwise queue trigrams and regenerate over-similar siblings |
 
 ## Phase loop
 
 ### 1. Discover
 
-Read the map context once per freshness token. Inspect only relevant composites, ingredients,
-effects, avatars, and rules after the broad context. If the graph token changes, reload context
-before further mutation.
+Read the map context once per freshness token. Before requirement refinement, analyze the committed
+reference cohort at the target progression position and retain its profile id, sample hash, envelope,
+and recommended targets. Inspect only relevant composites, ingredients, effects, avatars, and rules
+after the broad context. If the graph token or reference hash changes, reload before further mutation.
 
 ### 2. Establish requirements
 
@@ -57,11 +62,13 @@ the confirmed brief is explicitly mechanic-first.
 When proposal tools exist, inspect stable object/action IDs, supply deltas, authorization, and
 warnings before applying. A proposal based on a stale revision must be regenerated.
 
-Build customer and dish demand before calling `propose_queue_plan`. Choose `single-unit` when line
-count is intentionally part of the pacing, `balanced` as the ordinary default, or `compact` when
-the confirmed requirement prioritizes amount utilization. These are authoring partitions, not
-runtime behavior modes. Applying the queue proposal must consume one revision for all lanes and
-slots together.
+Build customer and dish demand before queue planning. Use `propose_queue_variants` for a new level:
+normally three archetypes by two seeds. Choose `single-unit` only for an explicit confirmed override,
+`balanced` as the reference-guided ordinary default, or `compact` when the confirmed requirement
+prioritizes amount utilization. Evaluate every proposal against one simulation seed set, texture
+targets, and reference fit before applying one. These are authoring partitions and layout grammars,
+not runtime behavior modes. Applying the selected queue proposal must consume one revision for all
+lanes and slots together.
 
 ### 5. Reconcile supply and amounts
 
@@ -97,6 +104,9 @@ load `get_deadlock_cases` only when exact stuck slots or pick traces are needed 
 - Grid/dirty occupancy and overflow.
 - Duration, timeouts, win rate, failure distribution.
 - Amount utilization, atomic destination blocking, and release-burst occupancy.
+- Queue texture: adjacency, longest identical run, cross-lane mirroring, transition entropy, repeated
+  trigrams, and local ingredient dominance.
+- Reference fit and originality: remain inside the learned style envelope without copying a sample.
 - Difficulty/pacing targets.
 - Preserved legacy tool/grid diagnostics.
 
@@ -148,7 +158,8 @@ For batch generation:
 5. Track resumable status and stop at declared time/run/candidate budgets.
 6. Check cross-level monotonicity, novelty, repetition, and mechanic introduction only after every
    member passes fundamental validation.
-7. Finalize only passing levels; report failed/closest members separately.
+7. Call `compare_batch_novelty`; regenerate over-similar pairs with a different archetype and seed.
+8. Finalize only passing levels; report failed/closest members separately.
 
 Concrete MCP sequence: call `start_level_batch` with the fresh map token and complete batch spec,
 then `plan_level_batch`. Repeatedly call `run_level_batch_step` with explicit `max_levels` and

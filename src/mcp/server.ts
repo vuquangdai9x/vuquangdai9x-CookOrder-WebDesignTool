@@ -7,7 +7,7 @@ import type { AuthoringStrategy, MechanicAuthorization, MetricConstraint, Propos
 const service = new LevelAuthoringService(process.env.COOKORDER_WORKSPACE_ROOT ?? process.cwd());
 const server = new McpServer(
   { name: "cookorder-level-authoring", version: "0.1.0" },
-  { instructions: "Read fresh authoring context, refine vague requirements, and show the measurable summary before confirmation. Skip confirmation only when the user explicitly requests it or asks for batch generation. Start with an ordinary proposal, inspect stable actions and warnings, evaluate focused alternatives on identical seeds, and apply only the selected revision-matched proposal or experiment. Use bounded search and batch steps; never add special mechanics without explicit authorization. All evaluation uses fixed Unpacked raw + Auto + park-on-grid production behavior." },
+  { instructions: "Read fresh authoring context, analyze comparable committed reference levels, then refine vague requirements and show the learned queue-texture targets before confirmation. Skip confirmation only when the user explicitly requests it or asks for batch generation. Start with an ordinary proposal, generate seeded queue archetype variants, inspect stable actions and warnings, evaluate alternatives on identical seeds, and apply only the selected revision-matched proposal or experiment. Use bounded search and batch steps; never add special mechanics without explicit authorization. All evaluation uses fixed Unpacked raw + Auto + park-on-grid production behavior." },
 );
 
 const response = (value: unknown) => ({
@@ -31,6 +31,7 @@ const mechanic = z.enum([
   "queue:freeze", "queue:hidden", "queue:holding-key", "grid:blocked", "grid:order-lock", "grid:ingredient-slot", "grid:color-lock",
   "group:combined", "group:linked", "customer:timer", "customer:staff", "customer:boss", "customer:shipper", "dish:effect",
 ]);
+const queueLayoutArchetype = z.enum(["staggered-braid", "wave-echo", "asymmetric-lanes"]);
 const constraintValue = z.union([z.number(), z.string(), z.boolean(), z.tuple([z.number(), z.number()]), z.array(z.string())]);
 const metricConstraint = z.object({
   id: z.string().min(1), dimension: z.string().min(1), metric: z.string().min(1), operator: z.enum(["=", "!=", "<", "<=", ">", ">=", "between", "in"]),
@@ -55,6 +56,7 @@ const batchSpec = z.object({
   dishesPerCustomer: z.number().int().min(1).max(5).optional(),
   laneRange: z.tuple([z.number().int().min(1).max(8), z.number().int().min(1).max(8)]).optional(),
   amountUtilizationCurve: z.array(z.enum(["single-unit", "balanced", "compact"])).min(1).optional(),
+  queueArchetypeCurve: z.array(queueLayoutArchetype).min(1).optional(),
   difficultyCurve: z.array(z.string().min(1)).min(1).optional(),
   validationProfile: z.enum(["fast-shape", "tuning", "final"]).optional(),
   runsPerLevel: z.number().int().min(1).max(50).optional(),
@@ -63,6 +65,9 @@ const batchSpec = z.object({
 });
 
 register("read_authoring_context", "Read the selected map graph, rules, effects, customer catalog, and a freshness token before authoring.", { map_id: z.string() }, (a) => service.readAuthoringContext(String(a.map_id)), true);
+register("analyze_reference_levels", "Analyze comparable committed sample levels before authoring and return learned amount, repetition, lane-similarity, transition, and originality targets.", {
+  map_id: z.string(), target_level: z.number().int().positive().optional(), cohort_radius: z.number().int().positive().max(100).optional(), level_min: z.number().int().positive().optional(), level_max: z.number().int().positive().optional(), limit: z.number().int().positive().max(100).optional(),
+}, (a) => service.analyzeReferenceLevels(String(a.map_id), { targetLevel: a.target_level as number | undefined, cohortRadius: a.cohort_radius as number | undefined, levelMin: a.level_min as number | undefined, levelMax: a.level_max as number | undefined, limit: a.limit as number | undefined }), true);
 register("inspect_orderable", "Inspect one orderable composite and all valid nested slots.", { map_id: z.string(), composite: z.string() }, (a) => service.inspectOrderable(String(a.map_id), String(a.composite)), true);
 register("get_valid_dish_pieces", "List graph-valid pieces, quantities, nesting, and base prerequisites for a draft dish or composite.", { session_id: z.string(), dish_id: z.string().optional(), composite: z.string().optional() }, (a) => service.getValidDishPieces(String(a.session_id), { dishId: a.dish_id as string | undefined, composite: a.composite as string | undefined }), true);
 register("trace_ingredient", "Trace an ingredient backward to pickupable inputs and tools.", { map_id: z.string(), ingredient: z.string() }, (a) => service.traceIngredient(String(a.map_id), String(a.ingredient)), true);
@@ -109,6 +114,12 @@ register("simulate_level_batch", "Run a bounded non-persisting simulation batch 
   session_id: z.string(), candidate_id: z.string().optional(), seed_set_id: z.string().optional(), seeds: z.array(z.number().int().nonnegative()).min(1).max(200).optional(), runs: z.number().int().min(1).max(200).optional(),
 }, (a) => service.simulateLevelBatch(String(a.session_id), { candidateId: a.candidate_id as string | undefined, seedSetId: a.seed_set_id as string | undefined, seeds: a.seeds as number[] | undefined, runs: a.runs as number | undefined }), true);
 register("analyze_queue_pacing", "Summarize lane depth, expanded units, and ordinary pacing imbalance without simulation.", { session_id: z.string(), candidate_id: z.string().optional() }, (a) => service.analyzeQueuePacing(String(a.session_id), a.candidate_id as string | undefined), true);
+register("analyze_queue_texture", "Measure amount use, adjacency, identical runs, cross-lane mirroring, transition entropy, repeated patterns, local dominance, reference fit, and originality.", {
+  session_id: z.string(), candidate_id: z.string().optional(), target_level: z.number().int().positive().optional(), cohort_radius: z.number().int().positive().max(100).optional(),
+}, (a) => service.analyzeQueueTexture(String(a.session_id), a.candidate_id as string | undefined, { targetLevel: a.target_level as number | undefined, cohortRadius: a.cohort_radius as number | undefined }), true);
+register("compare_level_to_references", "Compare a candidate queue with its progression-matched shipped-level cohort and report every quality target.", {
+  session_id: z.string(), candidate_id: z.string().optional(), target_level: z.number().int().positive().optional(), cohort_radius: z.number().int().positive().max(100).optional(),
+}, (a) => service.compareLevelToReferences(String(a.session_id), a.candidate_id as string | undefined, { targetLevel: a.target_level as number | undefined, cohortRadius: a.cohort_radius as number | undefined }), true);
 register("diagnose_constraint_gaps", "Rank failed constraints and map each gap to a focused repair family.", { session_id: z.string(), candidate_id: z.string().optional(), evaluation_id: z.string().optional() }, (a) => service.diagnoseConstraintGaps(String(a.session_id), { candidateId: a.candidate_id as string | undefined, evaluationId: a.evaluation_id as string | undefined }), true);
 register("evaluate_mutation_batch", "Apply a bounded action batch to an in-memory clone, score before/after on identical seeds, persist evidence, and leave the candidate unchanged.", {
   ...sessionRevision, candidate_id: z.string().optional(), name: z.string().optional(), proposal_id: z.string().optional(), actions: z.array(proposalAction).min(1).max(200).optional(), seed_set_id: z.string().optional(), seeds: z.array(z.number().int().nonnegative()).min(1).max(50).optional(), runs: z.number().int().min(1).max(50).optional(),
@@ -130,6 +141,7 @@ register("start_level_batch", "Create a deterministic batch record from a fresh 
 register("plan_level_batch", "Derive deterministic per-level seeds and curves without creating level sessions.", { batch_id: z.string() }, (a) => service.planLevelBatch(String(a.batch_id)));
 register("run_level_batch_step", "Generate and validate a bounded number of batch levels, checkpointing progress after every member.", { batch_id: z.string(), max_levels: z.number().int().min(1).max(10).optional(), budget_ms: z.number().int().min(250).max(300000).optional() }, (a) => service.runLevelBatchStep(String(a.batch_id), { maxLevels: a.max_levels as number | undefined, budgetMs: a.budget_ms as number | undefined }));
 register("get_level_batch_status", "Read resumable batch progress and per-level outcomes.", { batch_id: z.string() }, (a) => service.getLevelBatchStatus(String(a.batch_id)), true);
+register("compare_batch_novelty", "Measure pairwise queue-pattern similarity across generated batch members before finalization.", { batch_id: z.string() }, (a) => service.compareBatchNovelty(String(a.batch_id)), true);
 register("finalize_level_batch", "Finalize a completed batch manifest containing only individually valid finalized levels.", { batch_id: z.string() }, (a) => service.finalizeLevelBatch(String(a.batch_id)));
 register("cancel_level_batch", "Stop future batch steps while preserving completed sessions and evidence.", { batch_id: z.string() }, (a) => service.cancelLevelBatch(String(a.batch_id)));
 register("validate_picking_deadlocks", "Run the queue-only picking-order audit. Grid, tool, supply, and timeout state are excluded; normal checks retain 10 structural cases and full checks retain 50.", {
@@ -148,14 +160,17 @@ register("propose_dish_plan", "Persist graph-valid ordinary dishes for existing 
   session_id: z.string(), candidate_id: z.string().optional(), dishes_per_customer: z.number().int().min(1).max(5).optional(), composites: z.array(z.string()).optional(), seed: z.number().int().nonnegative().optional(),
 }, (a) => service.proposeDishPlan(String(a.session_id), { candidateId: a.candidate_id as string | undefined, dishesPerCustomer: a.dishes_per_customer as number | undefined, composites: a.composites as string[] | undefined, seed: a.seed as number | undefined }));
 register("propose_level_skeleton", "Persist a composed ordinary customer, dish, exact-supply queue, and amount skeleton without mutating the candidate.", {
-  session_id: z.string(), candidate_id: z.string().optional(), customer_count: z.number().int().min(1).max(100).optional(), dishes_per_customer: z.number().int().min(1).max(5).optional(), composites: z.array(z.string()).optional(), lane_count: z.number().int().min(1).max(8).optional(), amount_style: z.enum(["single-unit", "balanced", "compact"]).optional(), seed: z.number().int().nonnegative().optional(),
-}, (a) => service.proposeLevelSkeleton(String(a.session_id), { candidateId: a.candidate_id as string | undefined, customerCount: a.customer_count as number | undefined, dishesPerCustomer: a.dishes_per_customer as number | undefined, composites: a.composites as string[] | undefined, laneCount: a.lane_count as number | undefined, amountStyle: a.amount_style as "single-unit" | "balanced" | "compact" | undefined, seed: a.seed as number | undefined }));
+  session_id: z.string(), candidate_id: z.string().optional(), customer_count: z.number().int().min(1).max(100).optional(), dishes_per_customer: z.number().int().min(1).max(5).optional(), composites: z.array(z.string()).optional(), lane_count: z.number().int().min(1).max(8).optional(), amount_style: z.enum(["single-unit", "balanced", "compact"]).optional(), seed: z.number().int().nonnegative().optional(), layout_archetype: queueLayoutArchetype.optional(),
+}, (a) => service.proposeLevelSkeleton(String(a.session_id), { candidateId: a.candidate_id as string | undefined, customerCount: a.customer_count as number | undefined, dishesPerCustomer: a.dishes_per_customer as number | undefined, composites: a.composites as string[] | undefined, laneCount: a.lane_count as number | undefined, amountStyle: a.amount_style as "single-unit" | "balanced" | "compact" | undefined, seed: a.seed as number | undefined, layoutArchetype: a.layout_archetype as "staggered-braid" | "wave-echo" | "asymmetric-lanes" | undefined }));
 register("propose_amount_plan", "Persist conservative, balanced, and/or aggressive queue-line compression proposals without mutating the candidate.", {
   session_id: z.string(), candidate_id: z.string().optional(), styles: z.array(z.enum(["conservative", "balanced", "aggressive"])).min(1).max(3).optional(),
 }, (a) => service.proposeAmountPlan(String(a.session_id), { candidateId: a.candidate_id as string | undefined, styles: a.styles as Array<"conservative" | "balanced" | "aggressive"> | undefined }));
 register("propose_queue_plan", "Persist an exact-supply queue proposal, optionally partitioned into production-safe atomic amounts, without mutating the candidate.", {
-  session_id: z.string(), candidate_id: z.string().optional(), lane_count: z.number().int().min(1).max(8).optional(), amount_style: z.enum(["single-unit", "balanced", "compact"]).optional(),
-}, (a) => service.proposeQueuePlan(String(a.session_id), { candidateId: a.candidate_id as string | undefined, laneCount: a.lane_count as number | undefined, amountStyle: a.amount_style as "single-unit" | "balanced" | "compact" | undefined }));
+  session_id: z.string(), candidate_id: z.string().optional(), lane_count: z.number().int().min(1).max(8).optional(), amount_style: z.enum(["single-unit", "balanced", "compact"]).optional(), seed: z.number().int().nonnegative().optional(), layout_archetype: queueLayoutArchetype.optional(),
+}, (a) => service.proposeQueuePlan(String(a.session_id), { candidateId: a.candidate_id as string | undefined, laneCount: a.lane_count as number | undefined, amountStyle: a.amount_style as "single-unit" | "balanced" | "compact" | undefined, seed: a.seed as number | undefined, layoutArchetype: a.layout_archetype as "staggered-braid" | "wave-echo" | "asymmetric-lanes" | undefined }));
+register("propose_queue_variants", "Persist multiple exact-supply queue proposals across distinct seeded layout archetypes for fair comparison; this does not mutate the candidate.", {
+  session_id: z.string(), candidate_id: z.string().optional(), lane_count: z.number().int().min(1).max(8).optional(), amount_style: z.enum(["single-unit", "balanced", "compact"]).optional(), seeds: z.array(z.number().int().nonnegative()).min(1).max(12).optional(), archetypes: z.array(queueLayoutArchetype).min(1).max(3).optional(), candidate_count: z.number().int().min(1).max(12).optional(),
+}, (a) => service.proposeQueueVariants(String(a.session_id), { candidateId: a.candidate_id as string | undefined, laneCount: a.lane_count as number | undefined, amountStyle: a.amount_style as "single-unit" | "balanced" | "compact" | undefined, seeds: a.seeds as number[] | undefined, archetypes: a.archetypes as Array<"staggered-braid" | "wave-echo" | "asymmetric-lanes"> | undefined, candidateCount: a.candidate_count as number | undefined }));
 register("propose_repair_mutations", "Persist an atomic repair proposal for unsafe amount releases without mutating the candidate.", {
   session_id: z.string(), candidate_id: z.string().optional(), family: z.enum(["amount"]).optional(),
 }, (a) => service.proposeRepairMutations(String(a.session_id), { candidateId: a.candidate_id as string | undefined, family: a.family as "amount" | undefined }));

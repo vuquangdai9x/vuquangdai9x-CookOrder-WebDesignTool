@@ -23,6 +23,13 @@ diagnostic as separate evidence domains.
   concurrent demand, or dish complexity only when the confirmed requirements make that relevant.
 - Early grid pressure: split/move large amount bursts, move unlock progress earlier, simplify concurrent
   work, or restore ordinary capacity.
+- High adjacent duplication or identical runs: merge nearby same-ingredient demand into a safe amount,
+  interleave by consumer wave, or regenerate with another seeded queue archetype.
+- High cross-lane mirroring: regenerate with `staggered-braid` or `asymmetric-lanes`; do not preserve
+  a visually striped queue merely because lane depths are balanced.
+- Low transition entropy, repeated trigrams, or local dominance: try another archetype/seed before
+  manual edits, then compare against the same simulation seeds.
+- High nearest-reference similarity: keep the learned metric envelope but choose an original sequence.
 
 ## Amounts
 

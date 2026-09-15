@@ -20,8 +20,10 @@ import { activateCandidate, ensureCandidateState, syncActiveCandidate } from "./
 import { evaluateConstraint, percentile, proportionInterval } from "./constraintEvaluation.ts";
 import { constraintMetric, listConstraintMetrics } from "./constraintCatalog.ts";
 import { PRODUCTION_BEHAVIOR, PRODUCTION_BEHAVIOR_SEMANTICS_VERSION, productionBehaviorEvidence } from "./productionBehavior.ts";
-import { planCustomerDishSkeleton, planQueueSupply, type MissingPickupDemand, type QueueAmountStyle } from "./generationService.ts";
-import { RepositoryAdapter, type AuthoringResources } from "./repository.ts";
+import { planCustomerDishSkeleton, planQueueSupply, type MissingPickupDemand, type QueueAmountStyle, type QueueLayoutArchetype } from "./generationService.ts";
+import { RepositoryAdapter, type AuthoringResources, type ReferenceLevelDataset } from "./repository.ts";
+import { analyzeDraftQueueTexture, queueLanesFromDraft, queueSequenceSimilarity } from "./queueTexture.ts";
+import { analyzeReferenceDataset, compareQueueToReferences, type ReferenceLevelAnalysis, type ReferenceLevelSelector } from "./referenceLevelAnalysis.ts";
 import { confirmRequirements, createRequirementToken, listRequirementDimensions, refineRequirements, type RefineRequirementInput } from "./requirementRefinement.ts";
 import { SessionStore } from "./sessionStore.ts";
 import { rankExperiments, repairFamilyForMetric } from "./mutationExperiment.ts";
@@ -211,6 +213,56 @@ export class LevelAuthoringService {
     return { ...(await this.repository.readAuthoringContext(mapId)), productionBehavior: productionBehaviorEvidence() };
   }
 
+  async analyzeReferenceLevels(mapId: string, selector: ReferenceLevelSelector = {}): Promise<JsonRecord> {
+    const dataset = await this.repository.loadReferenceLevels(mapId);
+    return analyzeReferenceDataset(mapId, dataset, selector) as unknown as JsonRecord;
+  }
+
+  async analyzeQueueTexture(sessionId: string, candidateId?: string, selector: ReferenceLevelSelector = {}): Promise<JsonRecord> {
+    const { session, resources } = await this.sessionResources(sessionId);
+    ensureCandidateState(session); syncActiveCandidate(session);
+    const candidate = session.candidates?.[candidateId ?? session.activeCandidateId ?? ""];
+    if (!candidate) throw new Error(`Unknown candidate "${candidateId}".`);
+    const targetLevel = selector.targetLevel ?? candidate.draft.level.id;
+    const dataset = await this.repository.loadReferenceLevels(session.mapId);
+    const reference = analyzeReferenceDataset(session.mapId, dataset, { ...selector, targetLevel });
+    const metrics = analyzeDraftQueueTexture(candidate.draft);
+    const comparison = compareQueueToReferences(serializeDraft(candidate.draft, resources).queueString, dataset, reference);
+    const targets = reference.recommendedTargets;
+    return {
+      sessionId,
+      candidateId: candidate.id,
+      revision: candidate.revision,
+      targetLevel,
+      metrics,
+      reference: {
+        referenceProfileId: reference.referenceProfileId,
+        sourceFile: reference.sourceFile,
+        cohortLevelIds: reference.cohort.map((row) => row.id),
+        envelope: reference.envelope,
+        recommendedTargets: targets,
+        warnings: reference.warnings,
+      },
+      comparison,
+      qualityChecks: {
+        amountSlotRatio: metrics.amountSlotRatio >= targets.amountSlotRatio[0] && metrics.amountSlotRatio <= targets.amountSlotRatio[1],
+        compactedUnitRatio: metrics.compactedUnitRatio >= targets.compactedUnitRatio[0] && metrics.compactedUnitRatio <= targets.compactedUnitRatio[1],
+        adjacentDuplicateRatio: metrics.adjacentDuplicateRatio <= targets.maximumAdjacentDuplicateRatio,
+        maxIdenticalRun: metrics.maxIdenticalRun <= targets.maximumIdenticalRun,
+        crossLaneCloneRatio: metrics.crossLaneCloneRatio <= targets.maximumCrossLaneCloneRatio,
+        transitionEntropy: metrics.transitionEntropy >= targets.minimumTransitionEntropy,
+        repeatedNgramRatio: metrics.repeatedNgramRatio <= targets.maximumRepeatedNgramRatio,
+        localIngredientDominance: metrics.localIngredientDominance <= targets.maximumLocalIngredientDominance,
+        referenceStyleDistance: comparison.referenceStyleDistance <= targets.maximumReferenceStyleDistance,
+        originality: comparison.nearestReferenceSimilarity <= targets.maximumNearestReferenceSimilarity,
+      },
+    };
+  }
+
+  compareLevelToReferences(sessionId: string, candidateId?: string, selector: ReferenceLevelSelector = {}): Promise<JsonRecord> {
+    return this.analyzeQueueTexture(sessionId, candidateId, selector);
+  }
+
   async inspectOrderable(mapId: string, composite: string): Promise<JsonRecord> {
     const resources = await this.repository.load(mapId);
     const context = await this.repository.readAuthoringContext(mapId);
@@ -269,7 +321,20 @@ export class LevelAuthoringService {
   }
 
   async listRequirementDimensions(mapId: string): Promise<JsonRecord> {
-    return listRequirementDimensions(await this.repository.load(mapId));
+    const resources = await this.repository.load(mapId);
+    const dataset = await this.repository.loadReferenceLevels(mapId);
+    const reference = analyzeReferenceDataset(mapId, dataset);
+    return {
+      ...listRequirementDimensions(resources),
+      referenceLearning: {
+        requiredBeforeAuthoring: true,
+        referenceProfileId: reference.referenceProfileId,
+        sourceFile: reference.sourceFile,
+        availableLevelCount: reference.availableLevelCount,
+        recommendedTargets: reference.recommendedTargets,
+        warnings: reference.warnings,
+      },
+    };
   }
 
   listConstraintMetrics(dimension?: string): JsonRecord {
@@ -277,7 +342,19 @@ export class LevelAuthoringService {
   }
 
   async refineLevelRequirements(mapId: string, input: RefineRequirementInput): Promise<RefinedLevelRequirements> {
-    const requirements = refineRequirements(await this.repository.load(mapId), input);
+    const resources = await this.repository.load(mapId);
+    const targetLevel = typeof input.answers?.levelId === "number" ? input.answers.levelId : undefined;
+    const dataset = await this.repository.loadReferenceLevels(mapId);
+    const reference = analyzeReferenceDataset(mapId, dataset, { ...(targetLevel !== undefined ? { targetLevel } : {}) });
+    const requirements = refineRequirements(resources, {
+      ...input,
+      referenceProfile: {
+        id: reference.referenceProfileId,
+        sourceFile: reference.sourceFile,
+        cohortLevelIds: reference.cohort.map((row) => row.id),
+        recommendedTargets: reference.recommendedTargets,
+      },
+    });
     await this.store.saveRequirements(requirements);
     return requirements;
   }
@@ -287,11 +364,22 @@ export class LevelAuthoringService {
     const resources = await this.repository.load(current.mapId);
     if (resources.contextToken !== current.contextToken) throw new Error("The map graph/rules/catalog changed after refinement. Refine the requirements again.");
     if (edits?.answers) {
+      const targetLevel = typeof edits.answers.levelId === "number"
+        ? edits.answers.levelId
+        : (current.dimensions.output as { levelId?: number | null } | undefined)?.levelId ?? undefined;
+      const dataset = await this.repository.loadReferenceLevels(current.mapId);
+      const reference = analyzeReferenceDataset(current.mapId, dataset, { ...(targetLevel !== undefined ? { targetLevel } : {}) });
       current = refineRequirements(resources, {
         brief: current.originalBrief,
         mode: current.mode,
         answers: edits.answers,
         batchSpec: current.dimensions.batch as Record<string, unknown> | undefined,
+        referenceProfile: {
+          id: reference.referenceProfileId,
+          sourceFile: reference.sourceFile,
+          cohortLevelIds: reference.cohort.map((row) => row.id),
+          recommendedTargets: reference.recommendedTargets,
+        },
       });
     }
     const confirmed = confirmRequirements(current, confirmationNote);
@@ -532,6 +620,10 @@ export class LevelAuthoringService {
     const supply = this.supplyDemand(candidateSession, resources);
     const supplyRows = (supply.ingredients as Array<{ missing: number; surplus: number }> | undefined) ?? [];
     const exactSupply = supplyRows.every((row) => row.missing === 0 && row.surplus === 0) && !candidate.draft.lanes.some((lane) => lane.slots.some((slot) => slot.provisional));
+    const texture = analyzeDraftQueueTexture(candidate.draft);
+    const referenceDataset = await this.repository.loadReferenceLevels(session.mapId);
+    const reference = analyzeReferenceDataset(session.mapId, referenceDataset, { targetLevel: candidate.draft.level.id });
+    const referenceComparison = compareQueueToReferences(serializeDraft(candidate.draft, resources).queueString, referenceDataset, reference);
     const metrics: EvaluationRecord["metrics"] = {
       "fundamental.structuralErrors": findings.filter((finding) => finding.severity === "error").length,
       "fundamental.exactSupply": exactSupply,
@@ -545,6 +637,14 @@ export class LevelAuthoringService {
       "queue.maxDepth": Math.max(0, ...laneDepths),
       "queue.laneBalance": laneDepths.length && Math.max(...laneDepths) > 0 ? 1 - (Math.max(...laneDepths) - Math.min(...laneDepths)) / Math.max(...laneDepths) : 1,
       "queue.pickingOrderStuckRate": thaw.verdict === "deadlock" ? 1 : 0,
+      "queue.adjacentDuplicateRatio": texture.adjacentDuplicateRatio,
+      "queue.maxIdenticalRun": texture.maxIdenticalRun,
+      "queue.crossLaneCloneRatio": texture.crossLaneCloneRatio,
+      "queue.transitionEntropy": texture.transitionEntropy,
+      "queue.repeatedNgramRatio": texture.repeatedNgramRatio,
+      "queue.localIngredientDominance": texture.localIngredientDominance,
+      "queue.referenceStyleDistance": referenceComparison.referenceStyleDistance,
+      "queue.nearestReferenceSimilarity": referenceComparison.nearestReferenceSimilarity,
       "amount.compactedUnitRatio": totalUnits ? amountUnits / totalUnits : 0,
       "amount.amountSlotRatio": amounts.length ? amountSlots.length / amounts.length : 0,
       "amount.maxAmount": Math.max(1, ...amounts),
@@ -624,7 +724,9 @@ export class LevelAuthoringService {
     const runCount = Math.max(1, Math.min(200, Math.floor(input.runs ?? input.seeds?.length ?? seedSet?.seeds.length ?? 10)));
     const sourceSeeds = input.seeds?.length ? input.seeds : seedSet?.seeds ?? derivedSeeds(0x51a71, runCount);
     const seeds = Array.from({ length: runCount }, (_, index) => Math.max(1, Math.floor(sourceSeeds[index % sourceSeeds.length])));
-    const score = this.scoreDraftSnapshot(session, resources, candidate.draft, seeds);
+    const referenceDataset = await this.repository.loadReferenceLevels(session.mapId);
+    const reference = analyzeReferenceDataset(session.mapId, referenceDataset, { targetLevel: candidate.draft.level.id });
+    const score = this.scoreDraftSnapshot(session, resources, candidate.draft, seeds, { dataset: referenceDataset, analysis: reference });
     return { sessionId, candidateId: candidate.id, revision: candidate.revision, seeds, runs: seeds.length, score, productionBehavior: productionBehaviorEvidence() };
   }
 
@@ -671,9 +773,12 @@ export class LevelAuthoringService {
     const sourceSeeds = input.seeds?.length ? input.seeds : seedSet?.seeds ?? derivedSeeds(0xe11a, runCount);
     const seeds = Array.from({ length: runCount }, (_, index) => Math.max(1, Math.floor(sourceSeeds[index % sourceSeeds.length])));
     const virtual: SessionRecord = { ...session, revision: candidate.revision, draft: clone(candidate.draft), history: clone(candidate.history), idCounters: clone(candidate.idCounters) };
-    const before = this.scoreDraftSnapshot(session, resources, candidate.draft, seeds);
+    const referenceDataset = await this.repository.loadReferenceLevels(session.mapId);
+    const reference = analyzeReferenceDataset(session.mapId, referenceDataset, { targetLevel: candidate.draft.level.id });
+    const referenceEvidence = { dataset: referenceDataset, analysis: reference };
+    const before = this.scoreDraftSnapshot(session, resources, candidate.draft, seeds, referenceEvidence);
     this.executeProposalActionsInSession(virtual, resources, actions);
-    const after = this.scoreDraftSnapshot(session, resources, virtual.draft, seeds);
+    const after = this.scoreDraftSnapshot(session, resources, virtual.draft, seeds, referenceEvidence);
     const experiment: MutationExperimentRecord = {
       id: `experiment-${randomUUID().slice(0, 8)}`,
       name: input.name?.trim() || proposal?.name || `Mutation experiment ${Object.keys(session.experiments ?? {}).length + 1}`,
@@ -846,7 +951,7 @@ export class LevelAuthoringService {
           }
         }
         if (session.draft.customers.length === 0) {
-          const skeleton = await this.proposeLevelSkeleton(member.sessionId, { customerCount: member.customerCount, dishesPerCustomer: member.dishesPerCustomer, laneCount: member.laneCount, amountStyle: member.amountStyle, seed: member.seed });
+          const skeleton = await this.proposeLevelSkeleton(member.sessionId, { customerCount: member.customerCount, dishesPerCustomer: member.dishesPerCustomer, laneCount: member.laneCount, amountStyle: member.amountStyle, seed: member.seed, layoutArchetype: member.layoutArchetype });
           await this.applyProposal(member.sessionId, String((skeleton.proposal as ProposalRecord).id));
           session = await this.getSession(member.sessionId);
         }
@@ -871,6 +976,32 @@ export class LevelAuthoringService {
   async getLevelBatchStatus(batchId: string): Promise<JsonRecord> {
     const batch = await this.store.loadBatch(batchId);
     return { batchId, mapId: batch.mapId, status: batch.status, progress: batchProgress(batch), members: batch.members, productionBehavior: productionBehaviorEvidence() };
+  }
+
+  async compareBatchNovelty(batchId: string): Promise<JsonRecord> {
+    const batch = await this.store.loadBatch(batchId);
+    const levels = await Promise.all(batch.members
+      .filter((member) => member.status === "valid" || member.status === "running")
+      .map(async (member) => {
+        const session = ensureCandidateState(await this.store.load(member.sessionId));
+        return { index: member.index, sessionId: member.sessionId, lanes: queueLanesFromDraft(session.draft), texture: analyzeDraftQueueTexture(session.draft) };
+      }));
+    const pairs: Array<{ leftIndex: number; rightIndex: number; similarity: number }> = [];
+    for (let left = 0; left < levels.length; left++) {
+      for (let right = left + 1; right < levels.length; right++) {
+        pairs.push({ leftIndex: levels[left].index, rightIndex: levels[right].index, similarity: queueSequenceSimilarity(levels[left].lanes, levels[right].lanes) });
+      }
+    }
+    pairs.sort((left, right) => right.similarity - left.similarity);
+    return {
+      batchId,
+      levelCount: levels.length,
+      pairs,
+      maximumPairwiseSimilarity: pairs[0]?.similarity ?? 0,
+      averagePairwiseSimilarity: pairs.length ? pairs.reduce((sum, pair) => sum + pair.similarity, 0) / pairs.length : 0,
+      warnings: pairs.filter((pair) => pair.similarity > 0.65).map((pair) => `Levels ${pair.leftIndex} and ${pair.rightIndex} reuse more than 65% of their queue trigrams.`),
+      instruction: "Regenerate the higher-cost member of an over-similar pair with another queue archetype and seed, then re-evaluate it independently.",
+    };
   }
 
   async finalizeLevelBatch(batchId: string): Promise<JsonRecord> {
@@ -1035,7 +1166,7 @@ export class LevelAuthoringService {
     };
   }
 
-  async proposeQueuePlan(sessionId: string, input: { candidateId?: string; laneCount?: number; amountStyle?: QueueAmountStyle }): Promise<JsonRecord> {
+  async proposeQueuePlan(sessionId: string, input: { candidateId?: string; laneCount?: number; amountStyle?: QueueAmountStyle; seed?: number; layoutArchetype?: QueueLayoutArchetype }): Promise<JsonRecord> {
     const { session, resources } = await this.sessionResources(sessionId);
     ensureCandidateState(session); syncActiveCandidate(session);
     const candidate = session.candidates?.[input.candidateId ?? session.activeCandidateId ?? ""];
@@ -1045,20 +1176,23 @@ export class LevelAuthoringService {
     const missing = (supply.missing as MissingPickupDemand[] | undefined) ?? [];
     const amountStyle = input.amountStyle ?? "balanced";
     const laneCount = input.laneCount ?? Math.max(1, candidate.draft.lanes.length);
+    const layoutArchetype = input.layoutArchetype ?? "staggered-braid";
+    const deterministicSeed = input.seed === undefined ? Number.parseInt(createRequirementToken({
+      schemaVersion: 1, mapId: session.mapId, mode: "create", originalBrief: `${session.id}:${candidate.id}:${candidate.revision}:queue:${laneCount}:${amountStyle}:${layoutArchetype}`,
+      assumptions: [], dimensions: {}, constraints: [], authorizedMechanics: [], unresolved: [], confirmationStatus: "skipped", contextToken: session.contextToken,
+    }).slice(0, 8), 16) : Math.max(0, Math.floor(input.seed)) >>> 0;
     const plan = planQueueSupply(buildIndex(resources.doc), candidate.draft, missing, {
       laneCount,
       amountStyle,
       startingLaneCounter: candidate.idCounters.lane,
       startingSlotCounter: candidate.idCounters.slot,
+      deterministicSeed,
+      layoutArchetype,
     });
-    const deterministicSeed = Number.parseInt(createRequirementToken({
-      schemaVersion: 1, mapId: session.mapId, mode: "create", originalBrief: `${session.id}:${candidate.id}:${candidate.revision}:queue:${laneCount}:${amountStyle}`,
-      assumptions: [], dimensions: {}, constraints: [], authorizedMechanics: [], unresolved: [], confirmationStatus: "skipped", contextToken: session.contextToken,
-    }).slice(0, 8), 16);
     const proposal: ProposalRecord = {
       id: `proposal-${randomUUID().slice(0, 8)}`,
       kind: "queue-plan",
-      name: `${amountStyle} exact-supply queue plan`,
+      name: `${layoutArchetype} ${amountStyle} exact-supply queue plan`,
       candidateId: candidate.id,
       baseRevision: candidate.revision,
       deterministicSeed,
@@ -1067,6 +1201,9 @@ export class LevelAuthoringService {
       expectedMetricDirections: {
         "fundamental.exactSupply": missing.length ? "increase" : "unchanged",
         "queue.laneCount": plan.plannedLaneIds.length > candidate.draft.lanes.length ? "increase" : "unchanged",
+        "queue.adjacentDuplicateRatio": "decrease",
+        "queue.crossLaneCloneRatio": "decrease",
+        "queue.transitionEntropy": "increase",
         "amount.amountSlotRatio": amountStyle === "single-unit" ? "unchanged" : "increase",
       },
       authorizationRequirements: [],
@@ -1085,7 +1222,45 @@ export class LevelAuthoringService {
       missingDemand: missing,
       plannedLaneIds: plan.plannedLaneIds,
       plannedSlotIds: plan.plannedSlotIds,
+      layoutArchetype: plan.layoutArchetype,
+      deterministicSeed: plan.deterministicSeed,
+      plannedTexture: plan.plannedTexture,
       productionBehavior: productionBehaviorEvidence(),
+    };
+  }
+
+  async proposeQueueVariants(sessionId: string, input: {
+    candidateId?: string;
+    laneCount?: number;
+    amountStyle?: QueueAmountStyle;
+    seeds?: number[];
+    archetypes?: QueueLayoutArchetype[];
+    candidateCount?: number;
+  }): Promise<JsonRecord> {
+    const count = Math.max(1, Math.min(12, Math.floor(input.candidateCount ?? 6)));
+    const archetypes = [...new Set(input.archetypes?.length ? input.archetypes : ["staggered-braid", "wave-echo", "asymmetric-lanes"])] as QueueLayoutArchetype[];
+    const seeds = input.seeds?.length ? input.seeds : derivedSeeds(0xc0ffee, Math.max(2, Math.ceil(count / archetypes.length)));
+    const proposals: unknown[] = [];
+    for (let index = 0; index < count; index++) {
+      const result = await this.proposeQueuePlan(sessionId, {
+        candidateId: input.candidateId,
+        laneCount: input.laneCount,
+        amountStyle: input.amountStyle ?? "balanced",
+        layoutArchetype: archetypes[index % archetypes.length],
+        seed: seeds[Math.floor(index / archetypes.length) % seeds.length],
+      });
+      proposals.push({
+        proposal: result.proposal,
+        layoutArchetype: result.layoutArchetype,
+        deterministicSeed: result.deterministicSeed,
+        plannedTexture: result.plannedTexture,
+      });
+    }
+    return {
+      sessionId,
+      candidateId: input.candidateId ?? null,
+      proposals,
+      comparisonInstruction: "Evaluate every proposal on one shared simulation seed set; rank hard validity first, then reference-guided texture targets and gameplay evidence.",
     };
   }
 
@@ -1097,7 +1272,7 @@ export class LevelAuthoringService {
     return this.proposeSkeletonPart(sessionId, "dish-plan", input);
   }
 
-  proposeLevelSkeleton(sessionId: string, input: { candidateId?: string; customerCount?: number; dishesPerCustomer?: number; composites?: string[]; laneCount?: number; amountStyle?: QueueAmountStyle; seed?: number }): Promise<JsonRecord> {
+  proposeLevelSkeleton(sessionId: string, input: { candidateId?: string; customerCount?: number; dishesPerCustomer?: number; composites?: string[]; laneCount?: number; amountStyle?: QueueAmountStyle; seed?: number; layoutArchetype?: QueueLayoutArchetype }): Promise<JsonRecord> {
     return this.proposeSkeletonPart(sessionId, "skeleton", input);
   }
 
@@ -1682,6 +1857,24 @@ export class LevelAuthoringService {
     const evaluation = candidate?.latestEvaluationId ? session.evaluations?.[candidate.latestEvaluationId] : undefined;
     if (session.requirements && (!evaluation || evaluation.revision !== session.revision)) return { finalized: false, revision: session.revision, validation, estimate, playtest, reason: "Guided finalization requires a current evaluate_level result for this exact candidate revision." };
     if (session.requirements && evaluation && !evaluation.passed) return { finalized: false, revision: session.revision, validation, estimate, playtest, evaluationId: evaluation.id, reason: "The current unified evaluation still has a fundamental or hard-constraint failure." };
+    let queueQuality: JsonRecord | undefined;
+    if (session.requirements?.constraints.some((constraint) => constraint.dimension === "queueTexture")) {
+      queueQuality = await this.analyzeQueueTexture(sessionId, candidate?.id);
+      const metrics = queueQuality.metrics as Record<string, number>;
+      const reference = queueQuality.reference as { envelope: { adjacentDuplicateRatio: { p90: number }; crossLaneCloneRatio: { p90: number } }; recommendedTargets: { amountSlotRatio: [number, number]; maximumAdjacentDuplicateRatio: number; maximumCrossLaneCloneRatio: number; maximumIdenticalRun: number } };
+      const comparison = queueQuality.comparison as { referenceStyleDistance: number };
+      const amountDimension = session.requirements.dimensions.amount as { utilization?: unknown } | undefined;
+      const explicitSingleUnit = amountDimension?.utilization === 0
+        || amountDimension?.utilization === "none"
+        || amountDimension?.utilization === "single-unit";
+      const severe: string[] = [];
+      if (!explicitSingleUnit && reference.recommendedTargets.amountSlotRatio[0] > 0 && metrics.amountSlotRatio === 0) severe.push("no queue amount is used despite an amount-using reference cohort");
+      if (metrics.adjacentDuplicateRatio > Math.max(reference.envelope.adjacentDuplicateRatio.p90, reference.recommendedTargets.maximumAdjacentDuplicateRatio * 1.5)) severe.push("adjacent ingredient repetition is far outside the reference envelope");
+      if (metrics.crossLaneCloneRatio > Math.max(reference.envelope.crossLaneCloneRatio.p90, reference.recommendedTargets.maximumCrossLaneCloneRatio * 1.5)) severe.push("cross-lane mirroring is far outside the reference envelope");
+      if (metrics.maxIdenticalRun > reference.recommendedTargets.maximumIdenticalRun + 2) severe.push("an identical ingredient run is substantially longer than the reference cohort");
+      if (comparison.referenceStyleDistance > 0.7) severe.push("the queue texture is a strong shipped-style outlier");
+      if (severe.length) return { finalized: false, revision: session.revision, validation, estimate, playtest, evaluationId: evaluation?.id, queueQuality, reason: `Reference-guided quality gate failed: ${severe.join("; ")}. Generate and compare new queue variants, or explicitly confirm a single-unit/tutorial exception.` };
+    }
     const fundamental = Boolean(validation.valid && playtest.win && playtest.servedCustomers === playtest.totalCustomers && (playtest.timedOutCustomers as number[]).length === 0);
     if (!fundamental) return { finalized: false, revision: session.revision, validation, estimate, playtest, reason: "Fundamental validity requirements were not met; no valid CSV was finalized." };
     const thresholdMisses = (estimate.thresholdResults as Array<{ pass: boolean }>).filter((item) => !item.pass);
@@ -1698,7 +1891,7 @@ export class LevelAuthoringService {
     };
     if (finalizedCandidate) finalizedCandidate.status = "finalized";
     await this.store.save(finalizedSession);
-    return { finalized: true, label, deviations: thresholdMisses, checkpoint, validation, estimate, playtest };
+    return { finalized: true, label, deviations: thresholdMisses, checkpoint, validation, estimate, playtest, ...(queueQuality ? { queueQuality } : {}) };
   }
 
   async restoreRevision(sessionId: string, expectedRevision: number, revision: number): Promise<MutationResult> {
@@ -1754,7 +1947,7 @@ export class LevelAuthoringService {
   private async proposeSkeletonPart(
     sessionId: string,
     kind: "customer-plan" | "dish-plan" | "skeleton",
-    input: { candidateId?: string; customerCount?: number; dishesPerCustomer?: number; composites?: string[]; laneCount?: number; amountStyle?: QueueAmountStyle; seed?: number },
+    input: { candidateId?: string; customerCount?: number; dishesPerCustomer?: number; composites?: string[]; laneCount?: number; amountStyle?: QueueAmountStyle; seed?: number; layoutArchetype?: QueueLayoutArchetype },
   ): Promise<JsonRecord> {
     const { session, resources } = await this.sessionResources(sessionId);
     ensureCandidateState(session); syncActiveCandidate(session);
@@ -1801,17 +1994,20 @@ export class LevelAuthoringService {
       };
       this.executeProposalActionsInSession(virtual, resources, actions);
       const missing = (this.supplyDemand(virtual, resources).missing as MissingPickupDemand[] | undefined) ?? [];
-      const inferredAmountStyle: QueueAmountStyle = input.amountStyle ?? (amountDimensions?.utilization === 0 || amountDimensions?.utilization === "none" ? "single-unit" : "balanced");
+      const inferredAmountStyle: QueueAmountStyle = input.amountStyle ?? (amountDimensions?.utilization === 0 || amountDimensions?.utilization === "none" || amountDimensions?.utilization === "single-unit" ? "single-unit" : "balanced");
+      const layoutArchetype = input.layoutArchetype ?? "staggered-braid";
       const queuePlan = planQueueSupply(buildIndex(resources.doc), virtual.draft, missing, {
         laneCount: input.laneCount ?? queueDimensions?.laneCount ?? Math.max(1, virtual.draft.lanes.length),
         amountStyle: inferredAmountStyle,
         startingLaneCounter: virtual.idCounters.lane,
         startingSlotCounter: virtual.idCounters.slot,
+        deterministicSeed: seed,
+        layoutArchetype,
       });
       actions = [...actions, ...queuePlan.actions];
       warnings.push(...queuePlan.warnings);
       expectedSupplyDelta = queuePlan.expectedSupplyDelta;
-      queueSummary = { amountStyle: inferredAmountStyle, plannedLaneIds: queuePlan.plannedLaneIds, plannedSlotIds: queuePlan.plannedSlotIds, missingDemand: missing };
+      queueSummary = { amountStyle: inferredAmountStyle, layoutArchetype, plannedLaneIds: queuePlan.plannedLaneIds, plannedSlotIds: queuePlan.plannedSlotIds, plannedTexture: queuePlan.plannedTexture, missingDemand: missing };
     }
     const proposal: ProposalRecord = {
       id: `proposal-${randomUUID().slice(0, 8)}`,
@@ -2142,7 +2338,13 @@ export class LevelAuthoringService {
     return { constraints, met: constraints.filter((item) => item.status === "met").length, total: constraints.length, unresolved: constraints.filter((item) => item.status === "unresolved").length };
   }
 
-  private scoreDraftSnapshot(session: SessionRecord, resources: AuthoringResources, draft: SessionDraft, seeds: number[]): SnapshotScore {
+  private scoreDraftSnapshot(
+    session: SessionRecord,
+    resources: AuthoringResources,
+    draft: SessionDraft,
+    seeds: number[],
+    reference?: { dataset: ReferenceLevelDataset; analysis: ReferenceLevelAnalysis },
+  ): SnapshotScore {
     const snapshotSession: SessionRecord = { ...session, draft: clone(draft) };
     const findings = this.fastFindings(snapshotSession, resources);
     const graph = validateNodeGraph(resources.doc);
@@ -2170,6 +2372,10 @@ export class LevelAuthoringService {
     const supplyRows = (supply.ingredients as Array<{ missing: number; surplus: number }> | undefined) ?? [];
     const exactSupply = supplyRows.every((row) => row.missing === 0 && row.surplus === 0) && !slots.some((slot) => slot.provisional);
     const amountAnalysis = analyzeAmounts(buildIndex(resources.doc), draft);
+    const texture = analyzeDraftQueueTexture(draft);
+    const referenceComparison = reference
+      ? compareQueueToReferences(serializeDraft(draft, resources).queueString, reference.dataset, reference.analysis)
+      : { referenceStyleDistance: 1, nearestReferenceSimilarity: 0 };
     const metrics: SnapshotScore["metrics"] = {
       "fundamental.structuralErrors": findings.filter((finding) => finding.severity === "error").length,
       "fundamental.exactSupply": exactSupply,
@@ -2183,6 +2389,14 @@ export class LevelAuthoringService {
       "queue.maxDepth": Math.max(0, ...laneDepths),
       "queue.laneBalance": laneDepths.length && Math.max(...laneDepths) > 0 ? 1 - (Math.max(...laneDepths) - Math.min(...laneDepths)) / Math.max(...laneDepths) : 1,
       "queue.pickingOrderStuckRate": thaw.verdict === "deadlock" ? 1 : 0,
+      "queue.adjacentDuplicateRatio": texture.adjacentDuplicateRatio,
+      "queue.maxIdenticalRun": texture.maxIdenticalRun,
+      "queue.crossLaneCloneRatio": texture.crossLaneCloneRatio,
+      "queue.transitionEntropy": texture.transitionEntropy,
+      "queue.repeatedNgramRatio": texture.repeatedNgramRatio,
+      "queue.localIngredientDominance": texture.localIngredientDominance,
+      "queue.referenceStyleDistance": referenceComparison.referenceStyleDistance,
+      "queue.nearestReferenceSimilarity": referenceComparison.nearestReferenceSimilarity,
       "amount.compactedUnitRatio": totalUnits ? amountUnits / totalUnits : 0,
       "amount.amountSlotRatio": slots.length ? amountSlots.length / slots.length : 0,
       "amount.maxAmount": Math.max(1, ...amounts),

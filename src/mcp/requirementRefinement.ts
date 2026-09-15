@@ -19,6 +19,25 @@ export interface RefineRequirementInput {
   mode?: RequirementMode;
   batchSpec?: Record<string, unknown>;
   skipConfirmation?: boolean;
+  /** Injected by the service after scanning committed sample levels. */
+  referenceProfile?: {
+    id: string;
+    sourceFile: string | null;
+    cohortLevelIds: number[];
+    recommendedTargets: {
+      amountStyle: "single-unit" | "balanced";
+      amountSlotRatio: [number, number];
+      compactedUnitRatio: [number, number];
+      maximumAdjacentDuplicateRatio: number;
+      maximumIdenticalRun: number;
+      maximumCrossLaneCloneRatio: number;
+      minimumTransitionEntropy: number;
+      maximumRepeatedNgramRatio: number;
+      maximumLocalIngredientDominance: number;
+      maximumReferenceStyleDistance: number;
+      maximumNearestReferenceSimilarity: number;
+    };
+  };
 }
 
 export interface RequirementDimensionDefinition {
@@ -38,6 +57,7 @@ const DIMENSIONS: RequirementDimensionDefinition[] = [
   { id: "customersOrders", label: "Customers and orders", prompt: "How many customers/dishes and what concurrency should be used?", answerKeys: ["customerCount", "dishCount", "customerConcurrency"], requiredForInteractiveConfirmation: true },
   { id: "content", label: "Content", prompt: "Which dishes, ingredients, tools, and variety limits are desired?", answerKeys: ["dishNames", "ingredientNames", "distinctComposites"], requiredForInteractiveConfirmation: false },
   { id: "queue", label: "Queue", prompt: "What lane count, depth, balance, and ordering pattern should be used?", answerKeys: ["queueLaneCount", "queueDepth", "queueStyle"], requiredForInteractiveConfirmation: false },
+  { id: "queueTexture", label: "Queue texture and originality", prompt: "How much adjacency, lane mirroring, transition variety, reference fit, and originality should the queue target?", answerKeys: ["maxAdjacentDuplicateRatio", "maxIdenticalRun", "maxCrossLaneCloneRatio", "minTransitionEntropy", "maxRepeatedNgramRatio", "maxLocalIngredientDominance", "maxReferenceStyleDistance", "maxNearestReferenceSimilarity"], requiredForInteractiveConfirmation: false },
   { id: "amount", label: "Amount mechanics", prompt: "How strongly should amount compress queue lines, and what maximum atomic release is acceptable?", answerKeys: ["amountUtilization", "maxAmount", "amountReleaseStyle"], requiredForInteractiveConfirmation: true },
   { id: "gridCapacity", label: "Grid and capacity", prompt: "What occupancy pressure and usable capacity should be targeted?", answerKeys: ["peakOccupancy", "usableGridCells"], requiredForInteractiveConfirmation: false },
   { id: "mechanics", label: "Special mechanics", prompt: "Which effects, groups, or special customers are explicitly authorized?", answerKeys: ["authorizedMechanics"], requiredForInteractiveConfirmation: false },
@@ -134,6 +154,7 @@ export function refineRequirements(resources: AuthoringResources, input: RefineR
   const queueLaneCount = answerNumber(answers, "queueLaneCount");
   const maxAmount = answerNumber(answers, "maxAmount");
   const amountUtilization = answers.amountUtilization;
+  const referenceTargets = input.referenceProfile?.recommendedTargets;
   const duration = normalizedDuration(answers.targetDurationSeconds);
   const validationProfile = answerText(answers, "validationProfile") ?? "tuning";
   const minimumRuns = answerNumber(answers, "minimumRuns") ?? (validationProfile === "final" ? 100 : validationProfile === "fast-shape" ? 5 : 20);
@@ -144,11 +165,23 @@ export function refineRequirements(resources: AuthoringResources, input: RefineR
   if (queueLaneCount !== undefined) constraint(constraints, "queue", "queue.laneCount", "=", Math.floor(queueLaneCount), "Confirmed queue lane count.");
   if (maxAmount !== undefined) constraint(constraints, "amount", "amount.maxAmount", "<=", Math.floor(maxAmount), "Confirmed maximum atomic amount release.", "hard");
   if (typeof amountUtilization === "number") constraint(constraints, "amount", "amount.compactedUnitRatio", ">=", amountUtilization, "Confirmed amount utilization target.");
+  const explicitSingleUnit = amountUtilization === 0 || amountUtilization === "none" || amountUtilization === "single-unit";
+  if (referenceTargets) {
+    if (!explicitSingleUnit && referenceTargets.amountSlotRatio[0] > 0) constraint(constraints, "amount", "amount.amountSlotRatio", ">=", referenceTargets.amountSlotRatio[0], "Lower quartile of comparable shipped levels.");
+    constraint(constraints, "queueTexture", "queue.adjacentDuplicateRatio", "<=", answerNumber(answers, "maxAdjacentDuplicateRatio") ?? referenceTargets.maximumAdjacentDuplicateRatio, "Reference-guided adjacency ceiling.");
+    constraint(constraints, "queueTexture", "queue.maxIdenticalRun", "<=", Math.floor(answerNumber(answers, "maxIdenticalRun") ?? referenceTargets.maximumIdenticalRun), "Reference-guided identical-run ceiling.");
+    constraint(constraints, "queueTexture", "queue.crossLaneCloneRatio", "<=", answerNumber(answers, "maxCrossLaneCloneRatio") ?? referenceTargets.maximumCrossLaneCloneRatio, "Reference-guided lane-mirroring ceiling.");
+    constraint(constraints, "queueTexture", "queue.transitionEntropy", ">=", answerNumber(answers, "minTransitionEntropy") ?? referenceTargets.minimumTransitionEntropy, "Reference-guided transition-diversity floor.");
+    constraint(constraints, "queueTexture", "queue.repeatedNgramRatio", "<=", answerNumber(answers, "maxRepeatedNgramRatio") ?? referenceTargets.maximumRepeatedNgramRatio, "Reference-guided repeated-pattern ceiling.");
+    constraint(constraints, "queueTexture", "queue.localIngredientDominance", "<=", answerNumber(answers, "maxLocalIngredientDominance") ?? referenceTargets.maximumLocalIngredientDominance, "Reference-guided local-dominance ceiling.");
+    constraint(constraints, "queueTexture", "queue.referenceStyleDistance", "<=", answerNumber(answers, "maxReferenceStyleDistance") ?? referenceTargets.maximumReferenceStyleDistance, "Stay inside the learned shipped-level style envelope.");
+    constraint(constraints, "queueTexture", "queue.nearestReferenceSimilarity", "<=", answerNumber(answers, "maxNearestReferenceSimilarity") ?? referenceTargets.maximumNearestReferenceSimilarity, "Remain original rather than copying a reference sequence.");
+  }
   if (duration !== undefined) constraint(constraints, "durationPacing", "experience.durationP50", Array.isArray(duration) ? "between" : "=", duration, "Confirmed duration target.", "target", { minimumRuns, confidence });
 
   const amountMentioned = /\b(amount|stack|compact|compression|atomic release|burst)\b/i.test(brief);
   const customerSpecified = customerCount !== undefined || constraints.some((item) => item.metric === "customers.count");
-  const amountSpecified = amountUtilization !== undefined || maxAmount !== undefined || amountMentioned;
+  const amountSpecified = amountUtilization !== undefined || maxAmount !== undefined || amountMentioned || Boolean(input.referenceProfile);
   const unresolved: RequirementGap[] = [];
   if (!difficultyProfile) unresolved.push({ id: "missing-experience", dimension: "experience", message: "Difficulty and intended audience are not measurable yet.", question: "Choose a difficulty profile and optionally name the intended audience/fairness tolerance.", answerKeys: ["difficultyProfile", "audience", "fairness"] });
   if (!customerSpecified) unresolved.push({ id: "missing-scope", dimension: "customersOrders", message: "Level scope is unspecified.", question: "Provide a customer count, dish count, or target duration.", answerKeys: ["customerCount", "dishCount", "targetDurationSeconds"] });
@@ -163,8 +196,14 @@ export function refineRequirements(resources: AuthoringResources, input: RefineR
     durationPacing: { targetDurationSeconds: duration ?? null, pacing: answerText(answers, "pacing") ?? "steady" },
     customersOrders: { customerCount: customerCount ?? null, dishCount: dishCount ?? null, customerConcurrency: answerNumber(answers, "customerConcurrency") ?? 2 },
     content: { dishNames: answers.dishNames ?? [], ingredientNames: answers.ingredientNames ?? [], distinctComposites: answerNumber(answers, "distinctComposites") ?? null },
-    queue: { laneCount: queueLaneCount ?? null, depth: answerNumber(answers, "queueDepth") ?? null, style: answerText(answers, "queueStyle") ?? "balanced" },
-    amount: { utilization: amountUtilization ?? (bypass ? "balanced" : null), maxAmount: maxAmount ?? null, releaseStyle: answerText(answers, "amountReleaseStyle") ?? "capacity-safe" },
+    queue: { laneCount: queueLaneCount ?? null, depth: answerNumber(answers, "queueDepth") ?? null, style: answerText(answers, "queueStyle") ?? "reference-guided" },
+    queueTexture: input.referenceProfile ? {
+      referenceProfileId: input.referenceProfile.id,
+      sourceFile: input.referenceProfile.sourceFile,
+      cohortLevelIds: input.referenceProfile.cohortLevelIds,
+      targets: referenceTargets,
+    } : { referenceProfileId: null, targets: null },
+    amount: { utilization: amountUtilization ?? (referenceTargets?.amountStyle === "balanced" ? "reference-balanced" : bypass ? "balanced" : null), maxAmount: maxAmount ?? null, releaseStyle: answerText(answers, "amountReleaseStyle") ?? "capacity-safe" },
     gridCapacity: { peakOccupancy: answers.peakOccupancy ?? null, usableGridCells: answers.usableGridCells ?? resources.doc.map.gridWidth * resources.doc.map.gridHeight },
     mechanics: { authorized: interpreted.authorizedMechanics },
     validation: { profile: validationProfile, minimumRuns, confidence },

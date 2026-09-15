@@ -392,4 +392,27 @@ describe("LevelAuthoringService", () => {
     await service.undo(sessionId, changed.revision);
     expect((await service.getSession(sessionId)).draft.grid[0].effects).toHaveLength(0);
   });
+
+  it("learns committed queue style before refining guided requirements", async () => {
+    const references = await service.analyzeReferenceLevels("burger", { targetLevel: 10, cohortRadius: 5 });
+    expect(references).toMatchObject({ mapId: "burger" });
+    expect((references.cohort as unknown[]).length).toBeGreaterThanOrEqual(3);
+    expect((references.recommendedTargets as { amountStyle: string }).amountStyle).toBe("balanced");
+
+    const requirements = await service.refineLevelRequirements("burger", {
+      brief: "Create a varied standard level with 10 customers.",
+      answers: { difficultyProfile: "standard", customerCount: 10, levelId: 10 },
+    });
+    expect((requirements.dimensions.queueTexture as { referenceProfileId: string }).referenceProfileId).toMatch(/^reference-/);
+    expect(requirements.constraints.some((constraint) => constraint.metric === "queue.adjacentDuplicateRatio")).toBe(true);
+    expect(requirements.constraints.some((constraint) => constraint.metric === "amount.amountSlotRatio")).toBe(true);
+
+    const tutorial = await service.refineLevelRequirements("burger", {
+      brief: "Create a simple tutorial level with 3 customers and intentionally use only single-unit queue slots.",
+      answers: { difficultyProfile: "relaxed", customerCount: 3, levelId: 2, amountUtilization: "single-unit" },
+    });
+    expect((tutorial.dimensions.amount as { utilization: string }).utilization).toBe("single-unit");
+    expect(tutorial.constraints.some((constraint) => constraint.metric === "amount.amountSlotRatio")).toBe(false);
+    expect(tutorial.constraints.some((constraint) => constraint.metric === "queue.adjacentDuplicateRatio")).toBe(true);
+  });
 });
