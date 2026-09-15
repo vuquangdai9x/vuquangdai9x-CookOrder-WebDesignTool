@@ -1,0 +1,2 @@
+Level_ID,Name,Weather,LevelTag,FeatureUnlock,ShuffleDistance,ServeableSlots,QueueString,GridString,CustomerString,OutOfSlotPolicy,BoosterCharges
+1,Map1 Level 1,Normal,relaxed blind-win,,0,1,"0,0,1,1%0,0,1,1%0,1%0,1%0,1",",,,,,,,,,","0;0;0;{c0:17.{g0:18}},{c0:17.{g0:18}}|0;0;0;{c0:17.{g0:18}}|0;0;0;{c0:17.{g0:18}}|0;0;0;{c0:17.{g0:18}}|0;0;0;{c0:17.{g0:18}}|0;0;0;{c0:17.{g0:18}}",park-on-grid,

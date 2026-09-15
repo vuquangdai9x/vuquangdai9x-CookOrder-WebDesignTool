@@ -1,0 +1,305 @@
+{
+  "label": "closest",
+  "revision": 106,
+  "validation": {
+    "revision": 106,
+    "valid": true,
+    "findings": [],
+    "constraintProgress": {
+      "constraints": [
+        {
+          "id": "constraint-1",
+          "source": "30 customers",
+          "kind": "count",
+          "target": 30,
+          "unit": "customers",
+          "status": "met",
+          "actual": 30
+        },
+        {
+          "id": "constraint-2",
+          "source": "freeze",
+          "kind": "mechanic",
+          "unit": "queue:freeze",
+          "status": "pending",
+          "actual": 0
+        },
+        {
+          "id": "constraint-3",
+          "source": "Challenging",
+          "kind": "difficulty",
+          "unit": "profile",
+          "status": "pending"
+        }
+      ],
+      "met": 1,
+      "total": 3,
+      "unresolved": 0
+    },
+    "supplyDemand": {
+      "ingredients": [
+        {
+          "ingredient": "bun",
+          "dataId": 0,
+          "rawPickupRequired": 10,
+          "toolChain": [
+            {
+              "tool": "cutting-board",
+              "output": "bun-sliced",
+              "duration": 3.333,
+              "yield": 1
+            }
+          ],
+          "yield": 1,
+          "have": 10,
+          "need": 10,
+          "surplus": 0,
+          "missing": 0,
+          "pickupHave": 10,
+          "pickupNeed": 10,
+          "minimumPickupAdditions": 0,
+          "maximumPickupRemovals": 0,
+          "customersAndDishes": [
+            {
+              "customerId": "customer-1",
+              "customerNumber": 1,
+              "dishId": "dish-1"
+            },
+            {
+              "customerId": "customer-4",
+              "customerNumber": 4,
+              "dishId": "dish-4"
+            },
+            {
+              "customerId": "customer-7",
+              "customerNumber": 7,
+              "dishId": "dish-7"
+            },
+            {
+              "customerId": "customer-10",
+              "customerNumber": 10,
+              "dishId": "dish-10"
+            },
+            {
+              "customerId": "customer-13",
+              "customerNumber": 13,
+              "dishId": "dish-13"
+            },
+            {
+              "customerId": "customer-16",
+              "customerNumber": 16,
+              "dishId": "dish-16"
+            },
+            {
+              "customerId": "customer-19",
+              "customerNumber": 19,
+              "dishId": "dish-19"
+            },
+            {
+              "customerId": "customer-22",
+              "customerNumber": 22,
+              "dishId": "dish-22"
+            },
+            {
+              "customerId": "customer-25",
+              "customerNumber": 25,
+              "dishId": "dish-25"
+            },
+            {
+              "customerId": "customer-28",
+              "customerNumber": 28,
+              "dishId": "dish-28"
+            }
+          ]
+        },
+        {
+          "ingredient": "cup",
+          "dataId": 7,
+          "rawPickupRequired": 10,
+          "toolChain": [
+            {
+              "tool": "coca-machine",
+              "output": "soda-cup",
+              "duration": 3,
+              "yield": 1
+            }
+          ],
+          "yield": 1,
+          "have": 10,
+          "need": 10,
+          "surplus": 0,
+          "missing": 0,
+          "pickupHave": 10,
+          "pickupNeed": 10,
+          "minimumPickupAdditions": 0,
+          "maximumPickupRemovals": 0,
+          "customersAndDishes": [
+            {
+              "customerId": "customer-2",
+              "customerNumber": 2,
+              "dishId": "dish-2"
+            },
+            {
+              "customerId": "customer-5",
+              "customerNumber": 5,
+              "dishId": "dish-5"
+            },
+            {
+              "customerId": "customer-8",
+              "customerNumber": 8,
+              "dishId": "dish-8"
+            },
+            {
+              "customerId": "customer-11",
+              "customerNumber": 11,
+              "dishId": "dish-11"
+            },
+            {
+              "customerId": "customer-14",
+              "customerNumber": 14,
+              "dishId": "dish-14"
+            },
+            {
+              "customerId": "customer-17",
+              "customerNumber": 17,
+              "dishId": "dish-17"
+            },
+            {
+              "customerId": "customer-20",
+              "customerNumber": 20,
+              "dishId": "dish-20"
+            },
+            {
+              "customerId": "customer-23",
+              "customerNumber": 23,
+              "dishId": "dish-23"
+            },
+            {
+              "customerId": "customer-26",
+              "customerNumber": 26,
+              "dishId": "dish-26"
+            },
+            {
+              "customerId": "customer-29",
+              "customerNumber": 29,
+              "dishId": "dish-29"
+            }
+          ]
+        },
+        {
+          "ingredient": "potato",
+          "dataId": 13,
+          "rawPickupRequired": 10,
+          "toolChain": [
+            {
+              "tool": "cutting-board",
+              "output": "potato_sliced",
+              "duration": 9,
+              "yield": 1
+            },
+            {
+              "tool": "fryer",
+              "output": "potato-fried",
+              "duration": 4.667,
+              "yield": 1
+            }
+          ],
+          "yield": 1,
+          "have": 10,
+          "need": 10,
+          "surplus": 0,
+          "missing": 0,
+          "pickupHave": 10,
+          "pickupNeed": 10,
+          "minimumPickupAdditions": 0,
+          "maximumPickupRemovals": 0,
+          "customersAndDishes": [
+            {
+              "customerId": "customer-3",
+              "customerNumber": 3,
+              "dishId": "dish-3"
+            },
+            {
+              "customerId": "customer-6",
+              "customerNumber": 6,
+              "dishId": "dish-6"
+            },
+            {
+              "customerId": "customer-9",
+              "customerNumber": 9,
+              "dishId": "dish-9"
+            },
+            {
+              "customerId": "customer-12",
+              "customerNumber": 12,
+              "dishId": "dish-12"
+            },
+            {
+              "customerId": "customer-15",
+              "customerNumber": 15,
+              "dishId": "dish-15"
+            },
+            {
+              "customerId": "customer-18",
+              "customerNumber": 18,
+              "dishId": "dish-18"
+            },
+            {
+              "customerId": "customer-21",
+              "customerNumber": 21,
+              "dishId": "dish-21"
+            },
+            {
+              "customerId": "customer-24",
+              "customerNumber": 24,
+              "dishId": "dish-24"
+            },
+            {
+              "customerId": "customer-27",
+              "customerNumber": 27,
+              "dishId": "dish-27"
+            },
+            {
+              "customerId": "customer-30",
+              "customerNumber": 30,
+              "dishId": "dish-30"
+            }
+          ]
+        }
+      ],
+      "missing": [],
+      "keyBalance": []
+    }
+  },
+  "constraintProgress": {
+    "constraints": [
+      {
+        "id": "constraint-1",
+        "source": "30 customers",
+        "kind": "count",
+        "target": 30,
+        "unit": "customers",
+        "status": "met",
+        "actual": 30
+      },
+      {
+        "id": "constraint-2",
+        "source": "freeze",
+        "kind": "mechanic",
+        "unit": "queue:freeze",
+        "status": "pending",
+        "actual": 0
+      },
+      {
+        "id": "constraint-3",
+        "source": "Challenging",
+        "kind": "difficulty",
+        "unit": "profile",
+        "status": "pending"
+      }
+    ],
+    "met": 1,
+    "total": 3,
+    "unresolved": 0
+  }
+}

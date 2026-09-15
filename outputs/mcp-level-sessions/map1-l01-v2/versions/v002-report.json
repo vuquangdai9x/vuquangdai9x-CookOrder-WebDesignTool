@@ -1,0 +1,179 @@
+{
+  "label": "closest",
+  "revision": 2,
+  "validation": {
+    "revision": 2,
+    "valid": true,
+    "findings": [],
+    "constraintProgress": {
+      "constraints": [
+        {
+          "id": "constraint-1",
+          "source": "6 customers",
+          "kind": "count",
+          "target": 6,
+          "unit": "customers",
+          "status": "met",
+          "actual": 6
+        },
+        {
+          "id": "constraint-2",
+          "source": "Relaxed",
+          "kind": "difficulty",
+          "unit": "profile",
+          "status": "pending"
+        }
+      ],
+      "met": 1,
+      "total": 2,
+      "unresolved": 0
+    },
+    "supplyDemand": {
+      "ingredients": [
+        {
+          "ingredient": "bun",
+          "dataId": 0,
+          "rawPickupRequired": 7,
+          "toolChain": [
+            {
+              "tool": "cutting-board",
+              "output": "bun-sliced",
+              "duration": 3.333,
+              "yield": 1
+            }
+          ],
+          "yield": 1,
+          "have": 7,
+          "need": 7,
+          "surplus": 0,
+          "missing": 0,
+          "pickupHave": 7,
+          "pickupNeed": 7,
+          "minimumPickupAdditions": 0,
+          "maximumPickupRemovals": 0,
+          "customersAndDishes": [
+            {
+              "customerId": "customer-1",
+              "customerNumber": 1,
+              "dishId": "dish-1"
+            },
+            {
+              "customerId": "customer-1",
+              "customerNumber": 1,
+              "dishId": "dish-7"
+            },
+            {
+              "customerId": "customer-2",
+              "customerNumber": 2,
+              "dishId": "dish-2"
+            },
+            {
+              "customerId": "customer-3",
+              "customerNumber": 3,
+              "dishId": "dish-3"
+            },
+            {
+              "customerId": "customer-4",
+              "customerNumber": 4,
+              "dishId": "dish-4"
+            },
+            {
+              "customerId": "customer-5",
+              "customerNumber": 5,
+              "dishId": "dish-5"
+            },
+            {
+              "customerId": "customer-6",
+              "customerNumber": 6,
+              "dishId": "dish-6"
+            }
+          ]
+        },
+        {
+          "ingredient": "patty",
+          "dataId": 1,
+          "rawPickupRequired": 7,
+          "toolChain": [
+            {
+              "tool": "griddle",
+              "output": "patty-cooked",
+              "duration": 5.433,
+              "yield": 1
+            }
+          ],
+          "yield": 1,
+          "have": 7,
+          "need": 7,
+          "surplus": 0,
+          "missing": 0,
+          "pickupHave": 7,
+          "pickupNeed": 7,
+          "minimumPickupAdditions": 0,
+          "maximumPickupRemovals": 0,
+          "customersAndDishes": [
+            {
+              "customerId": "customer-1",
+              "customerNumber": 1,
+              "dishId": "dish-1"
+            },
+            {
+              "customerId": "customer-1",
+              "customerNumber": 1,
+              "dishId": "dish-7"
+            },
+            {
+              "customerId": "customer-2",
+              "customerNumber": 2,
+              "dishId": "dish-2"
+            },
+            {
+              "customerId": "customer-3",
+              "customerNumber": 3,
+              "dishId": "dish-3"
+            },
+            {
+              "customerId": "customer-4",
+              "customerNumber": 4,
+              "dishId": "dish-4"
+            },
+            {
+              "customerId": "customer-5",
+              "customerNumber": 5,
+              "dishId": "dish-5"
+            },
+            {
+              "customerId": "customer-6",
+              "customerNumber": 6,
+              "dishId": "dish-6"
+            }
+          ]
+        }
+      ],
+      "missing": [],
+      "keyBalance": []
+    }
+  },
+  "constraintProgress": {
+    "constraints": [
+      {
+        "id": "constraint-1",
+        "source": "6 customers",
+        "kind": "count",
+        "target": 6,
+        "unit": "customers",
+        "status": "met",
+        "actual": 6
+      },
+      {
+        "id": "constraint-2",
+        "source": "Relaxed",
+        "kind": "difficulty",
+        "unit": "profile",
+        "status": "pending"
+      }
+    ],
+    "met": 1,
+    "total": 2,
+    "unresolved": 0
+  }
+}
