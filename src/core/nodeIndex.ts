@@ -179,7 +179,7 @@ export interface GraphIndex {
   multipleUsage: Uint8Array;
   servable: Uint8Array;
   pickupable: Uint8Array;
-  /** Auto Generate bag range per ingredient — `stackMin`/`stackMax`, both defaulting to 1. */
+  /** Legal atomic amount range per ingredient — `stackMin`/`stackMax`, both defaulting to 1. */
   stackRange: { min: number; max: number }[];
 }
 

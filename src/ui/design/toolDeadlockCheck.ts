@@ -18,6 +18,7 @@
 import { NodeSimulation } from "../../core/nodeSim.ts";
 import type { NodeLevelConfig } from "../../core/nodeSim.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
+import type { PackingMode, ToolProcessBehavior } from "../../core/types.ts";
 
 /**
  * What kind of jam a blocked run hit. "tool" is the one this check exists for:
@@ -151,9 +152,11 @@ interface RunOutcome {
  * accepts a pick — a state a player can never get out of. Losing on patience or
  * a full grid is a difficulty problem, not a deadlock, and does not count.
  */
-function playOnce(ix: GraphIndex, level: NodeLevelConfig, choose: Choose): RunOutcome {
+function playOnce(ix: GraphIndex, level: NodeLevelConfig, choose: Choose, behavior?: Pick<ToolDeadlockOptions, "packingMode" | "toolProcessBehavior">): RunOutcome {
   const sim = new NodeSimulation(ix, structuredClone(level), {
     outOfSlotPolicy: level.outOfSlotPolicy ?? "block-pick",
+    ...(behavior?.packingMode ? { packingMode: behavior.packingMode } : {}),
+    ...(behavior?.toolProcessBehavior ? { toolProcessBehavior: behavior.toolProcessBehavior } : {}),
     instantFlights: true,
   });
   settle(sim);
@@ -190,6 +193,9 @@ export interface ToolDeadlockOptions {
   randomRuns?: number;
   /** Sampling stops once this much time has gone; the counts stay honest. */
   budgetMs?: number;
+  /** Optional runtime behavior. Omission preserves the legacy caller defaults. */
+  packingMode?: PackingMode;
+  toolProcessBehavior?: ToolProcessBehavior;
 }
 
 export function checkToolDeadlock(
@@ -222,7 +228,7 @@ export function checkToolDeadlock(
   };
 
   const runs: ToolRunResult[] = POLICIES.map((policy) => {
-    const outcome = playOnce(ix, level, policy.choose);
+    const outcome = playOnce(ix, level, policy.choose, opts);
     note(outcome);
     return { name: policy.name, ok: !outcome.blocked, picks: outcome.picks, reasons: outcome.reasons };
   });
@@ -232,7 +238,7 @@ export function checkToolDeadlock(
   for (let seed = 1; seed <= wantedRuns; seed++) {
     if (randomRuns > 0 && performance.now() - started > budget) break;
     const rng = seededRng(seed * 2654435761);
-    const outcome = playOnce(ix, level, (lanes) => Math.floor(rng() * lanes.length));
+    const outcome = playOnce(ix, level, (lanes) => Math.floor(rng() * lanes.length), opts);
     randomRuns++;
     if (outcome.blocked) randomBlocked++;
     note(outcome);

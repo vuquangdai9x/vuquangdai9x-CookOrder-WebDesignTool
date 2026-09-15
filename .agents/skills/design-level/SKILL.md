@@ -64,10 +64,10 @@ After confirmation or a permitted bypass:
 1. Read fresh graph context and retain `context_token`.
 2. Confirm/persist the refined requirement token when supported, then start the session. Otherwise start from the exact confirmed brief and retain the summary in the work log.
 3. Call `get_authoring_status` when available. Plan and record an adaptive strategy; read [authoring-strategies.md](references/authoring-strategies.md).
-4. Create a small ordinary candidate skeleton. Use proposal tools when available, inspect their actions, then apply transactionally. Otherwise use existing granular customer, dish, queue, amount, group, and grid actions.
-5. Reconcile exact demand/supply and amount behavior. Read each pickupable’s `multipleUsage` and `stackRange`. Use amount planning/analysis when available.
+4. Create a small ordinary customer/dish skeleton. Prefer `propose_level_skeleton`; inspect its customer, graph-valid dish, exact-supply queue, stable IDs, warnings, and amount partition before applying it transactionally. Use `propose_customer_plan` or `propose_dish_plan` when only one subsystem should change.
+5. Once dish demand exists, reconcile exact pickup supply. Prefer `propose_queue_plan` when available; inspect its stable lane/slot IDs, exact supply delta, amount partition, and warnings before one atomic apply. Read each pickupable’s `multipleUsage` and `stackRange`, then use amount planning/analysis and repair proposals when available.
 6. Evaluate against the constraint ledger with a reusable seed set. Diagnose the largest hard or weighted target gap rather than tuning arbitrary fields.
-7. Form one repair hypothesis. Evaluate a mutation batch without changing the active candidate when supported; compare alternatives on identical seeds; apply the best supported batch or the corresponding granular edits.
+7. Form one repair hypothesis. Use `evaluate_mutation_batch` without changing the active candidate, compare alternatives with `rank_mutation_candidates` on identical seeds, then use `apply_mutation_batch` only for the best supported experiment. Use bounded `run_search_step`/`run_candidate_search` only with explicit iteration, run, experiment, and wall-time limits.
 8. Checkpoint meaningful improvements. Branch candidates when two plausible directions should be compared. Record evidence when changing strategy.
 9. Repeat until constraints pass or the confirmed budget ends. Read [validation-and-repair.md](references/validation-and-repair.md).
 10. Run final validation/evaluation and finalize only a fundamentally valid candidate.

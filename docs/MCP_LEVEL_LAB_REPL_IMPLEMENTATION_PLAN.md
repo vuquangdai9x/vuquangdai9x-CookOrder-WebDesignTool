@@ -539,3 +539,29 @@ is available, plus prompt walkthroughs for vague, skipped, and batch briefs.
 - Picking deadlock, grid pressure, timeouts, supply, and legacy tool/grid diagnostics are separate.
 - Batch runs are deterministic, resumable, bounded, and individually validated.
 - Finalization emits only fully valid artifacts and never modifies canonical level data.
+
+## Implementation status — 2026-09-15
+
+All phases now have an implemented web/MCP path while the Unity side remains intentionally out of
+scope:
+
+- Phase 0 preserves legacy granular tools and the separate legacy tool/grid diagnostic through
+  contract and regression coverage.
+- Phase 1 implements the complete requirement-dimension checklist, grouped clarification,
+  confirmation/skip/batch tokens, measurable constraints, and guided authoring status.
+- Phase 2 implements isolated candidates, deterministic seed sets, persisted unified evaluation,
+  comparison, evidence invalidation, and queue-only deadlock reports with bounded structural cases.
+- Phase 3 implements proposal persistence and atomic apply/discard for customer, dish, composed
+  skeleton, exact-supply queue, amount compression/repair, grid, and queue-effect plans. Special
+  mechanics remain blocked until explicitly authorized.
+- Phase 4 implements non-mutating mutation experiments, identical-seed ranking, atomic winner
+  application, constraint-gap diagnosis, focused suggestions, and persisted search observations.
+- Phase 5 implements bounded search steps/candidate search and deterministic, resumable,
+  cancellable batch planning/execution with individually validated-only export.
+- Phase 6 updates the `design-level` skill and MCP server guidance to use this pipeline while
+  retaining compatibility fallbacks.
+
+Current automated coverage verifies MCP discovery and end-to-end requirement, candidate,
+proposal, amount, experiment, search, batch, authorization, deadlock, and persistence behavior.
+Performance profiling and finer-grained cancellation inside a single simulator invocation remain
+operational hardening rather than missing workflow phases.
