@@ -436,7 +436,7 @@
             "slot": 1
           }
         ],
-        "cookingTime": 3,
+        "cookingTime": 2,
         "upgradeCosts": [
           0,
           2,
@@ -474,7 +474,7 @@
             "slot": 1
           }
         ],
-        "cookingTime": 1,
+        "cookingTime": 2,
         "upgradeCosts": [
           0,
           1,
@@ -493,7 +493,7 @@
             "slot": 1
           }
         ],
-        "cookingTime": 1,
+        "cookingTime": 2,
         "upgradeCosts": [
           0,
           1,
@@ -511,7 +511,7 @@
             "slot": 1
           }
         ],
-        "cookingTime": 1,
+        "cookingTime": 2,
         "upgradeCosts": [
           0,
           1,
@@ -597,7 +597,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 5.433
       },
       {
         "from": "griddle",
@@ -608,7 +609,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 6
       },
       {
         "from": "coca-machine",
@@ -619,7 +621,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 3
       },
       {
         "from": "cutting-board",
@@ -630,7 +633,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 3.333
       },
       {
         "from": "cutting-board",
@@ -641,7 +645,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 3.233
       },
       {
         "from": "cutting-board",
@@ -652,7 +657,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 3.333
       },
       {
         "from": "cutting-board",
@@ -663,7 +669,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 4.667
       },
       {
         "from": "cutting-board",
@@ -674,7 +681,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 3.333
       },
       {
         "from": "cutting-board",
@@ -685,7 +693,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 5.333
       },
       {
         "from": "flour",
@@ -696,7 +705,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 2.333
       },
       {
         "from": "flour",
@@ -707,7 +717,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 2.333
       },
       {
         "from": "flour",
@@ -718,7 +729,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 2.333
       },
       {
         "from": "flour",
@@ -729,7 +741,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 2.333
       },
       {
         "from": "fryer",
@@ -740,7 +753,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 4.667
       },
       {
         "from": "fryer",
@@ -751,7 +765,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 4.667
       },
       {
         "from": "fryer",
@@ -762,7 +777,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 4.667
       },
       {
         "from": "fryer",
@@ -773,7 +789,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 4.667
       },
       {
         "from": "cutting-board",
@@ -784,7 +801,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 9
       },
       {
         "from": "fryer",
@@ -795,7 +813,8 @@
             "slot": 0
           }
         ],
-        "amount": 1
+        "amount": 1,
+        "duration": 4.667
       }
     ],
     "base": [
