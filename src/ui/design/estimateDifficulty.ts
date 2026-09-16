@@ -104,6 +104,12 @@ export interface EstimateResult {
   toolProcessBehavior?: ToolProcessBehavior;
   /** Number of scoring attempts used before this result was selected. */
   attemptCount?: number;
+  /** Check Solvable pruned branches at its per-depth state bound, so `solvable: false` is inconclusive. */
+  searchLimitReached?: boolean;
+  /** Complete-information states expanded by Check Solvable. */
+  searchStatesExplored?: number;
+  /** Wall-clock milliseconds spent in complete-information search. */
+  searchElapsedMs?: number;
   /** Scoring strategy that produced this result. */
   strategyName?: string;
   /** Every attempted scoring/timing mode, in execution order. */
@@ -189,6 +195,8 @@ export interface EstimateOptions {
   rng?: () => number;
   /** Safety valve against a pathological level; overrides the scenario field. */
   maxIterations?: number;
+  /** Maximum distinct complete-information states retained at each pick depth. */
+  searchStatesPerDepth?: number;
   /** Overrides the modal retry count; clamped to 0..10. */
   maxRetries?: number;
   /** Scoring scenario from the pre-run modal; omitted means every default. */
@@ -199,9 +207,9 @@ export interface EstimateOptions {
   toolProcessBehavior?: ToolProcessBehavior;
   /**
    * Player estimation only uses information the runtime UI exposes. An
-   * omniscient run may score every authored customer and every queue row,
-   * including Hidden slots; this is used by Check Solvable, never by the
-   * difficulty estimate.
+   * omniscient run searches the full authored simulation state, including
+   * every customer and Hidden queue slot; this is used by Check Solvable,
+   * never by the difficulty estimate.
   */
   informationMode?: "player" | "omniscient";
 }

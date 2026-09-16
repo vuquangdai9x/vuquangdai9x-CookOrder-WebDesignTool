@@ -129,7 +129,8 @@ describe("estimateNodeDifficulty", () => {
 
     expect(result.solvable, result.reason).toBe(true);
     expect(result.servedCount).toBe(result.totalCustomers);
-    expect(result.strategyName).toBe("learned-space-search+interval");
+    expect(result.strategyName).toBe("complete-information-search");
+    expect(result.attemptCount).toBe(1);
     expect(result.replaySteps.length).toBeGreaterThan(0);
     const servedMarkers = result.occupancyHistory
       .flatMap((sample) => sample.completesCustomers)
@@ -167,6 +168,70 @@ describe("estimateNodeDifficulty", () => {
     expect(nearestPickIndex(pickTimes, 9)).toBe(2);
     expect(nearestPickIndex(pickTimes, 8.5)).toBe(1);
     expect(nearestPickIndex([], 5)).toBe(-1);
+  });
+
+  it("rejects imported Map 1 Level 20 immediately when Recipe Pieces are missing", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const level = toNodeLevelConfig(
+      importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 20)!,
+    );
+    const result = checkNodeSolvable(burgerIx, level, { searchStatesPerDepth: 1 });
+
+    expect(result.solvable).toBe(false);
+    expect(result.strategyName).toBe("supply-precheck");
+    expect(result.searchLimitReached).toBe(false);
+    expect(result.searchStatesExplored).toBe(0);
+    expect(result.reason).toMatch(/has \d+, needs \d+/);
+  });
+
+  it("reports branch pruning as inconclusive instead of globally aborting or unsolvable", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const level = toNodeLevelConfig(
+      importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 15)!,
+    );
+    const result = checkNodeSolvable(burgerIx, level, { searchStatesPerDepth: 1 });
+
+    expect(result.solvable).toBe(false);
+    expect(result.searchLimitReached).toBe(true);
+    expect(result.searchStatesExplored).toBeGreaterThan(0);
+    expect(result.reason).toContain("pruned bounded branches");
+    expect(result.attemptedStrategyNames).toEqual([
+      "complete-information-search",
+      "complete-information-search+settle-all",
+    ]);
+  });
+
+  it("falls back to settle-all search when timing states hide a bounded winning route", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const level = toNodeLevelConfig(
+      importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 5)!,
+    );
+    const result = checkNodeSolvable(burgerIx, level, { searchStatesPerDepth: 4 });
+
+    expect(result.solvable, result.reason).toBe(true);
+    expect(result.strategyName).toBe("complete-information-search+settle-all");
+    expect(result.attemptedStrategyNames).toEqual([
+      "complete-information-search",
+      "complete-information-search+settle-all",
+    ]);
+    expect(result.servedCount).toBe(result.totalCustomers);
+
+    const replay = new NodeSimulation(burgerIx, structuredClone(level), {
+      outOfSlotPolicy: "park-on-grid",
+      packingMode: result.packingMode ?? "unpacked-raw",
+      toolProcessBehavior: result.toolProcessBehavior ?? "auto",
+      instantFlights: true,
+      continueAfterCustomerTimeout: true,
+      detectDeadlockLoss: true,
+    });
+    replay.tick(0);
+    replay.completeAllFlights();
+    result.replaySteps.forEach((step, index) => {
+      expect(replayPacedStep(replay, step), `Replay pick ${index + 1}`).toBe(true);
+    });
+    replay.fastForward(600);
+    replay.completeAllFlights();
+    expect(replay.status).toBe("won");
   });
 
   it("keeps customer timeouts as exact warnings instead of failed attempts", () => {
@@ -410,7 +475,7 @@ describe("estimateNodeDifficulty", () => {
     expect(bean).toBeGreaterThan(ice);
   });
 
-  it("lets solvability scoring use exact orders behind a boss preview barrier", () => {
+  it("keeps Check Solvable on structural proof instead of lane scoring", () => {
     const level = coffeeLevel();
     level.serveableSlots = 1;
     level.queues = [
@@ -453,9 +518,10 @@ describe("estimateNodeDifficulty", () => {
     });
 
     expect(player.replaySteps[0].laneScores).toEqual([0, 0]);
-    expect(omniscient.replaySteps[0].laneScores[0]!).toBeGreaterThan(
-      omniscient.replaySteps[0].laneScores[1]!,
-    );
+    expect(omniscient.strategyName).toBe("supply-precheck");
+    expect(omniscient.attemptCount).toBe(1);
+    expect(omniscient.replaySteps).toEqual([]);
+    expect(omniscient.reason).toContain("Missing Recipe Pieces supply");
   });
 
   it("uses abstract customer width when deciding whether demand is active or preview-only", () => {

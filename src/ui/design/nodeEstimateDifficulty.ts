@@ -7,6 +7,9 @@ import { NodeSimulation } from "../../core/nodeSim.ts";
 import type { NodeCustomerState, NodeLevelConfig } from "../../core/nodeSim.ts";
 import type { PackingMode, QueueItem, ToolProcessBehavior } from "../../core/types.ts";
 import { queueItemAmount } from "../../core/parser.ts";
+import { orderIdIndex } from "../../core/nodeOrder.ts";
+import { supplyByRaw } from "../../data/recipeDemand.ts";
+import { nodeDemandByRaw } from "../nodedesign/nodeQueueGenerate.ts";
 import { cidOf } from "./changeTracking.ts";
 import { resolveScenario } from "./estimateScenario.ts";
 import type { ResolvedScenario, ScenarioFieldKey } from "./estimateScenario.ts";
@@ -87,6 +90,24 @@ export function nearestPickIndex(pickTimes: readonly number[], eventTime: number
     }
   }
   return nearest;
+}
+
+/** Exact Recipe Pieces have/need shortages, matching Design mode's foldout. */
+function supplyShortages(ix: GraphIndex, level: NodeLevelConfig): SupplyShortage[] {
+  const ids = orderIdIndex(ix);
+  const demand = nodeDemandByRaw(ix, ids, level.customers);
+  const supply = supplyByRaw(level.queues);
+  const shortages: SupplyShortage[] = [];
+  for (const [dataId, { need, amount }] of demand) {
+    const have = (supply.get(dataId) ?? 0) * Math.max(1, amount);
+    if (have >= need) continue;
+    shortages.push({
+      ingredient: ids.byId.ingredient.get(dataId) ?? `ingredient ${dataId}`,
+      have,
+      need,
+    });
+  }
+  return shortages.sort((a, b) => a.ingredient.localeCompare(b.ingredient));
 }
 
 function seededRng(seed = 0x5eed): () => number {
@@ -303,6 +324,175 @@ function findLearnedBeamPlan(
     beam = next.filter((entry) => selected.has(entry)).slice(0, beamWidth);
   }
   return null;
+}
+
+interface SupplyShortage {
+  ingredient: string;
+  have: number;
+  need: number;
+}
+
+/**
+ * Complete-information planner used only by Check Solvable. Unlike the player
+ * estimator and its beam fallback, this is a backtracking state search: it
+ * tries every legal lane in a stable order, memoizes states already proven
+ * dead, and accepts a branch only when the real simulation reaches `won`.
+ * No lane or partial-state score selects the route.
+ */
+interface CompleteInformationSearchResult {
+  plan: LearnedSearchStep[] | null;
+  budgetExhausted: boolean;
+  expandedStates: number;
+  elapsedMs: number;
+}
+
+function findCompleteInformationPlan(
+  ix: GraphIndex,
+  level: NodeLevelConfig,
+  cfg: ResolvedScenario,
+  maxIterations: number,
+  behavior: EstimateBehavior,
+  maxStatesPerDepth: number,
+  settleAllBetweenPicks = false,
+): CompleteInformationSearchResult {
+  const startedAt = performance.now();
+  const initial = new NodeSimulation(ix, structuredClone(level), {
+    outOfSlotPolicy: "park-on-grid",
+    packingMode: behavior.packingMode,
+    toolProcessBehavior: behavior.toolProcessBehavior,
+    instantFlights: true,
+    continueAfterCustomerTimeout: true,
+    detectDeadlockLoss: true,
+  });
+  initial.tick(0);
+  initial.completeAllFlights();
+  syncCustomerAdmission(initial);
+
+  const settleUntilDecision = (sim: NodeSimulation): number => {
+    const startedAt = sim.time;
+    if (settleAllBetweenPicks && sim.status === "playing") {
+      sim.completeAllFlights();
+      sim.fastForward(600);
+      sim.completeAllFlights();
+      syncCustomerAdmission(sim);
+    }
+    for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
+      sim.completeAllFlights();
+      syncCustomerAdmission(sim);
+      if (pickableLanes(sim).length > 0) break;
+      const completion = sim.nextCompletionIn();
+      if (completion === null || sim.fastForward(Math.max(0.01, completion)) <= 0) break;
+    }
+    return sim.time - startedAt;
+  };
+  const stateKey = (sim: NodeSimulation): string => JSON.stringify([
+    sim.servedCount,
+    sim.active.map((customer) => [customer.index, customer.dishes.map((dish) => dish.filled)]),
+    sim.pending.map((customer) => customer.index),
+    sim.grid,
+    sim.tools.map((tool) => tool.slots.map((slot) => slot.item)),
+    sim.queueGrid.map((column) => column.map((cell) =>
+      cell && [cell.ing, cell.group, cell.item.amount ?? 1, cell.item.effects,
+        sim.freezeCount(cell.item)])),
+  ]);
+
+  const queueCells = initial.queueGrid.reduce(
+    (sum, column) => sum + column.reduce((count, cell) => count + (cell ? 1 : 0), 0),
+    0,
+  );
+  const depthLimit = Math.min(maxIterations, queueCells + 8);
+  const deadStates = new Set<string>();
+  let expandedStates = 0;
+  let prunedStates = 0;
+
+  const visit = (
+    sim: NodeSimulation,
+    path: readonly LearnedSearchStep[],
+    seenAtDepth: Map<number, Set<string>>,
+  ): LearnedSearchStep[] | null => {
+    const mandatoryWait = settleUntilDecision(sim);
+    if (sim.status === "won") return [...path];
+    if (sim.status !== "playing" || path.length >= depthLimit) return null;
+
+    const key = stateKey(sim);
+    if (deadStates.has(key)) return null;
+    const depth = path.length;
+    let seenHere = seenAtDepth.get(depth);
+    if (!seenHere) {
+      seenHere = new Set<string>();
+      seenAtDepth.set(depth, seenHere);
+    }
+    // The same complete simulation state has the same future regardless of
+    // which lane sequence reached it, so duplicates do not consume quota.
+    if (seenHere.has(key)) return null;
+    if (seenHere.size >= maxStatesPerDepth) {
+      prunedStates++;
+      return null;
+    }
+    seenHere.add(key);
+    const prunedBefore = prunedStates;
+
+    const decisions: Array<{ sim: NodeSimulation; waitBeforePickSeconds: number }> = [
+      { sim, waitBeforePickSeconds: mandatoryWait },
+    ];
+    if (!settleAllBetweenPicks) {
+      const waited = cloneSimulation(sim);
+      const completion = waited.nextCompletionIn();
+      if (completion !== null) {
+        const advanced = waited.fastForward(Math.max(0.01, completion));
+        waited.completeAllFlights();
+        syncCustomerAdmission(waited);
+        if (advanced > 0) {
+          decisions.push({ sim: waited, waitBeforePickSeconds: mandatoryWait + advanced });
+        }
+      }
+    }
+
+    for (const decision of decisions) {
+      // Lane order controls traversal only: failed branches are backtracked and
+      // every remaining legal lane is still explored within the search bound.
+      const lanes = pickableLanes(decision.sim).reverse();
+      for (const lane of lanes) {
+        expandedStates++;
+        const child = cloneSimulation(decision.sim);
+        if (!child.pick(lane)) continue;
+        child.completeAllFlights();
+        const interval = Math.max(0, cfg.pickIntervalSeconds);
+        if (interval > 0 && child.status === "playing") child.tick(interval);
+        child.completeAllFlights();
+        syncCustomerAdmission(child);
+        const step: LearnedSearchStep = {
+          lane,
+          ...(decision.waitBeforePickSeconds > 0
+            ? { waitBeforePickSeconds: decision.waitBeforePickSeconds }
+            : {}),
+        };
+        const childPath = [...path, step];
+        if (child.status === "won") return childPath;
+        if (child.status !== "playing") continue;
+        // Each root action receives a fresh per-depth quota. Previously the
+        // first DFS root could consume the shared quota and starve every later
+        // root lane, which made a larger bound paradoxically miss easy wins.
+        const childSeen = path.length === 0 ? new Map<number, Set<string>>() : seenAtDepth;
+        const solved = visit(child, childPath, childSeen);
+        if (solved) return solved;
+      }
+    }
+
+    // Only memoize a state as genuinely dead if its entire descendant tree was
+    // explored. A state above a pruned branch remains eligible through another
+    // route; pruning is an uncertainty bound, never an unsolvability proof.
+    if (prunedStates === prunedBefore) deadStates.add(key);
+    return null;
+  };
+
+  const plan = visit(initial, [], new Map<number, Set<string>>());
+  return {
+    plan,
+    budgetExhausted: prunedStates > 0,
+    expandedStates,
+    elapsedMs: performance.now() - startedAt,
+  };
 }
 
 /** True once this run has encountered grid pressure; used for failure wording, not search pruning. */
@@ -994,6 +1184,22 @@ function estimateNodeDifficultyAttempt(
         gridTight = sim.hasActiveBoss || countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
       }
     }
+    // A complete-information witness can finish with processing/merging work
+    // still in flight after its final pick. Do not fall back to the scoring
+    // picker once the witness is exhausted: settle that work and require the
+    // authored route itself to reach a win.
+    if (forcedPlan && counter >= forcedPlan.length) {
+      const startedAt = sim.time;
+      sim.fastForward(600);
+      sim.completeAllFlights();
+      pendingWaitBeforePick += sim.time - startedAt;
+      observeConcurrentWork();
+      syncCustomerAdmission(sim);
+      captureServedEvents();
+      if (sim.servedCount >= sim.totalCustomers) continue;
+      halted = "Planned route ended before the simulation reached a win.";
+      break;
+    }
     const forcedStep = forcedPlan?.[counter];
     const forcedWait = forcedStep?.waitBeforePickSeconds ?? 0;
     if (forcedWait > 0) {
@@ -1531,6 +1737,102 @@ export function estimateNodeDifficulty(
   };
   const retryCount = Math.min(10, Math.max(0, Math.floor(opts.maxRetries ?? base.retryCount)));
   const maxIterations = opts.maxIterations ?? base.maxIterations;
+
+  if (omniscient) {
+    const shortages = supplyShortages(ix, level);
+    if (shortages.length > 0) {
+      const strategyName = "supply-precheck";
+      const result = estimateNodeDifficultyAttempt(
+        ix,
+        structuredClone(level),
+        base,
+        opts.rng ?? seededRng(base.rngSeed),
+        0,
+        0,
+        "interval",
+        undefined,
+        emptyFailureKnowledge(),
+        undefined,
+        5,
+        behavior,
+        true,
+      );
+      result.solvable = false;
+      result.reason = "Missing Recipe Pieces supply: " + shortages
+        .map(({ ingredient, have, need }) => `${ingredient} has ${have}, needs ${need}`)
+        .join("; ") + ".";
+      result.attemptCount = 1;
+      result.strategyName = strategyName;
+      result.attemptedStrategyNames = [strategyName];
+      result.learnedFromFailures = 0;
+      result.failureKnowledge = emptyFailureKnowledge();
+      result.searchLimitReached = false;
+      result.searchStatesExplored = 0;
+      result.searchElapsedMs = 0;
+      return result;
+    }
+
+    const stateLimit = Math.max(1, Math.floor(opts.searchStatesPerDepth ?? 64));
+    const normalSearch = findCompleteInformationPlan(
+      ix,
+      structuredClone(level),
+      base,
+      maxIterations,
+      behavior,
+      stateLimit,
+    );
+    const settleAllSearch = normalSearch.plan ? null : findCompleteInformationPlan(
+      ix,
+      structuredClone(level),
+      base,
+      maxIterations,
+      behavior,
+      stateLimit,
+      true,
+    );
+    const plan = normalSearch.plan ?? settleAllSearch?.plan ?? null;
+    const strategyName = normalSearch.plan
+      ? "complete-information-search"
+      : "complete-information-search+settle-all";
+    const searches = settleAllSearch ? [normalSearch, settleAllSearch] : [normalSearch];
+    const statesExplored = searches.reduce((sum, search) => sum + search.expandedStates, 0);
+    const elapsedMs = searches.reduce((sum, search) => sum + search.elapsedMs, 0);
+    const prunedWithoutProof = !plan && searches.some((search) => search.budgetExhausted);
+    const result = estimateNodeDifficultyAttempt(
+      ix,
+      structuredClone(level),
+      base,
+      opts.rng ?? seededRng(base.rngSeed),
+      plan ? maxIterations : 0,
+      0,
+      "interval",
+      plan ?? undefined,
+      emptyFailureKnowledge(),
+      undefined,
+      5,
+      behavior,
+      true,
+    );
+    result.attemptCount = searches.length;
+    result.strategyName = strategyName;
+    result.attemptedStrategyNames = searches.length === 1
+      ? ["complete-information-search"]
+      : ["complete-information-search", "complete-information-search+settle-all"];
+    result.learnedFromFailures = 0;
+    result.failureKnowledge = emptyFailureKnowledge();
+    result.searchLimitReached = prunedWithoutProof;
+    result.searchStatesExplored = statesExplored;
+    result.searchElapsedMs = elapsedMs;
+    if (!plan) {
+      result.solvable = false;
+      result.reason = prunedWithoutProof
+        ? `Normal and settle-all searches pruned bounded branches after ${statesExplored} states ` +
+          `(${elapsedMs.toFixed(0)} ms); solvability is inconclusive.`
+        : "No winning route was found by either normal or settle-all complete-information search.";
+    }
+    return result;
+  }
+
   const presets = strategicPresets(base);
   const strategyRandom = base.enabled.rngSeed
     ? seededRng((base.rngSeed ^ 0x9e3779b9) >>> 0)

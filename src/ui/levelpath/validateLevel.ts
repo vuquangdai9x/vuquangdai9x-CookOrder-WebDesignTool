@@ -5,7 +5,7 @@
 // level that passes here and fails there (or vice versa) would make the table
 // worse than useless:
 //
-//   solvable  — checkNodeSolvable: can an omniscient scoring solver win it
+//   solvable  — checkNodeSolvable: can the complete-information planner win it
 //   freeze    — checkQueueThaw: can the ice in the queue always be thawed
 //   tools     — checkToolDeadlock: can a tool or preservation slot trap the run
 //
@@ -127,8 +127,11 @@ export function validateLevel(
       opts.solvability ??
       checkNodeSolvable(ix, structuredClone(config), {
         ...(opts.scenario ? { scenario: opts.scenario } : {}),
+        searchStatesPerDepth: 32,
       });
-    if (!estimate.solvable) {
+    if (estimate.searchLimitReached) {
+      errors.push(`Solvability check inconclusive: ${estimate.reason ?? "search branches were pruned"}`);
+    } else if (!estimate.solvable) {
       errors.push(`Unwinnable: ${estimate.reason ?? estimate.loseReason ?? "the solver ran out of moves"}.`);
     } else if (estimate.servedCount < estimate.totalCustomers) {
       warnings.push(`Only ${estimate.servedCount}/${estimate.totalCustomers} customers served.`);

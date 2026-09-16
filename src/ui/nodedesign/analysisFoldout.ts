@@ -53,7 +53,10 @@ export function analysisFoldout(
 
   const peakWaste = result.perCustomer.reduce((n, customer) => Math.max(n, customer.gridWaste), 0);
   const detours = result.perCustomer.reduce((n, customer) => n + customer.detours, 0);
-  const summary = result.solvable
+  const inconclusive = kind === "solvability" && result.searchLimitReached;
+  const summary = inconclusive
+    ? `inconclusive — bounded branches pruned after ${result.searchStatesExplored ?? 0} states`
+    : result.solvable
     ? `solvable — ${result.totalPicks} picks for ${result.servedCount} customers`
     : `unsolvable — served ${result.servedCount} of ${result.totalCustomers} after ${result.totalPicks} picks`;
   const parts: Array<string | HTMLElement> = [

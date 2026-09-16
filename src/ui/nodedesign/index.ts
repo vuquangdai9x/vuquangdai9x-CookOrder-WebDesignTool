@@ -577,7 +577,7 @@ export class NodeDesignView {
     });
   }
 
-  /** Run the same scoring model with complete level knowledge; timeouts are warnings only. */
+  /** Run supply proof + complete-state search; timeouts are warnings only. */
   private runSolvability(): void {
     const level = this.liveLevel();
     const signature = this.liveSignature();

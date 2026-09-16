@@ -1,8 +1,8 @@
-// Omniscient level validation. This intentionally shares the estimator's
-// scoring, logging, and replay format while changing what the solver knows:
-// every customer order and every queue row (including Hidden) is available at
-// every decision. Customer patience is reported but does not affect whether
-// the authored level has a winning route.
+// Omniscient level validation. Route selection uses a distinct complete-state
+// backtracking search, while the winning witness still shares the estimator's
+// logging and replay format. Every customer order and every queue row
+// (including Hidden) is available. Customer patience is reported but does not
+// affect whether the authored level has a winning route.
 
 import type { GraphIndex } from "../../core/nodeIndex.ts";
 import type { NodeLevelConfig } from "../../core/nodeSim.ts";
@@ -22,5 +22,5 @@ export function checkNodeSolvable(
 
 /** Cache namespace: a player estimate must never satisfy an omniscient check. */
 export function solvabilityCacheKey(scenarioKey: string): string {
-  return `solvability:${scenarioKey}`;
+  return `solvability:v2:${scenarioKey}`;
 }
