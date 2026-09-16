@@ -252,7 +252,7 @@
       "name": "Map1 Level 10",
       "weather": "Normal",
       "tag": "expert super-hard",
-      "refinedInstruction": "Create Map 1 level 10. Difficulty expert super-hard. Target 300-420s with concurrent merges and x2 player speed. Exactly 52 customers; target 84 total dishes. Use only this food content: burger, soda, and potato-only fried-basket made only from bun, patty, tomato, cheese, lettuce, cup, ice, potato. Authorized mechanics: group:combined at 23 percent, group:linked at 23 percent, queue:freeze at 25 percent; group size at most 3 and thawCount at most 3. All queue amounts are 1. Peak occupancy target <=9. Exact supply and deadlock-safe. Every content item and mechanic not positively listed here is unauthorized. Maximum four candidate attempts; select the best valid match.",
+      "refinedInstruction": "Create Map 1 level 10. Difficulty expert super-hard. Target 300-420s with concurrent merges and x2 player speed. Exactly 52 customers; target 84 total dishes. Use only this food content: burger, soda, and potato-only fried-basket made only from bun, patty, tomato, cheese, lettuce, cup, ice, potato. Authorized mechanics: group:combined at 23 percent, group:linked at 23 percent, queue:freeze at 25 percent; group size at most 3 and thawCount at most 3. Queue amounts are reference-guided and may use mixed values where valid. Peak occupancy target <=9. Exact supply and deadlock-safe. Every content item and mechanic not positively listed here is unauthorized. Maximum four candidate attempts; select the best valid match.",
       "publishedAt": "2026-09-15T18:24:07.998Z",
       "source": {
         "sessionId": "map1-l10-v2",

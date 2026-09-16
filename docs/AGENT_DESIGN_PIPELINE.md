@@ -21,7 +21,7 @@ public/agent-levels/index.json
 public/agent-levels/profiles/mina-coffee-amount-study.json
 ```
 
-The level entry includes its map, name, weather, tag, full runnable `LevelData`, source MCP session/revision, and the refined instruction needed to reprompt another agent.
+The level entry includes its map, name, weather, tag, full runnable `LevelData`, source MCP session/revision, and the refined instruction needed to reprompt another agent. The refined instruction must preserve the confirmed amount policy: an omitted or reference-guided amount preference must not be rewritten as an explicit `amount = 1` requirement.
 
 MCP working data under `outputs/mcp-level-sessions/` is local-only and ignored by Git. A published level needs only these generated runtime assets:
 
