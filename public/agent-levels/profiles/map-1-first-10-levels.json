@@ -3,7 +3,7 @@
   "id": "map-1-first-10-levels",
   "name": "Map 1 — First 10 Levels",
   "createdAt": "2026-09-15T18:23:07.657Z",
-  "updatedAt": "2026-09-15T18:24:07.998Z",
+  "updatedAt": "2026-09-16T03:08:23.766Z",
   "levels": [
     {
       "id": "map1-l01-v2-r2",
@@ -247,16 +247,17 @@
       }
     },
     {
-      "id": "map1-l10-v2-r247",
+      "id": "map1-l10-v3-r72",
       "mapId": "burger",
       "name": "Map1 Level 10",
       "weather": "Normal",
       "tag": "expert super-hard",
-      "refinedInstruction": "Create Map 1 level 10. Difficulty expert super-hard. Target 300-420s with concurrent merges and x2 player speed. Exactly 52 customers; target 84 total dishes. Use only this food content: burger, soda, and potato-only fried-basket made only from bun, patty, tomato, cheese, lettuce, cup, ice, potato. Authorized mechanics: group:combined at 23 percent, group:linked at 23 percent, queue:freeze at 25 percent; group size at most 3 and thawCount at most 3. Queue amounts are reference-guided and may use mixed values where valid. Peak occupancy target <=9. Exact supply and deadlock-safe. Every content item and mechanic not positively listed here is unauthorized. Maximum four candidate attempts; select the best valid match.",
-      "publishedAt": "2026-09-15T18:24:07.998Z",
+      "refinedInstruction": "Create Map 1 level 10. Difficulty expert super-hard. Target 300-420s with concurrent merges and x2 player speed. Exactly 52 customers; target 84 total dishes. Use only this food content: burger, soda, and potato-only fried-basket made only from bun, patty, tomato, cheese, lettuce, cup, ice, potato. Authorized mechanics: combined-slot, linked-slot, and frozen ingredient only; group size at most 3 and thawCount at most 3. Queue amounts are reference-guided and may use mixed values where valid. Peak occupancy target <=9. Exact supply and deadlock-safe. Every content item and mechanic not positively listed here is unauthorized. Maximum four candidate attempts; select the best valid match.",
+      "publishedAt": "2026-09-16T03:08:23.766Z",
       "source": {
-        "sessionId": "map1-l10-v2",
-        "revision": 247
+        "sessionId": "map1-l10-v3",
+        "revision": 72,
+        "evaluationId": "evaluation-053a28fb"
       },
       "level": {
         "id": 10,
@@ -267,9 +268,9 @@
         "shuffleDistance": 0,
         "serveableSlots": 2,
         "outOfSlotPolicy": "park-on-grid",
-        "queueString": "0,0,0,0,7,7,7,13,13,13,13%0,0,0,0,7,7,7,13,13,13,13%0,0,0,7,7,7,7,13,13,13%0,0,0,7,7,7,7,13,13,13%0,0,0,7,7,7,13,13,13,13",
+        "queueString": "0:2,13,7,0:2,13,7,0,13:2,0:2,13,7:2,0,13%7,0:2#1:1,13,7,0,13,7,0,7,0:2,13:2,7:2,0%13:2,7,0,13,7,0,13,7,13:2,7,0:2,13,7%0,13:3,7:2,0,13:2,7:2,0,0,13,7,0,13%7:2,0,13:2,7:2,0:2,13,7,7:2,0,13,7$0-4,1-4$3-7,4-7",
         "gridString": ",,,,,,,,,",
-        "customerString": "0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}"
+        "customerString": "0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24},{c2:{g1:29}}|0;0;0;{c2:{g1:29}},{c0:17}|0;0;0;{c0:17},{c1:24}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}|0;0;0;{c0:17}|0;0;0;{c1:24}|0;0;0;{c2:{g1:29}}"
       }
     }
   ]
