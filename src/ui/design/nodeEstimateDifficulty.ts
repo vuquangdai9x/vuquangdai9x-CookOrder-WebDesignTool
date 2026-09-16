@@ -66,7 +66,28 @@ interface PickupValue {
 
 type WorkWaitStrategy = "interval" | "wait-all";
 
+interface LearnedSearchStep {
+  lane: number;
+  /** Total simulated wait before this pick, including mandatory and deliberate waits. */
+  waitBeforePickSeconds?: number;
+}
+
 const CUSTOMER_PREVIEW_COUNT = 3;
+
+/** Return the closest pick to an event time; an exact midpoint favors the earlier pick. */
+export function nearestPickIndex(pickTimes: readonly number[], eventTime: number): number {
+  if (pickTimes.length === 0) return -1;
+  let nearest = 0;
+  let nearestDistance = Math.abs(pickTimes[0] - eventTime);
+  for (let index = 1; index < pickTimes.length; index++) {
+    const distance = Math.abs(pickTimes[index] - eventTime);
+    if (distance < nearestDistance) {
+      nearest = index;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
 
 function seededRng(seed = 0x5eed): () => number {
   let s = seed >>> 0;
@@ -116,20 +137,20 @@ function cloneSimulation(source: NodeSimulation): NodeSimulation {
 }
 
 /**
- * A small failure-learning beam used for the final retry. It expands only
- * currently legal picks, never reads hidden queue identities into its score,
- * and keeps just the most space-efficient partial runs.
+ * A bounded witness-search beam used for the final retry. It expands legal
+ * picks against the complete authored simulation state. Queue depletion is
+ * deliberately absent from its score; active progress and board mobility are
+ * what make a partial route promising.
  */
 function findLearnedBeamPlan(
   ix: GraphIndex,
   level: NodeLevelConfig,
   cfg: ResolvedScenario,
   maxIterations: number,
-  workWaitStrategy: WorkWaitStrategy,
   behavior: EstimateBehavior,
-  omniscient = false,
-): number[] | null {
-  type SearchNode = { sim: NodeSimulation; path: number[]; score: number };
+  allowOptionalWaits = false,
+): LearnedSearchStep[] | null {
+  type SearchNode = { sim: NodeSimulation; path: LearnedSearchStep[]; score: number };
   const initial = new NodeSimulation(ix, structuredClone(level), {
     outOfSlotPolicy: "park-on-grid",
     packingMode: behavior.packingMode,
@@ -147,36 +168,48 @@ function findLearnedBeamPlan(
   initial.completeAllFlights();
   syncCustomerAdmission(initial);
 
-  const settleUntilDecision = (sim: NodeSimulation): void => {
+  const settleUntilDecision = (sim: NodeSimulation): number => {
+    const startedAt = sim.time;
     for (let guard = 0; guard < 200 && sim.status === "playing"; guard++) {
       sim.completeAllFlights();
       syncCustomerAdmission(sim);
-      if (pickableLanes(sim).length > 0) return;
+      if (pickableLanes(sim).length > 0) return sim.time - startedAt;
       const completion = sim.nextCompletionIn();
-      if (completion === null) return;
-      if (sim.fastForward(Math.max(0.01, completion)) <= 0) return;
+      if (completion === null) return sim.time - startedAt;
+      if (sim.fastForward(Math.max(0.01, completion)) <= 0) return sim.time - startedAt;
     }
+    return sim.time - startedAt;
   };
   const stateScore = (sim: NodeSimulation): number => {
-    const relevantCustomers = omniscient ? [...sim.active, ...sim.pending] : sim.active;
-    const remaining = relevantCustomers.reduce((sum, customer) =>
+    // Full information makes future orders visible; it must not make their
+    // ingredients as urgent as the orders currently occupying the counter.
+    // Reward concrete active-order progress and board mobility instead.
+    const activeRemaining = sim.active.reduce((sum, customer) =>
       sum + (isOrdering(customer)
         ? customer.dishes.reduce((dishSum, dish) => dishSum + dish.remaining.length, 0)
         : 0), 0);
     const occupied = sim.grid.reduce((sum, cell) => sum + (cell.kind === "empty" ? 0 : 1), 0);
-    const queueLeft = sim.queueGrid.reduce(
-      (sum, column) => sum + column.reduce((count, cell) => count + (cell ? 1 : 0), 0),
-      0,
-    );
-    return sim.servedCount * 100_000 - remaining * 1_000 - occupied * 100 - queueLeft;
+    const free = sim.grid.length - occupied;
+    const legalMoves = pickableLanes(sim).length;
+    const heldOutputs = sim.tools.reduce((sum, tool) =>
+      sum + tool.slots.reduce((count, slot) => count + (slot.item?.completed ? 1 : 0), 0), 0);
+    return sim.servedCount * 100_000
+      - activeRemaining * 10_000
+      + free * 3_000
+      + legalMoves * 400
+      - heldOutputs * 1_000;
   };
   const stateKey = (sim: NodeSimulation): string => JSON.stringify([
     sim.servedCount,
-    sim.active.map((customer) => [customer.index, customer.dishes.map((dish) => dish.remaining)]),
+    sim.active.map((customer) => [customer.index, customer.dishes.map((dish) => dish.filled)]),
+    sim.pending.map((customer) => customer.index),
     sim.grid,
-    sim.tools.map((tool) => tool.slots.map((slot) =>
-      slot.item && [slot.item.ing, slot.item.elapsed, slot.item.duration, slot.item.chain, slot.item.completed])),
-    sim.queueGrid.map((column) => column.map((cell) => cell && [cell.ing, cell.group])),
+    sim.tools.map((tool) => tool.slots.map((slot) => slot.item)),
+    // Queue item amount is part of the future state: on bag levels, two cells
+    // with the same ingredient/group but different remaining bag sizes are not
+    // interchangeable. Effects are included for the same reason.
+    sim.queueGrid.map((column) => column.map((cell) =>
+      cell && [cell.ing, cell.group, cell.item.amount ?? 1, cell.item.effects])),
     sim.queueGrid.map((column) => column.slice(0, ix.doc.map.visibleRows)
       .map((cell) => cell && sim.freezeCount(cell.item))),
   ]);
@@ -192,53 +225,87 @@ function findLearnedBeamPlan(
     const next: SearchNode[] = [];
     const seen = new Set<string>();
     for (const node of beam) {
-      settleUntilDecision(node.sim);
+      const mandatoryWait = settleUntilDecision(node.sim);
       if (node.sim.status === "won") return node.path;
       if (node.sim.status !== "playing") continue;
-      // Settling can jam the grid too (an output finishing with no cell); drop
-      // the branch here, before it costs expansions — see hasStrandedOutput.
-      if (hasStrandedOutput(node.sim)) continue;
-      for (const lane of pickableLanes(node.sim)) {
-        if (++expandedStates > 20_000) return null;
-        const sim = cloneSimulation(node.sim);
-        if (!sim.pick(lane)) continue;
-        sim.completeAllFlights();
-        const interval = Math.max(0, cfg.pickIntervalSeconds);
-        if (interval > 0 && sim.status === "playing") sim.tick(interval);
-        sim.completeAllFlights();
-        if (workWaitStrategy === "wait-all" && sim.status === "playing") {
-          sim.fastForward(600);
-          sim.completeAllFlights();
+      // Search the normal configured cadence, plus bounded voluntary waits for
+      // upcoming tool completions. A held output is recoverable when a later
+      // serve frees grid space, so it is penalized by stateScore, never pruned
+      // from historical gridJams.
+      const decisions: Array<{ sim: NodeSimulation; waitBeforePickSeconds: number }> = [
+        { sim: node.sim, waitBeforePickSeconds: mandatoryWait },
+      ];
+      if (allowOptionalWaits) {
+        const waited = cloneSimulation(node.sim);
+        // One explicit wait branch per state is enough to express "let the next
+        // job finish before picking" without multiplying the beam by every
+        // combination of several consecutive idle periods. Longer waits remain
+        // representable at later decision depths and mandatory waits are handled
+        // by settleUntilDecision.
+        const completion = waited.nextCompletionIn();
+        if (completion !== null) {
+          const advanced = waited.fastForward(Math.max(0.01, completion));
+          waited.completeAllFlights();
+          syncCustomerAdmission(waited);
+          if (advanced > 0) {
+            decisions.push({ sim: waited, waitBeforePickSeconds: mandatoryWait + advanced });
+          }
         }
-        syncCustomerAdmission(sim);
-        const path = [...node.path, lane];
-        if (sim.status === "won") return path;
-        if (sim.status !== "playing") continue;
-        // A finished output stranded in its tool means the grid jammed. The
-        // runtime lets that state live (the player may still free a cell), but
-        // as a SEARCH state it is where the pre-bag rules lost outright, and
-        // keeping such branches alive floods the beam with jammed boards until
-        // the expansion budget runs out. Prune them: a good plan never jams.
-        if (hasStrandedOutput(sim)) continue;
-        const key = stateKey(sim);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        next.push({ sim, path, score: stateScore(sim) });
+      }
+
+      for (const decision of decisions) {
+        for (const lane of pickableLanes(decision.sim)) {
+          if (++expandedStates > 20_000) return null;
+          const sim = cloneSimulation(decision.sim);
+          if (!sim.pick(lane)) continue;
+          sim.completeAllFlights();
+          const interval = Math.max(0, cfg.pickIntervalSeconds);
+          if (interval > 0 && sim.status === "playing") sim.tick(interval);
+          sim.completeAllFlights();
+          syncCustomerAdmission(sim);
+          const step: LearnedSearchStep = {
+            lane,
+            ...(decision.waitBeforePickSeconds > 0
+              ? { waitBeforePickSeconds: decision.waitBeforePickSeconds }
+              : {}),
+          };
+          const path = [...node.path, step];
+          if (sim.status === "won") return path;
+          if (sim.status !== "playing") continue;
+          const key = stateKey(sim);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          next.push({ sim, path, score: stateScore(sim) });
+        }
       }
     }
     next.sort((a, b) => b.score - a.score);
-    beam = next.slice(0, 30);
+    // Preserve progress diversity instead of letting a large set of locally
+    // greedy states at one served-count tier evict every slower route. This is
+    // still score-ranked inside each tier, but keeps recoverable setup routes
+    // alive long enough to prove their later serves.
+    const beamWidth = 60;
+    const servedTierCount = new Set(next.map((entry) => entry.sim.servedCount)).size;
+    const perTier = Math.max(1, Math.floor(beamWidth / Math.max(1, servedTierCount)));
+    const tierCounts = new Map<number, number>();
+    const selected = new Set<SearchNode>();
+    for (const entry of next) {
+      const tier = entry.sim.servedCount;
+      const count = tierCounts.get(tier) ?? 0;
+      if (count >= perTier) continue;
+      tierCounts.set(tier, count + 1);
+      selected.add(entry);
+    }
+    for (const entry of next) {
+      if (selected.size >= beamWidth) break;
+      selected.add(entry);
+    }
+    beam = next.filter((entry) => selected.has(entry)).slice(0, beamWidth);
   }
   return null;
 }
 
-/**
- * True once a finished output has ever found no grid cell in this run. The
- * runtime lets the output wait in its tool (the player may still free a cell),
- * but as a SEARCH state a jam is where the pre-bag rules lost outright, and
- * keeping such branches alive floods the beam with jammed boards. Pruning on
- * the first jam keeps the planner's behaviour — a good plan never jams.
- */
+/** True once this run has encountered grid pressure; used for failure wording, not search pruning. */
 function hasStrandedOutput(sim: NodeSimulation): boolean {
   return sim.gridJams > 0;
 }
@@ -252,7 +319,7 @@ function estimateNodeDifficultyAttempt(
   maxIterations: number,
   exploration: number,
   workWaitStrategy: WorkWaitStrategy,
-  forcedPicks?: readonly number[],
+  forcedPlan?: readonly LearnedSearchStep[],
   failureKnowledge: EstimateFailureKnowledge = emptyFailureKnowledge(),
   adaptiveStrategies?: readonly ScoringStrategy[],
   adaptivePickInterval = 5,
@@ -277,6 +344,8 @@ function estimateNodeDifficultyAttempt(
   const costs = new Map<number, CustomerCost>();
   const occupancyHistory: OccupancySample[] = [];
   const replaySteps: EstimateReplayStep[] = [];
+  const pickTimes: number[] = [];
+  const servedAtByCustomer = new Map<number, number>();
   let currentReplayLaneScores: (number | null)[] = [];
   let counter = 0;
   let iterations = 0;
@@ -285,6 +354,17 @@ function estimateNodeDifficultyAttempt(
   let peakConcurrentWork = 0;
   let nextAdaptiveEvaluationPick = 0;
   const adaptiveStrategyHistory: EstimatePickingStrategyName[] = [];
+
+  // Events are sampled throughout the run because NodeSimulation intentionally
+  // keeps only a bounded recent log. Customer indices are unique, so rescanning
+  // the current window is idempotent.
+  const captureServedEvents = (): void => {
+    for (const event of sim.events) {
+      if (event.type === "served" && event.customerIndex !== undefined) {
+        servedAtByCustomer.set(event.customerIndex, event.atTime);
+      }
+    }
+  };
 
   const observeConcurrentWork = (): void => {
     peakConcurrentWork = Math.max(peakConcurrentWork, sim.cookingCount + sim.flights.length);
@@ -792,8 +872,9 @@ function estimateNodeDifficultyAttempt(
     const items = cells
       .map((cell) => sim.queueGrid[cell.x]?.[cell.y])
       .filter((cell): cell is NonNullable<typeof cell> => cell !== null);
-    const activeBefore = new Set(sim.active.map((customer) => customer.index));
+    const pickTime = sim.time;
     if (!sim.pick(lane)) return false;
+    pickTimes.push(pickTime);
     observeConcurrentWork();
     replaySteps.push({
       lane,
@@ -816,14 +897,14 @@ function estimateNodeDifficultyAttempt(
     else if (best) cost.bestPicks++;
     advanceBetweenPicks();
     syncCustomerAdmission(sim);
-    const stillActive = new Set(sim.active.map((customer) => customer.index));
+    captureServedEvents();
     occupancyHistory.push({
       ...sampleOccupancy(),
       score,
       random,
       customerIndex,
       pickedNames: items.map((cell) => nameOfItem(cell.item, cell.ing)),
-      completesCustomers: [...activeBefore].filter((index) => !stillActive.has(index)),
+      completesCustomers: [],
     });
     return true;
   };
@@ -895,6 +976,7 @@ function estimateNodeDifficultyAttempt(
   sim.tick(0);
   sim.completeAllFlights();
   syncCustomerAdmission(sim);
+  captureServedEvents();
 
   while (sim.status === "playing" && iterations < maxIterations) {
     iterations++;
@@ -911,6 +993,17 @@ function estimateNodeDifficultyAttempt(
         syncCustomerAdmission(sim);
         gridTight = sim.hasActiveBoss || countGrid().free <= sim.grid.length * cfg.gridTightThreshold;
       }
+    }
+    const forcedStep = forcedPlan?.[counter];
+    const forcedWait = forcedStep?.waitBeforePickSeconds ?? 0;
+    if (forcedWait > 0) {
+      const startedAt = sim.time;
+      sim.fastForward(forcedWait);
+      sim.completeAllFlights();
+      pendingWaitBeforePick += sim.time - startedAt;
+      observeConcurrentWork();
+      syncCustomerAdmission(sim);
+      if (sim.status !== "playing") continue;
     }
     pickupValues = buildPickupValues();
     const lanes = pickableLanes(sim);
@@ -941,11 +1034,14 @@ function estimateNodeDifficultyAttempt(
       const candidate = scoresByLane[lane]!;
       if (candidate.score > best.score) best = { lane, ...candidate };
     }
-    const forcedLane = forcedPicks?.[counter];
+    const forcedLane = forcedStep?.lane;
     if (forcedLane !== undefined && pickable.has(forcedLane)) {
       best = { lane: forcedLane, ...(scoresByLane[forcedLane] ?? {
         score: 0, customerIndex: -1, fromFront: false, best: false,
       }) };
+    } else if (forcedLane !== undefined) {
+      halted = `Planned lane ${forcedLane + 1} is no longer pickable.`;
+      break;
     }
     // Failed player runs retry among visible choices. Omniscient solvability
     // uses the same exploration model after scoring every authored row.
@@ -959,7 +1055,10 @@ function estimateNodeDifficultyAttempt(
       }
     }
     if (best.lane !== -1) {
-      if (waitForCapacityBefore(best.lane)) continue;
+      // A beam witness was generated against the simulation's real capacity
+      // rules. Do not insert the estimate picker's conservative capacity wait
+      // while replaying it, or the timed witness becomes a different route.
+      if (!forcedStep && waitForCapacityBefore(best.lane)) continue;
       const owner = best.customerIndex >= 0
         ? best.customerIndex
         : (sim.active.find(isOrdering)?.index ?? sim.active[0]?.index ?? 0);
@@ -989,6 +1088,16 @@ function estimateNodeDifficultyAttempt(
     if (!take(fallback, fallbackOwner, true, 0, true)) break;
     measure();
   }
+
+  captureServedEvents();
+  // A customer can finish while cooking advances between decisions. Graph
+  // samples exist only at picks, so attach every served event to the pick
+  // closest in gameplay time instead of silently dropping in-between serves.
+  for (const [customerIndex, servedAt] of servedAtByCustomer) {
+    const pickIndex = nearestPickIndex(pickTimes, servedAt);
+    if (pickIndex >= 0) occupancyHistory[pickIndex]?.completesCustomers.push(customerIndex);
+  }
+  for (const sample of occupancyHistory) sample.completesCustomers.sort((a, b) => a - b);
 
   const bailed = sim.status === "playing" && !halted;
   const lost = sim.status === "lost";
@@ -1453,31 +1562,36 @@ export function estimateNodeDifficulty(
       cfg: applyFailureKnowledge(baseline.cfg, attemptKnowledge),
       workWaitStrategy: attempt > 0 ? "wait-all" as WorkWaitStrategy : baseline.workWaitStrategy,
     };
-    let forcedPicks: readonly number[] | undefined;
-    // Keep the bounded final beam attempt as a safety net after Adaptive has been exercised. This
-    // preserves proven hard-level coverage without skipping the requested adaptive fallback.
-    if (attempt > 0 && attempt >= Math.max(1, retryCount - 1) && (!adaptive || attempt === retryCount)) {
+    let forcedPlan: readonly LearnedSearchStep[] | undefined;
+    // The final bounded witness search uses normal configured cadence. It can
+    // additionally encode deliberate waits before individual picks, rather
+    // than replacing the whole route with wait-until-idle behavior.
+    if (attempt > 0 && attempt === retryCount) {
       const planningConfig: ResolvedScenario = {
         ...base,
         enabled: { ...base.enabled },
       };
-      const searchWaitStrategy: WorkWaitStrategy = attempt === retryCount ? "interval" : "wait-all";
       const plan = findLearnedBeamPlan(
         ix,
         structuredClone(level),
         planningConfig,
         maxIterations,
-        searchWaitStrategy,
         behavior,
-        omniscient,
+      ) ?? findLearnedBeamPlan(
+        ix,
+        structuredClone(level),
+        planningConfig,
+        maxIterations,
+        behavior,
+        true,
       );
       if (plan) {
         strategy = {
-          name: `learned-space-search+${searchWaitStrategy}`,
+          name: "learned-space-search+interval",
           cfg: planningConfig,
-          workWaitStrategy: searchWaitStrategy,
+          workWaitStrategy: "interval",
         };
-        forcedPicks = plan;
+        forcedPlan = plan;
       }
     }
     const attemptRng = opts.rng ?? (strategy.cfg.enabled.rngSeed
@@ -1492,13 +1606,13 @@ export function estimateNodeDifficulty(
       // Synchronized retries already diversify through their scoring preset. Randomly leaving the
       // best visible route after every full settle reintroduced the exact grid stalls this mode
       // is intended to avoid (notably Map 1 Level 25).
-      forcedPicks || strategy.workWaitStrategy === "wait-all"
+      forcedPlan || strategy.workWaitStrategy === "wait-all"
         ? 0
         : (attempt === 0 ? 0 : Math.min(0.35, 0.08 + attempt * 0.025)),
       strategy.workWaitStrategy,
-      forcedPicks,
+      forcedPlan,
       attemptKnowledge,
-      adaptive ? presets.map((preset) => ({
+      adaptive && !forcedPlan ? presets.map((preset) => ({
         ...preset,
         cfg: applyFailureKnowledge(preset.cfg, knowledge),
         workWaitStrategy: "wait-all" as WorkWaitStrategy,

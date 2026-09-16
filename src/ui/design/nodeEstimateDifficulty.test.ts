@@ -16,6 +16,7 @@ import {
   applyFailureKnowledge,
   emptyFailureKnowledge,
   estimateNodeDifficulty,
+  nearestPickIndex,
 } from "./nodeEstimateDifficulty.ts";
 import { checkNodeSolvable } from "./checkSolvable.ts";
 
@@ -117,6 +118,55 @@ describe("estimateNodeDifficulty", () => {
         ]);
       }
     }
+  });
+
+  it("finds and replays a winning witness for imported Map 1 Level 15", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const level = toNodeLevelConfig(
+      importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 15)!,
+    );
+    const result = checkNodeSolvable(burgerIx, structuredClone(level));
+
+    expect(result.solvable, result.reason).toBe(true);
+    expect(result.servedCount).toBe(result.totalCustomers);
+    expect(result.strategyName).toBe("learned-space-search+interval");
+    expect(result.replaySteps.length).toBeGreaterThan(0);
+    const servedMarkers = result.occupancyHistory
+      .flatMap((sample) => sample.completesCustomers)
+      .sort((a, b) => a - b);
+    expect(servedMarkers).toEqual(Array.from({ length: result.totalCustomers }, (_, index) => index));
+
+    const replay = new NodeSimulation(burgerIx, structuredClone(level), {
+      outOfSlotPolicy: "park-on-grid",
+      packingMode: result.packingMode ?? "unpacked-raw",
+      toolProcessBehavior: result.toolProcessBehavior ?? "auto",
+      instantFlights: true,
+      continueAfterCustomerTimeout: true,
+      detectDeadlockLoss: true,
+    });
+    replay.tick(0);
+    replay.completeAllFlights();
+    result.replaySteps.forEach((step, index) => {
+      expect(replayPacedStep(replay, step), `Replay pick ${index + 1}`).toBe(true);
+    });
+    replay.fastForward(600);
+    replay.completeAllFlights();
+
+    // This route temporarily fills the grid while output is held in a tool.
+    // The later customer serve frees space, proving that historical gridJams
+    // are recoverable state rather than a valid beam-pruning condition.
+    expect(replay.gridJams).toBeGreaterThan(0);
+    expect(replay.status).toBe("won");
+    expect(replay.servedCount).toBe(result.totalCustomers);
+  });
+
+  it("maps an in-between customer serve to the nearest pick", () => {
+    const pickTimes = [2, 6, 11];
+    expect(nearestPickIndex(pickTimes, 2)).toBe(0);
+    expect(nearestPickIndex(pickTimes, 5)).toBe(1);
+    expect(nearestPickIndex(pickTimes, 9)).toBe(2);
+    expect(nearestPickIndex(pickTimes, 8.5)).toBe(1);
+    expect(nearestPickIndex([], 5)).toBe(-1);
   });
 
   it("keeps customer timeouts as exact warnings instead of failed attempts", () => {

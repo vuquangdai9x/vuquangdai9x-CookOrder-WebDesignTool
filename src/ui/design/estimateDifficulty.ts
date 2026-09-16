@@ -70,7 +70,7 @@ export interface OccupancySample {
   random: boolean;
   /** Name of the ingredient(s)/sweeper this pick consumed — for the chart's hover tooltip. Usually one entry; more when a combined/linked block was picked as one. */
   pickedNames: string[];
-  /** Customer index(es) whose order was fully served as a result of this pick, if any — drives the chart's per-completion marker. Usually empty or one entry. */
+  /** Customer index(es) served at this pick or closest to it in gameplay time — drives the chart's per-completion marker. Usually empty or one entry. */
   completesCustomers: number[];
   /** Customer this pick was attributed to — lets hovering a customer card light up their own points on the chart. -1 when the solver had no owner for it. */
   customerIndex: number;
