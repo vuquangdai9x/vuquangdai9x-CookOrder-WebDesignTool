@@ -127,6 +127,7 @@ import {
   levelSignature,
   scenarioSignature,
 } from "./validationCache.ts";
+import { solvabilityCacheKey } from "../design/checkSolvable.ts";
 import { computeLevelStats } from "./levelStats.ts";
 import type { LevelStats } from "./levelStats.ts";
 import { defaultGradient, metricRange, normalizeMetric, paintMetricCell } from "./metricColor.ts";
@@ -579,7 +580,7 @@ export class LevelPathView {
       }),
       button("🚦 Validate all", () => void this.validateAll(entry), {
         class: "small-btn",
-        title: "Estimate, freeze audit and deadlock audit over every level in this map",
+        title: "Omniscient solvability, freeze audit and deadlock audit over every level in this map",
       }),
       deleteBtn,
     ]);
@@ -1371,7 +1372,7 @@ ${names}${more}`)) {
       }),
       button("🚦", () => void this.validateLevels([{ entry, level }]), {
         class: "small-btn",
-        title: "Validate — playable, difficulty estimate and deadlock audit",
+        title: "Validate — omniscient solvability and deadlock audit",
       }),
       button("▶", () => this.deps.onOpenPlay(entry.docId, level.id), {
         class: "small-btn",
@@ -1736,29 +1737,28 @@ ${names}${more}`)) {
 
   private async validateLevels(targets: { entry: MapEntry; level: LevelData }[]): Promise<void> {
     if (targets.length === 0) return;
-    showBlockingOverlay(`Validating ${targets.length} level(s)…`);
+    showBlockingOverlay(`Checking solvability for ${targets.length} level(s)…`);
     await breathe();
 
-    const scenarioKey = scenarioSignature(this.scenario);
+    const scenarioKey = solvabilityCacheKey(scenarioSignature(this.scenario));
     const touched = new Set<MapEntry>();
     let done = 0;
     for (const { entry, level } of targets) {
-      showBlockingOverlay(`Validating ${++done}/${targets.length} — ${level.name}`);
+      showBlockingOverlay(`Checking solvability ${++done}/${targets.length} — ${level.name}`);
       await breathe();
 
       const signature = levelSignature(level);
       // A level nobody has touched since its last Validate has the same answer
-      // it had then — including one Design mode may have produced. Re-running
-      // the three audits to reprint the same verdict is the single biggest
+      // it had then. Re-running the three audits to reprint the same verdict is the single biggest
       // avoidable cost in a Validate All over a whole map.
       const cached = cachedStatus(entry.docId, level.id, signature, scenarioKey);
       const status =
         cached ??
         validateLevel(level, entry.ix, {
           scenario: this.scenario,
-          // Reuse whatever solve already exists for this exact level, whether
-          // it came from a generate run here or an estimate in Design mode.
-          estimate: cachedEstimate(entry.docId, level.id, signature, scenarioKey),
+          // Reuse only an omniscient result. A player-behaviour estimate is a
+          // different question and lives in a separate cache namespace.
+          solvability: cachedEstimate(entry.docId, level.id, signature, scenarioKey),
         });
       if (!cached) cacheStatus(entry.docId, level.id, signature, scenarioKey, status);
       entry.status.set(level.id, status);

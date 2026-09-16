@@ -20,6 +20,7 @@
 import { button, el } from "../dom.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
 import { estimateNodeDifficulty } from "../design/nodeEstimateDifficulty.ts";
+import { checkNodeSolvable, solvabilityCacheKey } from "../design/checkSolvable.ts";
 import { defaultScenario } from "../design/estimateScenario.ts";
 import type { EstimateScenario } from "../design/estimateScenario.ts";
 import { openEstimateScenarioDialog } from "../design/estimateScenarioDialog.ts";
@@ -30,6 +31,11 @@ import { generateNodeQueueLanes, nodeDemandByRaw } from "./nodeQueueGenerate.ts"
 import type { QueueDraft, QueueSectionDeps } from "../design/queueSection.ts";
 import type { Section } from "../design/section.ts";
 import { createNodeCustomerSection } from "./nodeCustomerSection.ts";
+import {
+  analysisFoldout,
+  defaultAnalysisFoldoutUi,
+  type AnalysisFoldoutUi,
+} from "./analysisFoldout.ts";
 import { openNodeGenerateDialog } from "./nodeGenerateDialog.ts";
 import { openNodeEstimateReplay } from "../nodeplay/index.ts";
 import { parseGrid, parseQueueGroups, parseQueues, serializeGrid, serializeQueues } from "../../core/parser.ts";
@@ -79,6 +85,13 @@ export class NodeDesignView {
   private queueDeps!: QueueSectionDeps;
   /** Last Estimate Difficulty run for the OPEN level; cleared on any level switch. */
   private estimate: EstimateResult | null = null;
+  /** Last omniscient Check Solvable run for the open level. */
+  private solvability: EstimateResult | null = null;
+  /** The run currently visualized by the customer log/chart and queue overlay. */
+  private analysis: EstimateResult | null = null;
+  private analysisKind: "estimate" | "solvability" | null = null;
+  private estimateFoldoutUi: AnalysisFoldoutUi = defaultAnalysisFoldoutUi();
+  private solvabilityFoldoutUi: AnalysisFoldoutUi = defaultAnalysisFoldoutUi();
   /**
    * Scoring scenario the modal opens with. Kept on the view rather than per
    * level: a designer tuning the solver wants the same scenario while they
@@ -122,6 +135,9 @@ export class NodeDesignView {
     // its own already, from a Validate or a generate run in Level Path — that
     // is what adoptCachedEstimate goes looking for, once the sections exist.
     this.estimate = null;
+    this.solvability = null;
+    this.analysis = null;
+    this.analysisKind = null;
     this.build();
     this.onLevelChange?.(levelId);
   }
@@ -135,6 +151,9 @@ export class NodeDesignView {
     const saved = () => {
       this.onChange();
       this.refreshWarnings();
+    };
+    const invalidateAnalysis = () => {
+      this.invalidateAnalysis();
     };
     // The queue's Recipe Pieces foldout reads the other two drafts, so their
     // commits re-render it.
@@ -154,7 +173,7 @@ export class NodeDesignView {
       currentCustomers: () => this.flatCustomers(),
       currentGrid: () => this.grid.draft,
       onSaved: saved,
-      currentEstimate: () => this.estimate,
+      currentEstimate: () => this.analysis,
       // The one part of the reused queue section that cannot come through
       // verbatim. `deps.map` is the lossy projection, where a multi-input
       // recipe has already collapsed to its first ingredient — generating from
@@ -172,6 +191,7 @@ export class NodeDesignView {
         }),
       recipeDemand: () =>
         nodeDemandByRaw(this.projected.ix, orderIdIndex(this.projected.ix), this.customers.draft),
+      onCommit: invalidateAnalysis,
       // Retained for the legacy tool/grid deadlock checker. The current Design
       // button is picking-order-only, but this keeps the integration available
       // if the legacy analysis is exposed separately in the future.
@@ -190,51 +210,11 @@ export class NodeDesignView {
       level: this.level,
       onSaved: saved,
       onCommit: () => {
-        this.estimate = null; // any edit invalidates the pickup-order overlay
-        this.refreshReplayButton();
+        invalidateAnalysis(); // any edit invalidates both solver runs and the pickup-order overlay
         refreshQueueReadout();
       },
-      onEstimate: () => this.runEstimate(),
-      onReplayEstimate: () => {
-        if (this.estimate) {
-          openNodeEstimateReplay(this.project, this.level.id, this.estimate.replaySteps, {
-            packingMode: this.estimate.packingMode ?? playPackingMode(),
-            toolProcessBehavior: this.estimate.toolProcessBehavior ?? playToolProcessBehavior(),
-          });
-        }
-      },
-      currentEstimate: () => this.estimate,
+      currentEstimate: () => this.analysis,
       onHoverCustomer: (index) => this.highlightCustomer(index),
-      onAutoGenerate: () =>
-        openNodeGenerateDialog({
-          ix: this.projected.ix,
-          ids: orderIdIndex(this.projected.ix),
-          projected: this.projected,
-          level: this.level,
-          currentCustomers: () => this.customers.draft,
-          scenario: this.scenario,
-          // The pipeline writes the customer AND queue strings straight onto
-          // the level, so the sections are rebuilt from it rather than patched:
-          // a generated level replaces both at once, and half-applying it would
-          // leave a queue that does not supply the orders beside it.
-          onGenerated: (result) => {
-            this.estimate = result.estimate;
-            // The pipeline verified this build with a real solve against the
-            // strings it just wrote. Publish it so Level Path's Validate — and
-            // this view's own Estimate button — do not pay for it again.
-            if (result.ok && result.estimate) {
-              cacheEstimate(
-                this.project.docId,
-                this.level.id,
-                levelSignature(this.level),
-                scenarioSignature(this.scenario),
-                result.estimate,
-              );
-            }
-            this.build();
-            saved();
-          },
-        }),
     });
 
     this.grid = createGridSection({
@@ -243,7 +223,10 @@ export class NodeDesignView {
       level: this.level,
       parse: () => parseGrid(this.level.gridString),
       onSaved: saved,
-      onCommit: refreshQueueReadout,
+      onCommit: () => {
+        invalidateAnalysis();
+        refreshQueueReadout();
+      },
     });
 
     this.queues = createQueueSection(this.queueDeps);
@@ -278,9 +261,11 @@ export class NodeDesignView {
     );
     if (!cached) return;
     this.estimate = cached;
+    this.analysis = cached;
+    this.analysisKind = "estimate";
     this.customers.render();
     this.queues.render();
-    this.refreshReplayButton();
+    this.renderLayout();
   }
 
   /**
@@ -309,8 +294,29 @@ export class NodeDesignView {
     this.root.replaceChildren(
       this.levelBar(),
       this.warningsEl,
+      this.analysisFoldouts(),
       this.layoutMode === "split" ? this.splitLayout() : this.stackLayout(),
     );
+  }
+
+  /** Page-level results stay between warnings and Grid in every layout mode. */
+  private analysisFoldouts(): HTMLElement {
+    return el("div", { class: "design-analysis-foldouts" }, [
+      analysisFoldout(
+        this.estimate,
+        "estimate",
+        this.estimateFoldoutUi,
+        () => this.replayEstimate(),
+        () => this.renderLayout(),
+      ),
+      analysisFoldout(
+        this.solvability,
+        "solvability",
+        this.solvabilityFoldoutUi,
+        () => this.replaySolvability(),
+        () => this.renderLayout(),
+      ),
+    ]);
   }
 
   private setLayoutMode(mode: LayoutMode): void {
@@ -405,6 +411,7 @@ export class NodeDesignView {
       const input = el("input", { value: String(value), type }) as HTMLInputElement;
       input.addEventListener("change", () => {
         apply(input.value);
+        this.invalidateAnalysis();
         this.onChange();
       });
       return el("label", { class: "field small" }, [label, input]);
@@ -428,10 +435,25 @@ export class NodeDesignView {
       }
       select.addEventListener("change", () => {
         apply(select.value);
+        this.invalidateAnalysis();
         this.onChange();
       });
       return el("label", { class: "field small" }, [label, select]);
     };
+
+    const actions = el("div", { class: "level-analysis-actions" }, [
+      button("✨ Auto Generate", () => this.openGenerate(), {
+        title: "Generate customers and queues from the level's generator settings",
+      }),
+      button("📊 Estimate Difficulty", () => this.runEstimate(), {
+        title: "Simulate player-visible behavior and report difficulty, guessing, and grid pressure",
+      }),
+      button("✓ Check Solvable", () => this.runSolvability(), {
+        title: "Check for a winning route with full knowledge of every customer and queue slot, including Hidden slots",
+      }),
+      button("+ Level", () => this.addLevel()),
+      button("🗑 Level", () => this.deleteLevel(), { class: "danger" }),
+    ]);
 
     return el("div", { class: "level-bar" }, [
       el("label", { class: "field small" }, ["Map", mapPicker]),
@@ -446,8 +468,7 @@ export class NodeDesignView {
       selectField("Tag", TAGS, this.level.levelTag, (v) => (this.level.levelTag = v)),
       metaField("Unlock", this.level.featureUnlock, "text", (v) => (this.level.featureUnlock = v)),
       el("span", { class: "spacer" }),
-      button("+ Level", () => this.addLevel()),
-      button("🗑 Level", () => this.deleteLevel(), { class: "danger" }),
+      actions,
     ]);
   }
 
@@ -506,16 +527,104 @@ export class NodeDesignView {
         cachedEstimate(this.project.docId, this.level.id, signature, scenarioKey) ??
         estimateNodeDifficulty(this.projected.ix, structuredClone(level), { scenario, ...behavior });
       cacheEstimate(this.project.docId, this.level.id, signature, scenarioKey, this.estimate);
+      this.analysis = this.estimate;
+      this.analysisKind = "estimate";
     } catch (err) {
       this.estimate = null;
-      this.refreshReplayButton();
+      if (this.analysisKind === "estimate") {
+        this.analysis = null;
+        this.analysisKind = null;
+      }
+      this.customers.render();
+      this.queues.render();
+      this.renderLayout();
       console.error("Estimate Difficulty failed", err);
       alert(`Estimate Difficulty failed: ${(err as Error).message}`);
       return;
     }
     this.customers.render();
     this.queues.render();
-    this.refreshReplayButton();
+    this.renderLayout();
+  }
+
+  private openGenerate(): void {
+    openNodeGenerateDialog({
+      ix: this.projected.ix,
+      ids: orderIdIndex(this.projected.ix),
+      projected: this.projected,
+      level: this.level,
+      currentCustomers: () => this.customers.draft,
+      scenario: this.scenario,
+      // Generation replaces customer and queue data as one verified unit.
+      onGenerated: (result) => {
+        this.estimate = result.estimate;
+        this.solvability = null;
+        this.analysis = result.estimate;
+        this.analysisKind = result.estimate ? "estimate" : null;
+        if (result.ok && result.estimate) {
+          cacheEstimate(
+            this.project.docId,
+            this.level.id,
+            levelSignature(this.level),
+            scenarioSignature(this.scenario),
+            result.estimate,
+          );
+        }
+        this.build();
+        this.onChange();
+        this.refreshWarnings();
+      },
+    });
+  }
+
+  /** Run the same scoring model with complete level knowledge; timeouts are warnings only. */
+  private runSolvability(): void {
+    const level = this.liveLevel();
+    const signature = this.liveSignature();
+    const behavior = this.estimateBehavior();
+    const scenarioKey = solvabilityCacheKey(scenarioSignature(this.scenario, behavior));
+    try {
+      this.solvability =
+        cachedEstimate(this.project.docId, this.level.id, signature, scenarioKey) ??
+        checkNodeSolvable(this.projected.ix, structuredClone(level), {
+          scenario: this.scenario,
+          ...behavior,
+        });
+      cacheEstimate(this.project.docId, this.level.id, signature, scenarioKey, this.solvability);
+      this.analysis = this.solvability;
+      this.analysisKind = "solvability";
+    } catch (err) {
+      this.solvability = null;
+      if (this.analysisKind === "solvability") {
+        this.analysis = null;
+        this.analysisKind = null;
+      }
+      this.customers.render();
+      this.queues.render();
+      this.renderLayout();
+      console.error("Check Solvable failed", err);
+      alert(`Check Solvable failed: ${(err as Error).message}`);
+      return;
+    }
+    this.customers.render();
+    this.queues.render();
+    this.renderLayout();
+  }
+
+  private replayEstimate(): void {
+    if (!this.estimate) return;
+    openNodeEstimateReplay(this.project, this.level.id, this.estimate.replaySteps, {
+      packingMode: this.estimate.packingMode ?? playPackingMode(),
+      toolProcessBehavior: this.estimate.toolProcessBehavior ?? playToolProcessBehavior(),
+    });
+  }
+
+  private replaySolvability(): void {
+    if (!this.solvability) return;
+    openNodeEstimateReplay(this.project, this.level.id, this.solvability.replaySteps, {
+      packingMode: this.solvability.packingMode ?? playPackingMode(),
+      toolProcessBehavior: this.solvability.toolProcessBehavior ?? playToolProcessBehavior(),
+    }, "Solvability Check Replay");
   }
 
   private estimateBehavior(): { packingMode: PackingMode; toolProcessBehavior: ToolProcessBehavior } {
@@ -523,6 +632,22 @@ export class NodeDesignView {
       packingMode: playPackingMode(),
       toolProcessBehavior: playToolProcessBehavior(),
     };
+  }
+
+  private invalidateAnalysis(): void {
+    const hadAnalysis = this.analysis !== null || this.estimate !== null || this.solvability !== null;
+    this.estimate = null;
+    this.solvability = null;
+    this.analysis = null;
+    this.analysisKind = null;
+    // Section.commit() renders before firing onCommit, so clear the just-drawn
+    // result bar and pickup overlay once more after invalidation.
+    if (hadAnalysis) {
+      this.customers?.render();
+      this.queues?.render();
+      this.renderLayout();
+      return;
+    }
   }
 
   /**
@@ -533,8 +658,8 @@ export class NodeDesignView {
    */
   private highlightCustomer(index: number | null): void {
     const cids = new Set<string>();
-    if (index !== null && this.estimate) {
-      for (const [cid, slot] of this.estimate.byCid) {
+    if (index !== null && this.analysis) {
+      for (const [cid, slot] of this.analysis.byCid) {
         if (slot.customerIndex === index) cids.add(cid);
       }
     }
@@ -548,23 +673,16 @@ export class NodeDesignView {
         tile.classList.toggle("customer-hit", !!cid && cids.has(cid));
       });
     }
-    // The chart lives in the customers section, and its points carry the owning
-    // customer directly (see occupancyChart.ts).
-    const chart = this.customers?.element.querySelector<HTMLElement>(".occupancy-chart");
-    if (chart) {
+    // Both page-level charts carry the owning customer on each point (see
+    // occupancyChart.ts), so hover feedback applies to either open foldout.
+    this.root.querySelectorAll<HTMLElement>(".occupancy-chart").forEach((chart) => {
       chart.classList.toggle("customer-focus", index !== null);
       if (index !== null) chart.style.setProperty("--focus-color", customerColor(index));
       chart.querySelectorAll<SVGElement>(".occupancy-point").forEach((point) => {
         const owner = point.dataset.customer;
         point.classList.toggle("customer-hit", index !== null && owner === String(index));
       });
-    }
-  }
-
-  /** Section headers persist while their bodies re-render, so update this control explicitly. */
-  private refreshReplayButton(): void {
-    const replay = this.root.querySelector<HTMLButtonElement>(".estimate-replay-btn");
-    if (replay) replay.disabled = !(this.estimate?.replaySteps.length);
+    });
   }
 
   /** Same bar, same `.ok` styling as legacy — sourced from the graph's invariants. */

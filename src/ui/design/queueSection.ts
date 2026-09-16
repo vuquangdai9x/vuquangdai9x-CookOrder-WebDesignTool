@@ -532,7 +532,7 @@ function toolbar(
       class: "pickup-toggle",
       title: hasEstimate
         ? "Design-view only — colours each tile by the customer it gets picked for and numbers it in pickup order. Never saved."
-        : "Run Estimate Difficulty on the Customers panel first",
+        : "Run Estimate Difficulty or Check Solvable in the config panel first",
     },
     [pickupCheckbox, "Show pickup order"],
   );

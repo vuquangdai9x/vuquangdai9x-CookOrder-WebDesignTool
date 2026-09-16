@@ -5,7 +5,7 @@
 // level that passes here and fails there (or vice versa) would make the table
 // worse than useless:
 //
-//   estimate  — nodeEstimateDifficulty: can a good player win it at all
+//   solvable  — checkNodeSolvable: can an omniscient scoring solver win it
 //   freeze    — checkQueueThaw: can the ice in the queue always be thawed
 //   tools     — checkToolDeadlock: can a tool or preservation slot trap the run
 //
@@ -15,7 +15,7 @@
 // 400ms" and "there is no problem" are different claims, and only one of them
 // is safe to act on.
 
-import { estimateNodeDifficulty } from "../design/nodeEstimateDifficulty.ts";
+import { checkNodeSolvable } from "../design/checkSolvable.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
 import type { EstimateScenario } from "../design/estimateScenario.ts";
 import { checkQueueThaw } from "../design/queueThawCheck.ts";
@@ -58,7 +58,7 @@ export interface LevelStatus {
   ok: boolean;
   errors: string[];
   warnings: string[];
-  /** Set by a Validate run; absent until one has happened. */
+  /** Omniscient run used by Validate; absent until validation has happened. */
   estimate?: EstimateResult | null;
   /** Wall-clock cost, so a designer can see which levels are expensive to audit. */
   elapsedMs?: number;
@@ -74,14 +74,8 @@ export interface ValidateOptions {
   budgetMs?: number;
   /** Skip the tool/slot audit — the expensive one — when only playability matters. */
   skipDeadlock?: boolean;
-  /**
-   * An estimate already computed for THIS level under THIS scenario — from the
-   * shared cache, or from the generate run that just produced the level. Given
-   * one, the solver is not run again: it is the single most expensive thing
-   * here, and re-solving identical input to get an identical answer is the
-   * whole cost this avoids.
-   */
-  estimate?: EstimateResult | null;
+  /** An omniscient solvability result already computed for this exact level. */
+  solvability?: EstimateResult | null;
 }
 
 /**
@@ -130,8 +124,8 @@ export function validateLevel(
   // ---- playable ----
   try {
     estimate =
-      opts.estimate ??
-      estimateNodeDifficulty(ix, structuredClone(config), {
+      opts.solvability ??
+      checkNodeSolvable(ix, structuredClone(config), {
         ...(opts.scenario ? { scenario: opts.scenario } : {}),
       });
     if (!estimate.solvable) {
@@ -143,7 +137,7 @@ export function validateLevel(
     if (timedOutCustomers.length > 0) {
       warnings.push(
         `Customer${timedOutCustomers.length === 1 ? "" : "s"} ` +
-        `${timedOutCustomers.join(", ")} timed out during estimation.`,
+        `${timedOutCustomers.join(", ")} timed out during the solvability check.`,
       );
     }
   } catch (err) {

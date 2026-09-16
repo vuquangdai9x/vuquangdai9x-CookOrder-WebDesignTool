@@ -121,6 +121,14 @@ describe("the shared cache", () => {
     expect(cachedEstimate("burger", 3, signature, "other-scenario")).toBeNull();
   });
 
+  it("keeps player-estimate and solvability namespaces side by side", () => {
+    const signature = levelSignature(strings);
+    cacheEstimate("burger", 3, signature, DEFAULT_SCENARIO, estimateOf(42));
+    cacheEstimate("burger", 3, signature, `solvability:${DEFAULT_SCENARIO}`, estimateOf(17));
+    expect(cachedEstimate("burger", 3, signature, DEFAULT_SCENARIO)?.totalPicks).toBe(42);
+    expect(cachedEstimate("burger", 3, signature, `solvability:${DEFAULT_SCENARIO}`)?.totalPicks).toBe(17);
+  });
+
   it("keeps levels of different maps apart even at the same id", () => {
     const signature = levelSignature(strings);
     cacheEstimate("burger", 1, signature, DEFAULT_SCENARIO, estimateOf(10));

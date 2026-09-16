@@ -17,6 +17,7 @@ import {
   emptyFailureKnowledge,
   estimateNodeDifficulty,
 } from "./nodeEstimateDifficulty.ts";
+import { checkNodeSolvable } from "./checkSolvable.ts";
 
 function replayPacedStep(sim: NodeSimulation, step: {
   lane: number;
@@ -128,6 +129,17 @@ describe("estimateNodeDifficulty", () => {
     expect(result.loseReason).not.toBe("customer-timeout");
     expect(result.timedOutCustomers.length).toBeGreaterThan(0);
     expect(result.timedOutCustomers).toEqual([...new Set(result.timedOutCustomers)].sort((a, b) => a - b));
+  });
+
+  it("keeps an omniscient solvability win when customers time out", () => {
+    const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
+    const level = toNodeLevelConfig(importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 1)!);
+    for (const customer of level.customers) customer.waitTime = 0.01;
+
+    const result = checkNodeSolvable(burgerIx, level);
+
+    expect(result.solvable, result.reason).toBe(true);
+    expect(result.timedOutCustomers.length).toBeGreaterThan(0);
   });
 
   it("turns an earlier failure into bounded tuning for the next attempt", () => {
@@ -346,6 +358,54 @@ describe("estimateNodeDifficulty", () => {
     const [bean, ice] = estimate.replaySteps[0].laneScores as number[];
     expect(bean).toBeGreaterThan(0);
     expect(bean).toBeGreaterThan(ice);
+  });
+
+  it("lets solvability scoring use exact orders behind a boss preview barrier", () => {
+    const level = coffeeLevel();
+    level.serveableSlots = 1;
+    level.queues = [
+      [{ kind: "ingredient", id: 9, effects: [] }], // coffee bean
+      [{ kind: "ingredient", id: 11, effects: [] }], // ice
+    ];
+    level.queueGroups = [];
+    level.customers = [
+      {
+        typeId: 0,
+        waitTime: 0,
+        weatherEff: 0,
+        dishes: [{
+          root: { kind: "composite", id: 0, members: [{ kind: "ingredient", id: 0 }] },
+          effects: [],
+        }],
+      },
+      {
+        typeId: 0,
+        waitTime: 0,
+        weatherEff: 0,
+        isBoss: true,
+        dishes: [{
+          root: { kind: "composite", id: 3, members: [{ kind: "ingredient", id: 24 }] },
+          effects: [],
+        }],
+      },
+    ];
+
+    const player = estimateNodeDifficulty(ix, structuredClone(level), {
+      maxIterations: 1,
+      maxRetries: 0,
+      rng: () => 0,
+    });
+    const omniscient = estimateNodeDifficulty(ix, structuredClone(level), {
+      informationMode: "omniscient",
+      maxIterations: 1,
+      maxRetries: 0,
+      rng: () => 0,
+    });
+
+    expect(player.replaySteps[0].laneScores).toEqual([0, 0]);
+    expect(omniscient.replaySteps[0].laneScores[0]!).toBeGreaterThan(
+      omniscient.replaySteps[0].laneScores[1]!,
+    );
   });
 
   it("uses abstract customer width when deciding whether demand is active or preview-only", () => {

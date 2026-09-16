@@ -597,11 +597,11 @@ function buildCandidate(
     // budget — deliberately, not for convenience. A gate that is any weaker
     // than the Validate button emits levels that fail validation the moment a
     // designer presses it, which is exactly the loop this gate exists to close.
-    // The estimate is handed over so the expensive solve is not repeated.
+    // Solvability is intentionally re-run with omniscient information here;
+    // the player-behaviour estimate above cannot stand in for that proof.
     const verdict = validateLevel(probe, ctx.ix, {
       ...(ctx.scenario ? { scenario: ctx.scenario } : {}),
       ...(config.deadlockRuns !== undefined ? { deadlockRuns: config.deadlockRuns } : {}),
-      estimate,
     });
     if (verdict.errors.length > 0) {
       return { ...built, ok: false, failure: verdict.errors.join("; ") };
