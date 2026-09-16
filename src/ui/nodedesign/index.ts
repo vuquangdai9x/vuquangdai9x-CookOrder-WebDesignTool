@@ -18,11 +18,19 @@
 // multi-input tool lanes can diverge from the popup.
 
 import { button, el } from "../dom.ts";
-import type { EstimateResult } from "../design/estimateDifficulty.ts";
-import { estimateNodeDifficulty } from "../design/nodeEstimateDifficulty.ts";
-import { checkNodeSolvable, solvabilityCacheKey } from "../design/checkSolvable.ts";
-import { defaultScenario } from "../design/estimateScenario.ts";
+import type { EstimateProgress, EstimateResult } from "../design/estimateDifficulty.ts";
+import { solvabilityCacheKey } from "../design/checkSolvable.ts";
+import { defaultScenario, resolveScenario } from "../design/estimateScenario.ts";
 import type { EstimateScenario } from "../design/estimateScenario.ts";
+import type {
+  AnalysisWorkerKind,
+  AnalysisWorkerOptions,
+  AnalysisWorkerRequest,
+  AnalysisWorkerResponse,
+} from "../design/analysisWorker.ts";
+import type { StatisticReport } from "../design/statisticsReport.ts";
+import { STATISTIC_RUNS } from "../design/statisticsReport.ts";
+import type { StatisticsWorkerRequest, StatisticsWorkerResponse } from "../design/statisticsWorker.ts";
 import { openEstimateScenarioDialog } from "../design/estimateScenarioDialog.ts";
 import { customerColor } from "../design/customerColors.ts";
 import { createGridSection } from "../design/gridSection.ts";
@@ -36,6 +44,11 @@ import {
   defaultAnalysisFoldoutUi,
   type AnalysisFoldoutUi,
 } from "./analysisFoldout.ts";
+import {
+  openStatisticsModal,
+  statisticsFoldout,
+  type StatisticsFoldoutUi,
+} from "./statisticsFoldout.ts";
 import { openNodeGenerateDialog } from "./nodeGenerateDialog.ts";
 import { openNodeEstimateReplay } from "../nodeplay/index.ts";
 import { parseGrid, parseQueueGroups, parseQueues, serializeGrid, serializeQueues } from "../../core/parser.ts";
@@ -87,11 +100,23 @@ export class NodeDesignView {
   private estimate: EstimateResult | null = null;
   /** Last omniscient Check Solvable run for the open level. */
   private solvability: EstimateResult | null = null;
+  /** Last Level Statistics + MCP evaluation report for the open level. */
+  private statistics: StatisticReport | null = null;
   /** The run currently visualized by the customer log/chart and queue overlay. */
   private analysis: EstimateResult | null = null;
   private analysisKind: "estimate" | "solvability" | null = null;
   private estimateFoldoutUi: AnalysisFoldoutUi = defaultAnalysisFoldoutUi();
   private solvabilityFoldoutUi: AnalysisFoldoutUi = defaultAnalysisFoldoutUi();
+  private statisticsFoldoutUi: StatisticsFoldoutUi = { open: false };
+  private estimateProgress: EstimateProgress | null = null;
+  private solvabilityProgress: EstimateProgress | null = null;
+  private statisticsProgress: EstimateProgress | null = null;
+  private estimateWorker: Worker | null = null;
+  private solvabilityWorker: Worker | null = null;
+  private statisticsWorker: Worker | null = null;
+  private estimateJobId = 0;
+  private solvabilityJobId = 0;
+  private statisticsJobId = 0;
   /**
    * Scoring scenario the modal opens with. Kept on the view rather than per
    * level: a designer tuning the solver wants the same scenario while they
@@ -129,6 +154,9 @@ export class NodeDesignView {
     if (this.isDirty && !confirm("Unsaved changes will be lost. Switch level anyway?")) return;
     const next = this.project.levels.find((l) => l.id === levelId);
     if (!next) return;
+    this.cancelAnalysisWorker("estimate");
+    this.cancelAnalysisWorker("solvability");
+    this.cancelStatisticsWorker();
     this.level = next;
     // An estimate belongs to ONE level's queue; carrying THIS one across would
     // colour tiles with numbers that mean nothing here. The new level may have
@@ -136,6 +164,7 @@ export class NodeDesignView {
     // is what adoptCachedEstimate goes looking for, once the sections exist.
     this.estimate = null;
     this.solvability = null;
+    this.statistics = null;
     this.analysis = null;
     this.analysisKind = null;
     this.build();
@@ -308,6 +337,7 @@ export class NodeDesignView {
         this.estimateFoldoutUi,
         () => this.replayEstimate(),
         () => this.renderLayout(),
+        this.estimateProgress,
       ),
       analysisFoldout(
         this.solvability,
@@ -315,6 +345,15 @@ export class NodeDesignView {
         this.solvabilityFoldoutUi,
         () => this.replaySolvability(),
         () => this.renderLayout(),
+        this.solvabilityProgress,
+      ),
+      statisticsFoldout(
+        this.statistics,
+        this.defs,
+        this.statisticsFoldoutUi,
+        () => this.openStatistics(),
+        () => this.renderLayout(),
+        this.statisticsProgress,
       ),
     ]);
   }
@@ -441,16 +480,26 @@ export class NodeDesignView {
       return el("label", { class: "field small" }, [label, select]);
     };
 
+    const autoGenerateButton = button("✨ Auto Generate", () => this.openGenerate(), {
+      title: "Generate customers and queues from the level's generator settings",
+    });
+    const estimateButton = button("📊 Estimate Difficulty", () => this.runEstimate(), {
+      title: "Simulate player-visible behavior and report difficulty, guessing, and grid pressure",
+    });
+    estimateButton.disabled = this.estimateProgress !== null;
+    const solvabilityButton = button("✓ Check Solvable", () => this.runSolvability(), {
+      title: "Check for a winning route with full knowledge of every customer and queue slot, including Hidden slots",
+    });
+    solvabilityButton.disabled = this.solvabilityProgress !== null;
+    const statisticsButton = button("Statistic", () => this.runStatistics(), {
+      title: "Compute Level Path statistics and the MCP tuning-profile evaluation metrics",
+    });
+    statisticsButton.disabled = this.statisticsProgress !== null;
     const actions = el("div", { class: "level-analysis-actions" }, [
-      button("✨ Auto Generate", () => this.openGenerate(), {
-        title: "Generate customers and queues from the level's generator settings",
-      }),
-      button("📊 Estimate Difficulty", () => this.runEstimate(), {
-        title: "Simulate player-visible behavior and report difficulty, guessing, and grid pressure",
-      }),
-      button("✓ Check Solvable", () => this.runSolvability(), {
-        title: "Check for a winning route with full knowledge of every customer and queue slot, including Hidden slots",
-      }),
+      autoGenerateButton,
+      estimateButton,
+      solvabilityButton,
+      statisticsButton,
       button("+ Level", () => this.addLevel()),
       button("🗑 Level", () => this.deleteLevel(), { class: "danger" }),
     ]);
@@ -512,6 +561,16 @@ export class NodeDesignView {
     return level;
   }
 
+  /** Canonical live strings for statistics that intentionally inspect authored text. */
+  private liveLevelData(): LevelData {
+    return {
+      ...this.level,
+      customerString: serializeNodeCustomers(this.customers.draft),
+      gridString: serializeGrid(this.grid.draft),
+      queueString: serializeQueues(this.queues.draft.queues, toCoordGroups(this.queues.draft)),
+    };
+  }
+
   /** Estimate with the same graph-native engine used by Play and replay. */
   private runEstimateWith(
     scenario: EstimateScenario,
@@ -520,31 +579,19 @@ export class NodeDesignView {
     const level = this.liveLevel();
     const signature = this.liveSignature();
     const scenarioKey = scenarioSignature(scenario, behavior);
-    try {
-      // Same level, same scenario, same answer — and Level Path may already
-      // have run it. Only actually solve on a miss.
-      this.estimate =
-        cachedEstimate(this.project.docId, this.level.id, signature, scenarioKey) ??
-        estimateNodeDifficulty(this.projected.ix, structuredClone(level), { scenario, ...behavior });
-      cacheEstimate(this.project.docId, this.level.id, signature, scenarioKey, this.estimate);
-      this.analysis = this.estimate;
+    // Same level, same scenario, same answer — and Level Path may already
+    // have run it. Only actually solve on a miss.
+    const cached = cachedEstimate(this.project.docId, this.level.id, signature, scenarioKey);
+    if (cached) {
+      this.estimate = cached;
+      this.analysis = cached;
       this.analysisKind = "estimate";
-    } catch (err) {
-      this.estimate = null;
-      if (this.analysisKind === "estimate") {
-        this.analysis = null;
-        this.analysisKind = null;
-      }
       this.customers.render();
       this.queues.render();
       this.renderLayout();
-      console.error("Estimate Difficulty failed", err);
-      alert(`Estimate Difficulty failed: ${(err as Error).message}`);
       return;
     }
-    this.customers.render();
-    this.queues.render();
-    this.renderLayout();
+    this.startAnalysisWorker("estimate", level, { scenario, ...behavior }, signature, scenarioKey);
   }
 
   private openGenerate(): void {
@@ -557,8 +604,12 @@ export class NodeDesignView {
       scenario: this.scenario,
       // Generation replaces customer and queue data as one verified unit.
       onGenerated: (result) => {
+        this.cancelAnalysisWorker("estimate");
+        this.cancelAnalysisWorker("solvability");
+        this.cancelStatisticsWorker();
         this.estimate = result.estimate;
         this.solvability = null;
+        this.statistics = null;
         this.analysis = result.estimate;
         this.analysisKind = result.estimate ? "estimate" : null;
         if (result.ok && result.estimate) {
@@ -583,32 +634,266 @@ export class NodeDesignView {
     const signature = this.liveSignature();
     const behavior = this.estimateBehavior();
     const scenarioKey = solvabilityCacheKey(scenarioSignature(this.scenario, behavior));
-    try {
-      this.solvability =
-        cachedEstimate(this.project.docId, this.level.id, signature, scenarioKey) ??
-        checkNodeSolvable(this.projected.ix, structuredClone(level), {
-          scenario: this.scenario,
-          ...behavior,
-        });
-      cacheEstimate(this.project.docId, this.level.id, signature, scenarioKey, this.solvability);
-      this.analysis = this.solvability;
+    const cached = cachedEstimate(this.project.docId, this.level.id, signature, scenarioKey);
+    if (cached) {
+      this.solvability = cached;
+      this.analysis = cached;
       this.analysisKind = "solvability";
+      this.customers.render();
+      this.queues.render();
+      this.renderLayout();
+      return;
+    }
+    this.startAnalysisWorker(
+      "solvability",
+      level,
+      { scenario: this.scenario, ...behavior },
+      signature,
+      scenarioKey,
+    );
+  }
+
+  /** Run Level Path counts and MCP's tuning-profile metrics without blocking the editor. */
+  private runStatistics(): void {
+    this.cancelStatisticsWorker();
+    const level = this.liveLevel();
+    const levelData = this.liveLevelData();
+    const signature = this.liveSignature();
+    const levelId = this.level.id;
+    const jobId = this.statisticsJobId;
+    const totalItems = level.queues.reduce((sum, lane) => sum + lane.length, 0);
+    this.statisticsProgress = {
+      run: 1,
+      runTotal: STATISTIC_RUNS,
+      pickedItems: 0,
+      totalItems,
+      percentage: totalItems === 0 ? 100 : 0,
+    };
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("../design/statisticsWorker.ts", import.meta.url), { type: "module" });
     } catch (err) {
+      this.failStatisticsWorker(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    this.statisticsWorker = worker;
+    this.renderLayout();
+    const isCurrent = (): boolean => this.statisticsJobId === jobId && this.statisticsWorker === worker;
+    worker.onmessage = (event: MessageEvent<StatisticsWorkerResponse>) => {
+      if (!isCurrent()) return;
+      const message = event.data;
+      if (message.type === "progress") {
+        this.statisticsProgress = message.progress;
+        this.paintAnalysisProgress("statistics", message.progress);
+        return;
+      }
+      worker.terminate();
+      this.statisticsWorker = null;
+      this.statisticsProgress = null;
+      if (message.type === "error") {
+        this.failStatisticsWorker(message.error, false);
+        return;
+      }
+      if (this.level.id !== levelId || this.liveSignature() !== signature) {
+        this.renderLayout();
+        return;
+      }
+      this.statistics = message.result;
+      this.statisticsFoldoutUi.open = true;
+      this.renderLayout();
+      this.openStatistics();
+    };
+    worker.onerror = (event) => {
+      if (!isCurrent()) return;
+      worker.terminate();
+      this.failStatisticsWorker(event.message || "worker crashed");
+    };
+    const request: StatisticsWorkerRequest = {
+      graph: this.project.doc,
+      level: structuredClone(level),
+      levelData,
+      referenceLevels: structuredClone(this.project.levels),
+      runs: STATISTIC_RUNS,
+    };
+    try {
+      worker.postMessage(request);
+    } catch (err) {
+      worker.terminate();
+      this.failStatisticsWorker(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  private openStatistics(): void {
+    if (this.statistics) openStatisticsModal(this.statistics, this.defs);
+  }
+
+  /** Execute an analysis away from the UI thread and stream its real queue progress into the header. */
+  private startAnalysisWorker(
+    kind: AnalysisWorkerKind,
+    level: NodeLevelConfig,
+    opts: AnalysisWorkerOptions,
+    signature: string,
+    scenarioKey: string,
+  ): void {
+    this.cancelAnalysisWorker(kind);
+    const totalItems = level.queues.reduce((sum, lane) => sum + lane.length, 0);
+    const runTotal = kind === "solvability"
+      ? 2
+      : Math.min(10, Math.max(0, Math.floor(resolveScenario(opts.scenario).retryCount))) + 1;
+    const initialProgress: EstimateProgress = {
+      run: 1,
+      runTotal,
+      pickedItems: 0,
+      totalItems,
+      percentage: totalItems === 0 ? 100 : 0,
+    };
+    const levelId = this.level.id;
+    const jobId = kind === "estimate" ? this.estimateJobId : this.solvabilityJobId;
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("../design/analysisWorker.ts", import.meta.url), { type: "module" });
+    } catch (err) {
+      this.failAnalysisWorker(kind, err instanceof Error ? err.message : String(err));
+      return;
+    }
+    if (kind === "estimate") {
+      this.estimateWorker = worker;
+      this.estimateProgress = initialProgress;
+    } else {
+      this.solvabilityWorker = worker;
+      this.solvabilityProgress = initialProgress;
+    }
+    this.renderLayout();
+
+    const isCurrent = (): boolean => kind === "estimate"
+      ? this.estimateJobId === jobId && this.estimateWorker === worker
+      : this.solvabilityJobId === jobId && this.solvabilityWorker === worker;
+    worker.onmessage = (event: MessageEvent<AnalysisWorkerResponse>) => {
+      if (!isCurrent()) return;
+      const message = event.data;
+      if (message.type === "progress") {
+        if (kind === "estimate") this.estimateProgress = message.progress;
+        else this.solvabilityProgress = message.progress;
+        this.paintAnalysisProgress(kind, message.progress);
+        return;
+      }
+      worker.terminate();
+      if (kind === "estimate") {
+        this.estimateWorker = null;
+        this.estimateProgress = null;
+      } else {
+        this.solvabilityWorker = null;
+        this.solvabilityProgress = null;
+      }
+      if (message.type === "error") {
+        this.failAnalysisWorker(kind, message.error, false);
+        return;
+      }
+      // Edits and level switches invalidate work already in flight. Never let
+      // an old worker overwrite the new level's graph or pickup overlay.
+      if (this.level.id !== levelId || this.liveSignature() !== signature) {
+        this.renderLayout();
+        return;
+      }
+      cacheEstimate(this.project.docId, levelId, signature, scenarioKey, message.result);
+      if (kind === "estimate") this.estimate = message.result;
+      else this.solvability = message.result;
+      this.analysis = message.result;
+      this.analysisKind = kind;
+      this.customers.render();
+      this.queues.render();
+      this.renderLayout();
+    };
+    worker.onerror = (event) => {
+      if (!isCurrent()) return;
+      worker.terminate();
+      this.failAnalysisWorker(kind, event.message || "worker crashed");
+    };
+    const request: AnalysisWorkerRequest = {
+      kind,
+      graph: this.project.doc,
+      level: structuredClone(level),
+      opts,
+    };
+    try {
+      worker.postMessage(request);
+    } catch (err) {
+      worker.terminate();
+      this.failAnalysisWorker(kind, err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  private paintAnalysisProgress(kind: AnalysisWorkerKind | "statistics", progress: EstimateProgress): void {
+    const section = this.root.querySelector<HTMLElement>(
+      `.design-analysis-foldout[data-analysis-kind="${kind}"]`,
+    );
+    const bar = section?.querySelector<HTMLElement>(".analysis-running");
+    const label = section?.querySelector<HTMLElement>(".analysis-progress-label");
+    if (!bar || !label) return;
+    const percentage = Math.round(progress.percentage);
+    bar.style.setProperty("--analysis-progress", `${progress.percentage}%`);
+    bar.setAttribute("aria-valuenow", String(percentage));
+    label.textContent = `${percentage}% · run ${progress.run}/${progress.runTotal} · ` +
+      `${progress.pickedItems}/${progress.totalItems} queue items`;
+  }
+
+  private failAnalysisWorker(kind: AnalysisWorkerKind, error: string, terminate = true): void {
+    if (kind === "estimate") {
+      if (terminate) this.estimateWorker?.terminate();
+      this.estimateWorker = null;
+      this.estimateProgress = null;
+      this.estimate = null;
+      if (this.analysisKind === "estimate") {
+        this.analysis = null;
+        this.analysisKind = null;
+      }
+    } else {
+      if (terminate) this.solvabilityWorker?.terminate();
+      this.solvabilityWorker = null;
+      this.solvabilityProgress = null;
       this.solvability = null;
       if (this.analysisKind === "solvability") {
         this.analysis = null;
         this.analysisKind = null;
       }
-      this.customers.render();
-      this.queues.render();
-      this.renderLayout();
-      console.error("Check Solvable failed", err);
-      alert(`Check Solvable failed: ${(err as Error).message}`);
-      return;
     }
     this.customers.render();
     this.queues.render();
     this.renderLayout();
+    const label = kind === "estimate" ? "Estimate Difficulty" : "Check Solvable";
+    console.error(`${label} failed`, error);
+    alert(`${label} failed: ${error}`);
+  }
+
+  private cancelAnalysisWorker(kind: AnalysisWorkerKind): void {
+    if (kind === "estimate") {
+      this.estimateWorker?.terminate();
+      this.estimateWorker = null;
+      this.estimateProgress = null;
+      this.estimateJobId++;
+    } else {
+      this.solvabilityWorker?.terminate();
+      this.solvabilityWorker = null;
+      this.solvabilityProgress = null;
+      this.solvabilityJobId++;
+    }
+  }
+
+  private failStatisticsWorker(error: string, terminate = true): void {
+    if (terminate) this.statisticsWorker?.terminate();
+    this.statisticsWorker = null;
+    this.statisticsProgress = null;
+    this.statistics = null;
+    this.renderLayout();
+    console.error("Statistic failed", error);
+    alert(`Statistic failed: ${error}`);
+  }
+
+  private cancelStatisticsWorker(): void {
+    this.statisticsWorker?.terminate();
+    this.statisticsWorker = null;
+    this.statisticsProgress = null;
+    this.statisticsJobId++;
   }
 
   private replayEstimate(): void {
@@ -635,9 +920,15 @@ export class NodeDesignView {
   }
 
   private invalidateAnalysis(): void {
-    const hadAnalysis = this.analysis !== null || this.estimate !== null || this.solvability !== null;
+    const hadAnalysis = this.analysis !== null || this.estimate !== null || this.solvability !== null ||
+      this.statistics !== null || this.estimateProgress !== null || this.solvabilityProgress !== null ||
+      this.statisticsProgress !== null;
+    this.cancelAnalysisWorker("estimate");
+    this.cancelAnalysisWorker("solvability");
+    this.cancelStatisticsWorker();
     this.estimate = null;
     this.solvability = null;
+    this.statistics = null;
     this.analysis = null;
     this.analysisKind = null;
     // Section.commit() renders before firing onCommit, so clear the just-drawn

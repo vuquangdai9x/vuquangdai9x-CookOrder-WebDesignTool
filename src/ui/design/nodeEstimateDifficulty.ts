@@ -23,6 +23,7 @@ import type {
   EstimateFailureKnowledge,
   EstimateFailureCustomer,
   EstimatePickingStrategyName,
+  EstimateProgress,
   EstimateStrategyName,
 } from "./estimateDifficulty.ts";
 
@@ -135,6 +136,13 @@ function pickableLanes(sim: NodeSimulation): number[] {
   return lanes;
 }
 
+function remainingQueueItems(sim: NodeSimulation): number {
+  return sim.queueGrid.reduce(
+    (sum, column) => sum + column.reduce((count, cell) => count + (cell ? 1 : 0), 0),
+    0,
+  );
+}
+
 function cloneSimulation(source: NodeSimulation): NodeSimulation {
   const raw = source as unknown as Record<string, unknown>;
   const options = raw.options;
@@ -170,6 +178,7 @@ function findLearnedBeamPlan(
   maxIterations: number,
   behavior: EstimateBehavior,
   allowOptionalWaits = false,
+  onProgress?: (pickedItems: number, totalItems: number) => void,
 ): LearnedSearchStep[] | null {
   type SearchNode = { sim: NodeSimulation; path: LearnedSearchStep[]; score: number };
   const initial = new NodeSimulation(ix, structuredClone(level), {
@@ -240,6 +249,14 @@ function findLearnedBeamPlan(
     (sum, column) => sum + column.reduce((count, cell) => count + (cell ? 1 : 0), 0),
     0,
   );
+  let furthestPicked = -1;
+  const reportProgress = (sim: NodeSimulation): void => {
+    const picked = queueCells - remainingQueueItems(sim);
+    if (picked <= furthestPicked) return;
+    furthestPicked = picked;
+    onProgress?.(picked, queueCells);
+  };
+  reportProgress(initial);
   const depthLimit = Math.min(maxIterations, queueCells + 8);
   let expandedStates = 0;
   for (let depth = 0; depth < depthLimit && beam.length > 0; depth++) {
@@ -279,6 +296,7 @@ function findLearnedBeamPlan(
           if (++expandedStates > 20_000) return null;
           const sim = cloneSimulation(decision.sim);
           if (!sim.pick(lane)) continue;
+          reportProgress(sim);
           sim.completeAllFlights();
           const interval = Math.max(0, cfg.pickIntervalSeconds);
           if (interval > 0 && sim.status === "playing") sim.tick(interval);
@@ -354,6 +372,7 @@ function findCompleteInformationPlan(
   behavior: EstimateBehavior,
   maxStatesPerDepth: number,
   settleAllBetweenPicks = false,
+  onProgress?: (pickedItems: number, totalItems: number) => void,
 ): CompleteInformationSearchResult {
   const startedAt = performance.now();
   const initial = new NodeSimulation(ix, structuredClone(level), {
@@ -400,6 +419,14 @@ function findCompleteInformationPlan(
     (sum, column) => sum + column.reduce((count, cell) => count + (cell ? 1 : 0), 0),
     0,
   );
+  let furthestPicked = -1;
+  const reportProgress = (sim: NodeSimulation): void => {
+    const picked = queueCells - remainingQueueItems(sim);
+    if (picked <= furthestPicked) return;
+    furthestPicked = picked;
+    onProgress?.(picked, queueCells);
+  };
+  reportProgress(initial);
   const depthLimit = Math.min(maxIterations, queueCells + 8);
   const deadStates = new Set<string>();
   let expandedStates = 0;
@@ -456,6 +483,7 @@ function findCompleteInformationPlan(
         expandedStates++;
         const child = cloneSimulation(decision.sim);
         if (!child.pick(lane)) continue;
+        reportProgress(child);
         child.completeAllFlights();
         const interval = Math.max(0, cfg.pickIntervalSeconds);
         if (interval > 0 && child.status === "playing") child.tick(interval);
@@ -515,6 +543,7 @@ function estimateNodeDifficultyAttempt(
   adaptivePickInterval = 5,
   behavior: EstimateBehavior = { packingMode: "unpacked-raw", toolProcessBehavior: "auto" },
   omniscient = false,
+  onProgress?: (pickedItems: number, totalItems: number) => void,
 ): EstimateResult {
   const sim = new NodeSimulation(ix, level, {
     outOfSlotPolicy: "park-on-grid",
@@ -529,6 +558,8 @@ function estimateNodeDifficultyAttempt(
     // failure-driven strategy fallbacks would read the wrong reason.
     detectDeadlockLoss: true,
   });
+  const totalQueueItems = remainingQueueItems(sim);
+  onProgress?.(0, totalQueueItems);
 
   const byCid = new Map<string, EstimateSlot>();
   const costs = new Map<number, CustomerCost>();
@@ -1064,6 +1095,7 @@ function estimateNodeDifficultyAttempt(
       .filter((cell): cell is NonNullable<typeof cell> => cell !== null);
     const pickTime = sim.time;
     if (!sim.pick(lane)) return false;
+    onProgress?.(totalQueueItems - remainingQueueItems(sim), totalQueueItems);
     pickTimes.push(pickTime);
     observeConcurrentWork();
     replaySteps.push({
@@ -1737,6 +1769,18 @@ export function estimateNodeDifficulty(
   };
   const retryCount = Math.min(10, Math.max(0, Math.floor(opts.maxRetries ?? base.retryCount)));
   const maxIterations = opts.maxIterations ?? base.maxIterations;
+  const progressFor = (run: number, runTotal: number) => {
+    let furthestPicked = -1;
+    return (pickedItems: number, totalItems: number): void => {
+      if (pickedItems <= furthestPicked) return;
+      furthestPicked = pickedItems;
+      const percentage = totalItems === 0
+        ? 100
+        : Math.max(0, Math.min(100, (pickedItems / totalItems) * 100));
+      const progress: EstimateProgress = { run, runTotal, pickedItems, totalItems, percentage };
+      opts.onProgress?.(progress);
+    };
+  };
 
   if (omniscient) {
     const shortages = supplyShortages(ix, level);
@@ -1773,6 +1817,7 @@ export function estimateNodeDifficulty(
     }
 
     const stateLimit = Math.max(1, Math.floor(opts.searchStatesPerDepth ?? 64));
+    const normalProgress = progressFor(1, 2);
     const normalSearch = findCompleteInformationPlan(
       ix,
       structuredClone(level),
@@ -1780,16 +1825,22 @@ export function estimateNodeDifficulty(
       maxIterations,
       behavior,
       stateLimit,
+      false,
+      normalProgress,
     );
-    const settleAllSearch = normalSearch.plan ? null : findCompleteInformationPlan(
-      ix,
-      structuredClone(level),
-      base,
-      maxIterations,
-      behavior,
-      stateLimit,
-      true,
-    );
+    const settleAllSearch = normalSearch.plan ? null : (() => {
+      const settleProgress = progressFor(2, 2);
+      return findCompleteInformationPlan(
+        ix,
+        structuredClone(level),
+        base,
+        maxIterations,
+        behavior,
+        stateLimit,
+        true,
+        settleProgress,
+      );
+    })();
     const plan = normalSearch.plan ?? settleAllSearch?.plan ?? null;
     const strategyName = normalSearch.plan
       ? "complete-information-search"
@@ -1844,6 +1895,7 @@ export function estimateNodeDifficulty(
   const attemptedStrategyNames: string[] = [];
 
   for (let attempt = 0; attempt <= retryCount; attempt++) {
+    const attemptProgress = progressFor(attempt + 1, retryCount + 1);
     // Before changing scoring weights, isolate timing as the first fallback:
     // retry the authored picker after every tool/merge chain has settled. This
     // distinguishes a cadence failure from one that needs a different route.
@@ -1879,6 +1931,8 @@ export function estimateNodeDifficulty(
         planningConfig,
         maxIterations,
         behavior,
+        false,
+        attemptProgress,
       ) ?? findLearnedBeamPlan(
         ix,
         structuredClone(level),
@@ -1886,6 +1940,7 @@ export function estimateNodeDifficulty(
         maxIterations,
         behavior,
         true,
+        attemptProgress,
       );
       if (plan) {
         strategy = {
@@ -1922,6 +1977,7 @@ export function estimateNodeDifficulty(
       knowledge.adaptivePickInterval,
       behavior,
       omniscient,
+      attemptProgress,
     );
     attemptedStrategyNames.push(strategy.name);
     result.attemptCount = attempt + 1;

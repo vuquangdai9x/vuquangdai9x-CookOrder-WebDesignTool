@@ -190,6 +190,20 @@ export interface EstimateReplayStep {
   pickIntervalSeconds?: number;
 }
 
+/** Live status emitted while an estimate or solvability run executes in a worker. */
+export interface EstimateProgress {
+  /** One-based attempt/search pass currently executing. */
+  run: number;
+  /** Maximum attempts/search passes for this analysis. */
+  runTotal: number;
+  /** Queue cells removed along the furthest route reached in this run. */
+  pickedItems: number;
+  /** Queue cells present when this run began. */
+  totalItems: number;
+  /** `pickedItems / totalItems`, clamped to 0..100 for the header fill. */
+  percentage: number;
+}
+
 export interface EstimateOptions {
   /** Overrides the default seeded PRNG used to break ties between useless picks. */
   rng?: () => number;
@@ -212,6 +226,8 @@ export interface EstimateOptions {
    * never by the difficulty estimate.
   */
   informationMode?: "player" | "omniscient";
+  /** Worker/UI hook; omitted by normal synchronous callers. */
+  onProgress?: (progress: EstimateProgress) => void;
 }
 
 /**

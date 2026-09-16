@@ -143,7 +143,7 @@ export interface ConstraintProgress {
 
 export type RequirementPriority = "hard" | "target" | "preference";
 export type ConstraintOperator = "=" | "!=" | "<" | "<=" | ">" | ">=" | "between" | "in";
-export type ConstraintValue = number | string | boolean | [number, number] | string[];
+export type ConstraintValue = number | string | boolean | [number, number] | string[] | Record<string, number>;
 
 export interface MetricConstraint {
   id: string;

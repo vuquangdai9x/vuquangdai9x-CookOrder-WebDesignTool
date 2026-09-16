@@ -56,6 +56,21 @@ describe("estimateNodeDifficulty", () => {
     expect(result.toolProcessBehavior).toBe("wait-order");
   });
 
+  it("reports monotonic queue progress for the current estimate run", () => {
+    const progress: Array<{ run: number; pickedItems: number; totalItems: number; percentage: number }> = [];
+    estimateNodeDifficulty(ix, coffeeLevel(1), {
+      maxRetries: 0,
+      onProgress: (value) => progress.push(value),
+    });
+
+    expect(progress.length).toBeGreaterThan(1);
+    expect(progress[0]).toMatchObject({ run: 1, pickedItems: 0 });
+    expect(progress.every((value) => value.run === 1)).toBe(true);
+    expect(progress.every((value) => value.totalItems === progress[0].totalItems)).toBe(true);
+    expect(progress.every((value, index) => index === 0 || value.pickedItems > progress[index - 1].pickedItems)).toBe(true);
+    expect(progress.at(-1)!.percentage).toBeGreaterThan(0);
+  });
+
   it("retries alternate strategies across the higher Map 1 levels", () => {
     const burgerIx = buildIndex(burgerGraph as unknown as NodeGraphMap);
     const levels = importLevelsCsv(burgerLevelsCsv)
@@ -206,7 +221,11 @@ describe("estimateNodeDifficulty", () => {
     const level = toNodeLevelConfig(
       importLevelsCsv(burgerLevelsCsv).find((value) => value.id === 5)!,
     );
-    const result = checkNodeSolvable(burgerIx, level, { searchStatesPerDepth: 4 });
+    const progress: Array<{ run: number; pickedItems: number }> = [];
+    const result = checkNodeSolvable(burgerIx, level, {
+      searchStatesPerDepth: 4,
+      onProgress: (value) => progress.push(value),
+    });
 
     expect(result.solvable, result.reason).toBe(true);
     expect(result.strategyName).toBe("complete-information-search+settle-all");
@@ -215,6 +234,7 @@ describe("estimateNodeDifficulty", () => {
       "complete-information-search+settle-all",
     ]);
     expect(result.servedCount).toBe(result.totalCustomers);
+    expect(progress.some((value) => value.run === 2 && value.pickedItems > 0)).toBe(true);
 
     const replay = new NodeSimulation(burgerIx, structuredClone(level), {
       outOfSlotPolicy: "park-on-grid",

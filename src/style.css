@@ -5300,6 +5300,35 @@ td input {
   margin-bottom: 0;
 }
 
+.design-analysis-foldout .estimate-bar.analysis-running {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-left-color: var(--accent);
+}
+
+.design-analysis-foldout .analysis-progress-fill {
+  position: absolute;
+  z-index: 0;
+  inset: 0 auto 0 0;
+  width: var(--analysis-progress, 0%);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--accent) 48%, transparent);
+  transition: width 120ms linear;
+  pointer-events: none;
+}
+
+.design-analysis-foldout .analysis-running > :not(.analysis-progress-fill) {
+  position: relative;
+  z-index: 1;
+}
+
+.design-analysis-foldout .analysis-progress-label {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .design-analysis-foldout.open .estimate-bar {
   border-bottom: none;
   border-bottom-right-radius: 0;
@@ -5316,6 +5345,164 @@ td input {
 
 .design-analysis-foldout .analysis-replay-btn {
   margin-left: auto;
+}
+
+/* Statistic foldout + modal. Values use native title tooltips so every card,
+   bar and distribution row explains itself without adding permanent clutter. */
+.statistics-report {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.statistics-outcome {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.8rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--ok) 10%, var(--panel-2));
+}
+
+.statistics-outcome.fail {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--line));
+  background: color-mix(in srgb, var(--danger) 9%, var(--panel-2));
+}
+
+.statistics-outcome span { color: var(--muted); }
+
+.statistics-failures {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--danger);
+  font-size: 0.78rem;
+}
+
+.statistics-failures.muted { color: var(--muted); }
+
+.statistics-dimension h3 {
+  margin: 0 0 0.45rem;
+  color: var(--accent);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.stat-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.45rem;
+}
+
+.stat-card-grid.static {
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.stat-value-card,
+.stat-metric-card {
+  min-width: 0;
+  min-height: 3.15rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.18rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+.stat-value-label {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-value,
+.stat-metric-card strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-metric-card small { color: var(--muted); }
+.stat-metric-card.boolean.pass { border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+.stat-metric-card.boolean.fail { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+.stat-metric-card.unavailable { opacity: 0.65; }
+
+.stat-metric-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.stat-ratio-track,
+.stat-distribution-track {
+  height: 0.42rem;
+  overflow: hidden;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.stat-ratio-fill,
+.stat-distribution-fill {
+  display: block;
+  width: var(--stat-ratio, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.stat-metric-card.distribution {
+  grid-column: span 2;
+}
+
+.stat-distribution {
+  display: grid;
+  gap: 0.26rem;
+  margin-top: 0.2rem;
+}
+
+.stat-distribution-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) minmax(5rem, 2fr) 2.2rem;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+}
+
+.stat-distribution-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-empty { color: var(--muted); font-size: 0.74rem; }
+
+.statistics-modal-head,
+.statistics-modal-sheet {
+  max-width: 82rem;
+}
+
+.statistics-modal-sheet {
+  max-height: calc(100vh - 7rem);
+  overflow-y: auto;
+}
+
+.statistics-modal .statistics-report {
+  border: 0;
+  padding: 0;
+}
+
+@media (max-width: 720px) {
+  .stat-metric-card.distribution { grid-column: auto; }
+  .stat-distribution-row { grid-template-columns: minmax(5rem, 1fr) minmax(3rem, 1fr) 1.8rem; }
 }
 
 .weight-col.with-amount {

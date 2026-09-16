@@ -3,7 +3,7 @@
 // section column.
 
 import { button, el } from "../dom.ts";
-import type { EstimateResult } from "../design/estimateDifficulty.ts";
+import type { EstimateProgress, EstimateResult } from "../design/estimateDifficulty.ts";
 import { occupancyChartEl } from "../design/occupancyChart.ts";
 import type { ChartVisibility } from "../design/occupancyChart.ts";
 
@@ -21,6 +21,7 @@ export function analysisFoldout(
   ui: AnalysisFoldoutUi,
   onReplay: () => void,
   onChange: () => void,
+  progress: EstimateProgress | null = null,
 ): HTMLElement {
   const label = kind === "solvability" ? "Check Solvable" : "Estimate Difficulty";
   const toggle = button(ui.open ? "▾" : "▸", () => {
@@ -40,8 +41,38 @@ export function analysisFoldout(
   }) as HTMLButtonElement;
   replay.disabled = !(result?.replaySteps.length);
 
+  if (progress) {
+    const percentage = Math.round(progress.percentage);
+    const bar = el("div", { class: "estimate-bar analysis-running" }, [
+      el("span", { class: "analysis-progress-fill", "aria-hidden": "true" }),
+      toggle,
+      el("strong", {}, [`${label}: running…`]),
+      el("span", { class: "analysis-progress-label" }, [
+        `${percentage}% · run ${progress.run}/${progress.runTotal} · ` +
+        `${progress.pickedItems}/${progress.totalItems} queue items`,
+      ]),
+      replay,
+    ]);
+    bar.style.setProperty("--analysis-progress", `${progress.percentage}%`);
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-valuemin", "0");
+    bar.setAttribute("aria-valuemax", "100");
+    bar.setAttribute("aria-valuenow", String(percentage));
+    const children: HTMLElement[] = [bar];
+    if (ui.open && result) {
+      children.push(occupancyChartEl(result.occupancyHistory, result.gridCapacity, ui, (key) => {
+        ui[key] = !ui[key];
+        onChange();
+      }));
+    }
+    return el("section", {
+      class: `design-analysis-foldout running${ui.open && result ? " open" : ""}`,
+      "data-analysis-kind": kind,
+    }, children);
+  }
+
   if (!result) {
-    return el("section", { class: "design-analysis-foldout empty" }, [
+    return el("section", { class: "design-analysis-foldout empty", "data-analysis-kind": kind }, [
       el("div", { class: "estimate-bar" }, [
         toggle,
         el("strong", {}, [label]),
@@ -101,5 +132,8 @@ export function analysisFoldout(
       onChange();
     }));
   }
-  return el("section", { class: `design-analysis-foldout${ui.open ? " open" : ""}` }, children);
+  return el("section", {
+    class: `design-analysis-foldout${ui.open ? " open" : ""}`,
+    "data-analysis-kind": kind,
+  }, children);
 }

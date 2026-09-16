@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import nodeCustomerSectionSrc from "./nodeCustomerSection.ts?raw";
 import nodeDesignSrc from "./index.ts?raw";
 import analysisFoldoutSrc from "./analysisFoldout.ts?raw";
+import analysisWorkerSrc from "../design/analysisWorker.ts?raw";
+import statisticsWorkerSrc from "../design/statisticsWorker.ts?raw";
+import statisticsFoldoutSrc from "./statisticsFoldout.ts?raw";
 import checkSolvableSrc from "../design/checkSolvable.ts?raw";
 import levelPathSrc from "../levelpath/index.ts?raw";
 import validateLevelSrc from "../levelpath/validateLevel.ts?raw";
@@ -15,11 +18,13 @@ describe("Design analysis controls", () => {
     const auto = nodeDesignSrc.indexOf('button("✨ Auto Generate"');
     const estimate = nodeDesignSrc.indexOf('button("📊 Estimate Difficulty"');
     const solvable = nodeDesignSrc.indexOf('button("✓ Check Solvable"');
+    const statistic = nodeDesignSrc.indexOf('button("Statistic"');
     const addLevel = nodeDesignSrc.indexOf('button("+ Level"');
     expect(auto).toBeGreaterThan(-1);
     expect(auto).toBeLessThan(estimate);
     expect(estimate).toBeLessThan(solvable);
-    expect(solvable).toBeLessThan(addLevel);
+    expect(solvable).toBeLessThan(statistic);
+    expect(statistic).toBeLessThan(addLevel);
   });
 
   it("keeps separate replays for estimate and solvability runs", () => {
@@ -47,6 +52,23 @@ describe("Design analysis controls", () => {
     expect(checkSolvableSrc).toContain('informationMode: "omniscient"');
     expect(checkSolvableSrc).not.toContain("requireNoTimeout");
     expect(analysisFoldoutSrc).toContain("Solvability ignores customer patience");
+  });
+
+  it("runs both analyses in a worker and renders live header progress", () => {
+    expect(nodeDesignSrc).toContain('new Worker(new URL("../design/analysisWorker.ts"');
+    expect(analysisWorkerSrc).toContain('kind === "solvability"');
+    expect(analysisWorkerSrc).toContain("onProgress");
+    expect(analysisFoldoutSrc).toContain("analysis-progress-fill");
+    expect(analysisFoldoutSrc).toContain("queue items");
+  });
+
+  it("runs statistics in its own worker and page-level foldout", () => {
+    expect(nodeDesignSrc).toContain('new Worker(new URL("../design/statisticsWorker.ts"');
+    expect(nodeDesignSrc).toContain("statisticsFoldout(");
+    expect(statisticsWorkerSrc).toContain("createStatisticReport");
+    expect(statisticsFoldoutSrc).toContain('"data-analysis-kind": "statistics"');
+    expect(statisticsFoldoutSrc).toContain("analysis-progress-fill");
+    expect(statisticsFoldoutSrc).toContain("openStatisticsModal");
   });
 });
 

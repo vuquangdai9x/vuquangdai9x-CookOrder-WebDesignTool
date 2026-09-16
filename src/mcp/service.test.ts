@@ -178,6 +178,7 @@ describe("LevelAuthoringService", () => {
     const evaluation = await service.evaluateLevel(sessionId, { seedSetId: seedSet.id, runs: 2, profile: "fast-shape" });
     expect(evaluation.behaviorSemanticsVersion).toBe("2026-09-15-default-v1");
     expect(evaluation.seeds).toEqual([11, 22]);
+    expect(evaluation.metrics["queue.deadlockReasonDistribution"]).toEqual(expect.any(Object));
     expect(evaluation.artifactPath).toMatch(/^evaluations\//);
     expect((await service.getEvaluation(sessionId, evaluation.id)).id).toBe(evaluation.id);
     const comparison = await service.compareLevelCandidates(sessionId);
