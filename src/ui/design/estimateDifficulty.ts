@@ -197,6 +197,13 @@ export interface EstimateOptions {
   packingMode?: PackingMode;
   /** Matches the persisted Play-mode Tool process selector. */
   toolProcessBehavior?: ToolProcessBehavior;
+  /**
+   * Player estimation only uses information the runtime UI exposes. An
+   * omniscient run may score every authored customer and every queue row,
+   * including Hidden slots; this is used by Check Solvable, never by the
+   * difficulty estimate.
+  */
+  informationMode?: "player" | "omniscient";
 }
 
 /**

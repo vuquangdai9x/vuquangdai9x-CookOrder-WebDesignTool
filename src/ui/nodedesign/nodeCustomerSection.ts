@@ -1,8 +1,8 @@
 // Customer Config for the node graph — the LEGACY page, with graph rules under it.
 //
 // The layout, the class names and the element sizes are a 1-1 copy of
-// design/customerSection.ts: the same `.level-params-bar`, the same estimate
-// bar and chart foldout, the same `.customer-cards` row with Sortable
+// design/customerSection.ts: the same `.level-params-bar`, the same
+// `.customer-cards` row with Sortable
 // reordering and a trailing add-card, the same `.customer-head` with its wait
 // badge and weather toggle, and the same `.dish-row` / `.dish-chips` /
 // `.chip icon-chip dish-chip` at 64px. A designer moving between the two tabs
@@ -58,8 +58,6 @@ import { defaultCurve, openCurveDialog, parseCurve, serializeCurve } from "../de
 import { customerColor } from "../design/customerColors.ts";
 import { pickQuality, pickQualityColor, pickQualityLabel } from "../design/estimateDifficulty.ts";
 import type { EstimateResult } from "../design/estimateDifficulty.ts";
-import { occupancyChartEl } from "../design/occupancyChart.ts";
-import type { ChartVisibility } from "../design/occupancyChart.ts";
 import {
   DEFAULT_INGREDIENT_WEIGHT,
   parseWeightSet,
@@ -79,9 +77,6 @@ import {
   type CustomerCardViewMode,
 } from "./nodeCustomerView.ts";
 
-/** Foldout-open flag plus the per-category legend toggles — see occupancyChart.ts. */
-type ChartUi = { open: boolean } & ChartVisibility;
-
 type CustomerViewUi = { mode: CustomerCardViewMode };
 
 export interface NodeCustomerSectionDeps {
@@ -91,10 +86,7 @@ export interface NodeCustomerSectionDeps {
   level: LevelData;
   onSaved(): void;
   onCommit?(): void;
-  onEstimate?(): void;
-  onReplayEstimate?(): void;
   currentEstimate?(): EstimateResult | null;
-  onAutoGenerate?(): void;
   /**
    * Cursor entered (index) or left (null) a customer card. The host uses it to
    * light up that customer's queue tiles and estimate-chart points; nothing in
@@ -111,38 +103,20 @@ function typeDef(defs: GlobalDefs, typeId: number): ElementDef | undefined {
 
 export function createNodeCustomerSection(deps: NodeCustomerSectionDeps): Section<NodeCustomerConfig[]> {
   const ids: IdIndex = orderIdIndex(deps.ix);
-  const chartUi: ChartUi = { open: false, scoredTint: true, randomTint: true, completeLines: true };
   const viewUi: CustomerViewUi = { mode: "auto" };
 
   const section: Section<NodeCustomerConfig[]> = new Section<NodeCustomerConfig[]>({
     title: "Customers",
     saveLabel: "Save Customers",
     initial: parseSafely(deps.level.customerString),
-    renderBody: (draft, body) => renderBody(section, deps, ids, draft, body, chartUi, viewUi),
+    renderBody: (draft, body) => renderBody(section, deps, ids, draft, body, viewUi),
     onCommit: () => deps.onCommit?.(),
     save: (draft) => {
       deps.level.customerString = serializeNodeCustomers(draft);
       deps.onSaved();
     },
     stringPreview: (draft) => serializeNodeCustomers(draft),
-    headerButtons: (customerSection) => {
-      const replay = button("▶ Replay Estimate", () => deps.onReplayEstimate?.(), {
-        class: "estimate-replay-btn",
-        title: "Open the Play board and step through the most recent estimate",
-      }) as HTMLButtonElement;
-      replay.disabled = !(deps.currentEstimate?.()?.replaySteps.length);
-      return [
-        button("✨ Auto Generate", () => deps.onAutoGenerate?.(), {
-        title: "Generate a customer sequence from a dish-count list, ingredient weights, and a complexity curve",
-        }),
-        customerViewToggle(customerSection, viewUi),
-        button("📊 Estimate Difficulty", () => deps.onEstimate?.(), {
-        title:
-          "Play the level with a solver and report, per customer, how much grid space their order takes and how much is wasted. Also numbers each queue tile in pickup order.",
-        }),
-        replay,
-      ];
-    },
+    headerButtons: (customerSection) => [customerViewToggle(customerSection, viewUi)],
     menuItems: (draft) => [
       {
         label: "Import from string…",
@@ -428,28 +402,11 @@ function renderBody(
   ids: IdIndex,
   draft: NodeCustomerConfig[],
   body: HTMLElement,
-  chartUi: ChartUi,
   viewUi: CustomerViewUi,
 ): void {
   body.append(levelParamsBar(section, deps, ids));
 
   const estimate = deps.currentEstimate?.() ?? null;
-  if (estimate) {
-    body.append(
-      estimateBar(
-        estimate,
-        chartUi,
-        () => {
-          chartUi.open = !chartUi.open;
-          section.render();
-        },
-        (key) => {
-          chartUi[key] = !chartUi[key];
-          section.render();
-        },
-      ),
-    );
-  }
 
   const compositeView = isCompositeCustomerView(viewUi.mode, null);
   const row = el("div", {
@@ -509,59 +466,6 @@ function renderBody(
       ]),
     );
   }
-}
-
-function estimateBar(
-  estimate: EstimateResult,
-  chartUi: ChartUi,
-  onToggleChart: () => void,
-  onToggleVisibility: (key: keyof ChartVisibility) => void,
-): HTMLElement {
-  const peakWaste = estimate.perCustomer.reduce((n, c) => Math.max(n, c.gridWaste), 0);
-  const detours = estimate.perCustomer.reduce((n, c) => n + c.detours, 0);
-  const summary = estimate.solvable
-    ? `Solvable — ${estimate.totalPicks} picks for ${estimate.servedCount} customers`
-    : `Unsolvable — served ${estimate.servedCount} of ${estimate.totalCustomers} after ${estimate.totalPicks} picks`;
-
-  const parts: (string | HTMLElement)[] = [
-    button(chartUi.open ? "▾" : "▸", onToggleChart, {
-      class: "icon-btn",
-      title: "Show grid occupancy across the whole run, pick by pick",
-    }),
-    el("strong", {}, [estimate.solvable ? "✓ " : "⚠ ", summary]),
-  ];
-  if ((estimate.attemptCount ?? 1) > 1) {
-    const learned = estimate.learnedFromFailures ?? 0;
-    const attempted = estimate.attemptedStrategyNames ?? [];
-    parts.push(el("span", {
-      class: "estimate-metric",
-      ...(attempted.length > 0
-        ? { title: `Attempt order: ${attempted.join(" → ")}` }
-        : {}),
-    }, [
-      `${estimate.strategyName ?? "alternate"} strategy · ${estimate.attemptCount} attempts` +
-      (learned > 0 ? ` · learned from ${learned} failure${learned === 1 ? "" : "s"}` : ""),
-    ]));
-  }
-  if (estimate.reason) parts.push(el("span", { class: "estimate-reason" }, [estimate.reason]));
-  const timedOutCustomers = estimate.timedOutCustomers ?? [];
-  if (timedOutCustomers.length > 0) {
-    parts.push(el("span", { class: "estimate-reason" }, [
-      `Warning: customer${timedOutCustomers.length === 1 ? "" : "s"} ` +
-      `${timedOutCustomers.join(", ")} timed out during the estimate.`,
-    ]));
-  }
-  parts.push(
-    el("span", { class: "estimate-metric" }, [`peak waste ${peakWaste}`]),
-    el("span", { class: "estimate-metric" }, [`${detours} detour${detours === 1 ? "" : "s"}`]),
-  );
-
-  const bar = el("div", { class: `estimate-bar${estimate.solvable ? "" : " unsolvable"}` }, parts);
-  if (!chartUi.open) return bar;
-  return el("div", { class: "estimate-panel" }, [
-    bar,
-    occupancyChartEl(estimate.occupancyHistory, estimate.gridCapacity, chartUi, onToggleVisibility),
-  ]);
 }
 
 function levelParamsBar(

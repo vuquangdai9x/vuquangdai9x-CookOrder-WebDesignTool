@@ -2145,6 +2145,7 @@ export function openNodeEstimateReplay(
   levelId: number,
   steps: EstimateReplayStep[],
   behavior?: { packingMode: PackingMode; toolProcessBehavior: ToolProcessBehavior },
+  title = "Difficulty Estimate Replay",
 ): void {
   let view: NodePlayView | null = null;
   const close = () => {
@@ -2154,7 +2155,7 @@ export function openNodeEstimateReplay(
   const host = el("div", { class: "estimate-replay-host" });
   const overlay = el("div", { class: "overlay-panel estimate-replay-overlay" }, [
     el("div", { class: "definitions-head" }, [
-      el("h2", {}, ["Difficulty Estimate Replay"]),
+      el("h2", {}, [title]),
       el("span", { class: "muted" }, ["Use Left/Right Arrow or Prev/Next"]),
       el("span", { class: "spacer" }),
       button("✕ Close", close, { class: "primary" }),

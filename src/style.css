@@ -1149,6 +1149,18 @@ footer {
   padding: 0 3px;
 }
 
+/* Keep the moved Design actions together beside +Level. The outer level bar
+   may wrap this group as one unit, while the group itself can wrap only on
+   genuinely narrow screens without shrinking any button. */
+.level-analysis-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
 /* Reusable multipleUsage ingredient — serves left, top-right. */
 .cell-badge.uses-left {
   bottom: auto;
@@ -3941,6 +3953,10 @@ td input {
   color: var(--muted);
 }
 
+.estimate-warning {
+  color: var(--warn, #f0b44d);
+}
+
 .estimate-metric {
   margin-left: auto;
   padding: 0.05rem 0.4rem;
@@ -5269,6 +5285,37 @@ td input {
 .scenario-row.disabled .scrub-input {
   cursor: default;
   opacity: 0.4;
+}
+
+/* Node Design owns one foldout per analysis kind at the page level. Keeping
+   this container outside `.design-stack` / `.design-split` makes its position
+   stable when the designer changes layout. */
+.design-analysis-foldouts {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.design-analysis-foldout .estimate-bar {
+  margin-bottom: 0;
+}
+
+.design-analysis-foldout.open .estimate-bar {
+  border-bottom: none;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.design-analysis-foldout.empty .estimate-bar {
+  border-left-color: var(--line);
+}
+
+.design-analysis-foldout .estimate-metric {
+  margin-left: 0;
+}
+
+.design-analysis-foldout .analysis-replay-btn {
+  margin-left: auto;
 }
 
 .weight-col.with-amount {

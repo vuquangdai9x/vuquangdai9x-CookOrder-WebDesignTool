@@ -127,6 +127,7 @@ function findLearnedBeamPlan(
   maxIterations: number,
   workWaitStrategy: WorkWaitStrategy,
   behavior: EstimateBehavior,
+  omniscient = false,
 ): number[] | null {
   type SearchNode = { sim: NodeSimulation; path: number[]; score: number };
   const initial = new NodeSimulation(ix, structuredClone(level), {
@@ -157,7 +158,8 @@ function findLearnedBeamPlan(
     }
   };
   const stateScore = (sim: NodeSimulation): number => {
-    const remaining = sim.active.reduce((sum, customer) =>
+    const relevantCustomers = omniscient ? [...sim.active, ...sim.pending] : sim.active;
+    const remaining = relevantCustomers.reduce((sum, customer) =>
       sum + (isOrdering(customer)
         ? customer.dishes.reduce((dishSum, dish) => dishSum + dish.remaining.length, 0)
         : 0), 0);
@@ -255,6 +257,7 @@ function estimateNodeDifficultyAttempt(
   adaptiveStrategies?: readonly ScoringStrategy[],
   adaptivePickInterval = 5,
   behavior: EstimateBehavior = { packingMode: "unpacked-raw", toolProcessBehavior: "auto" },
+  omniscient = false,
 ): EstimateResult {
   const sim = new NodeSimulation(ix, level, {
     outOfSlotPolicy: "park-on-grid",
@@ -514,7 +517,8 @@ function estimateNodeDifficultyAttempt(
     }
 
     const units: DemandUnit[] = [];
-    sim.active.forEach((customer, customerPosition) => {
+    const exactCustomers = omniscient ? [...sim.active, ...sim.pending] : sim.active;
+    exactCustomers.forEach((customer, customerPosition) => {
       if (!isOrdering(customer)) return;
       for (const dish of customer.dishes) {
         const remainingCount = dish.remaining.length;
@@ -542,8 +546,9 @@ function estimateNodeDifficultyAttempt(
           priority += Math.max(0, 4 - remainingCount) * cfg.nearCompletionBonus;
           priority /= 1 + customerPosition * cfg.customerPositionDecay;
           // A boss owns the counter alone, so every detour occupies capacity
-          // that no second active customer can consume. Weight only the boss's
-          // now-visible exact order more strongly; no pending detail is read.
+          // that no second active customer can consume. Player mode only reads
+          // a boss once active; Check Solvable deliberately knows pending
+          // bosses and every other authored order.
           if (customer.config.isBoss) priority *= 1.25;
           priority *= activeFailurePriority(customer.index, slot.ing);
           units.push({
@@ -592,7 +597,7 @@ function estimateNodeDifficultyAttempt(
     // legal options. This is intentionally separate from exact active claims:
     // preview demand never consumes committed supply or marks a pick "ready".
     const previewClaims = new Map<number, { score: number; customerIndex: number }>();
-    sim.visiblePreviewCustomers(CUSTOMER_PREVIEW_COUNT).forEach((customer, previewPosition) => {
+    if (!omniscient) sim.visiblePreviewCustomers(CUSTOMER_PREVIEW_COUNT).forEach((customer, previewPosition) => {
       if (!isOrdering(customer)) return;
       for (const dish of customer.dishes) {
         const slots = ix.slotsOfComposite[dish.order.orderable] ?? [];
@@ -749,7 +754,7 @@ function estimateNodeDifficultyAttempt(
       const cell = sim.queueGrid[x]?.[y];
       // With the Hidden-slot scenario toggle off, a hidden row is scored as if
       // it had already been revealed.
-      if (!cell || (cfg.hiddenStatus && sim.isHidden(x, y))) continue;
+      if (!cell || (!omniscient && cfg.hiddenStatus && sim.isHidden(x, y))) continue;
       const value = valueOfCell(x, y);
       if (value.score === 0) continue;
       const decayed = value.score * cfg.rowDecay ** y;
@@ -863,7 +868,9 @@ function estimateNodeDifficultyAttempt(
     const nearlyFinished = activeOrders.some((customer) =>
       customer.dishes.some((dish) => dish.remaining.length > 0 && dish.remaining.length <= 2));
     const remainingCustomers = Math.max(0, sim.totalCustomers - sim.servedCount);
-    const visiblePreviewCount = sim.visiblePreviewCustomers(CUSTOMER_PREVIEW_COUNT).length;
+    const visiblePreviewCount = omniscient
+      ? sim.pending.filter(isOrdering).length
+      : sim.visiblePreviewCustomers(CUSTOMER_PREVIEW_COUNT).length;
     const legalLanes = pickableLanes(sim).length;
     const totalLanes = Math.max(1, sim.queueGrid.length);
     const laneScarcity = 1 - legalLanes / totalLanes;
@@ -940,9 +947,8 @@ function estimateNodeDifficultyAttempt(
         score: 0, customerIndex: -1, fromFront: false, best: false,
       }) };
     }
-    // Failed runs retry with bounded exploration among the best visible
-    // choices. This changes the route through the queues without inspecting
-    // rows below the configured visibility window.
+    // Failed player runs retry among visible choices. Omniscient solvability
+    // uses the same exploration model after scoring every authored row.
     if (exploration > 0 && rng() < exploration) {
       const alternatives = candidateLanes
         .map((lane) => ({ lane, ...scoresByLane[lane]! }))
@@ -1405,7 +1411,11 @@ export function estimateNodeDifficulty(
   level: NodeLevelConfig,
   opts: EstimateOptions = {},
 ): EstimateResult {
-  const base = resolveScenario(opts.scenario);
+  const omniscient = opts.informationMode === "omniscient";
+  const resolved = resolveScenario(opts.scenario);
+  // Omniscient solvability never treats authored Hidden slots as unknown,
+  // regardless of the difficulty modal's player-visibility toggle.
+  const base = omniscient ? { ...resolved, hiddenStatus: false } : resolved;
   const behavior: EstimateBehavior = {
     packingMode: opts.packingMode ?? "unpacked-raw",
     toolProcessBehavior: opts.toolProcessBehavior ?? "auto",
@@ -1459,6 +1469,7 @@ export function estimateNodeDifficulty(
         maxIterations,
         searchWaitStrategy,
         behavior,
+        omniscient,
       );
       if (plan) {
         strategy = {
@@ -1494,6 +1505,7 @@ export function estimateNodeDifficulty(
       })) : undefined,
       knowledge.adaptivePickInterval,
       behavior,
+      omniscient,
     );
     attemptedStrategyNames.push(strategy.name);
     result.attemptCount = attempt + 1;
