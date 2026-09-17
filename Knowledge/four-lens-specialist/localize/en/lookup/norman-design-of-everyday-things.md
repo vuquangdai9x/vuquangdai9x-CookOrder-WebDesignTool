@@ -1,0 +1,48 @@
+---
+title: "The Design of Everyday Things"
+author: "Don Norman"
+source_pdf: "Knowledge/references/dispose/The Design of Everyday Things.pdf"
+learned_file: "learned/norman-design-of-everyday-things.md"
+---
+
+# The Design of Everyday Things — Lookup Summary
+
+## Chapter: The Psychopathology of Everyday Things
+Establishes the book's core vocabulary through everyday failures like confusing "Norman doors": affordance (what actions an object's properties make possible for an agent), signifier (a perceivable cue communicating where/how to act — Norman's own coinage, more actionable for designers than affordance), natural mapping (spatial/cultural correspondence between controls and effects), feedback (timely, informative results of an action), and conceptual model (a simplified, not-necessarily-accurate mental model built from the product's "system image"). Introduces human-centered design (HCD) as a philosophy and the "paradox of technology" — added capability always brings added complexity.
+→ see learned/norman-design-of-everyday-things.md § Chapter: The Psychopathology of Everyday Things
+
+## Chapter: The Psychology of Everyday Actions
+Introduces the Gulf of Execution (can I figure out what to do) and Gulf of Evaluation (can I tell what happened) and the Seven Stages of Action (Goal, Plan, Specify, Perform, Perceive, Interpret, Compare) as a general model of how people act and interpret outcomes, mostly subconsciously. Covers the three levels of processing — visceral (appearance-driven), behavioral (expectation/skill-driven), reflective (meaning, memory, self-image) — and how flow arises when challenge continuously matches skill. Discusses self-blame, learned helplessness, and the recommendation to eliminate "human error" from design vocabulary in favor of treating errors as communication failures.
+→ see learned/norman-design-of-everyday-things.md § Chapter: The Psychology of Everyday Actions
+
+## Chapter: Knowledge in the Head and in the World
+Explains how people act precisely despite imprecise knowledge by combining internal (head) and external (world) knowledge, aided by natural and cultural constraints. Covers declarative vs. procedural knowledge, practical short-term memory limits (3–5 items), the reconstructive and bias-prone nature of long-term memory, prospective memory/reminding (the signal + message model), and the deliberate tradeoff table between knowledge-in-the-world and knowledge-in-the-head. Closes with natural mapping case studies (stove burners) and a cross-cultural study showing "natural" spatial/temporal mappings vary by culture.
+→ see learned/norman-design-of-everyday-things.md § Chapter: Knowledge in the Head and in the World
+
+## Chapter: Knowing What to Do — Constraints, Discoverability, and Feedback
+Catalogs the four kinds of constraints (physical, cultural, semantic, logical) that let people correctly operate unfamiliar objects, illustrated by an experiment where people assembled an unlabeled Lego motorcycle with zero errors. Defines forcing functions and their subtypes (interlocks, lock-ins, lockouts), the "legacy problem" of installed-base inertia, and how conventions resist change even when objectively inferior. The faucet case study shows how multiple independent mapping problems compound, concluding that designers should standardize the conceptual model, not the physical mechanism. Also covers sound as a signifier and activity-centered vs. device-centered control grouping.
+→ see learned/norman-design-of-everyday-things.md § Chapter: Knowing What to Do — Constraints, Discoverability, and Feedback
+
+## Chapter: Human Error? No, Bad Design
+Argues that the 75–95% rate of accidents attributed to "human error" is itself evidence the framing is wrong — systems, not individuals, should be redesigned. Introduces root cause analysis and the "Five Whys," the Swiss Cheese Model of accident causation (multiple simultaneous non-sufficient causes), and the influential slip/mistake taxonomy (slips = correct goal, flawed execution, common in experts; mistakes = wrong goal/plan, common in novices), each with named subtypes (capture slips, description-similarity slips, mode errors; rule-based, knowledge-based, memory-lapse mistakes). Covers social/institutional pressure on error, collaborative checklists, poka-yoke error-proofing, hindsight bias, and concrete error-tolerant design prescriptions (sensibility checks, reversibility, salience of the object being acted on). Ends with the paradox of automation.
+→ see learned/norman-design-of-everyday-things.md § Chapter: Human Error? No, Bad Design
+
+## Chapter: Design Thinking
+Formalizes human-centered design (HCD): never solve the problem as originally stated, since it's almost always a symptom of a deeper need. Presents the Double-Diamond model (diverge/converge on the right problem, then diverge/converge on the right solution) and the four-stage iterative HCD cycle — Observation (applied ethnography, contrasted with market research), Ideation, Prototyping (including "Wizard of Oz" testing), Testing (Nielsen's ~5-users-per-round rule). Introduces activity-centered design for heterogeneous global audiences, the activity/task distinction, iterative vs. gated/waterfall development tradeoffs, "Don Norman's Law of Product Development," inclusive design and the stigma problem (the OXO peeler case), and the distinction between complexity (fine, if comprehensible) and confusion (the real design failure).
+→ see learned/norman-design-of-everyday-things.md § Chapter: Design Thinking
+
+## Chapter: Design in the World of Business
+Situates HCD within commercial reality: featuritis/creeping featurism (illustrated by a Lego motorcycle bloating from 15 to 29 parts across editions) and Youngme Moon's advice to double down on real strengths rather than match competitors feature-for-feature. Documents how long real technology adoption takes (~20 years lab-to-product, then another decade-plus to widespread adoption) and how most "first" commercial attempts fail. Contrasts incremental innovation (modeled as "hill climbing") with rarer, riskier radical innovation, revisits the legacy/standards tension via QWERTY vs. Dvorak, and discusses distributed cognition (human+machine collaboration outperforming either alone) and design's environmental/ethical obligations regarding planned obsolescence.
+→ see learned/norman-design-of-everyday-things.md § Chapter: Design in the World of Business
+
+## Key Takeaways for Game UX and Interaction Design
+- Diagnose "players don't get it" complaints as either a Gulf of Execution problem (missing affordances/signifiers/mapping — they don't know what to do) or a Gulf of Evaluation problem (missing/ambiguous feedback — they don't know what happened), and use the Seven Stages of Action as a bug-triage checklist to pinpoint exactly where in input→action→perception→interpretation the failure occurs. → § Chapter: The Psychology of Everyday Actions
+- Prefer signifiers (explicit, designed cues — outlines, highlights, icons) over relying on natural affordances alone, since 3D game worlds routinely render affordances ambiguous or invisible; this is the single most reusable idea for interactable-object and HUD design. → § Chapter: The Psychopathology of Everyday Things
+- Use the four constraint types (physical, cultural, semantic, logical) as a checklist for self-teaching level and UI design that needs no popup tutorial — e.g., an item that only fits one socket, a red icon that reads as danger, a key-shaped icon that reads as "opens a lock." → § Chapter: Knowing What to Do — Constraints, Discoverability, and Feedback
+- Design confirmation dialogs and Undo systems knowing they defend against slips (misclicks) but not mistakes (a player executing a genuinely wrong plan will click straight through); make the object of a destructive action visually prominent and provide real reversibility rather than trusting the prompt text alone. → § Chapter: Human Error? No, Bad Design
+- Treat mode-dependent controls (same button, different effect by context/stance) as a serious error risk requiring highly visible state indication, following Norman's Airbus mode-confusion case as the cautionary model. → § Chapter: Human Error? No, Bad Design
+- Run feature/level briefs through a Double-Diamond pass — diverge to find the real underlying player need before converging on a specific mechanic, then diverge across candidate implementations before committing — rather than solving the literally-stated design brief. → § Chapter: Design Thinking
+- Pair small-N qualitative playtesting (think-aloud, ~5 testers per iterated round) with large-N telemetry/A-B data; treat them as complementary, since numeric correlation alone doesn't explain *why* players are struggling. → § Chapter: Design Thinking
+- Design accessibility features the way OXO designed its peeler: build explicitly for an underserved group, market without stigma, and expect the result to benefit the whole player base. → § Chapter: Design Thinking
+- When a system feels "confusing," first try improving its conceptual model (clearer categorization, a coherent metaphor, legible dependencies) before cutting depth — complexity that matches genuine task complexity is fine; confusion is the actual failure mode. → § Chapter: Design Thinking
+- Watch live-service and sequel scope for featuritis (the Lego motorcycle's 15-to-29-part bloat is a concrete cautionary benchmark), and weigh any "better" control-scheme or UI-convention change against real switching costs to the existing player base, as the QWERTY-vs-Dvorak case demonstrates even measurable improvements can lose to legacy inertia. → § Chapter: Design in the World of Business
