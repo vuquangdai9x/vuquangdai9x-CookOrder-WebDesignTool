@@ -1,7 +1,7 @@
 // batchUpdateCells() writes IN PLACE, into specific cells of the same
 // spreadsheet sheetSource.ts reads from (the user's own Sheet ID) — that's
 // what the Remote Data tab's Apply buttons need, since they're editing live
-// level rows. Every cell changed in one user action (a whole level's 7
+// level rows. Every cell changed in one user action (a whole level's configured
 // fields, or every level in "Apply All") goes out as ONE values:batchUpdate
 // request rather than one request per cell, to stay well clear of the Sheets
 // API's per-minute quota.

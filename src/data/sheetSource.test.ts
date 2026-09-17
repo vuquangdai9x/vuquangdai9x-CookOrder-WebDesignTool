@@ -133,8 +133,10 @@ describe("MapLevelProgress row schema", () => {
     row[15] = `customers-${suffix}`;
     row[16] = `grid-${suffix}`;
     row[17] = `queues-${suffix}`;
-    row[21] = `packed-customers-${suffix}`;
-    row[22] = `packed-queues-${suffix}`;
+    row[18] = `packed-customers-${suffix}`;
+    row[19] = `packed-grid-${suffix}`;
+    row[20] = `packed-queues-${suffix}`;
+    row[23] = `author-${suffix}`;
     return row;
   };
 
@@ -161,9 +163,16 @@ describe("MapLevelProgress row schema", () => {
         gridString: "grid-burger",
         queueString: "queues-burger",
         customerCompressed: "packed-customers-burger",
+        gridCompressed: "packed-grid-burger",
         queuesCompressed: "packed-queues-burger",
+        author: "author-burger",
       },
     });
+  });
+
+  it("round-trips a level author through the committed level CSV format", () => {
+    const source = { levels: [{ ...burgerLevels.levels[0], author: "linhnth" }] };
+    expect(importLevelsCsv(levelsCsv(source))[0].author).toBe("linhnth");
   });
 
   it("maps sheet indexes 2 and 3 onto the node graphs coffee and sushi", () => {

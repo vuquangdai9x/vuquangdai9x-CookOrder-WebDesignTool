@@ -3227,6 +3227,31 @@ td input {
   gap: 0.75rem;
 }
 
+.remote-page .field.small .remote-long-input {
+  width: 22rem;
+}
+
+.field.small .remote-author-select {
+  width: 8.5rem;
+  color: var(--remote-author-color, var(--text));
+  border-color: var(--remote-author-color, var(--line));
+  font-weight: 700;
+  background-color: color-mix(in srgb, var(--remote-author-color, var(--panel)) 10%, var(--bg));
+}
+
+.remote-account-status {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.remote-account-status.allowed {
+  color: var(--ok);
+}
+
+.remote-account-status.denied {
+  color: var(--bad);
+}
+
 /* Per-field column-letter overrides + the start-row field — much narrower
    than the Sheet ID/tab name boxes since they only ever hold a couple of characters. */
 .column-letter-input {
@@ -3301,19 +3326,33 @@ td input {
 
 .remote-row-label {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.78rem;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .remote-row-label code {
   color: var(--text);
+  flex: none;
+  font-weight: 700;
 }
 
-.remote-live-badge {
-  color: var(--accent);
-  font-size: 0.7rem;
+.remote-row-label .small-btn {
+  min-height: 2rem;
+  padding-block: 0.35rem;
+  flex: none;
+}
+
+.remote-row-label .remote-sync-status,
+.remote-row-label .remote-author-chips {
+  flex: none;
+}
+
+.remote-row-label .remote-author-chips {
+  flex-wrap: nowrap;
 }
 
 .remote-row-columns {
@@ -3567,6 +3606,24 @@ td input {
 .remote-sync-status.local { color: var(--muted); }
 .remote-sync-status.synced { color: var(--ok); }
 .remote-sync-status.edited { color: var(--accent); }
+
+.remote-author-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.remote-author-chip {
+  border: 1px solid var(--remote-author-chip-color, var(--line));
+  border-radius: 999px;
+  padding: 0.08rem 0.45rem;
+  color: var(--remote-author-chip-color, var(--text));
+  background: color-mix(in srgb, var(--remote-author-chip-color, var(--panel)) 12%, transparent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
 
 /* ---------- Auto Generate (customer section) ---------- */
 
@@ -4999,11 +5056,6 @@ td input {
 .remote-config-heading {
   margin: 0.75rem 0 0.45rem;
   font-size: 0.9rem;
-}
-
-.remote-firebase-config {
-  display: inline-flex;
-  margin-top: 0.75rem;
 }
 
 .nodegraph-idtable-map-config h3 {

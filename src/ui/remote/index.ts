@@ -9,7 +9,7 @@
 // Every read hits the network at most once per explicit "Load" — the whole
 // tab is fetched in a single request and cached (module-level, so it survives
 // this view being torn down and rebuilt on every mode switch), and every
-// other action (a field's Apply, a level's Apply, "Apply All") reads from
+// other action (a field apply or sheet push) reads from
 // that cache instead of re-fetching. Writes for one action (a level's 7
 // fields, or every level in "Apply All") go out as a single batched request
 // — see data/sheetWrite.ts's batchUpdateCells — so a bulk action never turns
@@ -18,8 +18,8 @@
 //
 // Each level renders as two columns — sheet data (left) and tool data
 // (right) — one read-only field per REMOTE_LEVEL_FIELDS entry, each with its
-// own hover-revealed Apply button that pushes just that one field across.
-// Whole-level "Apply Sheet"/"Apply Tool" buttons push all 7 at once. Both
+// own hover-revealed Apply/Push button that moves just that one field across.
+// Whole-level buttons move all configured fields at once. Both
 // maps and individual levels fold out (collapsed by default); fold state is
 // module-level so it survives switching to Design/Play and back.
 
@@ -37,6 +37,14 @@ import {
 } from "../../data/sheetSource.ts";
 import { REMOTE_KEYS } from "../../data/configLoader.ts";
 import {
+  canEmailWriteRemoteAuthor,
+  CUSTOM_REMOTE_AUTHOR,
+  pushedAuthorValue,
+  REMOTE_AUTHORS,
+  remoteAuthorAssignedLevels,
+  remoteAuthorForTable,
+} from "../../data/remoteAuthors.ts";
+import {
   applyGraphLookupRows,
   GRAPH_LOOKUP_DEFAULT_COLUMNS,
   GRAPH_LOOKUP_START_ROW,
@@ -47,17 +55,15 @@ import {
   type GraphLookupMap,
 } from "../../data/graphLookupData.ts";
 import type { LevelData, MapData } from "../../data/mapLoader.ts";
-import { decompressLevelString, remoteLevelValue, remoteLevelPayload } from "../../data/levelCompression.ts";
-import { applyRemoteField, applyRemoteFields } from "../../data/remoteLevelFields.ts";
-import { requestAccessTokenInteractive } from "../../data/googleAuth.ts";
+import { decompressLevelString, remoteLevelValue } from "../../data/levelCompression.ts";
+import { applyRemoteField, applyRemoteFields, tryApplyRemoteFields } from "../../data/remoteLevelFields.ts";
+import {
+  fetchGoogleAccountIdentity,
+  requestAccessTokenInteractive,
+  type GoogleAccountIdentity,
+} from "../../data/googleAuth.ts";
 import { batchUpdateCells } from "../../data/sheetWrite.ts";
 import type { CellUpdate } from "../../data/sheetWrite.ts";
-import {
-  FirebaseAuthRequiredError,
-  FirebasePermissionError,
-  pushRemoteConfigParameter,
-  restoreRemoteConfigParameter,
-} from "../../data/remoteConfigWrite.ts";
 import { showSheetPermissionDialog } from "../sheetPermissionDialog.ts";
 import { button, el } from "../dom.ts";
 import { bindUndoRedoKeys } from "../history.ts";
@@ -112,8 +118,8 @@ interface RemoteViewState {
   graphColumnOverrides: GraphLookupColumns;
   graphStartRow: number;
   configOpen: boolean;
-  /** Project id for the "Push Remote Config" button — blank until the designer pastes one in. */
-  firebaseProjectId: string;
+  /** Set by a successful sheet load from the same OAuth token used for that load. */
+  googleAccount: GoogleAccountIdentity | null;
 }
 
 const scopedStates = new Map<string, RemoteViewState>();
@@ -124,12 +130,14 @@ type FieldKey = (typeof REMOTE_LEVEL_FIELDS)[number]["key"];
 /** Each compressed sheet column's readable counterpart, for the sheet-side mismatch notice below. */
 const COMPRESSED_RAW_FIELD: Partial<Record<FieldKey, FieldKey>> = {
   customerCompressed: "customerString",
+  gridCompressed: "gridString",
   queuesCompressed: "queueString",
 };
 
-/** Reverse of the above — a per-field "Apply Tool" on customers/queues carries its compressed column along, so the sheet's pair never drifts apart. */
+/** A per-field Push on customers/queues carries its compressed column along, so the sheet's pair never drifts apart. */
 const RAW_COMPRESSED_FIELD: Partial<Record<FieldKey, FieldKey>> = {
   customerString: "customerCompressed",
+  gridString: "gridCompressed",
   queueString: "queuesCompressed",
 };
 
@@ -221,6 +229,14 @@ export function remoteLevelIds(
   return [...ids].sort((a, b) => a - b);
 }
 
+/** Identifies local levels that a sheet push cannot update because no destination row exists. */
+export function missingRemoteLevelKeys(
+  entryKeys: Iterable<string>,
+  rows: ReadonlyMap<string, unknown>,
+): string[] {
+  return [...entryKeys].filter((key) => !rows.has(key));
+}
+
 /** The three-state contract shown on every level header. */
 export function levelSyncStatus(
   sheetLoaded: boolean,
@@ -234,6 +250,25 @@ export function levelSyncStatus(
   )
     ? "Synced"
     : "Edited";
+}
+
+export interface LevelAuthorChip {
+  prefix: "sheet" | "local" | "sync";
+  author: string | null;
+}
+
+/** A synced row needs one ownership badge; every other state shows both sides. */
+export function levelAuthorChips(
+  status: LevelSyncStatus,
+  sheetAuthor: string | null | undefined,
+  localAuthor: string | null | undefined,
+): LevelAuthorChip[] {
+  const normalize = (value: string | null | undefined) => value?.trim() || null;
+  const sheet = normalize(sheetAuthor);
+  const local = normalize(localAuthor);
+  return status === "Synced"
+    ? [{ prefix: "sync", author: local }]
+    : [{ prefix: "sheet", author: sheet }, { prefix: "local", author: local }];
 }
 
 export class RemoteDataView {
@@ -256,6 +291,8 @@ export class RemoteDataView {
   private redoStack: RemoteHistoryAction[] = [];
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
+  private accountStatusEl!: HTMLElement;
+  private toolWriteButtons: HTMLButtonElement[] = [];
   private historyBusy = false;
 
   constructor(
@@ -288,12 +325,13 @@ export class RemoteDataView {
       graphColumnOverrides: { ...GRAPH_LOOKUP_DEFAULT_COLUMNS },
       graphStartRow: GRAPH_LOOKUP_START_ROW,
       configOpen: false,
-      firebaseProjectId: "",
+      googleAccount: null,
     };
     this.state.graphTabName ??= GRAPH_LOOKUP_TAB;
     this.state.graphColumnOverrides ??= { ...GRAPH_LOOKUP_DEFAULT_COLUMNS };
     this.state.graphStartRow ??= GRAPH_LOOKUP_START_ROW;
     this.state.configOpen ??= false;
+    this.state.googleAccount ??= null;
     if (!existing) scopedStates.set(options.scope, this.state);
     this.groups = this.buildGroups();
     this.build();
@@ -366,7 +404,7 @@ export class RemoteDataView {
   private confirmOverwrite(action: "sheet-to-tool" | "tool-to-sheet", group?: Group): boolean {
     const scope = group ? `map "${group.title}"` : "EVERY map";
     const message = action === "tool-to-sheet"
-      ? `This OVERWRITES the Google Sheet with tool data for ${scope}.\n\nSheet values that differ will be lost. Continue?`
+      ? `This PUSHES tool data to the Google Sheet for ${scope}.\n\nSheet values that differ will be overwritten. Continue?`
       : `This OVERWRITES local tool data with sheet data for ${scope}.\n\nUnsaved local level changes will be lost. Continue?`;
     return confirm(message);
   }
@@ -390,6 +428,52 @@ export class RemoteDataView {
   private toolField(entry: LevelEntry, key: FieldKey): string | null {
     if (!this.isLive(entry)) return null;
     return remoteLevelValue(this.level(entry)!, key);
+  }
+
+  /** Value sent to a sheet. Author is claimed by named profiles, cleared for custom, and preserved for default. */
+  private pushedToolField(entry: LevelEntry, key: FieldKey): string | null {
+    const value = this.toolField(entry, key);
+    if (value === null || key !== "author") return value;
+    return pushedAuthorValue(this.state.tabName, this.level(entry)?.author);
+  }
+
+  private toolWritePermissionError(): string | null {
+    const account = this.state.googleAccount;
+    if (!account) return "Load from sheet first so Google can verify your email.";
+    if (!account.emailVerified) return `Google has not verified ${account.email}; tool data cannot be written.`;
+    const profile = remoteAuthorForTable(this.state.tabName);
+    if (profile && !canEmailWriteRemoteAuthor(profile, account.email)) {
+      return `${account.email} is not allowed to write to ${profile.name}'s sheet.`;
+    }
+    return null;
+  }
+
+  private refreshToolWritePermission(): void {
+    if (!this.accountStatusEl) return;
+    const account = this.state.googleAccount;
+    const error = this.toolWritePermissionError();
+    this.accountStatusEl.textContent = account ? `Google: ${account.email}` : "Google email: load sheet to verify";
+    this.accountStatusEl.className = `remote-account-status${error ? " denied" : " allowed"}`;
+    this.accountStatusEl.title = error ?? "This verified Google account may write to the selected author sheet.";
+    for (const writeButton of this.toolWriteButtons) {
+      writeButton.disabled = error !== null;
+      writeButton.title = error ?? writeButton.dataset.allowedTitle ?? writeButton.title;
+    }
+    // Row/field buttons have extra eligibility rules (live level, available value).
+    for (const refresh of this.refreshRowByKey.values()) refresh();
+  }
+
+  private requireToolWritePermission(): boolean {
+    const error = this.toolWritePermissionError();
+    if (!error) return true;
+    alert(error);
+    return false;
+  }
+
+  private registerToolWriteButton(buttonEl: HTMLButtonElement): HTMLButtonElement {
+    buttonEl.dataset.allowedTitle = buttonEl.title;
+    this.toolWriteButtons.push(buttonEl);
+    return buttonEl;
   }
 
   /**
@@ -429,22 +513,29 @@ export class RemoteDataView {
     const key = this.cacheKeyNow();
     const result = await this.withToken(async () => {
       const token = await requestAccessTokenInteractive();
-      return fetchLevelProgressRows(
-        sheetId,
-        token,
-        this.state.tabName,
-        this.state.columnOverrides,
-        this.state.startRow,
-        this.options.sheetMapAliases,
-      );
+      const [rows, account] = await Promise.all([
+        fetchLevelProgressRows(
+          sheetId,
+          token,
+          this.state.tabName,
+          this.state.columnOverrides,
+          this.state.startRow,
+          this.options.sheetMapAliases,
+        ),
+        fetchGoogleAccountIdentity(token),
+      ]);
+      return { rows, account };
     });
     if (result === null) return null;
-    this.state.rowsCache = { cacheKey: key, rows: result };
+    this.state.googleAccount = result.account;
+    this.state.rowsCache = { cacheKey: key, rows: result.rows };
+    this.refreshToolWritePermission();
     this.rebuildGroupsFromRows();
-    return result;
+    return result.rows;
   }
 
   private build(): void {
+    this.toolWriteButtons = [];
     this.refreshRowByKey.clear();
     this.setRowStatusByKey.clear();
     this.groupStatusByTitle.clear();
@@ -453,27 +544,60 @@ export class RemoteDataView {
     bindUndoRedoKeys(page, { undo: () => void this.runHistory("undo"), redo: () => void this.runHistory("redo") });
 
     this.pageStatusEl = el("span", { class: "remote-status" }, []);
+    this.accountStatusEl = el("span", { class: "remote-account-status" }, []);
     const sheetIdInput = el("input", {
       type: "text",
       value: this.getSheetId(),
       placeholder: "Paste a spreadsheet ID…",
-      class: "sheet-id-input",
+      class: "sheet-id-input remote-long-input",
     }) as HTMLInputElement;
     sheetIdInput.addEventListener("change", () => {
       this.setSheetId(sheetIdInput.value.trim());
       sheetIdInput.value = this.getSheetId();
       for (const refresh of this.refreshRowByKey.values()) refresh();
     });
-    const tabNameInput = el("input", { type: "text", value: this.state.tabName, class: "sheet-id-input" }) as HTMLInputElement;
+    const tabNameInput = el("input", { type: "text", value: this.state.tabName, class: "sheet-id-input remote-long-input" }) as HTMLInputElement;
+    const authorSelect = el("select", {
+      class: "remote-author-select",
+      "aria-label": "Author",
+    }) as HTMLSelectElement;
+    for (const author of REMOTE_AUTHORS) {
+      const option = el("option", { value: author.author }, [`${author.emoji} ${author.name}`]) as HTMLOptionElement;
+      option.style.color = author.colorTheme;
+      authorSelect.append(option);
+    }
+    authorSelect.append(el("option", { value: CUSTOM_REMOTE_AUTHOR }, ["🎨 Custom"]));
+    const syncAuthorSelect = (table: string) => {
+      const author = remoteAuthorForTable(table);
+      authorSelect.value = author?.author ?? CUSTOM_REMOTE_AUTHOR;
+      authorSelect.style.setProperty("--remote-author-color", author?.colorTheme ?? "var(--muted)");
+      authorSelect.title = author ? `${author.emoji} ${author.name} — ${author.table}` : "Custom sheet name";
+    };
+    syncAuthorSelect(this.state.tabName);
+    authorSelect.addEventListener("change", () => {
+      const author = REMOTE_AUTHORS.find((candidate) => candidate.author === authorSelect.value);
+      if (!author) {
+        syncAuthorSelect(tabNameInput.value);
+        return;
+      }
+      this.state.tabName = author.table;
+      tabNameInput.value = author.table;
+      syncAuthorSelect(author.table);
+      this.refreshToolWritePermission();
+      for (const refresh of this.refreshRowByKey.values()) refresh();
+    });
+    tabNameInput.addEventListener("input", () => syncAuthorSelect(tabNameInput.value));
     tabNameInput.addEventListener("change", () => {
       this.state.tabName = tabNameInput.value.trim() || this.defaultTabName;
       tabNameInput.value = this.state.tabName;
+      syncAuthorSelect(this.state.tabName);
+      this.refreshToolWritePermission();
       for (const refresh of this.refreshRowByKey.values()) refresh();
     });
     const graphTabNameInput = el("input", {
       type: "text",
       value: this.state.graphTabName,
-      class: "sheet-id-input",
+      class: "sheet-id-input remote-long-input",
     }) as HTMLInputElement;
     graphTabNameInput.addEventListener("change", () => {
       this.state.graphTabName = graphTabNameInput.value.trim() || GRAPH_LOOKUP_TAB;
@@ -500,17 +624,6 @@ export class RemoteDataView {
       this.state.graphStartRow = Math.max(1, Number(graphStartRowInput.value) || 1);
       graphStartRowInput.value = String(this.state.graphStartRow);
     });
-    const firebaseProjectIdInput = el("input", {
-      type: "text",
-      value: this.state.firebaseProjectId,
-      placeholder: "your-firebase-project-id",
-      class: "sheet-id-input",
-    }) as HTMLInputElement;
-    firebaseProjectIdInput.addEventListener("change", () => {
-      this.state.firebaseProjectId = firebaseProjectIdInput.value.trim();
-      firebaseProjectIdInput.value = this.state.firebaseProjectId;
-    });
-
     // One column-letter override per field, defaulting to remote-sheet-columns.json's
     // values — lets a designer point at the real sheet's actual layout without a code change.
     const levelColumnDefs: { label: string; key: keyof RemoteSheetColumns }[] = [
@@ -570,19 +683,19 @@ export class RemoteDataView {
     });
     const configChildren: HTMLElement[] = [
       el("p", { class: "remote-hint" }, [
-        "Column letters and data start rows are editable when the remote sheet layout differs. Firebase Project ID is used only by each level's Push Remote Config action.",
+        "Column letters and data start rows are editable when the remote sheet layout differs.",
       ]),
       el("h3", { class: "remote-config-heading" }, ["MapLevelProgress"]),
       el("div", { class: "remote-sheet-config" }, [
         el("label", { class: "field small" }, ["Start row", startRowInput]),
         ...columnFields,
       ]),
-      el("label", { class: "field small remote-firebase-config" }, ["Firebase Project ID", firebaseProjectIdInput]),
     ];
     if (this.options.graphLookupMaps) {
       configChildren.push(
         el("h3", { class: "remote-config-heading" }, ["GraphLookupData"]),
         el("div", { class: "remote-sheet-config" }, [
+          el("label", { class: "field small" }, ["Sheet name", graphTabNameInput]),
           el("label", { class: "field small" }, ["Start row", graphStartRowInput]),
           ...graphColumnFields,
         ]),
@@ -594,28 +707,35 @@ export class RemoteDataView {
       el("div", { class: "remote-page-actions" }, [
         el("div", { class: "remote-title-row" }, [
           el("h2", {}, ["Remote Data"]),
+          button("⬇ Fetch Assigned Level", () => void this.fetchAssignedLevels(), {
+            class: "small-btn",
+            title: "Load Tan and Linh assigned levels using the default sheet as the level roster",
+          }),
           this.undoBtn,
           this.redoBtn,
         ]),
         el("div", { class: "remote-sheet-config" }, [
           el("label", { class: "field small" }, ["Sheet ID", sheetIdInput]),
+          el("label", { class: "field small" }, ["Author", authorSelect]),
           el("label", { class: "field small" }, ["MapLevelProgress sheet name", tabNameInput]),
-          ...(this.options.graphLookupMaps
-            ? [el("label", { class: "field small" }, ["GraphLookupData sheet name", graphTabNameInput])]
-            : []),
         ]),
         configDetails,
         el("div", { class: "remote-buttons" }, [
           button("⬇ Load All from sheet", () => void this.runAll("load"), { class: "full-btn" }),
           button("→ Apply All sheet data", () => void this.runAll("sheet-to-tool"), { class: "full-btn" }),
-          button("← Apply All tool data", () => void this.runAll("tool-to-sheet"), { class: "full-btn" }),
+          this.registerToolWriteButton(button("↑ Push all data to sheet", () => void this.runAll("tool-to-sheet"), {
+            class: "full-btn",
+            title: "Write tool data to the selected author sheet",
+          })),
           ...graphButtons,
           this.pageStatusEl,
+          this.accountStatusEl,
         ]),
       ]),
     );
 
     for (const group of this.groups) page.append(this.groupEl(group));
+    this.refreshToolWritePermission();
     this.root.replaceChildren(page);
     page.focus({ preventScroll: true });
   }
@@ -642,7 +762,9 @@ export class RemoteDataView {
       el("h3", {}, [group.title]),
       button("⬇ Load All", () => void this.runAll("load", group), {}),
       button("→ Apply sheet data", () => void this.runAll("sheet-to-tool", group), {}),
-      button("← Apply tool data", () => void this.runAll("tool-to-sheet", group), {}),
+      this.registerToolWriteButton(button("↑ Push data to sheet", () => void this.runAll("tool-to-sheet", group), {
+        title: `Write tool data for ${group.title} to the selected author sheet`,
+      })),
       statusEl,
     ]);
     // The header itself toggles the fold — except clicks on one of its own
@@ -658,15 +780,14 @@ export class RemoteDataView {
     const live = this.isLive(entry);
     const statusEl = el("span", { class: "remote-status" }, []);
     const syncStatusEl = el("span", { class: "remote-sync-status local" }, ["Local"]);
-    const liveBadge = el("span", { class: "remote-live-badge" }, ["live level"]);
-    liveBadge.hidden = !live;
+    const authorChipsEl = el("span", { class: "remote-author-chips" }, []);
     let rowElement: HTMLElement | null = null;
 
-    const loadBtn = button("⬇ Load", () => void this.loadRow(entry), {
+    const loadBtn = button("Fetch", () => void this.loadRow(entry), {
       class: "small-btn",
       title: "Re-fetch the whole sheet and refresh this level (and every other open one)",
     });
-    const openBtn = button("✏ Open in Design", () => {
+    const openBtn = button("Design", () => {
       if (this.options.onOpenMapInDesign) this.options.onOpenMapInDesign(entry.mapId, entry.levelIndex);
       else this.onOpenInDesign(entry.levelIndex);
     }, {
@@ -678,14 +799,10 @@ export class RemoteDataView {
       class: "small-btn",
       title: "Apply every sheet field to this level's live draft",
     }) as HTMLButtonElement;
-    const applyToolBtn = button("← Apply Tool", () => void this.applyLevelToolToSheet(entry), {
+    const applyToolBtn = this.registerToolWriteButton(button("Push to sheet", () => void this.applyLevelToolToSheet(entry), {
       class: "small-btn",
       title: "Write every field from this level's live draft to the sheet, in one request",
-    }) as HTMLButtonElement;
-    const pushConfigBtn = button("↪ Push Remote Config", () => void this.pushLevelRemoteConfig(entry), {
-      class: "small-btn",
-      title: "Write this level's customers~grid~queue strings to Firebase Remote Config",
-    }) as HTMLButtonElement;
+    }) as HTMLButtonElement);
 
     const sheetFields = REMOTE_LEVEL_FIELDS.map((f) =>
       this.fieldEl(f.label, "sheet", () => this.applyFieldSheetToTool(entry, f.key), !(f.key in COMPRESSED_RAW_FIELD)),
@@ -697,7 +814,6 @@ export class RemoteDataView {
     const refresh = () => {
       const row = this.currentRows()?.get(entry.key) ?? null;
       const liveNow = this.isLive(entry);
-      liveBadge.hidden = !liveNow;
       rowElement?.classList.toggle("live", liveNow);
       openBtn.disabled = !liveNow;
 
@@ -730,17 +846,29 @@ export class RemoteDataView {
             );
           }
         }
-        tf.applyBtn.disabled = toolVal === null;
+        tf.applyBtn.disabled = row === null || toolVal === null || this.toolWritePermissionError() !== null;
       });
 
       applySheetBtn.disabled = row === null || !this.canApplySheet(entry);
-      applyToolBtn.disabled = !liveNow;
-      pushConfigBtn.disabled = !liveNow;
+      applyToolBtn.disabled = row === null || !liveNow || this.toolWritePermissionError() !== null;
 
       const loadedRows = this.currentRows();
       const syncStatus = levelSyncStatus(loadedRows !== null, row, this.level(entry));
       syncStatusEl.textContent = syncStatus;
       syncStatusEl.className = `remote-sync-status ${syncStatus.toLowerCase()}`;
+      authorChipsEl.replaceChildren(...levelAuthorChips(
+        syncStatus,
+        row?.fields.author,
+        this.level(entry)?.author,
+      ).map(({ prefix, author }) => {
+        const profile = REMOTE_AUTHORS.find((candidate) => candidate.author.toLowerCase() === author?.toLowerCase());
+        const chip = el("span", { class: "remote-author-chip" }, [
+          `${prefix}: ${profile?.emoji ?? (author ? "✍️" : "—")} ${profile?.name ?? author ?? ""}`.trim(),
+        ]);
+        chip.style.setProperty("--remote-author-chip-color", profile?.colorTheme ?? "#94a3b8");
+        chip.title = `${prefix === "sheet" ? "Sheet" : prefix === "local" ? "Local tool" : "Synced"} author: ${profile?.name ?? author ?? "none"}`;
+        return chip;
+      }));
     };
     refresh();
     this.refreshRowByKey.set(entry.key, refresh);
@@ -769,15 +897,14 @@ export class RemoteDataView {
 
     const rowLabel = el("div", { class: "remote-row-label foldable-header" }, [
       caret,
-      el("code", {}, [entry.key]),
-      liveBadge,
+      el("code", { title: entry.key }, [`Lv.${entry.levelIndex}`]),
       syncStatusEl,
+      authorChipsEl,
       el("span", { class: "spacer" }, []),
       openBtn,
       loadBtn,
       applySheetBtn,
       applyToolBtn,
-      pushConfigBtn,
       statusEl,
     ]);
     // Same click-anywhere-but-a-button toggle as the group header — see groupEl.
@@ -796,8 +923,8 @@ export class RemoteDataView {
       const busy = status === "loading";
       loadBtn.disabled = busy;
       applySheetBtn.disabled = busy || !this.canApplySheet(entry);
-      applyToolBtn.disabled = busy || !this.isLive(entry);
-      pushConfigBtn.disabled = busy || !this.isLive(entry);
+      applyToolBtn.disabled = busy || !this.currentRows()?.has(entry.key)
+        || !this.isLive(entry) || this.toolWritePermissionError() !== null;
       if (!busy) refresh(); // re-derive field content + correct enabled/disabled from live state
     });
 
@@ -818,10 +945,11 @@ export class RemoteDataView {
     allowApply: boolean,
   ): { element: HTMLElement; box: HTMLElement; applyBtn: HTMLButtonElement } {
     const box = el("div", { class: "remote-box" }, []);
-    const applyBtn = button("Apply", onApply, {
+    const applyBtn = button(side === "sheet" ? "Apply" : "Push", onApply, {
       class: "small-btn remote-field-apply",
-      title: side === "sheet" ? `Apply this sheet value to the tool (${label})` : `Apply this tool value to the sheet (${label})`,
+      title: side === "sheet" ? `Apply this sheet value to the tool (${label})` : `Push this tool value to the sheet (${label})`,
     }) as HTMLButtonElement;
+    if (side === "tool") this.registerToolWriteButton(applyBtn);
     const element = el("div", { class: "remote-field" }, [
       el("div", { class: "remote-field-label" }, [label]),
       el("div", { class: "remote-field-content" }, allowApply ? [box, applyBtn] : [box]),
@@ -869,7 +997,6 @@ export class RemoteDataView {
   private showRequestError(prefix: string, err: unknown): void {
     if (err instanceof SheetPermissionError) showSheetPermissionDialog({ sheetId: this.getSheetId() });
     else if (err instanceof SheetAuthRequiredError) alert("Google sign-in required — try the action again to sign in.");
-    else if (err instanceof FirebasePermissionError || err instanceof FirebaseAuthRequiredError) alert(`${prefix}: ${err.message}`);
     else alert(`${prefix}: ${(err as Error).message}`);
   }
 
@@ -917,13 +1044,42 @@ export class RemoteDataView {
     rows: Map<string, LevelSheetRow>,
     before: CellUpdate[],
     after: CellUpdate[],
+    levelsBefore?: Record<string, LevelData[]>,
   ): void {
-    if (before.every((cell, index) => cell.value === after[index]?.value)) return;
-    const apply = async (updates: CellUpdate[]) => {
-      await batchUpdateCells(sheetId, tabName, updates);
-      this.updateCachedLevelCells(updates, rows);
+    const sheetChanged = !before.every((cell, index) => cell.value === after[index]?.value);
+    const levelsAfter = levelsBefore ? this.captureLevels() : undefined;
+    const levelsChanged = levelsBefore !== undefined && JSON.stringify(levelsBefore) !== JSON.stringify(levelsAfter);
+    if (!sheetChanged && !levelsChanged) return;
+    const apply = async (updates: CellUpdate[], levels?: Record<string, LevelData[]>) => {
+      if (sheetChanged) {
+        await batchUpdateCells(sheetId, tabName, updates);
+        this.updateCachedLevelCells(updates, rows);
+      }
+      if (levels) this.restoreLevels(levels);
     };
-    this.recordHistory({ label, undo: () => apply(before), redo: () => apply(after) });
+    this.recordHistory({
+      label,
+      undo: () => apply(before, levelsBefore),
+      redo: () => apply(after, levelsAfter),
+    });
+  }
+
+  /** Mirror the author value claimed by a successful sheet push back into live tool data. */
+  private applyPushedAuthorsToTool(entries: readonly LevelEntry[]): void {
+    const profile = remoteAuthorForTable(this.state.tabName);
+    if (profile?.author === "default") return;
+    const nextAuthor = profile?.author ?? null;
+    const changedMaps = new Set<string>();
+    for (const entry of entries) {
+      const level = this.level(entry);
+      if (!level || level.author === nextAuthor) continue;
+      level.author = nextAuthor;
+      changedMaps.add(entry.mapId);
+    }
+    for (const mapId of changedMaps) {
+      const representative = entries.find((entry) => entry.mapId === mapId);
+      if (representative) this.notifyLevelChanged(representative);
+    }
   }
 
   private async withToken<T>(action: () => Promise<T>): Promise<T | null> {
@@ -955,6 +1111,107 @@ export class RemoteDataView {
     for (const refresh of this.refreshRowByKey.values()) refresh();
   }
 
+  /** Resolve a semantic map id back to the numeric map used by author assignments. */
+  private assignmentMapNumber(mapId: string): number | null {
+    const numericAlias = Object.entries(this.options.sheetMapAliases ?? {}).find(([key, value]) =>
+      /^\d+$/.test(key) && value.toLowerCase() === mapId.toLowerCase()
+    );
+    if (numericAlias) return Number(numericAlias[0]);
+    const configuredIndex = REMOTE_KEYS.maps.findIndex((map) => map.mapId.toLowerCase() === mapId.toLowerCase());
+    return configuredIndex >= 0 ? configuredIndex + 1 : null;
+  }
+
+  /**
+   * The default sheet is the roster: only map/level rows that exist there are
+   * eligible. Their assigned content is then loaded from Tan's or Linh's sheet.
+   */
+  private async fetchAssignedLevels(): Promise<void> {
+    const sheetId = this.getSheetId().trim();
+    if (!sheetId) {
+      alert("Paste a spreadsheet ID into the Sheet ID field first.");
+      return;
+    }
+    const defaultProfile = REMOTE_AUTHORS.find((author) => author.author === "default");
+    const assignedProfiles = REMOTE_AUTHORS.filter((author) => author.author === "tantd" || author.author === "linhnth");
+    if (!defaultProfile || assignedProfiles.length !== 2) {
+      alert("Default, Tan, or Linh author configuration is missing.");
+      return;
+    }
+    this.pageStatusEl.textContent = "Fetching assigned levels…";
+    const loaded = await this.withToken(async () => {
+      const token = await requestAccessTokenInteractive();
+      const [account, defaultRows, ...assignedRows] = await Promise.all([
+        fetchGoogleAccountIdentity(token),
+        fetchLevelProgressRows(
+          sheetId,
+          token,
+          defaultProfile.table,
+          this.state.columnOverrides,
+          this.state.startRow,
+          this.options.sheetMapAliases,
+        ),
+        ...assignedProfiles.map((profile) => fetchLevelProgressRows(
+          sheetId,
+          token,
+          profile.table,
+          this.state.columnOverrides,
+          this.state.startRow,
+          this.options.sheetMapAliases,
+        )),
+      ]);
+      return { account, defaultRows, assignedRows };
+    });
+    if (!loaded) {
+      this.pageStatusEl.textContent = "Assigned-level fetch failed";
+      return;
+    }
+    this.state.googleAccount = loaded.account;
+    const rowsByAuthor = new Map(assignedProfiles.map((profile, index) => [profile.author, loaded.assignedRows[index]]));
+    const before = this.captureLevels();
+    const changedMapIds = new Set<string>();
+    let applied = 0;
+    let missing = 0;
+    const invalid: string[] = [];
+    for (const [key, rosterRow] of loaded.defaultRows) {
+      const mapNumber = this.assignmentMapNumber(rosterRow.mapId);
+      if (mapNumber === null) continue;
+      const owner = assignedProfiles.find((profile) => remoteAuthorAssignedLevels(profile, mapNumber).has(rosterRow.level));
+      if (!owner) continue;
+      const assignedRow = rowsByAuthor.get(owner.author)?.get(key);
+      if (!assignedRow) {
+        missing++;
+        continue;
+      }
+      const entry: LevelEntry = { key, mapId: rosterRow.mapId, levelIndex: rosterRow.level };
+      const existed = this.isLive(entry);
+      if (!this.ensureLevel(entry)) continue;
+      const map = this.mapFor(entry)!;
+      const result = tryApplyRemoteFields(this.level(entry)!, assignedRow.fields, map.gridWidth * map.gridHeight);
+      if (!result.ok) {
+        if (!existed) {
+          const index = map.levels.findIndex((level) => level.id === entry.levelIndex);
+          if (index >= 0) map.levels.splice(index, 1);
+        }
+        invalid.push(`${owner.name} · ${entry.mapId} Lv.${entry.levelIndex}: ${result.error.message}`);
+        continue;
+      }
+      changedMapIds.add(entry.mapId);
+      applied++;
+    }
+    for (const mapId of changedMapIds) {
+      const representative = this.groups.flatMap((group) => group.entries).find((entry) => entry.mapId === mapId)
+        ?? { key: "", mapId, levelIndex: 1 };
+      this.notifyLevelChanged(representative);
+    }
+    this.recordLevelHistory("fetch assigned levels", before);
+    this.groups = this.buildGroups();
+    this.build();
+    this.pageStatusEl.textContent = `Fetched ${applied} assigned level(s)${
+      missing ? ` · ${missing} missing assigned row(s)` : ""
+    }${invalid.length ? ` · skipped ${invalid.length} invalid row(s)` : ""}`;
+    this.pageStatusEl.title = invalid.join("\n");
+  }
+
   /** Pushes every field from the sheet onto the tool's live level — no network (reads the cache). */
   private applyLevelSheetToTool(entry: LevelEntry): void {
     const row = this.currentRows()?.get(entry.key);
@@ -979,16 +1236,18 @@ export class RemoteDataView {
 
   /** Pushes every field from the tool's live level onto the sheet, in one batched request. */
   private async applyLevelToolToSheet(entry: LevelEntry): Promise<void> {
+    if (!this.requireToolWritePermission()) return;
     const sheetId = this.getSheetId();
     if (!sheetId.trim()) {
       alert("Paste a spreadsheet ID into the Sheet ID field first.");
       return;
     }
     if (!this.isLive(entry)) return;
+    const levelsBefore = this.captureLevels();
     this.setRowStatusByKey.get(entry.key)?.("loading");
     const rows = await this.ensureRows(false);
     if (rows === null) {
-      this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
+      this.setRowStatusByKey.get(entry.key)?.("error", "push failed");
       return;
     }
     const row = rows.get(entry.key);
@@ -999,7 +1258,7 @@ export class RemoteDataView {
     const updates: CellUpdate[] = REMOTE_LEVEL_FIELDS.map((f) => ({
       row: row.rowNumber,
       col: this.state.columnOverrides[f.key],
-      value: this.toolField(entry, f.key) ?? "",
+      value: this.pushedToolField(entry, f.key) ?? "",
     }));
     const before: CellUpdate[] = REMOTE_LEVEL_FIELDS.map((f) => ({
       row: row.rowNumber,
@@ -1008,48 +1267,13 @@ export class RemoteDataView {
     }));
     const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, updates));
     if (ok === null) {
-      this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
-      return;
-    }
-    for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.toolField(entry, f.key) ?? "";
-    this.setRowStatusByKey.get(entry.key)?.("idle");
-    this.recordSheetHistory(`apply ${entry.key} to sheet`, sheetId, this.state.tabName, rows, before, updates);
-  }
-
-  /**
-   * Writes compressed customers/queues and the sparse blank-grid representation,
-   * `~`-joined — to Firebase Remote Config under this level's own key, in
-   * one GET-modify-PUT template round trip (see remoteConfigWrite.ts).
-   * Reads the live draft, same source "← Apply Tool" pushes to the sheet.
-   */
-  private async pushLevelRemoteConfig(entry: LevelEntry): Promise<void> {
-    const projectId = this.state.firebaseProjectId.trim();
-    if (!projectId) {
-      alert("Paste a Firebase Project ID into the Firebase Project ID field first.");
-      return;
-    }
-    if (!this.isLive(entry)) return;
-    const value = remoteLevelPayload(this.level(entry)!);
-    this.setRowStatusByKey.get(entry.key)?.("loading");
-    try {
-      const previous = await pushRemoteConfigParameter(projectId, entry.key, value);
-      const after = { ...(previous ?? {}), defaultValue: { value } };
-      this.recordHistory({
-        label: `push ${entry.key} to Remote Config`,
-        undo: () => restoreRemoteConfigParameter(projectId, entry.key, previous),
-        redo: () => restoreRemoteConfigParameter(projectId, entry.key, after),
-      });
-      this.setRowStatusByKey.get(entry.key)?.("idle");
-    } catch (err) {
-      if (err instanceof FirebasePermissionError) {
-        alert(`Firebase Remote Config: ${err.message}`);
-      } else if (err instanceof FirebaseAuthRequiredError) {
-        alert("Google sign-in required for Firebase — click Push Remote Config again to sign in.");
-      } else {
-        alert(`Push Remote Config failed: ${(err as Error).message}`);
-      }
       this.setRowStatusByKey.get(entry.key)?.("error", "push failed");
+      return;
     }
+    for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.pushedToolField(entry, f.key) ?? "";
+    this.applyPushedAuthorsToTool([entry]);
+    this.setRowStatusByKey.get(entry.key)?.("idle");
+    this.recordSheetHistory(`push ${entry.key} to sheet`, sheetId, this.state.tabName, rows, before, updates, levelsBefore);
   }
 
   /** Pushes one sheet field onto the tool's corresponding LevelData property — no network (reads the cache). */
@@ -1076,17 +1300,19 @@ export class RemoteDataView {
    * so the sheet's readable/compressed pair never drifts apart.
    */
   private async applyFieldToolToSheet(entry: LevelEntry, fieldKey: FieldKey): Promise<void> {
+    if (!this.requireToolWritePermission()) return;
     const sheetId = this.getSheetId();
     if (!sheetId.trim()) {
       alert("Paste a spreadsheet ID into the Sheet ID field first.");
       return;
     }
-    const value = this.toolField(entry, fieldKey);
+    const value = this.pushedToolField(entry, fieldKey);
     if (value === null) return;
+    const levelsBefore = this.captureLevels();
     this.setRowStatusByKey.get(entry.key)?.("loading");
     const rows = await this.ensureRows(false);
     if (rows === null) {
-      this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
+      this.setRowStatusByKey.get(entry.key)?.("error", "push failed");
       return;
     }
     const row = rows.get(entry.key);
@@ -1095,17 +1321,18 @@ export class RemoteDataView {
       return;
     }
     const compressedKey = RAW_COMPRESSED_FIELD[fieldKey];
-    const keys: FieldKey[] = compressedKey ? [fieldKey, compressedKey] : [fieldKey];
-    const updates = keys.map((key) => ({ row: row.rowNumber, col: this.state.columnOverrides[key], value: this.toolField(entry, key) ?? "" }));
+    const keys = [...new Set<FieldKey>(compressedKey ? [fieldKey, compressedKey, "author"] : [fieldKey, "author"])];
+    const updates = keys.map((key) => ({ row: row.rowNumber, col: this.state.columnOverrides[key], value: this.pushedToolField(entry, key) ?? "" }));
     const before = keys.map((key) => ({ row: row.rowNumber, col: this.state.columnOverrides[key], value: row.fields[key] ?? "" }));
     const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, updates));
     if (ok === null) {
-      this.setRowStatusByKey.get(entry.key)?.("error", "apply failed");
+      this.setRowStatusByKey.get(entry.key)?.("error", "push failed");
       return;
     }
-    for (const key of keys) row.fields[key] = this.toolField(entry, key) ?? "";
+    for (const key of keys) row.fields[key] = this.pushedToolField(entry, key) ?? "";
+    this.applyPushedAuthorsToTool([entry]);
     this.setRowStatusByKey.get(entry.key)?.("idle");
-    this.recordSheetHistory(`apply ${fieldKey} from ${entry.key} to sheet`, sheetId, this.state.tabName, rows, before, updates);
+    this.recordSheetHistory(`push ${fieldKey} from ${entry.key} to sheet`, sheetId, this.state.tabName, rows, before, updates, levelsBefore);
   }
 
   private graphMatrixUpdates(rows: readonly (readonly string[])[], rowCount: number): CellUpdate[] {
@@ -1224,7 +1451,8 @@ export class RemoteDataView {
 
   private async runAll(action: "load" | "sheet-to-tool" | "tool-to-sheet", group?: Group): Promise<void> {
     const groupTitle = group?.title;
-    if (action !== "load" && !this.confirmOverwrite(action, group)) return;
+    if (action === "tool-to-sheet" && !this.requireToolWritePermission()) return;
+    if (action === "sheet-to-tool" && !this.confirmOverwrite(action, group)) return;
     const statusEl = () => groupTitle ? this.groupStatusByTitle.get(groupTitle) : this.pageStatusEl;
     const initialStatus = statusEl();
     if (initialStatus) initialStatus.textContent = "Working…";
@@ -1249,21 +1477,27 @@ export class RemoteDataView {
     if (action === "sheet-to-tool") {
       const before = this.captureLevels();
       let applied = 0;
+      const invalid: string[] = [];
       const appliedMapIds = new Set<string>();
-      try {
-        for (const e of entries) {
-          const row = rows.get(e.key);
-          if (!row) continue;
-          if (!this.ensureLevel(e)) continue;
-          const map = this.mapFor(e)!;
-          applyRemoteFields(this.level(e)!, row.fields, map.gridWidth * map.gridHeight);
-          applied++;
-          appliedMapIds.add(e.mapId);
+      for (const e of entries) {
+        const row = rows.get(e.key);
+        if (!row) continue;
+        const existed = this.isLive(e);
+        if (!this.ensureLevel(e)) continue;
+        const map = this.mapFor(e)!;
+        const result = tryApplyRemoteFields(this.level(e)!, row.fields, map.gridWidth * map.gridHeight);
+        if (!result.ok) {
+          // ensureLevel may have inserted a new draft for this row. Do not
+          // leave that empty shell behind when the sheet data is invalid.
+          if (!existed) {
+            const index = map.levels.findIndex((level) => level.id === e.levelIndex);
+            if (index >= 0) map.levels.splice(index, 1);
+          }
+          invalid.push(`${e.mapId} Lv.${e.levelIndex}: ${result.error.message}`);
+          continue;
         }
-      } catch (err) {
-        this.restoreLevels(before);
-        this.showRequestError("Could not apply sheet data", err);
-        return;
+        applied++;
+        appliedMapIds.add(e.mapId);
       }
       if (applied > 0) {
         for (const mapId of appliedMapIds) {
@@ -1273,13 +1507,23 @@ export class RemoteDataView {
       }
       for (const e of entries) this.refreshRowByKey.get(e.key)?.();
       const currentStatus = statusEl();
-      if (currentStatus) currentStatus.textContent = `Applied ${applied} level(s)`;
+      if (currentStatus) {
+        currentStatus.textContent = `Applied ${applied} level(s)${invalid.length ? ` · skipped ${invalid.length} invalid row(s)` : ""}`;
+        currentStatus.title = invalid.join("\n");
+      }
       this.recordLevelHistory(`apply sheet data to ${groupTitle ?? "all maps"}`, before);
       return;
     }
 
     // tool-to-sheet: gather every changed cell across every live entry, then
     // write them all in exactly one request.
+    const liveEntries = entries.filter((entry) => this.isLive(entry));
+    const missingKeys = missingRemoteLevelKeys(liveEntries.map((entry) => entry.key), rows);
+    if (!this.confirmOverwrite("tool-to-sheet", group)) {
+      const cancelledStatus = statusEl();
+      if (cancelledStatus) cancelledStatus.textContent = "";
+      return;
+    }
     const sheetId = this.getSheetId();
     if (!sheetId.trim()) {
       alert("Paste a spreadsheet ID into the Sheet ID field first.");
@@ -1289,20 +1533,22 @@ export class RemoteDataView {
     }
     const updates: CellUpdate[] = [];
     const before: CellUpdate[] = [];
+    const levelsBefore = this.captureLevels();
     const touched: { entry: LevelEntry; row: LevelSheetRow }[] = [];
-    for (const e of entries) {
-      if (!this.isLive(e)) continue;
+    for (const e of liveEntries) {
       const row = rows.get(e.key);
       if (!row) continue;
       for (const f of REMOTE_LEVEL_FIELDS) {
-        updates.push({ row: row.rowNumber, col: this.state.columnOverrides[f.key], value: this.toolField(e, f.key) ?? "" });
+        updates.push({ row: row.rowNumber, col: this.state.columnOverrides[f.key], value: this.pushedToolField(e, f.key) ?? "" });
         before.push({ row: row.rowNumber, col: this.state.columnOverrides[f.key], value: row.fields[f.key] ?? "" });
       }
       touched.push({ entry: e, row });
     }
     if (updates.length === 0) {
       const currentStatus = statusEl();
-      if (currentStatus) currentStatus.textContent = "Nothing to apply";
+      if (currentStatus) currentStatus.textContent = missingKeys.length
+        ? `Nothing pushed · skipped ${missingKeys.length} missing row(s)`
+        : "Nothing to push";
       return;
     }
     const ok = await this.withToken(() => batchUpdateCells(sheetId, this.state.tabName, updates));
@@ -1312,11 +1558,22 @@ export class RemoteDataView {
       return;
     }
     for (const { entry, row } of touched) {
-      for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.toolField(entry, f.key) ?? "";
+      for (const f of REMOTE_LEVEL_FIELDS) row.fields[f.key] = this.pushedToolField(entry, f.key) ?? "";
     }
+    this.applyPushedAuthorsToTool(touched.map(({ entry }) => entry));
     for (const e of entries) this.refreshRowByKey.get(e.key)?.();
     const currentStatus = statusEl();
-    if (currentStatus) currentStatus.textContent = `Applied ${touched.length} level(s) in 1 request`;
-    this.recordSheetHistory(`apply ${groupTitle ?? "all map"} tool data to sheet`, sheetId, this.state.tabName, rows, before, updates);
+    if (currentStatus) currentStatus.textContent = `Pushed ${touched.length} level(s) in 1 request${
+      missingKeys.length ? ` · skipped ${missingKeys.length} missing row(s)` : ""
+    }`;
+    this.recordSheetHistory(
+      `push ${groupTitle ?? "all map"} tool data to sheet`,
+      sheetId,
+      this.state.tabName,
+      rows,
+      before,
+      updates,
+      levelsBefore,
+    );
   }
 }

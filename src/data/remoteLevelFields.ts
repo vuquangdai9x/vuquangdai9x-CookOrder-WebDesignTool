@@ -16,9 +16,11 @@ export function applyRemoteField(level: LevelData, key: keyof RemoteSheetColumns
       parseQueueGroups(decoded);
       level.queueString = decoded;
     }
-  } else if (key === "gridString") {
+  } else if (key === "gridString" || key === "gridCompressed") {
     parseGrid(value);
     level.gridString = value === "" ? ",".repeat(Math.max(0, gridCells - 1)) : value;
+  } else if (key === "author") {
+    level.author = value.trim() || null;
   } else if (REMOTE_NUMERIC_FIELDS.has(key)) {
     const trimmed = value.trim();
     if (trimmed === "" || !Number.isFinite(Number(trimmed))) delete target[key];
@@ -33,18 +35,32 @@ export function applyRemoteField(level: LevelData, key: keyof RemoteSheetColumns
 export function applyRemoteFields(level: LevelData, fields: LevelSheetRow["fields"], gridCells: number): LevelData {
   const next = structuredClone(level);
   for (const field of REMOTE_LEVEL_FIELDS) {
-    if (field.key === "customerCompressed" || field.key === "queuesCompressed") {
+    if (field.key === "customerCompressed" || field.key === "gridCompressed" || field.key === "queuesCompressed") {
       const packed = fields[field.key] ?? "";
       // Older sheets have no compressed columns. Keep their readable source.
       if (!packed) continue;
-      const rawKey = field.key === "customerCompressed" ? "customerString" : "queueString";
+      const rawKey = field.key === "customerCompressed"
+        ? "customerString"
+        : field.key === "gridCompressed" ? "gridString" : "queueString";
       const raw = fields[rawKey] ?? "";
       // The readable field always wins: it's applied via its own entry above
       // (REMOTE_LEVEL_FIELDS orders it before its compressed pair), and that
       // application's refreshLevelCompression call regenerates this field to
       // match — so a stale/mismatched compressed cell just gets skipped and
       // silently replaced, rather than blocking the whole apply.
-      if (raw && decompressLevelString(packed) !== raw) continue;
+      if (raw) {
+        try {
+          const decoded = field.key === "gridCompressed" ? packed : decompressLevelString(packed);
+          const expected = field.key === "gridCompressed" ? raw.replace(/^,*$/, "") : raw;
+          if (decoded !== expected) continue;
+        } catch {
+          // A readable source is sufficient to repair a corrupt legacy V/W
+          // cell. Applying that source above regenerated a valid compressed
+          // value on `next`, so ignore this bad companion instead of rejecting
+          // the entire level (notably the multi-sheet Assigned Level fetch).
+          continue;
+        }
+      }
     }
     applyRemoteField(next, field.key, fields[field.key] ?? "", gridCells);
   }
@@ -53,4 +69,20 @@ export function applyRemoteFields(level: LevelData, fields: LevelSheetRow["field
     if (!(key in next)) delete target[key];
   }
   return Object.assign(level, next);
+}
+
+export type RemoteFieldsApplyResult = { ok: true } | { ok: false; error: Error };
+
+/** Bulk imports use this boundary so one malformed sheet row cannot cancel every valid level. */
+export function tryApplyRemoteFields(
+  level: LevelData,
+  fields: LevelSheetRow["fields"],
+  gridCells: number,
+): RemoteFieldsApplyResult {
+  try {
+    applyRemoteFields(level, fields, gridCells);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error : new Error(String(error)) };
+  }
 }

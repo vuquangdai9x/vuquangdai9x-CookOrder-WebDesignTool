@@ -62,6 +62,8 @@ export interface LevelData {
    * for the placement rules that turn them into a level.
    */
   obstacleData?: string;
+  /** Designer responsible for this level; mirrored to column X in MapLevelProgress sheets. */
+  author?: string | null;
 }
 
 export type MapData = Omit<MapDef, "levels"> & { levels: LevelData[] };
