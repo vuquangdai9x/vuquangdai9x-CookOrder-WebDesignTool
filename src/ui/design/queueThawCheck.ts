@@ -26,7 +26,7 @@
 // would do.
 
 import { EFFECT_FREEZE } from "../../core/effects.ts";
-import type { QueueGroup, QueueGroupKind, QueueItem } from "../../core/types.ts";
+import type { QueueCellRef, QueueGroup, QueueGroupKind, QueueItem } from "../../core/types.ts";
 
 /** "safe" — no reachable dead end at all. "risky" — finishable, but a player can strand themselves. */
 export type ThawVerdict = "safe" | "risky" | "deadlock" | "unknown";
@@ -97,6 +97,18 @@ export interface ThawReport {
   trivial: boolean;
   /** Wall-clock cost of the whole audit, for the panel's footer. */
   elapsedMs: number;
+}
+
+export interface QueueStructuralAction {
+  id: string;
+  lane: number;
+  /** Stable authored coordinates, even after the queue has compacted. */
+  cells: QueueCellRef[];
+}
+
+export interface QueueStructuralSnapshot {
+  remaining: number;
+  cells: ({ sourceX: number; sourceY: number; freeze: number; group: number } | null)[][];
 }
 
 interface Cell {
@@ -298,6 +310,74 @@ function applyPick(grid: Grid, kinds: QueueGroupKind[], cells: { x: number; y: n
   }
   for (const { x, y } of cells) grid[x][y] = null;
   advance(grid, kinds);
+}
+
+const structuralActionId = (cells: readonly QueueCellRef[]): string =>
+  `pickup:${cells.map((cell) => `${cell.x}:${cell.y}`).sort().join("+")}`;
+
+/**
+ * Replayable public wrapper over the exact structural rules used by the thaw
+ * audit. Queue-first manual planning uses this instead of maintaining a
+ * second, subtly different movement implementation.
+ */
+export class QueueStructuralState {
+  readonly #grid: Grid;
+  readonly #kinds: QueueGroupKind[];
+
+  constructor(queues: QueueItem[][], groups: QueueGroup[] = []) {
+    const built = buildGrid(queues, groups);
+    this.#grid = built.grid;
+    this.#kinds = built.kinds;
+    advance(this.#grid, this.#kinds);
+  }
+
+  get remaining(): number {
+    return remainingCells(this.#grid);
+  }
+
+  legalActions(): QueueStructuralAction[] {
+    const seen = new Set<string>();
+    const actions: QueueStructuralAction[] = [];
+    for (const pick of legalPicks(this.#grid, this.#kinds)) {
+      const cells = pick.cells.map(({ x, y }) => {
+        const cell = this.#grid[x][y]!;
+        return { x: cell.ox, y: cell.oy };
+      }).sort((a, b) => a.x - b.x || a.y - b.y);
+      const id = structuralActionId(cells);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      actions.push({ id, lane: pick.lane, cells });
+    }
+    return actions.sort((a, b) => a.lane - b.lane || a.id.localeCompare(b.id));
+  }
+
+  apply(actionId: string): QueueStructuralAction {
+    const action = this.legalActions().find((candidate) => candidate.id === actionId);
+    if (!action) throw new Error(`Pickup action ${actionId} is not legal in the current queue state.`);
+    const authored = new Set(action.cells.map((cell) => `${cell.x}:${cell.y}`));
+    const pick = legalPicks(this.#grid, this.#kinds).find((candidate) => {
+      const keys = candidate.cells.map(({ x, y }) => {
+        const cell = this.#grid[x][y]!;
+        return `${cell.ox}:${cell.oy}`;
+      });
+      return keys.length === authored.size && keys.every((key) => authored.has(key));
+    });
+    if (!pick) throw new Error(`Pickup action ${actionId} disappeared during replay.`);
+    applyPick(this.#grid, this.#kinds, pick.cells);
+    return action;
+  }
+
+  snapshot(): QueueStructuralSnapshot {
+    return {
+      remaining: this.remaining,
+      cells: this.#grid.map((column) => column.map((cell) => cell ? {
+        sourceX: cell.ox,
+        sourceY: cell.oy,
+        freeze: cell.freeze,
+        group: cell.group,
+      } : null)),
+    };
+  }
 }
 
 /** What one reversible pick changed: the columns it rearranged, and the ice it melted. */

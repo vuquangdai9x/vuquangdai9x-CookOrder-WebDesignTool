@@ -49,7 +49,6 @@ import {
   statisticsFoldout,
   type StatisticsFoldoutUi,
 } from "./statisticsFoldout.ts";
-import { openNodeGenerateDialog } from "./nodeGenerateDialog.ts";
 import { openNodeEstimateReplay } from "../nodeplay/index.ts";
 import { parseGrid, parseQueueGroups, parseQueues, serializeGrid, serializeQueues } from "../../core/parser.ts";
 import { serializeNodeCustomers } from "../../core/nodeParser.ts";
@@ -78,8 +77,19 @@ import { nodeAsMapDef } from "../../data/nodeGraphToMapDef.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import { validateNodeGraph } from "../../data/nodeGraphValidate.ts";
 import { blankLevel, listNodeMaps, type NodeProjectState } from "../../data/nodeProject.ts";
+import { openUnifiedGeneratorWorkspace } from "../generator/index.ts";
+import { NODE_DOCS } from "../../data/nodeProject.ts";
+import nodeRemoteColumns from "../../data/config/general/node-remote-sheet-columns.json";
+import { GoogleLevelSheetGateway } from "../../data/generatorPersistence/index.ts";
+import type { RemoteSheetColumns } from "../../data/sheetSource.ts";
+import { GeneratorDataController } from "../design/generatorDataMenu.ts";
 
 type LayoutMode = "stack" | "split";
+
+export interface NodeDesignSheetOptions {
+  getSheetId(): string;
+  openRemoteData(): void;
+}
 
 export class NodeDesignView {
   private root: HTMLElement;
@@ -125,6 +135,7 @@ export class NodeDesignView {
   private scenario: EstimateScenario = defaultScenario();
   private warningsEl = el("div", { class: "warnings" });
   private layoutMode: LayoutMode = "stack";
+  private generatorData?: GeneratorDataController;
 
   constructor(
     root: HTMLElement,
@@ -134,6 +145,7 @@ export class NodeDesignView {
     initialLevelId?: number,
     onLevelChange?: (levelId: number) => void,
     onMapChange?: (docId: string) => void,
+    sheetOptions?: NodeDesignSheetOptions,
   ) {
     this.root = root;
     this.project = project;
@@ -143,6 +155,27 @@ export class NodeDesignView {
     this.onMapChange = onMapChange;
     this.projected = nodeAsMapDef(project.doc, buildIndex(project.doc));
     this.level = project.levels.find((l) => l.id === initialLevelId) ?? project.levels[0];
+    if (sheetOptions) {
+      const aliases = Object.fromEntries(NODE_DOCS.flatMap((entry) => [
+        [String(entry.index), entry.doc.map.id],
+        [entry.id, entry.doc.map.id],
+        [entry.doc.map.id, entry.doc.map.id],
+      ]));
+      this.generatorData = new GeneratorDataController({
+        gateway: new GoogleLevelSheetGateway({
+          getSheetId: sheetOptions.getSheetId,
+          tabName: nodeRemoteColumns.tabName,
+          columns: nodeRemoteColumns.columns as RemoteSheetColumns,
+          startRow: nodeRemoteColumns.startRow,
+          mapAliases: aliases,
+        }),
+        onChanged: () => {
+          this.onChange();
+          this.build();
+        },
+        openRemoteData: sheetOptions.openRemoteData,
+      });
+    }
     this.build();
   }
 
@@ -480,8 +513,8 @@ export class NodeDesignView {
       return el("label", { class: "field small" }, [label, select]);
     };
 
-    const autoGenerateButton = button("✨ Auto Generate", () => this.openGenerate(), {
-      title: "Generate customers and queues from the level's generator settings",
+    const generatorButton = button("✨ Level Generator", () => this.openGenerate(), {
+      title: "Open the unified Customers → Queue or Queue → Pickup → Customers workspace",
     });
     const estimateButton = button("📊 Estimate Difficulty", () => this.runEstimate(), {
       title: "Simulate player-visible behavior and report difficulty, guessing, and grid pressure",
@@ -496,10 +529,11 @@ export class NodeDesignView {
     });
     statisticsButton.disabled = this.statisticsProgress !== null;
     const actions = el("div", { class: "level-analysis-actions" }, [
-      autoGenerateButton,
+      generatorButton,
       estimateButton,
       solvabilityButton,
       statisticsButton,
+      ...(this.generatorData ? [this.generatorData.createButton(this.project.doc.map.id, this.level)] : []),
       button("+ Level", () => this.addLevel()),
       button("🗑 Level", () => this.deleteLevel(), { class: "danger" }),
     ]);
@@ -595,7 +629,8 @@ export class NodeDesignView {
   }
 
   private openGenerate(): void {
-    openNodeGenerateDialog({
+    openUnifiedGeneratorWorkspace({
+      mapId: this.project.doc.map.id,
       ix: this.projected.ix,
       ids: orderIdIndex(this.projected.ix),
       projected: this.projected,
@@ -625,6 +660,8 @@ export class NodeDesignView {
         this.onChange();
         this.refreshWarnings();
       },
+      onChanged: () => this.onChange(),
+      onClosed: () => this.build(),
     });
   }
 

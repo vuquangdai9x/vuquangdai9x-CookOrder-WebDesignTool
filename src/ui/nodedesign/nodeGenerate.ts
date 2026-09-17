@@ -96,7 +96,7 @@ function capacityOf(slot: IndexedSlot, maxDishSlots: number): number {
  * unservable), the topping is filled when the composite requires it, and the
  * remaining budget is spent across the optional slots.
  */
-function buildDish(
+export function buildDish(
   ix: GraphIndex,
   ids: IdIndex,
   orderable: number,

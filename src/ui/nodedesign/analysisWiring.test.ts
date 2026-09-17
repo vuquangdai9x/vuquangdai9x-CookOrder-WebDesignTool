@@ -15,12 +15,14 @@ describe("Design analysis controls", () => {
     expect(nodeCustomerSectionSrc).not.toContain('button("📊 Estimate Difficulty"');
     expect(nodeCustomerSectionSrc).not.toContain('button("▶ Replay Estimate"');
 
-    const auto = nodeDesignSrc.indexOf('button("✨ Auto Generate"');
+    const auto = nodeDesignSrc.indexOf('button("✨ Level Generator"');
     const estimate = nodeDesignSrc.indexOf('button("📊 Estimate Difficulty"');
     const solvable = nodeDesignSrc.indexOf('button("✓ Check Solvable"');
     const statistic = nodeDesignSrc.indexOf('button("Statistic"');
     const addLevel = nodeDesignSrc.indexOf('button("+ Level"');
     expect(auto).toBeGreaterThan(-1);
+    expect(nodeDesignSrc).not.toContain('button("🧭 Queue First"');
+    expect(nodeDesignSrc).toContain("openUnifiedGeneratorWorkspace({");
     expect(auto).toBeLessThan(estimate);
     expect(estimate).toBeLessThan(solvable);
     expect(solvable).toBeLessThan(statistic);

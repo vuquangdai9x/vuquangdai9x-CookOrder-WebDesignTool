@@ -90,6 +90,7 @@ function readDraft(): CustomerCatalogEntry[] | null {
 }
 
 function persistDraft(entries: CustomerCatalogEntry[]): void {
+  if (typeof localStorage === "undefined") return;
   try {
     localStorage.setItem(
       CATALOG_DRAFT_KEY,
@@ -115,7 +116,7 @@ export function setCustomerCatalog(entries: CustomerCatalogEntry[]): void {
 
 /** Discards the draft and reverts to the bundled catalog. */
 export function resetCustomerCatalog(): CustomerCatalogEntry[] {
-  localStorage.removeItem(CATALOG_DRAFT_KEY);
+  if (typeof localStorage !== "undefined") localStorage.removeItem(CATALOG_DRAFT_KEY);
   catalog = parseCustomersCsv(bundledCsv);
   return catalog;
 }

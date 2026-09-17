@@ -62,6 +62,12 @@ export interface LevelData {
    * for the placement rules that turn them into a level.
    */
   obstacleData?: string;
+  /** Unified generator workspace (`gw2_`); legacy customer-first `cg1_` remains readable. */
+  customerGeneratorData?: string;
+  /** Versioned compressed Queue-First phase snapshots (`qfq1_`, `qfp1_`, `qfc1_`). */
+  queuePhaseData?: string;
+  pickupPhaseData?: string;
+  customerPhaseData?: string;
   /** Designer responsible for this level; mirrored to column X in MapLevelProgress sheets. */
   author?: string | null;
 }

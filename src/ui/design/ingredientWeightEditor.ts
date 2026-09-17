@@ -138,8 +138,9 @@ export function createIngredientWeightGrid(
   amountControls?: IngredientAmountControls,
 ): IngredientWeightGrid {
   const weights = new Map(initial);
+  let unreachableIds = new Set(unreachable);
   const grid = el("div", { class: "weight-grid" });
-  const cols: { id: Id; column: HTMLElement; fill: HTMLElement; label: HTMLElement; track: HTMLElement }[] = [];
+  const cols: { id: Id; column: HTMLElement; fill: HTMLElement; label: HTMLElement; track: HTMLElement; refreshAvailability(): void }[] = [];
 
   function setWeight(id: Id, raw: number, col: (typeof cols)[number]): void {
     const clamped = Math.max(0, Math.min(100, Math.round(raw)));
@@ -159,6 +160,7 @@ export function createIngredientWeightGrid(
       label,
       track,
     ];
+    let refreshAmountAvailability = (): void => {};
 
     if (amountControls) {
       const clampAmount = (raw: number): number => Math.max(0, Math.min(10, Math.round(raw)));
@@ -166,7 +168,7 @@ export function createIngredientWeightGrid(
       const fallback = amountControls.defaultRange(c.id);
       let min = clampAmount(configured?.min ?? fallback.min);
       let max = Math.max(min, clampAmount(configured?.max ?? fallback.max));
-      const enabled = el("input", { type: "checkbox" }) as HTMLInputElement;
+      const enabled = el("input", { type: "checkbox", "aria-label": `Enable amount override for ${c.name}` }) as HTMLInputElement;
       enabled.checked = configured !== undefined;
       enabled.title = "Override this ingredient's graph stack range";
       const rangeLabel = el("div", { class: "amount-range-value" }, [`${min}-${max}`]);
@@ -189,10 +191,15 @@ export function createIngredientWeightGrid(
         title: "Maximum queue-slot amount",
       }) as HTMLInputElement;
 
-      const syncRange = (): void => {
-        minInput.disabled = !enabled.checked;
-        maxInput.disabled = !enabled.checked;
+      const updateRangeAvailability = (): void => {
+        const unavailable = unreachableIds.has(c.id);
+        enabled.disabled = unavailable;
+        minInput.disabled = unavailable || !enabled.checked;
+        maxInput.disabled = unavailable || !enabled.checked;
         rangeLabel.classList.toggle("disabled", !enabled.checked);
+      };
+      const syncRange = (): void => {
+        updateRangeAvailability();
         rangeLabel.textContent = `${min}-${max}`;
         if (enabled.checked) amountControls.ranges.set(c.id, { min, max });
         else amountControls.ranges.delete(c.id);
@@ -215,8 +222,10 @@ export function createIngredientWeightGrid(
         syncRange();
       });
       enabled.addEventListener("change", syncRange);
-      minInput.disabled = !enabled.checked;
-      maxInput.disabled = !enabled.checked;
+      refreshAmountAvailability = updateRangeAvailability;
+      minInput.disabled = unreachableIds.has(c.id) || !enabled.checked;
+      maxInput.disabled = unreachableIds.has(c.id) || !enabled.checked;
+      enabled.disabled = unreachableIds.has(c.id);
       rangeLabel.classList.toggle("disabled", !enabled.checked);
 
       controls.push(
@@ -225,7 +234,6 @@ export function createIngredientWeightGrid(
           el("div", { class: "amount-range-sliders" }, [minInput, maxInput]),
           el("label", { class: "amount-range-toggle", title: "Use an amount range override" }, [
             enabled,
-            "Amt",
           ]),
         ]),
       );
@@ -238,14 +246,20 @@ export function createIngredientWeightGrid(
     column.title = c.name;
     fill.style.height = `${value}%`;
 
-    const col = { id: c.id, column, fill, label, track };
+    const refreshAvailability = (): void => {
+      const unavailable = unreachableIds.has(c.id);
+      column.classList.toggle("unreachable", unavailable);
+      track.setAttribute("aria-disabled", String(unavailable));
+      refreshAmountAvailability();
+    };
+    const col = { id: c.id, column, fill, label, track, refreshAvailability };
     cols.push(col);
     // An ingredient whose every dish type is switched off can never be picked,
     // whatever its own weight says. Showing it greyed rather than hiding it is
     // deliberate: the weight is still there and still means something the
     // moment a composite is turned back on, and hiding rows would make the
     // grid's shape jump every time a dish type is toggled.
-    column.classList.toggle("unreachable", unreachable.has(c.id));
+    refreshAvailability();
 
     const applyFromPointer = (clientY: number) => {
       const rect = track.getBoundingClientRect();
@@ -254,6 +268,7 @@ export function createIngredientWeightGrid(
     };
 
     track.addEventListener("pointerdown", (e) => {
+      if (unreachableIds.has(c.id)) return;
       track.setPointerCapture(e.pointerId);
       applyFromPointer(e.clientY);
       const onMove = (ev: PointerEvent) => applyFromPointer(ev.clientY);
@@ -272,10 +287,11 @@ export function createIngredientWeightGrid(
   return {
     element: grid,
     setAll(value) {
-      for (const col of cols) setWeight(col.id, value, col);
+      for (const col of cols) if (!unreachableIds.has(col.id)) setWeight(col.id, value, col);
     },
     setUnreachable(ids) {
-      for (const col of cols) col.column.classList.toggle("unreachable", ids.has(col.id));
+      unreachableIds = new Set(ids);
+      for (const col of cols) col.refreshAvailability();
     },
   };
 }

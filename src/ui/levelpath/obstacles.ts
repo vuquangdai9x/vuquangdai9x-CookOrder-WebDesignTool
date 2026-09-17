@@ -388,8 +388,13 @@ export function placeGridObstacles(input: GridPlacementInput): GridPlacementResu
 export interface QueuePlacementInput {
   queueString: string;
   config: ObstacleConfig;
+  /** Exact group targets from the canonical coverage profile. Legacy callers omit these. */
+  combinedGroupsBySize?: Partial<Record<2 | 3 | 4 | 5, number>>;
+  linkedGroupsBySize?: Partial<Record<2 | 3 | 4 | 5, number>>;
   /** One key is emitted per colour here — produced by the grid pass. */
   lockColors: number[];
+  /** Grid locks are externally authored and must remain even when no queue key fits. */
+  preserveUnkeyedLocks?: boolean;
   rand: () => number;
 }
 
@@ -424,9 +429,8 @@ const cellKey = (c: Cell): string => `${c.x}:${c.y}`;
  *     dead before the player has made a single choice.
  *   - a combined block is a straight run of 2 or 3 ADJACENT cells, horizontal
  *     or vertical. Anything else is not a shape the game can move as one.
- *   - a linked pair straddles two ADJACENT COLUMNS, on the same row, so both
- *     halves reach the front together — a pair on different rows is pickable
- *     only after the deeper one has climbed, which reads as a bug.
+ *   - a linked chain uses one slot from each ADJACENT COLUMN. Members may sit
+ *     at different depths; runtime waits until the whole chain reaches front.
  *   - a cell belongs to at most one group, and a grouped cell is never frozen.
  *     Both combinations are legal to serialize and miserable to play.
  *   - one key per colour lock, so every lock the grid placed can be opened.
@@ -462,30 +466,64 @@ export function placeQueueObstacles(input: QueuePlacementInput): QueuePlacementR
     for (const cell of cells) taken.add(cellKey(cell));
   };
 
-  // ---- combined blocks: straight runs of 2 or 3 ----
+  // ---- combined blocks: straight runs of 2–5 when canonical sizes exist ----
   let placed = 0;
-  for (let i = 0; i < input.config.queue.combined; i++) {
-    const run = findRun(pool, usable, input.rand, 2 + Math.floor(input.rand() * 2));
-    if (!run) break;
-    groups.push({ kind: "combined", cells: run.map((c) => ({ x: c.x, y: c.y })) });
-    claim(run);
-    placed++;
+  if (input.combinedGroupsBySize) {
+    for (const size of [5, 4, 3, 2] as const) {
+      const wanted = Math.max(0, Math.round(input.combinedGroupsBySize[size] ?? 0));
+      let placedAtSize = 0;
+      for (; placedAtSize < wanted; placedAtSize++) {
+        const run = findRun(pool, usable, input.rand, size);
+        if (!run) break;
+        groups.push({ kind: "combined", cells: run.map((c) => ({ x: c.x, y: c.y })) });
+        claim(run);
+        placed++;
+      }
+      if (placedAtSize < wanted) {
+        warnings.push(`Only placed ${placedAtSize}/${wanted} size-${size} combined groups — no room for a legal run.`);
+      }
+    }
+  } else {
+    for (let i = 0; i < input.config.queue.combined; i++) {
+      const run = findRun(pool, usable, input.rand, 2 + Math.floor(input.rand() * 2));
+      if (!run) break;
+      groups.push({ kind: "combined", cells: run.map((c) => ({ x: c.x, y: c.y })) });
+      claim(run);
+      placed++;
+    }
   }
-  if (placed < input.config.queue.combined) {
+  if (!input.combinedGroupsBySize && placed < input.config.queue.combined) {
     warnings.push(`Only placed ${placed}/${input.config.queue.combined} combined blocks — no room for a legal run.`);
   }
 
-  // ---- linked pairs: two adjacent columns, same row ----
+  // ---- linked groups: one free slot in each adjacent column ----
   placed = 0;
-  for (let i = 0; i < input.config.queue.linked; i++) {
-    const pair = findLinkedPair(lanes.length, pool, usable, input.rand);
-    if (!pair) break;
-    groups.push({ kind: "linked", cells: pair.map((c) => ({ x: c.x, y: c.y })) });
-    claim(pair);
-    placed++;
+  if (input.linkedGroupsBySize) {
+    for (const size of [5, 4, 3, 2] as const) {
+      const wanted = Math.max(0, Math.round(input.linkedGroupsBySize[size] ?? 0));
+      let placedAtSize = 0;
+      for (; placedAtSize < wanted; placedAtSize++) {
+        const run = findLinkedRun(lanes.length, pool, usable, input.rand, size);
+        if (!run) break;
+        groups.push({ kind: "linked", cells: run.map((c) => ({ x: c.x, y: c.y })) });
+        claim(run);
+        placed++;
+      }
+      if (placedAtSize < wanted) {
+        warnings.push(`Only placed ${placedAtSize}/${wanted} size-${size} linked groups — no adjacent columns had free slots.`);
+      }
+    }
+  } else {
+    for (let i = 0; i < input.config.queue.linked; i++) {
+      const pair = findLinkedRun(lanes.length, pool, usable, input.rand, 2);
+      if (!pair) break;
+      groups.push({ kind: "linked", cells: pair.map((c) => ({ x: c.x, y: c.y })) });
+      claim(pair);
+      placed++;
+    }
   }
-  if (placed < input.config.queue.linked) {
-    warnings.push(`Only placed ${placed}/${input.config.queue.linked} linked pairs — no two adjacent columns had a free row.`);
+  if (!input.linkedGroupsBySize && placed < input.config.queue.linked) {
+    warnings.push(`Only placed ${placed}/${input.config.queue.linked} linked pairs — no two adjacent columns had free slots.`);
   }
 
   // ---- per-tile statuses ----
@@ -505,9 +543,9 @@ export function placeQueueObstacles(input: QueuePlacementInput): QueuePlacementR
     keyedColors.push(colorId);
   }
   if (keyedColors.length < input.lockColors.length) {
-    warnings.push(
-      `The queue had room for only ${keyedColors.length}/${input.lockColors.length} keys, so ${input.lockColors.length - keyedColors.length} colour lock(s) were removed rather than left unopenable.`,
-    );
+    warnings.push(input.preserveUnkeyedLocks
+      ? `The queue had room for only ${keyedColors.length}/${input.lockColors.length} keys; ${input.lockColors.length - keyedColors.length} current grid lock(s) remain without generated keys.`
+      : `The queue had room for only ${keyedColors.length}/${input.lockColors.length} keys, so ${input.lockColors.length - keyedColors.length} colour lock(s) were removed rather than left unopenable.`);
   }
 
   placed = 0;
@@ -594,7 +632,7 @@ function findRun(
   rand: () => number,
   length: number,
 ): Cell[] | null {
-  const wanted = Math.max(2, Math.min(3, length));
+  const wanted = Math.max(2, Math.min(5, length));
   for (const start of pool) {
     if (!usable(start)) continue;
     // Try both orientations, in a seed-dependent order so a level's blocks are
@@ -613,21 +651,29 @@ function findRun(
   return null;
 }
 
-/** Two free cells on the same row, in adjacent columns. */
-function findLinkedPair(
+/** One free cell from each adjacent column; row/depth may vary per member. */
+function findLinkedRun(
   laneCount: number,
   pool: Cell[],
   usable: (c: Cell) => boolean,
   rand: () => number,
+  length: number,
 ): Cell[] | null {
+  const wanted = Math.max(2, Math.min(5, length));
   for (const start of pool) {
     if (!usable(start)) continue;
     const sides = rand() < 0.5 ? [1, -1] : [-1, 1];
     for (const dx of sides) {
-      const other = { x: start.x + dx, y: start.y };
-      if (other.x < 0 || other.x >= laneCount) continue;
-      if (!usable(other)) continue;
-      return [start, other];
+      const run: Cell[] = [];
+      for (let step = 0; step < wanted; step++) {
+        const x = start.x + dx * step;
+        if (x < 0 || x >= laneCount) break;
+        const choices = pool.filter((cell) => cell.x === x && usable(cell));
+        if (choices.length === 0) break;
+        const preferred = step === 0 ? choices.find((cell) => cell.y === start.y) : undefined;
+        run.push(preferred ?? choices[Math.floor(rand() * choices.length) % choices.length]);
+      }
+      if (run.length === wanted) return run;
     }
   }
   return null;

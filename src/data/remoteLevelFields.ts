@@ -3,10 +3,37 @@ import { REMOTE_LEVEL_FIELDS, REMOTE_NUMERIC_FIELDS, type LevelSheetRow, type Re
 import { decompressLevelString, refreshLevelCompression } from "./levelCompression.ts";
 import { parseNodeCustomers } from "../core/nodeParser.ts";
 import { parseGrid, parseQueues, parseQueueGroups } from "../core/parser.ts";
+import { applyCustomerGeneratorData, decodeCustomerGeneratorData } from "./generatorPersistence/customerGeneratorData.ts";
 
 export function applyRemoteField(level: LevelData, key: keyof RemoteSheetColumns, value: string, gridCells: number): void {
   const target = level as unknown as Record<string, unknown>;
-  if (key === "customerCompressed" || key === "queuesCompressed") {
+  if (key === "customerDishesSequence") {
+    if (value === "") {
+      delete level.customerGeneratorData;
+      delete level.customerDishesSequence;
+    } else if (value.startsWith("gw2_")) level.customerGeneratorData = value;
+    else if (value.startsWith("cg1_")) applyCustomerGeneratorData(level, decodeCustomerGeneratorData(value));
+    else if (/^(?:cg|gw)\d+_/.test(value)) throw new Error("Unsupported generator workspace payload version.");
+    else level.customerDishesSequence = value;
+  } else if (key === "complexityCurve") {
+    if (value === "") {
+      delete level.queuePhaseData;
+      delete level.complexityCurve;
+    } else if (value.startsWith("qfq1_") || /^qfq\d+_/.test(value)) level.queuePhaseData = value;
+    else level.complexityCurve = value;
+  } else if (key === "shuffleCurve") {
+    if (value === "") {
+      delete level.pickupPhaseData;
+      delete level.shuffleCurve;
+    } else if (value.startsWith("qfp1_") || /^qfp\d+_/.test(value)) level.pickupPhaseData = value;
+    else level.shuffleCurve = value;
+  } else if (key === "obstacleData") {
+    if (value === "") {
+      delete level.customerPhaseData;
+      delete level.obstacleData;
+    } else if (value.startsWith("qfc1_") || /^qfc\d+_/.test(value)) level.customerPhaseData = value;
+    else level.obstacleData = value;
+  } else if (key === "customerCompressed" || key === "queuesCompressed") {
     const decoded = decompressLevelString(value);
     if (key === "customerCompressed") {
       parseNodeCustomers(decoded);

@@ -60,6 +60,12 @@ export function remoteLevelValue(level: LevelData, key: string): string {
   }
   if (key === "gridCompressed") return remoteGridString(level.gridString);
   if (key === "gridString") return remoteGridString(level.gridString);
+  // E/F/G/I retain their historical TypeScript column keys so existing sheet
+  // overrides keep working. Prefixes distinguish new envelopes from legacy raw cells.
+  if (key === "customerDishesSequence") return level.customerGeneratorData ?? level.customerDishesSequence ?? "";
+  if (key === "complexityCurve") return level.queuePhaseData ?? level.complexityCurve ?? "";
+  if (key === "shuffleCurve") return level.pickupPhaseData ?? level.shuffleCurve ?? "";
+  if (key === "obstacleData") return level.customerPhaseData ?? level.obstacleData ?? "";
   return String((level as unknown as Record<string, unknown>)[key] ?? "");
 }
 

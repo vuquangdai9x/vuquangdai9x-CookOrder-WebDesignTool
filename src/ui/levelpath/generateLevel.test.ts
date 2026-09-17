@@ -323,14 +323,15 @@ describe("generateLevel", () => {
     // Avatar draws come from their own stream, so adding a boss portrait to the
     // catalog must not silently regenerate every level built from that seed.
     const withoutArt = blank({ obstacleData: "boss=1", randomSeed: 4242 });
-    generateLevel(withoutArt, ctx);
+    const baseline = generateLevel(withoutArt, ctx, { searchFromSeed: true });
+    expect(baseline.ok).toBe(true);
 
     const original = getCustomerCatalog();
     setCustomerCatalog([
       { index: 7, id: "b", name: "Boss", desc: "", type: "Boss", baseMap: doc.map.id, mapIndex: 1, fileId: "", icon: "👑" },
     ]);
-    const withArt = blank({ obstacleData: "boss=1", randomSeed: 4242 });
-    generateLevel(withArt, ctx);
+    const withArt = blank({ obstacleData: "boss=1", randomSeed: baseline.seed });
+    expect(generateLevel(withArt, ctx).ok).toBe(true);
     setCustomerCatalog(original);
 
     // Compare the ORDERS, which is what a seed promises to reproduce. The
