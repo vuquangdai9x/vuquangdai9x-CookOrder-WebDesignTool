@@ -82,6 +82,7 @@ export interface RemoteSheetColumns {
   gridString: number;
   queueString: number;
   customerCompressed: number;
+  gridCompressed: number;
   queuesCompressed: number;
   ingredientWeights: number;
   customerDishesSequence: number;
@@ -89,6 +90,7 @@ export interface RemoteSheetColumns {
   shuffleCurve: number;
   randomSeed: number;
   obstacleData: number;
+  author: number;
 }
 
 export const REMOTE_SHEET_COLUMNS: RemoteSheetColumns = remoteSheetColumnsJson.columns;
@@ -102,10 +104,12 @@ export const REMOTE_LEVEL_FIELDS: { label: string; key: keyof RemoteSheetColumns
   { label: "Shuffle Curve", key: "shuffleCurve" },
   { label: "Random Seed", key: "randomSeed" },
   { label: "Obstacle Data", key: "obstacleData" },
+  { label: "Author", key: "author" },
   { label: "Customers", key: "customerString" },
   { label: "Grid", key: "gridString" },
   { label: "Queues", key: "queueString" },
   { label: "Customer-compressed", key: "customerCompressed" },
+  { label: "Grid-compressed", key: "gridCompressed" },
   { label: "Queues-compressed", key: "queuesCompressed" },
 ];
 
@@ -217,7 +221,7 @@ const LEVELS_CSV_HEADER = [
   "OutOfSlotPolicy", "BoosterCharges",
   "IngredientWeights", "CustomerDishesSequence", "ComplexityCurve", "ShuffleCurve", "DesignNote",
   "RandomSeed", "ObstacleData",
-  "BagFill",
+  "BagFill", "Author",
 ];
 
 /** Level data only: metadata, customer, grid and queue strings — no map/ingredient/tool definitions. */
@@ -228,7 +232,7 @@ export function levelsCsv(map: Pick<MapData, "levels">): string {
     l.outOfSlotPolicy ?? "", (l.boosterCharges ?? []).join("|"),
     l.ingredientWeights ?? "", l.customerDishesSequence ?? "", l.complexityCurve ?? "",
     l.shuffleCurve ?? "", l.designNote ?? "",
-    l.randomSeed ?? "", l.obstacleData ?? "", l.bagFill ?? "",
+    l.randomSeed ?? "", l.obstacleData ?? "", l.bagFill ?? "", l.author ?? "",
   ]);
   return toCsv([LEVELS_CSV_HEADER, ...rows]);
 }
@@ -257,7 +261,7 @@ export function importLevelsCsv(text: string): LevelData[] {
       serveableSlots, queueString, gridString, customerString,
       outOfSlotPolicy, boosterCharges,
       ingredientWeights, customerDishesSequence, complexityCurve, shuffleCurve, designNote,
-      randomSeed, obstacleData, bagFill,
+      randomSeed, obstacleData, bagFill, author,
     ] = r;
     if (!id || Number.isNaN(Number(id))) {
       throw new Error(`Row ${i + 1}: invalid Level_ID "${id ?? ""}"`);
@@ -293,6 +297,7 @@ export function importLevelsCsv(text: string): LevelData[] {
     }
     if (obstacleData) level.obstacleData = obstacleData;
     if (bagFill === "min" || bagFill === "random" || bagFill === "max") level.bagFill = bagFill;
+    if (author) level.author = author;
     return level;
   });
 }

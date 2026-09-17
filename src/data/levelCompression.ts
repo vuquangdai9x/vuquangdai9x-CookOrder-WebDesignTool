@@ -58,6 +58,7 @@ export function remoteLevelValue(level: LevelData, key: string): string {
     refreshLevelCompression(level);
     return level[key]!;
   }
+  if (key === "gridCompressed") return remoteGridString(level.gridString);
   if (key === "gridString") return remoteGridString(level.gridString);
   return String((level as unknown as Record<string, unknown>)[key] ?? "");
 }

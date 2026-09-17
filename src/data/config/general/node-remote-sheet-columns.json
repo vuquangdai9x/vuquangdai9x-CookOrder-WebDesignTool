@@ -1,6 +1,6 @@
 {
   "_source": "CookOrder GDD New - MapLevelProgress: title row 1, category row 2, headers row 3, data begins at row 4. Each data row identifies itself through Map (A) and Level (B); map ranges and level counts are intentionally not configured.",
-  "_note": "Column mapping for the node-graph Remote Data tab. The current shared sheet stores graph-format level strings in MapLevelProgress. Column indexes are 0-based (0=A, 1=B, ...), and the tab UI can override them at runtime.",
+  "_note": "Column mapping for the node-graph Remote Data tab. The current shared sheet stores graph-format level strings in MapLevelProgress and the level author in X. Column indexes are 0-based (0=A, 1=B, ...), and the tab UI can override them at runtime.",
   "tabName": "MapLevelProgress",
   "startRow": 4,
   "columns": {
@@ -16,6 +16,8 @@
     "gridString": 16,
     "queueString": 17,
     "customerCompressed": 18,
-    "queuesCompressed": 20
+    "gridCompressed": 19,
+    "queuesCompressed": 20,
+    "author": 23
   }
 }

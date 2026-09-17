@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compressLevelString, decompressLevelString, refreshLevelCompression, remoteGridString, remoteLevelPayload } from "./levelCompression.ts";
 import { importLevelsCsv, parseLevelProgressRows, REMOTE_SHEET_COLUMNS } from "./sheetSource.ts";
-import { applyRemoteField, applyRemoteFields } from "./remoteLevelFields.ts";
+import { applyRemoteField, applyRemoteFields, tryApplyRemoteFields } from "./remoteLevelFields.ts";
 import type { LevelData } from "./mapLoader.ts";
 
 const customers = "0;0;0;{c0:17.{g0:18.18.19}}#4|1;0;0;;3|0;60;1;{c1:24};;2";
@@ -69,13 +69,14 @@ describe("compressed level exports", () => {
 });
 
 describe("compressed sheet fields", () => {
-  it("reads V/W by default and obeys column overrides", () => {
+  it("reads Customers/Grid/Queues-compressed from S/T/U by default and obeys column overrides", () => {
     const cells = new Array<string>(25).fill("");
     cells[0] = "1"; cells[1] = "1";
-    cells[21] = compressLevelString(customers); cells[22] = compressLevelString(queues);
+    cells[18] = compressLevelString(customers); cells[19] = "#0,,#1"; cells[20] = compressLevelString(queues);
     let fields = [...parseLevelProgressRows([cells]).values()][0].fields;
-    expect(fields.customerCompressed).toBe(cells[21]);
-    expect(fields.queuesCompressed).toBe(cells[22]);
+    expect(fields.customerCompressed).toBe(cells[18]);
+    expect(fields.gridCompressed).toBe(cells[19]);
+    expect(fields.queuesCompressed).toBe(cells[20]);
     fields = [...parseLevelProgressRows([cells], { ...REMOTE_SHEET_COLUMNS, customerCompressed: 22, queuesCompressed: 21 }).values()][0].fields;
     expect(fields.customerCompressed).toBe(cells[22]);
     expect(fields.queuesCompressed).toBe(cells[21]);
@@ -83,11 +84,17 @@ describe("compressed sheet fields", () => {
 
   it("applies compressed-only rows and expands empty grids to the map size", () => {
     const entry = applyRemoteFields(level(), {
-      customerCompressed: compressLevelString(customers), queuesCompressed: compressLevelString(queues), gridString: "",
+      customerCompressed: compressLevelString(customers), gridCompressed: "",
+      queuesCompressed: compressLevelString(queues), gridString: "",
     }, 10);
     expect(entry.customerString).toBe(customers);
     expect(entry.queueString).toBe(queues);
     expect(entry.gridString).toBe(",,,,,,,,,");
+  });
+
+  it("applies a Grid-compressed value when the readable Grid cell is empty", () => {
+    const entry = applyRemoteFields(level(), { gridCompressed: "#0,,#1" }, 3);
+    expect(entry.gridString).toBe("#0,,#1");
   });
 
   it("preserves old readable sheet rows when compressed columns are empty", () => {
@@ -102,6 +109,19 @@ describe("compressed sheet fields", () => {
     }, 10);
     expect(entry.customerString).toBe(customers);
     expect(entry.customerCompressed).toBe(compressLevelString(customers));
+  });
+
+  it("repairs an invalid compressed companion when a readable field exists", () => {
+    const entry = applyRemoteFields(level(), {
+      customerString: customers,
+      customerCompressed: "z1_not+base64url",
+      queueString: queues,
+      queuesCompressed: "z1_!",
+    }, 10);
+    expect(entry.customerString).toBe(customers);
+    expect(entry.customerCompressed).toBe(compressLevelString(customers));
+    expect(entry.queueString).toBe(queues);
+    expect(entry.queuesCompressed).toBe(compressLevelString(queues));
   });
 
   it("still rejects an invalid (undecodable) compressed field on a direct single-field apply", () => {
@@ -126,5 +146,22 @@ describe("compressed sheet fields", () => {
     expect(entry.randomSeed).toBeUndefined();
     applyRemoteFields(entry, { customerString: customers, queueString: queues, randomSeed: "0" }, 10);
     expect(entry.randomSeed).toBe(0);
+  });
+
+  it("applies sheet author data and represents a blank author as null", () => {
+    const entry = level();
+    applyRemoteField(entry, "author", "tantd", 10);
+    expect(entry.author).toBe("tantd");
+    applyRemoteField(entry, "author", "", 10);
+    expect(entry.author).toBeNull();
+  });
+
+  it("lets a bulk caller skip a malformed customer row without changing its level", () => {
+    const entry = level();
+    const before = structuredClone(entry);
+    const result = tryApplyRemoteFields(entry, { customerCompressed: "0;0;0;1", queueString: queues }, 10);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('Expected "{" at position 0 in "1"');
+    expect(entry).toEqual(before);
   });
 });

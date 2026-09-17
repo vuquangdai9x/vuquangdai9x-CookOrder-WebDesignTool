@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffChars, levelSyncStatus, remoteLevelIds } from "./index.ts";
+import { diffChars, levelAuthorChips, levelSyncStatus, missingRemoteLevelKeys, remoteLevelIds } from "./index.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import { compressLevelString } from "../../data/levelCompression.ts";
 
@@ -85,6 +85,7 @@ describe("levelSyncStatus", () => {
       gridString: "grid",
       queueString: "queue",
       customerCompressed: compressLevelString("customer"),
+      gridCompressed: "grid",
       queuesCompressed: compressLevelString("queue"),
     },
   };
@@ -113,5 +114,32 @@ describe("remoteLevelIds", () => {
     ];
     expect(remoteLevelIds("coffee", [1], rows)).toEqual([1, 7, 120]);
     expect(remoteLevelIds("sushi", [], rows)).toEqual([3, 42]);
+  });
+});
+
+describe("missingRemoteLevelKeys", () => {
+  it("returns every local destination that has no matching sheet row", () => {
+    const rows = new Map<string, unknown>([["map_1_lv_1", {}], ["map_1_lv_3", {}]]);
+    expect(missingRemoteLevelKeys(["map_1_lv_1", "map_1_lv_2", "map_1_lv_3", "map_1_lv_4"], rows))
+      .toEqual(["map_1_lv_2", "map_1_lv_4"]);
+  });
+});
+
+describe("levelAuthorChips", () => {
+  it("collapses a fully synced level to one chip", () => {
+    expect(levelAuthorChips("Synced", "tantd", "tantd")).toEqual([
+      { prefix: "sync", author: "tantd" },
+    ]);
+  });
+
+  it("shows sheet and local ownership when the level is not fully synced", () => {
+    expect(levelAuthorChips("Edited", "tantd", "linhnth")).toEqual([
+      { prefix: "sheet", author: "tantd" },
+      { prefix: "local", author: "linhnth" },
+    ]);
+    expect(levelAuthorChips("Local", undefined, null)).toEqual([
+      { prefix: "sheet", author: null },
+      { prefix: "local", author: null },
+    ]);
   });
 });

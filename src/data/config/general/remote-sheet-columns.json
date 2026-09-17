@@ -1,6 +1,6 @@
 {
-  "_source": "The real MapLevelProgress sheet's header row (CookOrder GDD New - MapLevelProgress.csv): Map,Level,ID,Ingredient Weights,Customer Dishes Sequence,Complexity Curve,Shuffle Curve,Design Note,Weather,Tag,Num Customers,Num Dishes,Num Ingredients,New Object Ids,Tut Id,Customers,Grid,Queues,... — columns A-R.",
-  "_note": "Column indexes are 0-based (0=A, 1=B, ...). These are just the starting defaults — the Remote Data tab also lets a designer override each of the 7 field columns from its own UI (letters, e.g. 'D'), in case the real sheet's layout ever shifts; this file only supplies the initial values shown there.",
+  "_source": "The MapLevelProgress header runs from Map (A) and Level (B) through Author (X); level strings and compressed exports occupy the configured columns in between.",
+  "_note": "Column indexes are 0-based (0=A, 1=B, ...). These are just the starting defaults — the Remote Data tab also lets a designer override each field column from its own UI (letters, e.g. 'D'), in case the real sheet's layout ever shifts; this file only supplies the initial values shown there.",
   "tabName": "MapLevelProgress",
   "columns": {
     "map": 0,
@@ -15,6 +15,8 @@
     "gridString": 16,
     "queueString": 17,
     "customerCompressed": 18,
-    "queuesCompressed": 20
+    "gridCompressed": 19,
+    "queuesCompressed": 20,
+    "author": 23
   }
 }
