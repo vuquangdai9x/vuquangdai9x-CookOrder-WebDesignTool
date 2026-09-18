@@ -47,6 +47,7 @@ import type { IdIndex } from "../../data/nodeIdTable.ts";
 import type { LevelData } from "../../data/mapLoader.ts";
 import type { ProjectedMap } from "../../data/nodeGraphToMapDef.ts";
 import type { BagFillMode } from "./nodeQueueGenerate.ts";
+import { encodeCustomerGeneratorData } from "../../data/generatorPersistence/customerGeneratorData.ts";
 
 export interface NodeGenerateDeps {
   ix: GraphIndex;
@@ -62,6 +63,8 @@ export interface NodeGenerateDeps {
    * generated level replaces the customers AND the queue together.
    */
   onGenerated(result: GenerateLevelResult): void;
+  /** Fires when setup metadata is saved without generating a level. */
+  onSetupSaved?(): void;
 }
 
 /** Survives one dialog close so re-opening does not lose a curve the designer just shaped. */
@@ -218,6 +221,11 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
     ]),
     el("div", { class: "auto-generate-actions" }, [
       button("Cancel", close),
+      button("Save Setup", () => {
+        saveSettings(true);
+        deps.onSetupSaved?.();
+        close();
+      }, { title: "Save generator inputs locally without changing customers or queues" }),
       // Two buttons rather than a checkbox, because they are two different
       // requests and the difference matters. Plain Generate honours a pinned
       // seed absolutely — if that seed cannot make a playable level, it says
@@ -235,6 +243,24 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
   ]);
 
   /** Shared by both buttons — they differ only in whether the seed may move. */
+  function saveSettings(force = false): void {
+    if (force || had.weights || touched.weights) {
+      deps.level.ingredientWeights = serializeWeightSet(weightEditor.weights);
+    }
+    if (force || had.counts || touched.counts || countsFromExisting) {
+      deps.level.customerDishesSequence = serializeDishCountSequence(dishCounts);
+    }
+    if (force || had.curve || touched.curve) {
+      deps.level.complexityCurve = serializeCurve(curveState);
+    }
+    deps.level.obstacleData = serializeObstacles(obstacles.config);
+    deps.level.bagFill = bagFill;
+    const seed = seedInput.value.trim();
+    if (seed === "") delete deps.level.randomSeed;
+    else deps.level.randomSeed = Math.max(0, Math.trunc(Number(seed) || 0)) >>> 0;
+    deps.level.customerGeneratorData = encodeCustomerGeneratorData(deps.level);
+  }
+
   function run(event: MouseEvent, searchFromSeed: boolean): void {
     if (
       deps.currentCustomers().length > 0 &&
@@ -244,20 +270,7 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
     }
     // The pipeline reads its inputs off the level, so the dialog's job is to
     // record what the designer chose and then hand over.
-    if (had.weights || touched.weights) {
-      deps.level.ingredientWeights = serializeWeightSet(weightEditor.weights);
-    }
-    if (had.counts || touched.counts || countsFromExisting) {
-      deps.level.customerDishesSequence = serializeDishCountSequence(dishCounts);
-    }
-    if (had.curve || touched.curve) {
-      deps.level.complexityCurve = serializeCurve(curveState);
-    }
-    deps.level.obstacleData = serializeObstacles(obstacles.config);
-    deps.level.bagFill = bagFill;
-    const seed = seedInput.value.trim();
-    if (seed === "") delete deps.level.randomSeed;
-    else deps.level.randomSeed = Math.max(0, Math.trunc(Number(seed) || 0)) >>> 0;
+    saveSettings();
 
     // A full pipeline run is seconds of straight-line work — and a seed search
     // is many of them — so paint a busy label before starting: a click that
@@ -281,6 +294,7 @@ export function openNodeGenerateDialog(deps: NodeGenerateDeps): void {
         // control keeps one answer to the question.
         { bounds: loadConfig().bounds, ...(searchFromSeed ? { searchFromSeed: true } : {}) },
       );
+      deps.level.customerGeneratorData = encodeCustomerGeneratorData(deps.level);
       btn.textContent = label;
       btn.disabled = false;
       deps.onGenerated(result);

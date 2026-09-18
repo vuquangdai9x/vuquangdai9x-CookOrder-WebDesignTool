@@ -99,11 +99,11 @@ export const REMOTE_SHEET_DEFAULT_TAB: string = remoteSheetColumnsJson.tabName;
 /** Field keys carried in one level's row, in the fixed on-sheet column order the Remote Data tab renders them in. */
 export const REMOTE_LEVEL_FIELDS: { label: string; key: keyof RemoteSheetColumns }[] = [
   { label: "Ingredient Weights", key: "ingredientWeights" },
-  { label: "Customer Dishes Sequence", key: "customerDishesSequence" },
-  { label: "Complexity Curve", key: "complexityCurve" },
-  { label: "Shuffle Curve", key: "shuffleCurve" },
+  { label: "Customer Generator Data", key: "customerDishesSequence" },
+  { label: "Queue Phase Data", key: "complexityCurve" },
+  { label: "Pickup Phase Data", key: "shuffleCurve" },
   { label: "Random Seed", key: "randomSeed" },
-  { label: "Obstacle Data", key: "obstacleData" },
+  { label: "Customer Phase Data", key: "obstacleData" },
   { label: "Author", key: "author" },
   { label: "Customers", key: "customerString" },
   { label: "Grid", key: "gridString" },
@@ -222,6 +222,7 @@ const LEVELS_CSV_HEADER = [
   "IngredientWeights", "CustomerDishesSequence", "ComplexityCurve", "ShuffleCurve", "DesignNote",
   "RandomSeed", "ObstacleData",
   "BagFill", "Author",
+  "CustomerGeneratorData", "QueuePhaseData", "PickupPhaseData", "CustomerPhaseData",
 ];
 
 /** Level data only: metadata, customer, grid and queue strings — no map/ingredient/tool definitions. */
@@ -233,6 +234,7 @@ export function levelsCsv(map: Pick<MapData, "levels">): string {
     l.ingredientWeights ?? "", l.customerDishesSequence ?? "", l.complexityCurve ?? "",
     l.shuffleCurve ?? "", l.designNote ?? "",
     l.randomSeed ?? "", l.obstacleData ?? "", l.bagFill ?? "", l.author ?? "",
+    l.customerGeneratorData ?? "", l.queuePhaseData ?? "", l.pickupPhaseData ?? "", l.customerPhaseData ?? "",
   ]);
   return toCsv([LEVELS_CSV_HEADER, ...rows]);
 }
@@ -262,6 +264,7 @@ export function importLevelsCsv(text: string): LevelData[] {
       outOfSlotPolicy, boosterCharges,
       ingredientWeights, customerDishesSequence, complexityCurve, shuffleCurve, designNote,
       randomSeed, obstacleData, bagFill, author,
+      customerGeneratorData, queuePhaseData, pickupPhaseData, customerPhaseData,
     ] = r;
     if (!id || Number.isNaN(Number(id))) {
       throw new Error(`Row ${i + 1}: invalid Level_ID "${id ?? ""}"`);
@@ -298,6 +301,10 @@ export function importLevelsCsv(text: string): LevelData[] {
     if (obstacleData) level.obstacleData = obstacleData;
     if (bagFill === "min" || bagFill === "random" || bagFill === "max") level.bagFill = bagFill;
     if (author) level.author = author;
+    if (customerGeneratorData) level.customerGeneratorData = customerGeneratorData;
+    if (queuePhaseData) level.queuePhaseData = queuePhaseData;
+    if (pickupPhaseData) level.pickupPhaseData = pickupPhaseData;
+    if (customerPhaseData) level.customerPhaseData = customerPhaseData;
     return level;
   });
 }

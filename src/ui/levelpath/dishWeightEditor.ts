@@ -105,6 +105,8 @@ export interface DishWeightEditorDeps {
   ids: IdIndex;
   initial: WeightSet;
   onChange?(weights: WeightSet): void;
+  /** False when the unified workspace renders ingredients in its shared profile section. */
+  showIngredients?: boolean;
 }
 
 export function createDishWeightEditor(deps: DishWeightEditorDeps): DishWeightEditor {
@@ -194,6 +196,18 @@ export function createDishWeightEditor(deps: DishWeightEditorDeps): DishWeightEd
     return { column, set };
   });
 
+  const ingredientSection: (Node | string)[] = deps.showIngredients === false ? [] : [
+    el("h3", {}, ["Ingredient Weights"]),
+    el("p", { class: "muted" }, [
+      "Enable Amt beside an ingredient to override its graph stack range for generated queue slots (0-10). " +
+        "Queue slots always contain at least one piece, so 0 is normalized to 1 during generation.",
+    ]),
+    el("div", { class: "ingredient-toggle-actions" }, [
+      button("Enable All", () => grid.setAll(DEFAULT_INGREDIENT_WEIGHT), { class: "small-btn" }),
+      button("Disable All", () => grid.setAll(0), { class: "small-btn" }),
+    ]),
+    grid.element,
+  ];
   const element = el("div", { class: "dish-weight-editor" }, [
     el("h3", {}, ["Dish Types"]),
     el("p", { class: "muted" }, [
@@ -205,16 +219,7 @@ export function createDishWeightEditor(deps: DishWeightEditorDeps): DishWeightEd
       button("Disable All", () => bars.forEach((bar) => bar.set(0)), { class: "small-btn" }),
     ]),
     el("div", { class: "weight-grid dish-grid" }, bars.map((bar) => bar.column)),
-    el("h3", {}, ["Ingredient Weights"]),
-    el("p", { class: "muted" }, [
-      "Enable Amt beside an ingredient to override its graph stack range for generated queue slots (0-10). " +
-        "Queue slots always contain at least one piece, so 0 is normalized to 1 during generation.",
-    ]),
-    el("div", { class: "ingredient-toggle-actions" }, [
-      button("Enable All", () => grid.setAll(DEFAULT_INGREDIENT_WEIGHT), { class: "small-btn" }),
-      button("Disable All", () => grid.setAll(0), { class: "small-btn" }),
-    ]),
-    grid.element,
+    ...ingredientSection,
   ]);
 
   return { element, weights };

@@ -25,6 +25,9 @@ export const roundTo = (value: number, decimals: number): number =>
 export const formatScrub = (value: number, decimals: number): string =>
   decimals === 0 ? String(Math.round(value)) : String(roundTo(value, decimals));
 
+export const quantizeScrub = (value: number, decimals: number): number =>
+  decimals === 0 ? Math.round(value) : roundTo(value, decimals);
+
 export interface ScrubSpec {
   min: number;
   /** Absent = unbounded above. */
@@ -72,7 +75,11 @@ export function makeScrubber(
   let accumulated = 0;
 
   const clamp = (value: number): number => {
-    const rounded = roundTo(value, spec.decimals);
+    // Integer-authored fields must store the same integer the input displays.
+    // Previously decimals=0 rendered Math.round(value) but passed a hidden
+    // fractional value through onChange, so JSON could receive 3.42 from a
+    // field visibly showing 3.
+    const rounded = quantizeScrub(value, spec.decimals);
     const floored = Math.max(spec.min, rounded);
     return spec.max === undefined ? floored : Math.min(spec.max, floored);
   };

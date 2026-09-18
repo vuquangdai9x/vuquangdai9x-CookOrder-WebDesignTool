@@ -357,16 +357,44 @@ describe("placeQueueObstacles", () => {
     }
   });
 
-  it("puts a linked pair in two adjacent columns on one row", () => {
+  it("puts linked pairs in adjacent columns and allows different rows", () => {
+    let sawCrossRowPair = false;
     for (let seed = 1; seed <= 30; seed++) {
       const result = run({ linked: 3 }, seed);
       for (const group of parseQueueGroups(result.queueString)) {
         if (group.kind !== "linked") continue;
         expect(group.cells.length).toBe(2);
         expect(Math.abs(group.cells[0].x - group.cells[1].x)).toBe(1);
-        expect(group.cells[0].y).toBe(group.cells[1].y);
+        if (group.cells[0].y !== group.cells[1].y) sawCrossRowPair = true;
       }
     }
+    expect(sawCrossRowPair).toBe(true);
+  });
+
+  it("honours canonical combined and linked group sizes through size 5", () => {
+    const combined = placeQueueObstacles({
+      queueString: queueOf(6, 7),
+      config: config({ combined: 1 }),
+      combinedGroupsBySize: { 5: 1 },
+      linkedGroupsBySize: {},
+      lockColors: [],
+      rand: seededRng(41),
+    });
+    expect(parseQueueGroups(combined.queueString).filter((group) => group.kind === "combined").map((group) => group.cells.length)).toEqual([5]);
+
+    const linked = placeQueueObstacles({
+      queueString: queueOf(6, 7),
+      config: config({ linked: 1 }),
+      combinedGroupsBySize: {},
+      linkedGroupsBySize: { 4: 1 },
+      lockColors: [],
+      rand: seededRng(17),
+    });
+    const group = parseQueueGroups(linked.queueString).find((entry) => entry.kind === "linked");
+    expect(group?.cells).toHaveLength(4);
+    const columns = group!.cells.map((cell) => cell.x).sort((a, b) => a - b);
+    expect(columns.every((column, index) => index === 0 || column === columns[index - 1] + 1)).toBe(true);
+    expect(new Set(group!.cells.map((cell) => cell.y)).size).toBeGreaterThan(1);
   });
 
   it("never puts one slot in two groups, or a status on a grouped slot", () => {

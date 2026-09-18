@@ -261,7 +261,10 @@ function mount(target: Mode, main: HTMLElement): void {
     case "ndesign": {
       const view = new NodeDesignView(main, node, GLOBAL_DEFS, saveNodeDraft, nodeLevelId, (id) => {
         nodeLevelId = id;
-      }, selectNodeMap);
+      }, selectNodeMap, {
+        getSheetId: () => sheetIdInput,
+        openRemoteData: () => switchMode("nremote"),
+      });
       dirtyProviders.push(() => view.isDirty);
       return;
     }

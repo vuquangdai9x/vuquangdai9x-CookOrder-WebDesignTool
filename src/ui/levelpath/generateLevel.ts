@@ -60,6 +60,9 @@ import {
   planCustomers,
 } from "./customerRoles.ts";
 import {
+  CELL_BLOCKED,
+  CELL_INGREDIENT_SLOT,
+  CELL_ORDER_LOCK,
   emptyObstacles,
   hasObstacles,
   parseObstacles,
@@ -70,9 +73,15 @@ import {
   dropUnkeyedLocks,
 } from "./obstacles.ts";
 import type { ObstacleConfig } from "./obstacles.ts";
-import { parseQueues, serializeQueues } from "../../core/parser.ts";
+import {
+  materializeObstacleCoverage,
+  type MaterializedObstacleCoverage,
+  type SharedObstacleCoverageProfile,
+} from "../../generation/sharedGenerationProfile.ts";
+import { parseGrid, parseQueues, serializeQueues } from "../../core/parser.ts";
+import { CELL_COLOR_LOCK } from "../../core/effects.ts";
 import { resolveOrder } from "../../core/nodeOrder.ts";
-import { serializeNodeCustomers } from "../../core/nodeParser.ts";
+import { parseNodeCustomers, serializeNodeCustomers } from "../../core/nodeParser.ts";
 import type { NodeCustomerConfig } from "../../core/nodeParser.ts";
 import type { GraphIndex } from "../../core/nodeIndex.ts";
 import type { Id } from "../../core/types.ts";
@@ -314,6 +323,12 @@ export interface GenerateContext {
 }
 
 export interface GenerateLevelOptions {
+  /** Optional background-worker progress reporter for the unified generator UI. */
+  onProgress?(percentage: number, description: string): void;
+  /** Unified-workspace percentage profile. When present it is the obstacle source of truth. */
+  obstacleCoverage?: SharedObstacleCoverageProfile;
+  /** Preserve the current grid exactly and derive any required queue keys from it. */
+  preserveGridData?: boolean;
   /**
    * Discard the level's recorded weights/sequence/curves and roll fresh ones.
    * Off by default: re-generating a level a designer has tuned must reuse their
@@ -389,6 +404,8 @@ interface BuildConfig {
   shuffleCurve: CurveState;
   bagFill: BagFillMode;
   obstacles: ObstacleConfig;
+  obstacleCoverage?: SharedObstacleCoverageProfile;
+  preserveGridData?: boolean;
   /** Size guardrails, for the post-build dish-total check. */
   bounds?: GenerateBounds;
   /** Skip the deadlock audits — for callers that only want playability. */
@@ -444,7 +461,17 @@ function buildCandidate(
     if (dense !== undefined) denseAmountRanges.set(dense, range);
   }
 
-  const plan = planCustomers(config.dishCounts, config.obstacles, rand);
+  const gridCells = ctx.ix.doc.map.gridWidth * ctx.ix.doc.map.gridHeight;
+  const plannedOrderingCustomers = config.dishCounts.filter((count) => count !== -1).length;
+  const initialObstacles = config.obstacleCoverage
+    ? materializeObstacleCoverage(config.obstacleCoverage, {
+        gridCells,
+        queueSlots: 0,
+        orderingCustomers: plannedOrderingCustomers,
+      })
+    : { config: config.obstacles, warnings: [] as string[] };
+  warnings.push(...initialObstacles.warnings);
+  const plan = planCustomers(config.dishCounts, initialObstacles.config, rand);
   const sizeBounds = normalizeBounds(config.bounds);
 
   let customers: NodeCustomerConfig[];
@@ -484,7 +511,15 @@ function buildCandidate(
     if (!warnings.includes(message)) warnings.push(message);
   });
 
-  assignWaitTimes(customers, config.obstacles);
+  const customerObstacleBudget = config.obstacleCoverage
+    ? materializeObstacleCoverage(config.obstacleCoverage, {
+        gridCells,
+        queueSlots: 0,
+        orderingCustomers: customers.filter((customer) => customer.typeId !== 1).length,
+      })
+    : initialObstacles;
+  warnings.push(...customerObstacleBudget.warnings.filter((message) => !warnings.includes(message)));
+  assignWaitTimes(customers, customerObstacleBudget.config);
 
   // Grid obstacles are placed against the orders that now exist, so an
   // ingredient lock is keyed to something this level actually uses.
@@ -507,15 +542,23 @@ function buildCandidate(
     );
   }
 
-  const grid = placeGridObstacles({
-    gridString: level.gridString,
-    width: ctx.ix.doc.map.gridWidth,
-    height: ctx.ix.doc.map.gridHeight,
-    customerCount: customers.filter((c) => c.typeId !== 1).length,
-    ingredientUsage: usage,
-    config: config.obstacles,
-    rand,
-  });
+  const grid = config.preserveGridData
+    ? {
+        gridString: level.gridString,
+        lockColors: parseGrid(level.gridString).flatMap((cell) => cell.effects
+          .filter((effect) => effect.effectId === CELL_COLOR_LOCK)
+          .map((effect) => effect.params[0] ?? 0)),
+        warnings: [] as string[],
+      }
+    : placeGridObstacles({
+        gridString: level.gridString,
+        width: ctx.ix.doc.map.gridWidth,
+        height: ctx.ix.doc.map.gridHeight,
+        customerCount: customers.filter((c) => c.typeId !== 1).length,
+        ingredientUsage: usage,
+        config: customerObstacleBudget.config,
+        rand,
+      });
   warnings.push(...grid.warnings);
 
   const lanes = generateNodeQueueLanes({
@@ -541,17 +584,39 @@ function buildCandidate(
     ),
     [],
   );
+  const queueSlots = lanes.reduce((sum, lane) => sum + lane.length, 0);
+  const finalObstacleBudget: MaterializedObstacleCoverage = config.obstacleCoverage
+    ? materializeObstacleCoverage(config.obstacleCoverage, {
+        gridCells,
+        queueSlots,
+        orderingCustomers: customers.filter((customer) => customer.typeId !== 1).length,
+      })
+    : {
+        ...customerObstacleBudget,
+        combinedGroupsBySize: { 2: 0, 3: 0, 4: 0, 5: 0 },
+        linkedGroupsBySize: { 2: 0, 3: 0, 4: 0, 5: 0 },
+      };
+  warnings.push(...finalObstacleBudget.warnings.filter((message) => !warnings.includes(message)));
   const decorated = placeQueueObstacles({
     queueString: plainQueue,
-    config: config.obstacles,
+    config: finalObstacleBudget.config,
+    ...(config.obstacleCoverage
+      ? {
+          combinedGroupsBySize: finalObstacleBudget.combinedGroupsBySize,
+          linkedGroupsBySize: finalObstacleBudget.linkedGroupsBySize,
+        }
+      : {}),
     lockColors: grid.lockColors,
+    ...(config.preserveGridData ? { preserveUnkeyedLocks: true } : {}),
     rand,
   });
   warnings.push(...decorated.warnings);
   const queueString = decorated.queueString;
   // Every colour lock must have its keys, per colour — the grid pass could not
   // know how many keys would fit, so the surplus locks come off here.
-  const gridString = dropUnkeyedLocks(grid.gridString, decorated.keyedColors);
+  const gridString = config.preserveGridData
+    ? level.gridString
+    : dropUnkeyedLocks(grid.gridString, decorated.keyedColors);
 
   // Verify against exactly the strings that will be saved, not the in-memory
   // objects they came from: a level that only works before serialization is a
@@ -707,6 +772,7 @@ export function generateLevel(
   ctx: GenerateContext,
   opts: GenerateLevelOptions = {},
 ): GenerateLevelResult {
+  opts.onProgress?.(2, "Preparing generation inputs…");
   const pinned = typeof level.randomSeed === "number" && Number.isFinite(level.randomSeed);
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -749,6 +815,12 @@ export function generateLevel(
     const startMaxY = Math.max(0, Math.round(baseShuffle.range.maxY));
     for (let maxY = startMaxY; maxY >= 0; maxY--) {
       attempts++;
+      const seedShare = searching ? seedRound / Math.max(1, seedBudget) : 0;
+      const ladderShare = (startMaxY - maxY) / Math.max(1, startMaxY + 1);
+      const percentage = searching
+        ? 5 + Math.min(88, (seedShare + ladderShare / Math.max(1, seedBudget)) * 88)
+        : 5 + ladderShare * 88;
+      opts.onProgress?.(percentage, `Building seed ${seed} · testing shuffle ceiling ${maxY}…`);
       const shuffleCurve: CurveState = {
         range: { ...baseShuffle.range, maxY },
         keyframes: structuredClone(baseShuffle.keyframes),
@@ -765,6 +837,8 @@ export function generateLevel(
           shuffleCurve,
           bagFill,
           obstacles,
+          ...(opts.obstacleCoverage ? { obstacleCoverage: opts.obstacleCoverage } : {}),
+          ...(opts.preserveGridData ? { preserveGridData: true } : {}),
           ...(opts.bounds ? { bounds: opts.bounds } : {}),
           ...(opts.skipDeadlock !== undefined ? { skipDeadlock: opts.skipDeadlock } : {}),
           ...(opts.deadlockRuns !== undefined ? { deadlockRuns: opts.deadlockRuns } : {}),
@@ -803,10 +877,27 @@ export function generateLevel(
       // A ROLLED budget is written back like every other rolled input, so the
       // level reproduces and the designer can see — and edit — what the
       // generator chose for them. An authored one round-trips unchanged.
-      level.obstacleData = serializeObstacles(obstacles);
+      const deliveredObstacleBudget = opts.obstacleCoverage
+        ? materializeObstacleCoverage(opts.obstacleCoverage, {
+            gridCells: ctx.ix.doc.map.gridWidth * ctx.ix.doc.map.gridHeight,
+            queueSlots: parseQueues(candidate.queueString).reduce((sum, lane) => sum + lane.length, 0),
+            orderingCustomers: parseNodeCustomers(candidate.customerString).filter((customer) => customer.typeId !== 1).length,
+          }).config
+        : obstacles;
+      if (opts.preserveGridData) {
+        const effects = parseGrid(level.gridString).flatMap((cell) => cell.effects);
+        deliveredObstacleBudget.grid = {
+          blocked: effects.filter((effect) => effect.effectId === CELL_BLOCKED).length,
+          orderLock: effects.filter((effect) => effect.effectId === CELL_ORDER_LOCK).length,
+          ingredientLock: effects.filter((effect) => effect.effectId === CELL_INGREDIENT_SLOT).length,
+        };
+        deliveredObstacleBudget.lockAndKey = effects.filter((effect) => effect.effectId === CELL_COLOR_LOCK).length;
+      }
+      level.obstacleData = serializeObstacles(deliveredObstacleBudget);
       level.customerString = candidate.customerString;
       level.queueString = candidate.queueString;
       level.gridString = candidate.gridString;
+      opts.onProgress?.(100, "Preview generated and validated.");
       return {
         ok: true,
         seed,
@@ -835,6 +926,7 @@ export function generateLevel(
         : `No playable level after ${seedsTried} seed(s) and ${attempts} build(s).`,
     );
   }
+  opts.onProgress?.(100, "Generation finished without a playable result.");
   return {
     ok: false,
     seed,
